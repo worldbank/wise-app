@@ -54,6 +54,9 @@ test_that("outcome stats tab re-renders only on button press", {
       banner <- function() {
         paste(as.character(session$output$outcome_stale_banner), collapse = " ")
       }
+      card <- function() {
+        paste(as.character(session$output$selected_outcome_card), collapse = " ")
+      }
 
       session$setInputs(outcome = "welfare")
 
@@ -62,11 +65,26 @@ test_that("outcome stats tab re-renders only on button press", {
       session$setInputs(outcome_stats_btn = 1L); settle()
       expect_equal(plot_calls, 1L)
 
+      # ignoreInit quirk: prime the button counter, then press.
+      session$setInputs(outcome_stats_btn = 0L)
+      session$setInputs(outcome_stats_btn = 1L); settle()
+      expect_equal(plot_calls, 1L)
+
+      # Selection card describes the snapshot: label, raw name, direction
+      # note; no raw "div" leak.
+      expect_match(card(), "Welfare", fixed = TRUE)
+      expect_match(card(), "welfare", fixed = TRUE)
+      expect_match(card(),
+        "Higher values indicate better outcomes", fixed = TRUE)
+      expect_false(grepl("^\\s*div\\s*$", card()))
+
       # Selector change without re-press: no re-render (the fix).
       session$setInputs(outcome = "welf2"); settle()
       expect_equal(plot_calls, 1L)
       # ...while the module API keeps publishing the live selection.
       expect_equal(selected_outcome()$name, "welf2")
+      # The card still describes the button-time snapshot (welfare).
+      expect_match(card(), "welfare", fixed = TRUE)
 
       # Re-press: snapshot updates and the tab re-renders.
       session$setInputs(outcome_stats_btn = 2L); settle()

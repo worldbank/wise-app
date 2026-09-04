@@ -55,6 +55,214 @@
   padding: 0.9rem;
 }
 
+/* wellPanel boxes in the sidebar: drop the outline, blend with sidebar */
+.sidebar .well {
+  border: none;
+  background-color: transparent;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+/* "No data files found" warning (sample panel) */
+.no-data-warning {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.warning-message {
+  color: #9a4d00;
+}
+
+.warning-message .fa,
+.warning-message .fas,
+.warning-message .far {
+  color: #9a4d00;
+}
+
+.alert.warning-message {
+  --bs-alert-color: #9a4d00;
+  --bs-alert-bg: #fff4e5;
+  --bs-alert-border-color: #e6a15c;
+}
+
+/* ---- Selection summary card (stats tabs) ---------------------------------
+   Thin "what is loaded" card at the top of the stats tabs. Head: uppercase
+   title + right badge; body: one row per item (bold name, muted sub, pills). */
+
+.selection-card {
+  background: #ffffff;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 34, 68, 0.06);
+  padding: 0.65rem 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.selection-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.3rem;
+}
+
+.selection-card-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--bs-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.selection-card-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--bs-primary);
+  background: rgba(0, 113, 188, 0.08);
+  border-radius: 2rem;
+  padding: 0.1rem 0.65rem;
+  white-space: nowrap;
+}
+
+.selection-card-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+.selection-card-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.selection-card-sub {
+  color: var(--bs-secondary);
+  font-size: 0.78rem;
+}
+
+.selection-card-note {
+  color: var(--bs-secondary);
+  font-size: 0.88rem;
+}
+
+/* Model card: sparse formula line */
+.selection-card-formula {
+  font-weight: 400;
+  font-size: 0.88rem;
+}
+
+.selection-card-op {
+  color: #9fb0be;
+  font-weight: 700;
+  margin: 0 0.12rem;
+}
+
+.selection-card-muted {
+  color: var(--bs-secondary);
+  font-size: 0.88rem;
+}
+
+/* Weather pipeline card: variable name column + left-to-right stage chips */
+.selection-card-wname {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 8.5rem;
+  line-height: 1.35;
+}
+
+.selection-card-pipe {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.selection-card-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.35rem;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--bs-body-color);
+  background: #fff;
+  white-space: nowrap;
+}
+
+.selection-card-stage svg {
+  display: block;
+}
+
+.selection-card-symbol {
+  font-weight: 700;
+  color: var(--bs-primary);
+}
+
+.selection-card-chevron {
+  color: #9fb0be;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+/* Compact variant for the sidebar (live config feedback) */
+.selection-card.compact {
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.selection-card.compact .selection-card-row {
+  padding: 0.1rem 0;
+  gap: 0.4rem;
+}
+
+.selection-card.compact .selection-card-wname {
+  min-width: 0;
+}
+
+.selection-card.compact .selection-card-name {
+  font-size: 0.82rem;
+}
+
+.selection-card.compact .selection-card-sub {
+  font-size: 0.72rem;
+}
+
+.selection-card.compact .selection-card-stage {
+  font-size: 0.68rem;
+  padding: 0.08rem 0.4rem;
+  gap: 0.25rem;
+}
+
+.selection-card.compact .selection-card-chevron {
+  font-size: 0.7rem;
+}
+
+.selection-card.compact .selection-card-badge {
+  font-size: 0.68rem;
+  padding: 0.06rem 0.5rem;
+}
+
+.selection-card-pills {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.selection-card-pill {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--bs-primary);
+  background: rgba(0, 113, 188, 0.08);
+  border-radius: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  white-space: nowrap;
+}
+
 /* Numbered step badge used in accordion panel titles */
 .step-badge {
   display: inline-flex;
@@ -189,6 +397,29 @@
   margin-bottom: 0;
 }
 
+/* Keep the Step 1 landing placeholder from dominating the overview. */
+.overview-empty-state {
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.overview-empty-state .fa,
+.overview-empty-state .fas,
+.overview-empty-state .far {
+  font-size: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.overview-empty-state h5 {
+  font-size: 1rem;
+  margin-bottom: 0.2rem;
+}
+
+.overview-empty-state p {
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 /* ---- Settings summary banner (Step 1 weather/model, matches Step 2) ------ */
 
 .settings-summary {
@@ -221,6 +452,24 @@
    deliberately no !important so Shiny's inline display:none still hides it. */
 .shiny-panel-conditional.config-flyout {
   display: block;
+}
+
+.config-flyout-anchor.config-flyout-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.config-flyout-anchor.config-flyout-inline .config-flyout-toggle {
+  margin-bottom: 0 !important;
+}
+
+.config-flyout-label {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--bs-dark);
+  margin-bottom: 0.25rem;
 }
 
 .config-flyout {
@@ -564,8 +813,15 @@ body.bslib-page-navbar:has(> .container-fluid > .tab-content > .tab-pane.active 
 }
 
 .connection-action-row > .btn {
-  min-width: 11rem;
+  width: 75%;
+  min-width: 0;
   white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .connection-action-row > .btn {
+    width: 100%;
+  }
 }
 
 .connection-options-output {
@@ -677,6 +933,33 @@ body.bslib-page-navbar:has(> .container-fluid > .tab-content > .tab-pane.active 
   font-weight: 600;
   font-size: 0.86rem;
   margin-bottom: 0.25rem;
+}
+
+/* Match select/entry font size to the pill (segmented control) text */
+.sidebar .form-control,
+.sidebar .form-select,
+.sidebar .selectize-input,
+.sidebar .selectize-dropdown {
+  font-size: 0.78rem;
+}
+
+.sidebar .form-control,
+.sidebar .form-select,
+.sidebar .selectize-input {
+  padding: 0.25rem 0.6rem;
+}
+
+/* Modern rounded action buttons (sidebar steps + overview connect card) */
+.sidebar .btn,
+.connect-card .btn {
+  border-radius: 2rem;
+}
+
+.sidebar .btn-primary,
+.connect-card .btn-primary {
+  font-weight: 600;
+  padding: 0.45rem 1.1rem;
+  box-shadow: 0 1px 3px rgba(0, 34, 68, 0.18);
 }
 
 .sidebar .help-block,

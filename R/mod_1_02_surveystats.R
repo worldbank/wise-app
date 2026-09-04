@@ -104,6 +104,14 @@ mod_1_02_surveystats_server <- function(
     cell_data    <- reactiveVal(NULL)
     # REACT-03: digest of the last successfully completed load request.
     last_load_sig <- reactiveVal(NULL)
+    # PERF-36: bumped whenever a new map dataset lands in cell_data(); the
+    # density observer fits the camera only when this changes. The fit must
+    # not key on digest(selected_surveys()): that reactive is read inside the
+    # observer, so changing the sample picker fired it against the old map
+    # and stamped the new selection's key onto stale payloads - the refit
+    # after the real load was then skipped and the camera kept the previous
+    # sample's extent.
+    map_data_version <- shiny::reactiveVal(0L)
 
     # ---- Load and prepare data on button click ------------------------------
 
@@ -229,6 +237,7 @@ mod_1_02_surveystats_server <- function(
             collect_deterministic(c("code", "year", "survname", "loc_id", "h3"))
 
           cell_data(list(geom = cell_geo, map = cell_map))
+          map_data_version(map_data_version() + 1L)
         }, error = function(e) {
           load_ok <<- FALSE
           notify(paste("Failed to build sample density map:", conditionMessage(e)),
@@ -309,14 +318,16 @@ mod_1_02_surveystats_server <- function(
           }
           if (is.null(pl)) {
             hexmap_clear(session, ns, "density_map")
+            density_key(NULL)
             density_lgd(NULL)
             density_nloc(NULL)
           } else {
             hexmap_update(session, ns, "density_map", pl$payload)
-            key <- digest::digest(selected_surveys())
-            if (!identical(key, density_key())) {
+            # PERF-36: refit only when a new map dataset has landed; wave
+            # re-colours keep pan/zoom.
+            if (!identical(map_data_version(), density_key())) {
               hexmap_fit(session, ns, "density_map", pl$payload$bounds)
-              density_key(key)
+              density_key(map_data_version())
             }
             density_lgd(pl$legend)
 
@@ -414,33 +425,43 @@ mod_1_02_surveystats_server <- function(
           )
         })
 
+        # ---- Selection summary card (replaces the old DT table) -------------
+        # Binds live to selected_surveys()/analysis_unit() so the card follows
+        # the sidebar selection, like the DT table it replaces.
+
+        output$selected_surveys_card <- renderUI({
+          ss <- selected_surveys()
+          req(nrow(ss) > 0)
+
+          unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
+          badge <- analysis_unit_label(unit) %||%
+            analysis_unit_label(unique(ss$level)[1])
+
+          econ_rows <- lapply(
+            sort(unique(ss$code)),
+            function(code) {
+              s <- ss[ss$code == code, ]
+              programs <- sort(unique(s$survname))
+              selection_card_row(
+                name  = as.character(s$economy[1]),
+                sub   = if (length(programs)) paste(programs, collapse = " · "),
+                pills = as.character(sort(unique(s$year)))
+              )
+            }
+          )
+
+          selection_summary_card(
+            title = "Selected sample",
+            rows  = econ_rows,
+            badge = badge
+          )
+        })
+
         policy_vars <- unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
         output$policy_stats  <- make_stats_dt(survey_data, variable_list,
                                               vars = policy_vars)
 
-        output$selected_surveys <- DT::renderDT({
-          req(selected_surveys())
-          selected_surveys() |> dplyr::select(-dplyr::any_of(c("fname", "fpath")))
-        }, rownames = FALSE,
-          options = list(dom = "t", paging = FALSE, searching = FALSE, info = FALSE),
-          class = "compact")
-
-        output$selected_outcome_section <- renderUI({
-          if (is.null(selected_outcome) || !is.function(selected_outcome)) return(NULL)
-          sel <- tryCatch(selected_outcome(), error = function(e) NULL)
-          if (is.null(sel)) return(NULL)
-          tagList(br(), h4("Selected outcome variable"), DT::DTOutput(ns("selected_outcome")))
-        })
-
-        output$selected_outcome <- DT::renderDT({
-          if (is.null(selected_outcome) || !is.function(selected_outcome)) return(NULL)
-          sel <- tryCatch(selected_outcome(), error = function(e) NULL)
-          if (is.null(sel) || !is.data.frame(sel) || nrow(sel) == 0)
-            return(data.frame(Note = "No outcome selected"))
-          sel
-        }, rownames = FALSE,
-          options = list(dom = "t", paging = FALSE, searching = FALSE, info = FALSE),
-          class = "compact")
+        # ---- Outcome summary moved to the Outcome stats tab's selection card --
 
         # Append Survey stats tab to parent tabset
         tryCatch(
@@ -449,6 +470,7 @@ mod_1_02_surveystats_server <- function(
             shiny::tabPanel(
               title = "Survey stats",
               value = "desc_stats",
+              uiOutput(ns("selected_surveys_card")),
               bslib::layout_columns(
                 col_widths = c(6, 6),
                 bslib::card(
@@ -522,11 +544,7 @@ mod_1_02_surveystats_server <- function(
               h4("Policy variables"),
               p(class = "text-muted small", "Variables that can be adjusted in Step 3 policy scenarios"),
               DT::DTOutput(ns("policy_stats")),
-              uiOutput(ns("characteristic_tables_ui")),
-              br(),
-              h4("Selected surveys"),           DT::DTOutput(ns("selected_surveys")),
-              br(),
-              uiOutput(ns("selected_outcome_section"))
+              uiOutput(ns("characteristic_tables_ui"))
             ),
             select  = TRUE,
             session = tabset_session

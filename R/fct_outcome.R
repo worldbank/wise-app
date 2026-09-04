@@ -152,6 +152,27 @@ outcome_transform <- function(type) {
 
 
 # ---------------------------------------------------------------------------- #
+# Outcome direction note                                                        #
+# ---------------------------------------------------------------------------- #
+
+#' Plain-language interpretation of an outcome direction
+#'
+#' @param direction A single character string, as returned by
+#'   `outcome_direction()`: `"higher_is_better"` or `"lower_is_better"`.
+#'
+#' @return A single character string, or `NULL` for unknown values.
+#'
+#' @export
+outcome_direction_note <- function(direction) {
+  switch(as.character(direction[1]) %||% "",
+    higher_is_better = "Higher values indicate better outcomes",
+    lower_is_better  = "Lower values indicate better outcomes",
+    NULL
+  )
+}
+
+
+# ---------------------------------------------------------------------------- #
 # Build selected outcome row                                                    #
 # ---------------------------------------------------------------------------- #
 
@@ -195,43 +216,6 @@ build_selected_outcome <- function(info, currency = NULL, poverty_line = NULL) {
   }
 
   info
-}
-
-
-# ---------------------------------------------------------------------------- #
-# Outcome info message UI                                                       #
-# ---------------------------------------------------------------------------- #
-
-#' Build the informational tagList shown below the outcome selector
-#'
-#' Returns a `shiny::tagList` with styled divs describing the selected outcome
-#' type. Returns an empty `tagList` for unrecognised types.
-#'
-#' @param type A single character string - the outcome type (e.g. `"numeric"`,
-#'   `"logical"`).
-#'
-#' @return A `shiny.tag.list`.
-#'
-#' @export
-outcome_info_message <- function(type) {
-  type     <- tolower(as.character(type[1]))
-  messages <- shiny::tagList()
-
-  if (identical(type, "numeric")) {
-    messages <- shiny::tagList(messages, shiny::tags$div(
-      style = "margin-top:10px;padding:8px;background-color:#d1ecf1;border:1px solid #bee5eb;border-radius:4px;color:#0c5460;",
-      "Continuous outcomes will be log-transformed."
-    ))
-  }
-
-  if (identical(type, "logical")) {
-    messages <- shiny::tagList(messages, shiny::tags$div(
-      style = "margin-top:10px;padding:8px;background-color:#d4edda;border:1px solid #c3e6cb;border-radius:4px;color:#155724;",
-      "Binary outcome selected."
-    ))
-  }
-
-  messages
 }
 
 

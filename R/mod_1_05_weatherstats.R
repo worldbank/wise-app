@@ -75,7 +75,7 @@ mod_1_05_weatherstats_server <- function(
       req(selected_weather())
       actionButton(
         ns("weather_stats"), "Weather stats",
-        class = "btn-primary", style = "width: 100%;"
+        class = "btn-primary", style = "width: 100%; margin-top: 0.6rem;"
       )
     })
     shiny::outputOptions(output, "weather_stats_button_ui", suspendWhenHidden = FALSE)
@@ -340,7 +340,7 @@ mod_1_05_weatherstats_server <- function(
           sw   <- wx_spec_sw()
           vars <- intersect(sw$name, names(df))
           if (length(vars) == 0) {
-            return(shiny::helpText("No weather variables found."))
+            return(no_data_warning("No weather variables found."))
           }
 
           is_num <- vapply(df[vars], is.numeric, logical(1))
@@ -367,7 +367,29 @@ mod_1_05_weatherstats_server <- function(
           )
         })
 
-        # -- Selected weather config table ------------------------------------
+        # -- Selected weather pipeline card (snapshot, INT-05 pattern) --------
+        # Describes the configuration the button captured, like every other
+        # output on this tab.
+
+        output$selected_weather_card <- renderUI({
+          sw <- wx_spec_sw()
+          req(nrow(sw) > 0)
+          hy <- hist_years()
+          selection_summary_card(
+            title = "Selected weather",
+            badge = paste0("Historical comparison ", hy[["from"]], "-", hy[["to"]]),
+            rows  = weather_pipeline_rows(sw),
+            info  = paste(
+              "Each row reads left to right: the reference window (months",
+              "before each interview), how those months are aggregated into",
+              "one value (shown only when the window spans several months),",
+              "any transformation against the historical mean, and the form",
+              "the variable takes in the model (bins or continuous curve).",
+              "The history badge is the comparison period: same locations",
+              "and calendar months, per survey wave."
+            )
+          )
+        })
 
         output$selected_weather <- DT::renderDT({
           wx_spec_sw()
@@ -457,6 +479,7 @@ mod_1_05_weatherstats_server <- function(
             title = "Weather stats",
             value = "weather_desc",
             shiny::uiOutput(ns("wx_stale_banner")),
+            uiOutput(ns("selected_weather_card")),
             shiny::h4(
               "Distribution of weather (sample and its own history)",
               info_popover(
@@ -584,10 +607,7 @@ mod_1_05_weatherstats_server <- function(
                 ))
               )
             ),
-            shiny::uiOutput(ns("weather_stats_layout")),
-            shiny::br(),
-            shiny::h4("Selected weather variables"),
-            DT::DTOutput(ns("selected_weather"))
+            shiny::uiOutput(ns("weather_stats_layout"))
           ),
           select  = TRUE,
           session = tabset_session
@@ -644,11 +664,10 @@ mod_1_05_weatherstats_server <- function(
       selected    = selected,
       choiceNames = list(
         "Wave value",
-        paste0("Difference from own historical mean", span),
-        paste0("Percentile in own history", span)
+        paste0("Difference from mean", span),
+        paste0("Percentile", span)
       ),
-      choiceValues = list("value", "anomaly", "pctile"),
-      layout = "vertical"
+      choiceValues = list("value", "anomaly", "pctile")
     )
 
     if (!has_hist) {
@@ -973,9 +992,8 @@ mod_1_05_weatherstats_server <- function(
 
   output$weather_map_layout <- shiny::renderUI({
     if (is.null(wxmap_cells())) {
-      return(shiny::helpText(
-        "Location map data is not available for this sample.",
-        style = "font-size: 12px;"
+      return(no_data_warning(
+        "Location map data is not available for this sample."
       ))
     }
     if (!wxmap_view_ready()) {

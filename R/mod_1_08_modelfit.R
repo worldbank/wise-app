@@ -35,6 +35,29 @@ mod_1_08_modelfit_server <- function(id,
 
     if (is.null(tabset_session)) tabset_session <- session$parent %||% session
 
+    # ---- Selected model card (from the fit snapshot, INT-05 pattern) --------
+
+    output$selected_model_card <- renderUI({
+      snap <- tryCatch(model_fit()$.snap, error = function(e) NULL)
+      req(!is.null(snap), !is.null(snap$model))
+      selection_summary_card(
+        title = "Selected model",
+        badge = model_badge(snap$model),
+        rows  = model_card_rows(
+          snap$model,
+          label_fun      = .label_lookup(snap$variable_list),
+          outcome_label  = as.character(snap$outcome$label[1]),
+          weather_labels = as.character(snap$weather$label)
+        ),
+        info  = paste(
+          "The fitted specification written as a formula: outcome ~",
+          "weather terms (crossed with interaction moderators when",
+          "selected) + covariates | fixed effects | clustering.",
+          "Diagnostics reflect this run until you press Run model again."
+        )
+      )
+    })
+
     # INT-08: stale banner bound to the fit's staleness flag.
     output$fit_stale_banner <- shiny::renderUI({
       if (isTRUE(fit_stale())) .stale_banner("Step 1 model diagnostics") else NULL
@@ -239,6 +262,7 @@ mod_1_08_modelfit_server <- function(id,
           title = "Model fit",
           value = "model_fit",
           shiny::uiOutput(ns("fit_stale_banner")),
+          uiOutput(ns("selected_model_card")),
           shiny::h4(
             "Fit statistics",
             info_popover(

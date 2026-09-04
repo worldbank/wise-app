@@ -544,7 +544,7 @@ mod_2_01_weathersim_server <- function(id,
         shiny::tagList(
           if (length(missing)) {
             shiny::div(
-              class = "alert alert-warning",
+              class = "alert alert-warning warning-message",
               role  = "alert",
               style = "font-size: 13px; margin-top: 4px;",
               shiny::tags$b("Prerequisites: "), "select ",

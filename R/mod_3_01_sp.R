@@ -261,11 +261,9 @@ mod_3_01_sp_server <- function(id,
     output$pmt_variable_ui <- renderUI({
       cands <- pmt_candidates()
       if (length(cands) == 0) {
-        return(div(
-          class = "alert alert-warning",
-          style = "font-size: 12px; padding: 8px; margin-bottom: 8px;",
-          "No suitable PMT variable found. No covariates with non-missing",
-          "values found (for selected outcome)."
+        return(no_data_warning(
+          "No suitable PMT variable found. No covariates with",
+          "non-missing values found (for selected outcome)."
         ))
       }
       selectInput(

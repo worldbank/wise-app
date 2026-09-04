@@ -30,6 +30,131 @@ info_popover <- function(..., title = NULL, docs = FALSE, placement = "right") {
   )
 }
 
+# ---- Inline "no data" warning --------------------------------------------------
+
+#' Amber inline warning with an exclamation icon, shown when a selection
+#' has no data (e.g. no variables found for the current level of analysis).
+#'
+#' @param ... Message text; multiple strings are wrapped in a single span.
+#' @noRd
+no_data_warning <- function(...) {
+  shiny::tags$div(
+    class = "no-data-warning warning-message",
+    shiny::icon("triangle-exclamation"),
+    shiny::tags$span(...)
+  )
+}
+
+# ---- Selection summary card ----------------------------------------------------
+# Thin "what is loaded" card at the top of the stats tabs (Survey, Outcome,
+# Weather, Model). Head: uppercase title + right-aligned badge; body: one row
+# per item with a bold name, muted sub-label and small pills.
+# Styled by .selection-card rules in inst/app/www/custom.css.
+
+#' Build one row of a `selection_summary_card()`
+#'
+#' @param name  Bold primary text (e.g. economy name, variable label).
+#' @param sub   Optional muted secondary text (e.g. survey program, variable
+#'   name).
+#' @param pills Optional character vector of small pill labels (e.g. years,
+#'   units, transform).
+#' @param note  Optional trailing note in grey text at the same size as
+#'   `name` (e.g. a plain-language interpretation of the selection).
+#'
+#' @noRd
+selection_card_row <- function(name, sub = NULL, pills = NULL, note = NULL) {
+  shiny::tags$div(
+    class = "selection-card-row",
+    shiny::tags$span(class = "selection-card-name", name),
+    if (!is.null(sub) && nzchar(sub)) {
+      shiny::tags$span(class = "selection-card-sub", sub)
+    },
+    if (length(pills)) {
+      shiny::tags$span(
+        class = "selection-card-pills",
+        lapply(pills, function(p) {
+          shiny::tags$span(class = "selection-card-pill", p)
+        })
+      )
+    },
+    if (!is.null(note) && nzchar(note)) {
+      shiny::tags$span(class = "selection-card-note", note)
+    }
+  )
+}
+
+#' Thin summary card describing the current selection
+#'
+#' Shared component for the "Selected sample" card on the Survey stats tab and
+#' the outcome/weather/model equivalents on other tabs.
+#'
+#' @param title Card title, rendered small and uppercase; `NULL` for a
+#'   headerless card.
+#' @param rows  List of row specs; each a list with `name`, optional `sub`
+#'   and `pills` (see `selection_card_row()`), or pre-built row tags.
+#' @param badge Optional right-aligned badge in the card head (e.g. level of
+#'   analysis).
+#' @param info  Optional text; when supplied an (i) popover explaining the
+#'   card is attached to the title.
+#' @param compact Logical; tighter paddings/font sizes for sidebar use.
+#'
+#' @noRd
+selection_summary_card <- function(title, rows, badge = NULL, info = NULL,
+                                   compact = FALSE) {
+  head <- if (is.null(title) && is.null(badge)) {
+    NULL
+  } else {
+    shiny::tags$div(
+      class = "selection-card-head",
+      if (!is.null(title)) {
+        shiny::tags$span(
+          class = "selection-card-title",
+          title,
+          if (!is.null(info) && nzchar(info)) info_popover(shiny::p(info))
+        )
+      },
+      if (!is.null(badge) && nzchar(badge)) {
+        shiny::tags$span(class = "selection-card-badge", badge)
+      }
+    )
+  }
+  # Headerless card with an info popover: anchor the (i) on the first row.
+  if (is.null(title) && !is.null(info) && nzchar(info)) {
+    rows[[1]] <- shiny::tagAppendChildren(rows[[1]], info_popover(shiny::p(info)))
+  }
+  shiny::tags$div(
+    class = paste("selection-card", if (isTRUE(compact)) "compact"),
+    head,
+    lapply(rows, function(r) {
+      # Accept both pre-built row tags and raw name/sub/pills spec lists
+      if (inherits(r, c("shiny.tag", "shiny.tag.list"))) {
+        r
+      } else {
+        selection_card_row(
+          name  = r$name,
+          sub   = r$sub,
+          pills = r$pills,
+          note  = r$note
+        )
+      }
+    })
+  )
+}
+
+#' Human label for an analysis unit code
+#'
+#' @param unit One of `"ind"`, `"hh"`, `"firm"` (or `NULL`).
+#' @return e.g. `"Household level"`; `NULL` for unknown codes.
+#' @noRd
+analysis_unit_label <- function(unit) {
+  switch(unit %||% "",
+    ind  = "Individual level",
+    hh   = "Household level",
+    firm = "Firm level",
+    NULL
+  )
+}
+
 # ---- Config flyout blocks (UI-02) ---------------------------------------------
 
 #' Accessible plot output (UI-36)
@@ -72,13 +197,18 @@ wise_plot_output <- function(plot_id, alt, ...) {
 #' @param toggle_id    Namespaced input id of the toggle button.
 #' @param title        Flyout header title.
 #' @param ...          Flyout content, rendered below the header.
-#' @param toggle_label Button label. Default "Configure".
+#' @param toggle_label  Button label. Default "Configure".
+#' @param display_label Optional label rendered beside the button.
 #'
 #' @noRd
-config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure") {
+config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure",
+                                display_label = NULL) {
   panel_id <- paste0(toggle_id, "_panel")
   shiny::tags$div(
-    class = "config-flyout-anchor",
+    class = paste(
+      "config-flyout-anchor",
+      if (!is.null(display_label)) "config-flyout-inline"
+    ),
     shiny::actionButton(
       toggle_id, toggle_label,
       icon  = shiny::icon("sliders"),
@@ -87,6 +217,9 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
       `aria-expanded` = "false",
       `aria-controls` = panel_id
     ),
+    if (!is.null(display_label)) {
+      shiny::tags$span(display_label, class = "config-flyout-label")
+    },
     shiny::conditionalPanel(
       condition = paste0("input['", toggle_id, "'] % 2 == 1"),
       class     = "config-flyout",

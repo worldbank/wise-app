@@ -165,7 +165,8 @@ mod_1_07_results_server <- function(id,
           outcome        = selected_outcome(),
           weather        = selected_weather(),
           survey_weather = survey_weather(),
-          variable_list  = if (is.function(variable_list)) variable_list() else variable_list
+          variable_list  = if (is.function(variable_list)) variable_list() else variable_list,
+          model          = selected_model()
         )
         # INT-08: the run signature is stored with the result and compared
         # against live inputs; a mismatch marks the results stale.
@@ -226,9 +227,32 @@ mod_1_07_results_server <- function(id,
       sw_snap    <- snap$weather
       outcome_snap <- snap$outcome
 
+      # ---- Selected model card (snapshot, INT-05 pattern) ------------------
+      # Describes the specification the button captured, like every other
+      # output on this tab.
+
+      output$selected_model_card <- renderUI({
+        req(snap$model)
+        selection_summary_card(
+          title = "Selected model",
+          badge = model_badge(snap$model),
+          rows  = model_card_rows(
+            snap$model,
+            label_fun      = label_fun,
+            outcome_label  = as.character(outcome_snap$label[1]),
+            weather_labels = as.character(sw_snap$label)
+          ),
+          info  = paste(
+            "The fitted specification written as a formula: outcome ~",
+            "weather terms (crossed with interaction moderators when",
+            "selected) + covariates | fixed effects | clustering. Results",
+            "reflect this run until you press Run model again."
+          )
+        )
+      })
+
       # RIF coefficient plots: one per weather variable
-      output$coefplot1 <- renderPlot({
-        req(model_fit_val(), length(model_fit_val()$weather_terms) >= 1)
+      output$coefplot1 <- renderPlot({        req(model_fit_val(), length(model_fit_val()$weather_terms) >= 1)
         mf <- model_fit_val()
         make_coefplot(
           fit1              = extract_native_fit(mf$fit1, mf$engine),
@@ -388,6 +412,7 @@ mod_1_07_results_server <- function(id,
             value = "results",
             shiny::uiOutput(ns("fallback_banner")),
             shiny::uiOutput(ns("stale_banner")),
+            uiOutput(ns("selected_model_card")),
             shiny::uiOutput(ns("heading_effect")),
             shiny::uiOutput(ns("effectplot_layout")),
             shiny::br(),

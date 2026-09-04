@@ -13,8 +13,7 @@ mod_1_03_outcome_ui <- function(id) {
     wellPanel(
       uiOutput(ns("outcome_ui")),
       uiOutput(ns("currency_ui")),
-      uiOutput(ns("poverty_line_ui")),
-      uiOutput(ns("outcome_info"))
+      uiOutput(ns("poverty_line_ui"))
     ),
     uiOutput(ns("outcome_stats_button_ui"))
   )
@@ -72,12 +71,16 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
       req(available_outcomes())
       outs <- available_outcomes()
 
-      choice_labels <- paste0(outs$label, " (", outs$name, ")")
-      choice_map <- stats::setNames(outs$name, choice_labels)
+      choice_map <- stats::setNames(outs$name, outs$label)
 
       selectizeInput(
         inputId  = ns("outcome"),
-        label    = "Outcome variable",
+        label    = tagList(
+          "Outcome variable",
+          info_popover(
+            shiny::p("Continuous outcomes will be log-transformed.")
+          )
+        ),
         choices  = choice_map,
         selected = outs$name[1],
         multiple = FALSE
@@ -132,15 +135,6 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
       )
     })
 
-    # ---- Informational message about selected outcome type ------------------
-
-    output$outcome_info <- renderUI({
-      req(selected_outcome_info())
-      info <- selected_outcome_info()
-      if (nrow(info) == 0) return(NULL)
-      outcome_info_message(info$type[1])
-    })
-
     # ---- Augmented selected outcome row (with transform/units/povline) ------
 
     selected_outcome <- reactive({
@@ -159,7 +153,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
     output$outcome_stats_button_ui <- renderUI({
       req(input$outcome, survey_data())
       actionButton(ns("outcome_stats_btn"), "Outcome stats",
-                   class = "btn-primary", style = "width: 100%;")
+                   class = "btn-primary", style = "width: 100%; margin-top: 0.6rem;")
     })
 
     outcome_tab_added <- reactiveVal(FALSE)
@@ -206,6 +200,50 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
 
       # Define outputs (once)
       if (!outcome_tab_added()) {
+
+        # ---- Selection summary card (snapshot, INT-05 pattern) ---------------
+        # Describes the outcome the button captured, like every other output
+        # on this tab; selector changes do not re-render it until re-press.
+
+        output$selected_outcome_card <- renderUI({
+          spec <- outcome_spec()
+          req(!is.null(spec), nrow(spec$info) > 0)
+          inf   <- spec$info
+          so    <- spec$so
+          otype <- tolower(as.character(inf$type[1]))
+          oname <- as.character(inf$name[1])
+          units <- as.character(so$units[1])
+
+          badge <- if (identical(otype, "numeric")) "Continuous" else "Binary"
+
+          pills <- character(0)
+          if (identical(oname, "poor")) {
+            pl <- suppressWarnings(as.numeric(so$povline[1]))
+            if (length(pl) == 1 && is.finite(pl) && pl > 0) {
+              s <- formatC(pl, format = "f", digits = 2, big.mark = ",")
+              suffix <- if (identical(units, "LCU")) " LCU/day" else "/day"
+              pills <- c(pills, paste0("Poverty line ",
+                                       if (identical(units, "LCU")) "" else "$",
+                                       s, suffix))
+            }
+          } else if (is_monetary_outcome(oname, units)) {
+            pills <- c(pills, paste0(units, " (2021)"))
+          }
+          if (isTRUE(so$transform[1] == "log")) {
+            pills <- c(pills, "log-transformed")
+          }
+
+          selection_summary_card(
+            title = "Selected outcome",
+            badge = badge,
+            rows  = list(list(
+              name  = as.character(inf$label[1]),
+              sub   = oname,
+              pills = pills,
+              note  = outcome_direction_note(so$direction[1])
+            ))
+          )
+        })
 
         output$outcome_dist <- renderPlot({
           spec <- outcome_spec()
@@ -389,6 +427,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
               title = "Outcome stats",
               value = "outcome_stats_tab",
               shiny::uiOutput(ns("outcome_stale_banner")),
+              uiOutput(ns("selected_outcome_card")),
               bslib::layout_columns(
                 col_widths = c(6, 6),
                 bslib::card(

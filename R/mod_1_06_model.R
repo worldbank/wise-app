@@ -711,14 +711,21 @@ mod_1_06_model_server <- function(id,
 
     # --- LASSO MODEL ---------------------------------------------------------
 
-    lasso_result <- eventReactive(input$run_model, {
-      req(isTRUE(input$covariates == "Lasso"))
+    # Snapshot the selection method when Run model is clicked.  Without this,
+    # eventReactive can evaluate an old click later using the current selector
+    # and accidentally turn a user-defined run into a Lasso run.
+    lasso_run_id <- reactiveVal(0L)
+    observeEvent(input$run_model, {
+      if (isTRUE(input$covariates == "Lasso")) {
+        lasso_run_id(lasso_run_id() + 1L)
+      }
+    }, ignoreInit = TRUE)
+
+    lasso_result <- eventReactive(lasso_run_id(), {
+      req(lasso_run_id() > 0L)
       req(survey_weather())
       req(selected_outcome())
       req(selected_weather())
-      # REACT-02: skip if a fit is already running (stale eventReactive replay)
-      req(fit_guard$is_running() == FALSE)
-
       withProgress(message = "Running Lasso...", value = 0, {
         incProgress(0.05, detail = "Preparing inputs")
 
@@ -808,7 +815,7 @@ mod_1_06_model_server <- function(id,
           duration = 3
         )
       }
-    })
+    }, ignoreInit = TRUE)
 
     # ---- Return API ---------------------------------------------------------
 
@@ -818,7 +825,9 @@ mod_1_06_model_server <- function(id,
 
       # Resolve covariates by role
       covs <- if (input$covariates == "Lasso") {
-        selected <- lasso_result()$selected_covariates
+        lasso <- lasso_result()
+        req(lasso)
+        selected <- lasso$selected_covariates
         vl       <- valid_vl()
         forced   <- lasso_forced()
         resolve <- function(role) {
@@ -907,7 +916,7 @@ mod_1_06_model_server <- function(id,
       missing <- run_prereqs_missing()
       if (!length(missing)) return(NULL)
       shiny::div(
-        class = "alert alert-warning",
+        class = "alert alert-warning warning-message",
         role  = "alert",
         style = "font-size: 13px; margin-bottom: 4px;",
         shiny::tags$b("Prerequisites: "), "select ",

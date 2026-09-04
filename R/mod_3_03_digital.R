@@ -71,8 +71,7 @@ mod_3_03_digital_server <- function(id,
       if (isTRUE(any_selected())) return(NULL)
       # Only show placeholder if there are digital variables in the survey
       if (length(digital_vars_available()) == 0) {
-        return(div(
-          class = "alert alert-warning",
+        return(no_data_warning(
           "No digital inclusion variables found in the selected survey (or level of analysis)."
         ))
       }

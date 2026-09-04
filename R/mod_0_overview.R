@@ -112,19 +112,19 @@ mod_0_overview_ui <- function(id) {
                 selected = "local"
               )
             ),
-            uiOutput(ns("connection_status_ui"))
-          ),
+            uiOutput(ns("connection_status_ui")),
             div(
-              class = "connection-options-output",
-              uiOutput(ns("connection_options_ui"))
+              class = "connection-action-row",
+              actionButton(
+                ns("apply_connection"),
+                "Connect to data",
+                class = "btn-primary"
+              )
             )
           ),
-        div(
-          class = "connection-action-row",
-          actionButton(
-            ns("apply_connection"),
-            "Connect to data",
-            class = "btn-primary"
+          div(
+            class = "connection-options-output",
+            uiOutput(ns("connection_options_ui"))
           )
         )
       )
