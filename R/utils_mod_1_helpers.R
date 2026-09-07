@@ -135,6 +135,197 @@ survey_missingness_long <- function(df, vars, group = "countryyear") {
 	out
 }
 
+#' Aggregate values for a ridge distribution plot
+#'
+#' Reduces raw observations to a common histogram before smoothing. This keeps
+#' the expensive density calculation proportional to the number of bins and
+#' survey waves rather than the number of households. The result is intended
+#' for visualisation, not for numerical density estimation.
+#'
+#' @param df A data.frame.
+#' @param x_var Column name for the x-axis.
+#' @param group_var Column identifying independent density curves.
+#' @param fill_var Column name for the fill aesthetic. `NULL` uses `group_var`.
+#' @param weight_var Optional column of positive observation weights.
+#' @param ridge_var Optional column identifying the shared y-axis ridge.
+#' @param n_bins Number of histogram bins used before smoothing.
+#' @param n_grid Number of points in each smoothed ridge.
+#' @param log_transform Logical; if TRUE, aggregate and smooth in log10-space.
+#' @param x_range Optional two-value range in transformed display space.
+#' @param bandwidth Optional bandwidth in transformed display space.
+#'
+#' @return A list with `data`, `groups`, `bandwidth`, `log_transform`, and
+#'   `x_range`, or NULL if inputs are invalid.
+#'
+#' @noRd
+build_ridge_distribution_data <- function(
+    df,
+    x_var,
+    group_var = "countryyear",
+    fill_var = "code",
+    weight_var = NULL,
+    ridge_var = NULL,
+    n_bins = 256L,
+    n_grid = 256L,
+    log_transform = FALSE,
+    x_range = NULL,
+    bandwidth = NULL
+) {
+    if (is.null(df) || !nrow(df)) return(NULL)
+    if (!all(c(x_var, group_var) %in% names(df))) return(NULL)
+    if (!is.null(fill_var) && !fill_var %in% names(df)) return(NULL)
+    if (!is.null(weight_var) && !weight_var %in% names(df)) return(NULL)
+    if (is.null(ridge_var)) ridge_var <- group_var
+    if (!ridge_var %in% names(df)) return(NULL)
+
+    x <- suppressWarnings(as.numeric(df[[x_var]]))
+    group <- as.character(df[[group_var]])
+    ridge <- as.character(df[[ridge_var]])
+    fill <- if (is.null(fill_var)) group else as.character(df[[fill_var]])
+    weight <- if (is.null(weight_var)) rep(1, length(x)) else
+        suppressWarnings(as.numeric(df[[weight_var]]))
+    keep <- is.finite(x) & !is.na(group) & nzchar(group) &
+        !is.na(ridge) & nzchar(ridge) & !is.na(fill) & is.finite(weight) &
+        weight > 0
+    if (log_transform) keep <- keep & x > 0
+    if (!any(keep)) return(NULL)
+
+    x <- x[keep]
+    group <- group[keep]
+    ridge <- ridge[keep]
+    fill <- fill[keep]
+    weight <- weight[keep]
+    x_work <- if (log_transform) log10(x) else x
+
+    n_bins <- max(32L, min(as.integer(n_bins), 512L))
+    n_grid <- max(64L, min(as.integer(n_grid), 512L))
+    x_rng <- if (is.null(x_range)) {
+        range(x_work, finite = TRUE)
+    } else {
+        suppressWarnings(as.numeric(x_range[seq_len(min(2L, length(x_range)))]))
+    }
+    if (length(x_rng) != 2L || any(!is.finite(x_rng))) return(NULL)
+    x_rng <- sort(x_rng)
+    x_work <- pmin(pmax(x_work, x_rng[1L]), x_rng[2L])
+    if (diff(x_rng) == 0) {
+        pad <- max(abs(x_rng[1]) * 0.01, 0.5)
+        x_rng <- x_rng + c(-pad, pad)
+    }
+
+    breaks <- seq(x_rng[1], x_rng[2], length.out = n_bins + 1L)
+    bin <- findInterval(
+        x_work, breaks, rightmost.closed = TRUE, all.inside = TRUE
+    )
+    centres <- (breaks[-length(breaks)] + breaks[-1L]) / 2
+
+    # Collapse performs the only raw-row grouping pass. Every subsequent
+    # operation works on at most n_bins rows per ridge.
+    hist <- data.frame(
+        group = group,
+        ridge = ridge,
+        fill  = fill,
+        bin   = bin,
+        .weight = weight,
+        stringsAsFactors = FALSE
+    )
+    hist_groups <- collapse::GRP(hist, by = c("group", "ridge", "fill", "bin"))
+    hist_counts <- collapse::fsum(
+        hist$.weight, g = hist_groups, na.rm = TRUE
+    )
+    hist <- hist_groups$groups
+    hist$n <- as.numeric(hist_counts)
+
+    # Scott/Silverman-style bandwidth estimated from the binned moments and
+    # approximate quartiles. This avoids bw.nrd0() scanning/sorting millions
+    # of household values while remaining visually close to the raw KDE.
+    w <- as.numeric(hist$n)
+    h_x <- centres[hist$bin]
+    n_obs <- sum(w)
+    mu <- sum(h_x * w) / n_obs
+    variance <- sum((h_x - mu)^2 * w) / max(n_obs - 1, 1)
+    sd_x <- sqrt(max(variance, 0))
+    # Histogram rows are not guaranteed to be sorted by bin. Compute
+    # approximate quantiles from sorted bins while retaining grouped counts.
+    ord <- order(h_x)
+    c_sorted <- cumsum(w[ord])
+    hist_quantile <- function(prob) {
+        target <- prob * n_obs
+        idx <- match(TRUE, c_sorted >= target)
+        if (is.na(idx) || idx == 1L) return(h_x[ord][1L])
+        x_sorted <- h_x[ord]
+        prev <- c_sorted[idx - 1L]
+        span <- max(c_sorted[idx] - prev, 1)
+        x_sorted[idx - 1L] + (x_sorted[idx] - x_sorted[idx - 1L]) *
+            (target - prev) / span
+    }
+    iqr_x <- hist_quantile(0.75) - hist_quantile(0.25)
+    scale_x <- min(sd_x, iqr_x / 1.34)
+    bin_width <- diff(breaks)[1L]
+    if (is.null(bandwidth)) {
+        bandwidth <- 0.9 * scale_x * n_obs^(-0.2)
+    } else {
+        bandwidth <- suppressWarnings(as.numeric(bandwidth[1L]))
+    }
+    if (!is.finite(bandwidth) || bandwidth <= 0) {
+        bandwidth <- max(bin_width * 1.5, .Machine$double.eps^0.5)
+    }
+
+    group_levels <- sort(unique(hist$group))
+    ridge_levels <- sort(unique(hist$ridge))
+    rows <- lapply(seq_along(group_levels), function(i) {
+        g <- group_levels[i]
+        take <- hist$group == g
+        gx <- centres[hist$bin[take]]
+        gw <- w[take]
+        gx_ord <- order(gx)
+        gx <- gx[gx_ord]
+        gw <- gw[gx_ord]
+        grid <- seq(x_rng[1], x_rng[2], length.out = n_grid)
+
+        dens <- if (length(gx) >= 2L) {
+            tryCatch(
+                stats::density(
+                    gx, weights = gw / sum(gw), bw = bandwidth,
+                    n = n_grid, from = x_rng[1], to = x_rng[2], cut = 0,
+                    warnWbw = FALSE
+                )$y,
+                error = function(e) rep(0, n_grid)
+            )
+        } else {
+            stats::dnorm(grid, mean = gx[1L], sd = bandwidth)
+        }
+        dens[!is.finite(dens)] <- 0
+        peak <- max(dens)
+        height <- if (peak > 0) dens / peak else rep(0, n_grid)
+        fill_i <- hist$fill[which(take)[1L]]
+        ridge_i <- hist$ridge[which(take)[1L]]
+        data.frame(
+            x      = if (log_transform) 10^grid else grid,
+            y      = match(ridge_i, ridge_levels),
+            height = height,
+            group  = g,
+            fill   = fill_i,
+            ridge  = ridge_i,
+            stringsAsFactors = FALSE
+        )
+    })
+
+    list(
+        data          = do.call(rbind, rows),
+        groups        = group_levels,
+        ridges        = ridge_levels,
+        bandwidth     = bandwidth,
+        log_transform = isTRUE(log_transform),
+        x_range       = if (log_transform) 10^x_rng else x_rng,
+        quantile_range = if (log_transform) {
+            10^c(hist_quantile(0.01), hist_quantile(0.99))
+        } else {
+            c(hist_quantile(0.01), hist_quantile(0.99))
+        }
+    )
+}
+
+
 #' Ridge distribution plot helper
 #'
 #' @param df A data.frame.
@@ -157,17 +348,14 @@ ridge_distribution_plot <- function(
     wrap_width = NULL,
     log_transform = FALSE
 ) {
-    if (is.null(df) || !nrow(df)) return(NULL)
-    if (!all(c(x_var, group_var, fill_var) %in% names(df))) return(NULL)
-
-    df_plot <- df[is.finite(df[[x_var]]), , drop = FALSE]
-
-    # For log transform, filter out non-positive values
-    if (log_transform) {
-        df_plot <- df_plot[df_plot[[x_var]] > 0, , drop = FALSE]
-    }
-
-    if (!nrow(df_plot)) return(NULL)
+    agg <- build_ridge_distribution_data(
+        df,
+        x_var        = x_var,
+        group_var    = group_var,
+        fill_var     = fill_var,
+        log_transform = log_transform
+    )
+    if (is.null(agg)) return(NULL)
 
     label <- x_label
     if (!is.null(label) && !is.null(wrap_width)) {
@@ -179,17 +367,19 @@ ridge_distribution_plot <- function(
         label <- paste0(label, " (log scale)")
     }
 
-    # Pre-compute the bandwidth ggridges would otherwise pick (and announce
-    # via `message()`). Passing it explicitly silences the chatty
-    # "Picking joint bandwidth of ..." note without changing the visual.
-    bw <- tryCatch(stats::bw.nrd0(df_plot[[x_var]]), error = function(e) NULL)
-    if (is.null(bw) || !is.finite(bw) || bw <= 0) bw <- NULL
-
     p <- ggplot2::ggplot(
-        df_plot,
-        ggplot2::aes(x = .data[[x_var]], y = .data[[group_var]], fill = .data[[fill_var]])
+        agg$data,
+        ggplot2::aes(
+            x = .data$x, y = .data$y,
+            group = .data$group, fill = .data$fill
+        )
     ) +
-        ggridges::geom_density_ridges(alpha = 0.7, scale = 2, bandwidth = bw) +
+        ridge_geometry_layers(scale = 2, alpha = 0.7, linewidth = 0.3) +
+        ggplot2::scale_y_continuous(
+            breaks = seq_along(agg$groups),
+            labels = agg$groups,
+            expand = ggplot2::expansion(mult = c(0.02, 0.12))
+        ) +
         theme_wise() +
         ggplot2::labs(
             title = "",
@@ -207,6 +397,40 @@ ridge_distribution_plot <- function(
     }
 
     p
+}
+
+
+#' Native ggplot2 layers for precomputed ridgeline data
+#'
+#' A ribbon plus its upper outline reproduces the visual ridge from
+#' `build_ridge_distribution_data()` without a specialised geometry package.
+#'
+#' @param scale Numeric height multiplier.
+#' @param alpha Ribbon transparency.
+#' @param linewidth Upper outline width.
+#' @param colour Outline colour. Set to `NULL` to inherit a mapped colour.
+#'
+#' @return A list of ggplot2 layers.
+#' @noRd
+ridge_geometry_layers <- function(scale = 1, alpha = 0.7, linewidth = 0.3,
+                                  colour = "black") {
+    ribbon <- ggplot2::geom_ribbon(
+        ggplot2::aes(
+            ymin = .data$y,
+            ymax = .data$y + .data$height * scale
+        ),
+        alpha = alpha,
+        colour = NA
+    )
+    line_mapping <- ggplot2::aes(y = .data$y + .data$height * scale)
+    line <- if (is.null(colour)) {
+        ggplot2::geom_line(line_mapping, linewidth = linewidth)
+    } else {
+        ggplot2::geom_line(
+            line_mapping, linewidth = linewidth, colour = colour
+        )
+    }
+    list(ribbon, line)
 }
 
 #' Extract covariate names from a model-spec entry
@@ -285,4 +509,3 @@ model_term_names <- function(sm) {
 		model_covariate_names(sm$interactions)
 	))
 }
-

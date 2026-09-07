@@ -113,6 +113,36 @@ mod_1_02_surveystats_server <- function(
     # sample's extent.
     map_data_version <- shiny::reactiveVal(0L)
 
+    # ---- Shared stats base (PERF-40) ----------------------------------------
+    # Every summary-stats table on the tab summarises the same survey frame;
+    # six independent renderDT pipelines each re-subset it and re-run the
+    # grouped collapse passes over their own var set on every load (~5s at
+    # Iran scale). One pass over the union of table variables feeds every
+    # table by row-filtering via make_stats_dt(base = ).
+    policy_vars <- unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
+
+    stats_base <- reactive({
+      sd <- survey_data()
+      shiny::req(sd)
+      vl <- if (is.function(variable_list)) variable_list() else variable_list
+
+      targets <- if (is.null(vl)) character(0) else {
+        unlist(lapply(c("outcome", "ind", "hh", "firm", "area"), function(fc) {
+          if (fc %in% names(vl)) vl$name[vl[[fc]] == 1] else character(0)
+        }), use.names = FALSE)
+      }
+
+      union_vars <- intersect(unique(c(targets, policy_vars)), names(sd))
+      if (!length(union_vars)) return(NULL)
+      list(
+        vars    = union_vars,
+        summary = weighted_summary_long(sd, vars = union_vars),
+        missing = if ("countryyear" %in% names(sd)) {
+          survey_missingness_long(sd, vars = union_vars)
+        } else NULL
+      )
+    })
+
     # ---- Load and prepare data on button click ------------------------------
 
     observeEvent(input$survey_stats, {
@@ -285,9 +315,22 @@ mod_1_02_surveystats_server <- function(
 
       if (!survey_tab_added()) {
 
-        # Interview dates bar chart
+        # Interview dates bar chart. Grouped columns keep wave totals directly
+        # comparable; plot_interview_dates() also exposes faceted and heatmap
+        # variants for static outputs and design comparisons.
         output$interview_date <- renderPlot({
-          p <- plot_interview_dates(summarise_interview_dates(survey_data()))
+          unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
+          unit_label <- switch(
+            unit %||% "hh",
+            ind = "Individuals",
+            firm = "Firms",
+            "Households"
+          )
+          p <- plot_interview_dates(
+            summarise_interview_dates(survey_data()),
+            unit_label = unit_label,
+            palette = "sequential"
+          )
           req(!is.null(p))
           p
         })
@@ -388,11 +431,16 @@ mod_1_02_surveystats_server <- function(
           )
         })
 
-        output$outcome_stats <- make_stats_dt(survey_data, variable_list, "outcome")
-        output$ind_stats     <- make_stats_dt(survey_data, variable_list, "ind")
-        output$hh_stats      <- make_stats_dt(survey_data, variable_list, "hh")
-        output$firm_stats    <- make_stats_dt(survey_data, variable_list, "firm")
-        output$area_stats    <- make_stats_dt(survey_data, variable_list, "area")
+        output$outcome_stats <- make_stats_dt(survey_data, variable_list, "outcome",
+                                              base = stats_base)
+        output$ind_stats     <- make_stats_dt(survey_data, variable_list, "ind",
+                                              base = stats_base)
+        output$hh_stats      <- make_stats_dt(survey_data, variable_list, "hh",
+                                              base = stats_base)
+        output$firm_stats    <- make_stats_dt(survey_data, variable_list, "firm",
+                                              base = stats_base)
+        output$area_stats    <- make_stats_dt(survey_data, variable_list, "area",
+                                              base = stats_base)
 
         # Only show characteristic tables relevant to the selected level of
         # analysis: individual level implies household + area also apply;
@@ -457,9 +505,9 @@ mod_1_02_surveystats_server <- function(
           )
         })
 
-        policy_vars <- unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
         output$policy_stats  <- make_stats_dt(survey_data, variable_list,
-                                              vars = policy_vars)
+                                              vars = policy_vars,
+                                              base = stats_base)
 
         # ---- Outcome summary moved to the Outcome stats tab's selection card --
 
@@ -473,17 +521,23 @@ mod_1_02_surveystats_server <- function(
               uiOutput(ns("selected_surveys_card")),
               bslib::layout_columns(
                 col_widths = c(6, 6),
+                # gap = 0: bslib's default body gap would otherwise put
+                # 24px between the heading and the plot; the heading's own
+                # margin is the spacing that remains.
                 bslib::card(
-                  h4(
-                    "Timing of interviews", class = "mb-2",
-                    info_popover(
-                      title = "Timing of interviews",
-                      p("Monthly breakdown of interview waves.")
-                    )
-                  ),
-                  wise_plot_output(ns("interview_date"),
-                                   "Bar plot of the distribution of interview dates across the selected surveys",
-                                   height = "300px")
+                  bslib::card_body(
+                    gap = 0,
+                    h4(
+                      "Timing of interviews", class = "mb-2",
+                      info_popover(
+                        title = "Timing of interviews",
+                        p("Monthly breakdown of interview waves.")
+                      )
+                    ),
+                    wise_plot_output(ns("interview_date"),
+                                     "Bar plot of the distribution of interview dates across the selected surveys",
+                                     height = "300px")
+                  )
                 ),
                 # Pairing a definite card height with a 100%-height map is what
                 # lets the map fill the card in both the normal and the
@@ -494,37 +548,44 @@ mod_1_02_surveystats_server <- function(
                 bslib::card(
                   full_screen = TRUE,
                   height      = "400px",
-                  shiny::div(
-                    class = paste("d-flex align-items-center",
-                                  "justify-content-between flex-wrap gap-2 mb-2"),
-                    h4(
-                      "Location of interviews", class = "mb-0",
-                      info_popover(
-                        title = "Location of interviews",
-                        p(paste(
-                          "Geographic distribution of sampled interviews.",
-                          "Each hexagon is an H3 cell shaded by how many",
-                          "sampled units fall in it; cells tile without",
-                          "overlapping, so dense areas read directly off the",
-                          "colour. Pick the survey wave on the right."
-                        ))
-                      )
+                  # The explicit card_body with gap = 0: bslib's default body
+                  # gap would otherwise put 24px between the controls row and
+                  # the map; the controls' own mb-2 is the spacing that
+                  # remains.
+                  bslib::card_body(
+                    gap = 0,
+                    shiny::div(
+                      class = paste("d-flex align-items-center",
+                                    "justify-content-between flex-wrap gap-2 mb-2"),
+                      h4(
+                        "Location of interviews", class = "mb-0",
+                        info_popover(
+                          title = "Location of interviews",
+                          p(paste(
+                            "Geographic distribution of sampled interviews.",
+                            "Each hexagon is an H3 cell shaded by how many",
+                            "sampled units fall in it; cells tile without",
+                            "overlapping, so dense areas read directly off the",
+                            "colour. Pick the survey wave on the right."
+                          ))
+                        )
+                      ),
+                      shiny::uiOutput(ns("map_wave_ui"), inline = TRUE)
                     ),
-                    shiny::uiOutput(ns("map_wave_ui"), inline = TRUE)
-                  ),
-                  # The MapLibre hex map. hexmap_ui() is placed directly in
-                  # the card (no renderUI): the container persists for the
-                  # session and the payload observer drives everything.
-                  hexmap_ui(
-                    ns("density_map"),
-                    height     = "100%",
-                    aria_label = paste0(
-                      "Map of sample density: number of sampled units ",
-                      "per hexagonal area cell"
-                    ),
-                    legend = shiny::uiOutput(ns("map_legend_ui"))
-                  ) |>
-                    bslib::as_fill_carrier()
+                    # The MapLibre hex map. hexmap_ui() is placed directly in
+                    # the card (no renderUI): the container persists for the
+                    # session and the payload observer drives everything.
+                    hexmap_ui(
+                      ns("density_map"),
+                      height     = "100%",
+                      aria_label = paste0(
+                        "Map of sample density: number of sampled units ",
+                        "per hexagonal area cell"
+                      ),
+                      legend = shiny::uiOutput(ns("map_legend_ui"))
+                    ) |>
+                      bslib::as_fill_carrier()
+                  )
                 )
               ),
               h4(

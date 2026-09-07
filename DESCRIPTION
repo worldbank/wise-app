@@ -29,7 +29,6 @@ Imports:
     future,
     future.apply,
     ggplot2,
-    ggridges,
     glmnet,
     golem,
     htmltools,

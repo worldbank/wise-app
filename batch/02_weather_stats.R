@@ -363,6 +363,10 @@ for (code in COUNTRIES_02) {
         all_rows$countryyear,
         levels = c(ref_label_str, survey_levels)
       )
+      all_rows$series <- paste(
+        all_rows$ref_period, all_rows$transf, all_rows$countryyear,
+        sep = " | "
+      )
 
       n_survey      <- length(survey_levels)
       survey_cols   <- scales::hue_pal()(n_survey)
@@ -378,11 +382,27 @@ for (code in COUNTRIES_02) {
       n_col <- length(ref_periods)
       n_row <- length(transfs)
 
-      p <- ggplot2::ggplot(
+      rd <- build_ridge_distribution_data(
         all_rows,
-        ggplot2::aes(x = value, y = countryyear, fill = countryyear)
+        x_var      = "value",
+        group_var  = "series",
+        fill_var   = "countryyear",
+        ridge_var  = "countryyear",
+        n_bins     = 256L,
+        n_grid     = 256L
+      )
+      if (is.null(rd)) next
+
+      p <- ggplot2::ggplot(
+        rd$data,
+        ggplot2::aes(x = .data$x, y = .data$y,
+                     group = .data$group, fill = .data$fill)
       ) +
-        ggridges::geom_density_ridges(alpha = 0.7, scale = 1.5) +
+        ridge_geometry_layers(scale = 1.5, alpha = 0.7, linewidth = 0.3) +
+        ggplot2::scale_y_continuous(
+          breaks = seq_along(rd$ridges), labels = rd$ridges,
+          expand = ggplot2::expansion(mult = c(0.02, 0.12))
+        ) +
         ggplot2::scale_fill_manual(values = all_cols) +
         ggplot2::facet_grid(
           rows = ggplot2::vars(ref_period),

@@ -66,24 +66,34 @@
     Group = factor(
       c(rep("Baseline", length(baseline_clean)),
         rep("Policy-adjusted", length(policy_clean))),
-      # ggridges renders the FIRST level at the bottom, last at the top -
-      # so "Baseline" first puts policy-adjusted on top.
       levels = c("Baseline", "Policy-adjusted")
     ),
-    Value = c(baseline_clean, policy_clean)
+    Value = c(baseline_clean, policy_clean),
+    stringsAsFactors = FALSE
   )
 
-  if (use_log) df <- df[df$Value > 0, , drop = FALSE]
-  if (!nrow(df)) return(blank_plot("No data available"))
+  rd <- build_ridge_distribution_data(
+    df,
+    x_var       = "Value",
+    group_var   = "Group",
+    fill_var    = "Group",
+    ridge_var   = "Group",
+    log_transform = use_log,
+    n_bins      = 256L,
+    n_grid      = 256L
+  )
+  if (is.null(rd)) return(blank_plot("No data available"))
 
-  # Pre-compute the bandwidth ggridges would otherwise pick (and announce
-  # via `message()`). Passing it explicitly silences the chatty
-  # "Picking joint bandwidth of ..." note without changing the visual.
-  bw <- tryCatch(stats::bw.nrd0(df$Value), error = function(e) NULL)
-  if (is.null(bw) || !is.finite(bw) || bw <= 0) bw <- NULL
-
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = Value, y = Group, fill = Group)) +
-    ggridges::geom_density_ridges(alpha = 0.7, scale = 1.5, bandwidth = bw) +
+  p <- ggplot2::ggplot(
+    rd$data,
+    ggplot2::aes(x = .data$x, y = .data$y,
+                 group = .data$group, fill = .data$fill)
+  ) +
+    ridge_geometry_layers(scale = 1.5, alpha = 0.7, linewidth = 0.3) +
+    ggplot2::scale_y_continuous(
+      breaks = seq_along(rd$ridges), labels = rd$ridges,
+      expand = ggplot2::expansion(mult = c(0.02, 0.12))
+    ) +
     ggplot2::scale_fill_manual(values = fill_vals) +
     ggplot2::labs(
       x     = if (use_log) paste0(var_name, " (log scale)") else var_name,

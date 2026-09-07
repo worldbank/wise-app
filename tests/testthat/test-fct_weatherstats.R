@@ -115,7 +115,6 @@ test_that("plot_weather_dist returns NULL when hv is NA", {
 
 test_that("plot_weather_dist returns ggplot for continuous variable", {
   skip_if_not_installed("ggplot2")
-  skip_if_not_installed("ggridges")
   df <- merge_survey_weather(make_survey(), make_weather()) |>
     dplyr::mutate(countryyear = paste0("TST, ", year))
   p <- plot_weather_dist(df, "tx", "Max temp", "Continuous")
@@ -131,6 +130,11 @@ test_that("plot_weather_dist returns ggplot for binned variable", {
     )
   p <- plot_weather_dist(df, "tx", "Max temp", "Binned")
   expect_s3_class(p, "ggplot")
+})
+
+test_that("weather wave palette follows the app blue and teal series", {
+  pal <- wiseapp:::.wave_palette(c("A, 2020", "A, 2021", "B, 2020"))
+  expect_equal(unname(pal), c("#0071BC", "#00A6C7", "#8667B3"))
 })
 
 # ============================================================================ #

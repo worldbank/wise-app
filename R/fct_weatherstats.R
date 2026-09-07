@@ -102,8 +102,16 @@ merge_survey_weather <- function(survey_data, weather_data) {
 .wave_palette <- function(waves) {
   n <- length(waves)
   if (n == 0) return(character(0))
-  base <- scales::brewer_pal(palette = "Set2")(max(3L, min(n, 8L)))
-  if (n > length(base)) base <- grDevices::colorRampPalette(base)(n)
+  # Match the outcome and interview-location plots: blue/teal first, with
+  # additional restrained series for larger multi-wave selections.
+  series <- c(
+    "#0071BC", # World Bank blue
+    "#00A6C7", # bright cyan
+    "#8667B3", # violet
+    "#C28C2C", # ochre
+    "#B85C6B"  # muted red
+  )
+  base <- rep(series, length.out = n)
   stats::setNames(base[seq_len(n)], waves)
 }
 
@@ -366,8 +374,6 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
     }
   }
 
-  d <- if (is.null(hist_use)) samp else rbind(samp, hist_use)
-
   waves   <- sort(unique(samp$countryyear))
   pal     <- .wave_palette(waves)
   sources <- if (is.null(hist_use)) .wx_sample_lab else
@@ -387,31 +393,59 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
     series$key
   )
 
-  d$countryyear <- factor(d$countryyear, levels = waves)
-  d$source      <- factor(d$source, levels = sources)
-  d$key         <- factor(.wx_series_key(as.character(d$countryyear),
-                                         as.character(d$source)),
-                          levels = series$key)
+  d <- if (is.null(hist_use)) samp else rbind(samp, hist_use)
+  d$key <- .wx_series_key(as.character(d$countryyear), as.character(d$source))
+  d$source <- factor(d$source, levels = sources)
+  d$key <- factor(d$key, levels = series$key)
 
-  # Pre-computing the bandwidth silences ggridges' "Picking joint bandwidth"
-  # message without changing the visual.
-  bw <- tryCatch(stats::bw.nrd0(d$x), error = function(e) NULL)
-  if (is.null(bw) || !is.finite(bw) || bw <= 0) bw <- NULL
+  # Aggregate each wave/source to a fixed histogram before smoothing. This
+  # keeps the weather ridge cost proportional to cells/waves, not households.
+  rd <- build_ridge_distribution_data(
+    d,
+    x_var      = "x",
+    group_var  = "key",
+    fill_var   = "key",
+    weight_var = "w",
+    ridge_var  = "countryyear",
+    n_bins     = 256L,
+    n_grid     = 256L
+  )
+  if (is.null(rd)) return(invisible(NULL))
+  ridge_data <- rd$data
+  ridge_data$key <- factor(ridge_data$group, levels = series$key)
+  ridge_data$source <- factor(
+    vapply(strsplit(as.character(ridge_data$key), " - ", fixed = TRUE),
+           `[`, character(1), 2L),
+    levels = sources
+  )
+  ridge_data$fill <- ridge_data$key
+  ridge_data$colour <- ridge_data$key
 
   p <- ggplot2::ggplot(
-    d,
+    ridge_data,
     ggplot2::aes(
       x        = .data$x,
-      y        = .data$countryyear,
-      weight   = .data$w,
-      group    = .data$key,
-      fill     = .data$key,
-      colour   = .data$key,
+      y        = .data$y,
+      group    = .data$group,
+      fill     = .data$fill,
+      colour   = .data$colour,
       linetype = .data$source
     )
   ) +
-    ggridges::geom_density_ridges(
-      alpha = 0.7, scale = 2, bandwidth = bw, linewidth = 0.5
+    ggplot2::geom_ribbon(
+      ggplot2::aes(
+        ymin = .data$y,
+        ymax = .data$y + .data$height * 2
+      ),
+      alpha = 0.7, colour = NA
+    ) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = .data$y + .data$height * 2),
+      linewidth = 0.5
+    ) +
+    ggplot2::scale_y_continuous(
+      breaks = seq_along(rd$ridges), labels = rd$ridges,
+      expand = ggplot2::expansion(mult = c(0.02, 0.12))
     ) +
     ggplot2::scale_fill_manual(values = fills, na.value = NA, guide = "none") +
     ggplot2::scale_colour_manual(values = lines, guide = "none") +
