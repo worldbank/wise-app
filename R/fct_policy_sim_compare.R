@@ -66,24 +66,34 @@
     Group = factor(
       c(rep("Baseline", length(baseline_clean)),
         rep("Policy-adjusted", length(policy_clean))),
-      # ggridges renders the FIRST level at the bottom, last at the top -
-      # so "Baseline" first puts policy-adjusted on top.
       levels = c("Baseline", "Policy-adjusted")
     ),
-    Value = c(baseline_clean, policy_clean)
+    Value = c(baseline_clean, policy_clean),
+    stringsAsFactors = FALSE
   )
 
-  if (use_log) df <- df[df$Value > 0, , drop = FALSE]
-  if (!nrow(df)) return(blank_plot("No data available"))
+  rd <- build_ridge_distribution_data(
+    df,
+    x_var       = "Value",
+    group_var   = "Group",
+    fill_var    = "Group",
+    ridge_var   = "Group",
+    log_transform = use_log,
+    n_bins      = 256L,
+    n_grid      = 256L
+  )
+  if (is.null(rd)) return(blank_plot("No data available"))
 
-  # Pre-compute the bandwidth ggridges would otherwise pick (and announce
-  # via `message()`). Passing it explicitly silences the chatty
-  # "Picking joint bandwidth of ..." note without changing the visual.
-  bw <- tryCatch(stats::bw.nrd0(df$Value), error = function(e) NULL)
-  if (is.null(bw) || !is.finite(bw) || bw <= 0) bw <- NULL
-
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = Value, y = Group, fill = Group)) +
-    ggridges::geom_density_ridges(alpha = 0.7, scale = 1.5, bandwidth = bw) +
+  p <- ggplot2::ggplot(
+    rd$data,
+    ggplot2::aes(x = .data$x, y = .data$y,
+                 group = .data$group, fill = .data$fill)
+  ) +
+    ridge_geometry_layers(scale = 1.5, alpha = 0.7, linewidth = 0.3) +
+    ggplot2::scale_y_continuous(
+      breaks = seq_along(rd$ridges), labels = rd$ridges,
+      expand = ggplot2::expansion(mult = c(0.02, 0.12))
+    ) +
     ggplot2::scale_fill_manual(values = fill_vals) +
     ggplot2::labs(
       x     = if (use_log) paste0(var_name, " (log scale)") else var_name,
@@ -201,7 +211,7 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
 .results_pane_ui <- function(ns, so) {
   tagList(
       shiny::uiOutput(ns("stale_banner_ui")),
-      shiny::uiOutput(ns("results_header_ui")),
+      shiny::uiOutput(ns("policy_summary_ui")),
       shiny::wellPanel(
         class = "results-controls",
       # Padding matches the Step 2 results controls panel (alignment).
@@ -298,15 +308,14 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
         shiny::tags$div(
           style = "display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;",
           shiny::tags$div(style = "flex:1; min-width:160px;",
-            shiny::radioButtons(
+            pill_toggle(
               ns("cmp_group_order"),
               label    = "Group charts and tables by",
               choices  = c(
                 "Scenario \u00D7 Year" = "scenario_x_year",
                 "Year \u00D7 Scenario" = "year_x_scenario"
               ),
-              selected = "scenario_x_year",
-              inline   = TRUE
+              selected = "scenario_x_year"
             )
           )
         )
@@ -450,6 +459,8 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
                                policy_hist_sim,
                                policy_saved_scenarios,
                                selected_hist,
+                               selected_policies = reactive(NULL),
+                               sp_scenario = reactive(NULL),
                                residuals = reactive("original"),
                                stale = reactive(FALSE)) {
   ns <- session$ns
@@ -461,6 +472,18 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       "Step 3 policy results",
       note = "Interpretation and exports are disabled until then."
     ) else NULL
+  })
+
+  output$policy_summary_ui <- shiny::renderUI({
+    bh <- baseline_hist_sim()
+    req(bh)
+    policy_summary_card(
+      selected_policies      = selected_policies(),
+      baseline_hist_sim      = bh,
+      policy_saved_scenarios = policy_saved_scenarios(),
+      selected_weather       = bh$sim_summary$weather %||% NULL,
+      sp_scenario             = sp_scenario()
+    )
   })
 
   # Resolve the residuals choice captured by the Step 2 run. The live control
@@ -631,32 +654,17 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     hit <- get0(.agg_cache_key(tag, method, pov_line_val()), envir = ws)
     if (!is.null(hit)) return(hit)
 
-    is_log <- isTRUE(hs$so$transform == "log")
-    bq     <- c(lo = 0.10, hi = 0.90)
-
-    per_yr <- aggregate_pipeline_per_year(
-      pipe      = pl,
+    agg <- aggregate_pipeline_table(
+      pipelines = pl,
       method    = method,
       weighted  = TRUE,
       pov_line  = pov_line_val(),
       residuals = active_residuals(hs),
-      is_log    = is_log,
-      band_q    = bq
+      is_log    = isTRUE(hs$so$transform == "log"),
+      band_q    = c(lo = 0.10, hi = 0.90),
+      model_ids = "Historical",
+      scenario  = "Historical"
     )
-    rows <- lapply(per_yr, function(m) {
-      sd_yr <- sqrt((m$var_coef %||% 0) + (m$var_resid %||% 0))
-      tibble::tibble(
-        sim_year     = m$sim_year,
-        value        = m$value,
-        model_id     = list("Historical"),
-        value_all    = list(m$value),
-        value_all_sd = list(sd_yr),
-        var_within   = sd_yr^2,
-        var_across   = 0,
-        scenario     = "Historical"
-      )
-    })
-    agg <- dplyr::bind_rows(rows)
     res <- list(out = agg)
     assign(.agg_cache_key(tag, method, pov_line_val()), res, envir = ws)
     res
@@ -712,55 +720,16 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       tryCatch({
         pipes <- s$pipelines
         if (is.null(pipes) || length(pipes) == 0L) return(NULL)
-        is_log <- isTRUE(s$so$transform == "log")
-        bq     <- c(lo = 0.10, hi = 0.90)
-        yrs    <- sort(unique(pipes[[1L]]$sim_year))
-        model_ids_all <- names(pipes) %||% paste0("model_", seq_along(pipes))
-
-        # Aggregate each ensemble member across years once via the shared
-        # helper, then pivot to a per-year x per-member structure for the
-        # ensemble combination step below.
-        res_mode <- active_residuals(hs_for_dev)
-        per_member_per_yr <- lapply(pipes, function(pipe) {
-          aggregate_pipeline_per_year(
-            pipe      = pipe,
-            method    = method,
-            weighted  = use_w,
-            pov_line  = pov_line_val(),
-            residuals = res_mode,
-            is_log    = is_log,
-            band_q    = bq
-          )
-        })
-
-        per_year_rows <- lapply(yrs, function(yr) {
-          per_member <- lapply(per_member_per_yr, function(yr_list) {
-            for (m in yr_list) if (identical(m$sim_year, yr)) return(m)
-            NULL
-          })
-          keep <- !vapply(per_member, is.null, logical(1L))
-          per_member <- per_member[keep]
-          ids_yr     <- model_ids_all[keep]
-          if (length(per_member) == 0L) return(NULL)
-          comb <- combine_ensemble_results(per_member, band_q = bq)
-          vals_m <- vapply(per_member, function(x) x$value, numeric(1L))
-          sd_m   <- sqrt(pmax(
-            vapply(per_member,
-                   function(x) (x$var_coef %||% 0) + (x$var_resid %||% 0),
-                   numeric(1L)), 0))
-          tibble::tibble(
-            sim_year     = yr,
-            value        = mean(vals_m, na.rm = TRUE),
-            model_id     = list(ids_yr),
-            value_all    = list(vals_m),
-            value_all_sd = list(sd_m),
-            var_within   = comb$var_within %||% mean(sd_m^2, na.rm = TRUE),
-            var_across   = comb$var_across %||%
-                             (if (length(vals_m) > 1L)
-                                stats::var(vals_m, na.rm = TRUE) else 0)
-          )
-        })
-        combined <- dplyr::bind_rows(Filter(Negate(is.null), per_year_rows))
+        combined <- aggregate_pipeline_table(
+          pipelines = pipes,
+          method    = method,
+          weighted  = use_w,
+          pov_line  = pov_line_val(),
+          residuals = active_residuals(hs_for_dev),
+          is_log    = isTRUE(s$so$transform == "log"),
+          band_q    = c(lo = 0.10, hi = 0.90),
+          model_ids = names(pipes)
+        )
         if (nrow(combined) == 0L) return(NULL)
         list(out = combined)
       }, error = function(e) {
@@ -1107,30 +1076,6 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     )
   })
 
-  output$results_header_ui <- renderUI({
-    req(baseline_hist_sim(), input$cmp_agg_method, input$cmp_deviation)
-    so <- baseline_hist_sim()$so
-    agg_label <- label_agg_method(input$cmp_agg_method)
-    dev_label <- label_deviation(input$cmp_deviation)
-    pov_txt   <- if (!is.null(pov_line_val()))
-      paste0(" | Poverty line: $", pov_line_val(), "/day") else ""
-    notes_txt <- paste0(
-      "Showing ", agg_label, " of ", so$label %||% so$name,
-      " expressed as ", dev_label, pov_txt,
-      ". Baseline (grey) and policy (red) shown side-by-side."
-    )
-    shiny::div(
-      style = paste0(
-        "border-left: 4px solid #2166ac; background: #f4f8fd; ",
-        "padding: 10px 14px; margin-bottom: 12px; border-radius: 3px;"
-      ),
-      shiny::tags$strong(style = "font-size:15px;",
-                         paste0("Results: ", so$label %||% so$name)),
-      shiny::tags$br(),
-      shiny::tags$span(style = "color:#555; font-size:12px;", notes_txt)
-    )
-  })
-
   # Scenario filter grid: same compact SSP x period table as the Step 2
   # results tab (alignment). INT-01: the user's cell selection survives a
   # republish; a first render (or a fresh key set) starts fully checked.
@@ -1246,11 +1191,12 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     DT::datatable(
       df, rownames = FALSE, class = "compact stripe",
       options = list(
-        pageLength = 30, dom = "Bt", ordering = list(list(2, "desc")),
+        pageLength = 30, dom = wise_csv_dom("t"),
+        ordering = list(list(2, "desc")),
         columnDefs = list(list(className = "dt-center", targets = "_all")),
         # INT-08: export is disabled while the results are stale.
-        buttons = if (isTRUE(stale())) NULL else
-          list(list(extend = "csv", filename = "outcome_thresholds"))
+        buttons = wise_csv_button("policy_outcome_thresholds",
+                                  enabled = !isTRUE(stale()))
       ),
       extensions = "Buttons"
     )
@@ -1282,6 +1228,32 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       shiny::icon("circle-info"), " above for definitions."
     )
   })
+
+  # UI-48: Step 3's baseline-vs-policy comparison figures.
+  wise_export_figure(
+    key   = "policy_outcome_distribution",
+    label = "Baseline vs policy welfare by scenario",
+    step  = 3L,
+    fun   = function() {
+      bands <- pointrange_bands_rv()
+      if (is.null(bands)) return(NULL)
+      if (!isTRUE(input$show_model_spread)) {
+        bands$intermod_lo <- NA_real_
+        bands$intermod_hi <- NA_real_
+      }
+      plot_pointrange_climate(
+        bands_tbl   = bands,
+        x_label     = baseline_agg_hist()$x_label,
+        group_order = input$cmp_group_order %||% "scenario_x_year",
+        show_coef   = isTRUE(input$show_coef_uncertainty) && has_draws()
+      )
+    },
+    description = paste(
+      "Simulated welfare under the baseline and the policy scenario, by",
+      "climate scenario and projection period."
+    ),
+    width = 10, height = 6.5
+  )
 
   output$exceedance_plot <- renderPlot({
     req(exceedance_curves_rv())

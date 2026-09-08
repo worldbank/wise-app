@@ -74,8 +74,7 @@ mod_3_05_education_server <- function(id,
       if (isTRUE(any_selected())) return(NULL)
       # Only show placeholder if there are education variables in the survey
       if (length(education_vars_available()) == 0) {
-        return(div(
-          class = "alert alert-warning",
+        return(no_data_warning(
           "No education variables found in the selected survey (or level of analysis)."
         ))
       }

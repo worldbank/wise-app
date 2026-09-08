@@ -245,72 +245,134 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
 # .apply_binning()         - apply breakpoints to data frame                   #
 # ---------------------------------------------------------------------------- #
 
-#' Apply deviation-from-mean or standardised-anomaly transformations lazily.
+#' Build transformation specifications for selected weather variables.
 #'
-#' Iterates over `selected_weather` rows and chains lazy join + mutate steps
-#' onto `tbl` for every variable that requires a transformation.  Variables
-#' in `skip_vars` (e.g. `"spi6"`, `"spei6"`) and variables with
-#' `transformation == "None"` or `NA` are left untouched.
+#' @param selected_weather Data frame with `name` and `transformation`.
+#' @param skip_vars Character vector of variables to leave untransformed.
+#' @noRd
+.transformation_specs <- function(
+  selected_weather,
+  skip_vars = c("spi6", "spei6")
+) {
+  required <- c("name", "transformation")
+  missing <- setdiff(required, names(selected_weather))
+  if (length(missing) > 0L) {
+    stop("selected_weather is missing column(s): ", paste(missing, collapse = ", "))
+  }
+  if (anyDuplicated(selected_weather$name)) {
+    stop("selected_weather contains duplicate weather variable names")
+  }
+
+  keep <- !is.na(selected_weather$transformation) &
+    selected_weather$transformation != "None" &
+    !selected_weather$name %in% skip_vars
+  idx <- which(keep)
+  if (length(idx) == 0L) return(NULL)
+
+  data.frame(
+    row_id = idx,
+    name = as.character(selected_weather$name[idx]),
+    transformation = as.character(selected_weather$transformation[idx]),
+    mean_col = paste0("__wise_ref_mean_", idx),
+    sd_col = paste0("__wise_ref_sd_", idx),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Build one wide monthly climate-reference relation.
 #'
-#' Reference statistics (monthly mean and SD) are always derived from
-#' `loc_weather_base` over the 1991-2020 climate normal period.
+#' @param loc_weather_base Lazy or materialised rolled weather relation.
+#' @param selected_weather Data frame with `name` and `transformation`.
+#' @param skip_vars Character vector of variables to leave untransformed.
+#' @return A list containing the reference relation and transformation specs.
+#' @noRd
+.build_climate_reference <- function(
+  loc_weather_base,
+  selected_weather,
+  skip_vars = c("spi6", "spei6")
+) {
+  specs <- .transformation_specs(selected_weather, skip_vars)
+  if (is.null(specs)) return(NULL)
+
+  existing <- colnames(loc_weather_base)
+  ref_cols <- c(specs$mean_col, specs$sd_col)
+  if (any(ref_cols %in% existing)) {
+    stop("Generated climate-reference column collides with weather data: ",
+         paste(intersect(ref_cols, existing), collapse = ", "))
+  }
+
+  stats_exprs <- c(
+    stats::setNames(
+      lapply(specs$name, function(v) dbplyr::sql(paste0("AVG(", v, ")"))),
+      specs$mean_col
+    ),
+    stats::setNames(
+      lapply(specs$name, function(v) dbplyr::sql(paste0("STDDEV_SAMP(", v, ")"))),
+      specs$sd_col
+    )
+  )
+
+  reference <- loc_weather_base |>
+    dplyr::filter(
+      timestamp >= as.Date("1991-01-01"),
+      timestamp <= as.Date("2020-12-31")
+    ) |>
+    dplyr::mutate(month = dbplyr::sql("MONTH(timestamp)")) |>
+    dplyr::group_by(code, year, survname, loc_id, month) |>
+    dplyr::summarise(!!!stats_exprs, .groups = "drop")
+
+  list(tbl = reference, specs = specs)
+}
+
+#' Apply climate-reference transformations with one shared left join.
 #'
-#' @param tbl              Lazy `dplyr::tbl` containing rolled weather columns.
-#' @param selected_weather Data frame with columns `name` and `transformation`.
-#' @param loc_weather_base Materialised temp-table tbl (the unperturbed rolled
-#'   series) used as the climate reference source.
-#' @param skip_vars        Character vector of variable names to skip.
-#'   Defaults to `c("spi6", "spei6")`.
-#'
-#' @return `tbl` with transformation steps chained lazily.
+#' @param tbl Lazy rolled weather relation to transform.
+#' @param selected_weather Data frame with `name` and `transformation`.
+#' @param loc_weather_base Rolled weather relation used when building a reference.
+#' @param skip_vars Character vector of variables to leave untransformed.
+#' @param climate_ref Optional result from `.build_climate_reference()`.
+#' @return A lazy transformed weather relation.
 #' @noRd
 .apply_transformations <- function(
   tbl,
   selected_weather,
   loc_weather_base,
-  skip_vars = c("spi6", "spei6")
+  skip_vars = c("spi6", "spei6"),
+  climate_ref = NULL
 ) {
+  if (is.null(climate_ref)) {
+    climate_ref <- .build_climate_reference(
+      loc_weather_base, selected_weather, skip_vars
+    )
+  }
+  if (is.null(climate_ref)) return(tbl)
 
-  for (i in seq_len(nrow(selected_weather))) {
-    v              <- selected_weather$name[i]
-    transformation <- selected_weather$transformation[i]
+  specs <- climate_ref$specs
+  ref_cols <- c(specs$mean_col, specs$sd_col)
+  tbl <- tbl |>
+    dplyr::mutate(month = dbplyr::sql("MONTH(timestamp)")) |>
+    dplyr::left_join(
+      climate_ref$tbl,
+      by = c("code", "year", "survname", "loc_id", "month")
+    )
 
-    if (is.na(transformation) || transformation == "None" || v %in% skip_vars) next
-
-    climate_ref <- loc_weather_base |>
-      dplyr::filter(
-        timestamp >= as.Date("1991-01-01"),
-        timestamp <= as.Date("2020-12-31")
-      ) |>
-      dplyr::mutate(month = dbplyr::sql("MONTH(timestamp)")) |>
-      dplyr::group_by(code, year, survname, loc_id, month) |>
-      dplyr::summarise(
-        ref_mean = dbplyr::sql(paste0("AVG(", v, ")")),
-        ref_sd   = dbplyr::sql(paste0("STDDEV_SAMP(", v, ")")),
-        .groups  = "drop"
-      )
-
-    tbl <- local({
-      .v   <- v
-      .tf  <- transformation
-      .ref <- climate_ref
-      function(t) {
-        t |>
-          dplyr::mutate(month = dbplyr::sql("MONTH(timestamp)")) |>
-          dplyr::left_join(.ref, by = c("code", "year", "survname", "loc_id", "month")) |>
-          dplyr::mutate(
-            !!.v := if (.tf == "Deviation from mean") {
-              dbplyr::sql(paste0(.v, " - ref_mean"))
-            } else if (.tf == "Standardized anomaly") {
-              dbplyr::sql(paste0("(", .v, " - ref_mean) / ref_sd"))
-            }
-          ) |>
-          dplyr::select(-month, -ref_mean, -ref_sd)
-      }
-    })(tbl)
+  for (i in seq_len(nrow(specs))) {
+    v <- specs$name[i]
+    tf <- specs$transformation[i]
+    expr <- if (tf == "Deviation from mean") {
+      dbplyr::sql(paste0(v, " - ", specs$mean_col[i]))
+    } else if (tf == "Standardized anomaly") {
+      dbplyr::sql(paste0(
+        "(", v, " - ", specs$mean_col[i], ") / ", specs$sd_col[i]
+      ))
+    } else {
+      NULL
+    }
+    tbl <- dplyr::mutate(tbl, !!v := expr)
   }
 
-  tbl
+  tbl |>
+    dplyr::select(-month, -dplyr::all_of(ref_cols))
 }
 
 # ---------------------------------------------------------------------------- #
@@ -687,11 +749,26 @@ get_weather <- function(
     dplyr::mutate(!!!roll_exprs) |>
     dplyr::compute(name = tmp_base_name, temporary = TRUE)
 
+  # PERF-02: aggregate every transformed weather variable once and reuse the
+  # materialised reference across the historical and future-period queries.
+  climate_ref <- .build_climate_reference(loc_weather_base, selected_weather)
+  if (!is.null(climate_ref)) {
+    tmp_ref_name <- basename(tempfile(pattern = "lw_ref_"))
+    tmp_tables <- c(tmp_tables, tmp_ref_name)
+    climate_ref$tbl <- dplyr::compute(
+      climate_ref$tbl,
+      name = tmp_ref_name,
+      temporary = TRUE
+    )
+  }
+
   # -- Assemble result -------------------------------------------------------
   result <- list()
 
   result[["historical"]] <- loc_weather_base |>
-    .apply_transformations(selected_weather, loc_weather_base) |>
+    .apply_transformations(
+      selected_weather, loc_weather_base, climate_ref = climate_ref
+    ) |>
     dplyr::filter(timestamp %in% !!dates) |>
     dplyr::arrange(code, year, survname, loc_id, timestamp) |>
     dplyr::collect()
@@ -1008,7 +1085,9 @@ get_weather <- function(
         # Step 2: rolling window + transformations + filter -> collect
         batch <- perturbed |>
           dplyr::mutate(!!!roll_exprs_climate) |>
-          .apply_transformations(selected_weather, loc_weather_base) |>
+          .apply_transformations(
+            selected_weather, loc_weather_base, climate_ref = climate_ref
+          ) |>
           dplyr::filter(timestamp %in% !!dates) |>
           dplyr::arrange(model, code, year, survname, loc_id, timestamp) |>
           dplyr::collect()

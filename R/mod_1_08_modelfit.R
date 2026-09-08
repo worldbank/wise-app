@@ -35,6 +35,29 @@ mod_1_08_modelfit_server <- function(id,
 
     if (is.null(tabset_session)) tabset_session <- session$parent %||% session
 
+    # ---- Selected model card (from the fit snapshot, INT-05 pattern) --------
+
+    output$selected_model_card <- renderUI({
+      snap <- tryCatch(model_fit()$.snap, error = function(e) NULL)
+      req(!is.null(snap), !is.null(snap$model))
+      selection_summary_card(
+        title = "Selected model",
+        badge = model_badge(snap$model),
+        rows  = model_card_rows(
+          snap$model,
+          label_fun      = .label_lookup(snap$variable_list),
+          outcome_label  = as.character(snap$outcome$label[1]),
+          weather_labels = as.character(snap$weather$label)
+        ),
+        info  = paste(
+          "The fitted specification written as a formula: outcome ~",
+          "weather terms (crossed with interaction moderators when",
+          "selected) + covariates | fixed effects | clustering.",
+          "Diagnostics reflect this run until you press Run model again."
+        )
+      )
+    })
+
     # INT-08: stale banner bound to the fit's staleness flag.
     output$fit_stale_banner <- shiny::renderUI({
       if (isTRUE(fit_stale())) .stale_banner("Step 1 model diagnostics") else NULL
@@ -97,11 +120,13 @@ mod_1_08_modelfit_server <- function(id,
                          x_label = snap_label_fun()(h))
     })
 
-    output$pred_welf_dist <- renderPlot({
-      req(full_model(), fit_snap())
-      mf <- model_fit()
+    # UI-48: one builder behind the plot and its export, so a downloaded PNG
+    # is the figure on screen.
+    pred_welf_fig <- function() {
+      mf   <- model_fit()
       snap <- fit_snap()
       slf  <- snap_label_fun()
+      if (is.null(mf) || is.null(snap)) return(NULL)
       if (identical(mf$engine, "rif")) {
         # RIF models predict the RIF-transformed outcome (effectively binary
         # per quantile), so the standard predicted-vs-actual histogram is not
@@ -135,16 +160,43 @@ mod_1_08_modelfit_server <- function(id,
           outcome_label = slf(snap$outcome$name)
         )
       }
+    }
+
+    output$pred_welf_dist <- renderPlot({
+      req(full_model(), fit_snap())
+      pred_welf_fig()
     })
 
-    output$additional_stats <- renderTable({
+    # UI-45: one data frame behind both the table and its CSV export.
+    additional_stats_df <- reactive({
       req(full_model(), model_fit())
       calc_fit_stats(
         model       = full_model(),
         is_logistic = is_logistic(),
         engine      = model_fit()$engine
       )
-    }, striped = TRUE, hover = TRUE, bordered = TRUE)
+    })
+
+    output$additional_stats <- renderTable(
+      additional_stats_df(),
+      striped = TRUE, hover = TRUE, bordered = TRUE
+    )
+
+    output$additional_stats_csv <- csv_download_handler(
+      "model_fit_statistics",
+      function() additional_stats_df()
+    )
+
+    wise_export_table(
+      key   = "model_fit_statistics",
+      label = "Model fit statistics",
+      step  = 1L,
+      fun   = function() additional_stats_df(),
+      description = paste(
+        "Goodness-of-fit measures for the full specification: R-squared,",
+        "within R-squared and related statistics."
+      )
+    )
 
     # Relative importance plot (standardized coefficients)
     output$relaimpo <- renderPlot({
@@ -182,6 +234,75 @@ mod_1_08_modelfit_server <- function(id,
       m <- rif_single_model()
       plot_diagnostics(m, engine = model_fit()$engine)
     })
+
+    # UI-48: model-fit figures for the export bundle. Each builder req()s on
+    # the same inputs its on-screen renderer does, so a not-run step throws
+    # shiny.silent.error and is skipped quietly, while a genuine failure is
+    # named in the README's "Not exported" section.
+    for (i in 1:2) local({
+      idx <- i
+      wise_export_figure(
+        key   = paste0("residuals_vs_weather_", idx),
+        label = paste0("Residuals vs weather ", idx),
+        step  = 1L,
+        fun   = function() {
+          req(full_model(), model_fit(), fit_snap())
+          h <- model_fit()$weather_terms[idx]
+          if (is.na(h) || is.null(h)) return(NULL)
+          plot_resid_weather(rif_single_model(), h,
+                             weather_df = fit_snap()$survey_weather,
+                             x_label = snap_label_fun()(h))
+        },
+        description = paste(
+          "Model residuals against the realised weather variable, for",
+          "checking that no systematic structure is left unexplained."
+        ),
+        width = 9, height = 6
+      )
+    })
+
+    wise_export_figure(
+      key   = "predicted_vs_actual_welfare",
+      label = "Predicted vs actual welfare",
+      step  = 1L,
+      fun   = function() {
+        req(full_model(), fit_snap())
+        pred_welf_fig()
+      },
+      description = paste(
+        "Distribution of predicted welfare against observed welfare in the",
+        "training data (for RIF models, the welfare distribution with",
+        "predicted quantile markers)."
+      ),
+      width = 9, height = 6
+    )
+
+    wise_export_figure(
+      key   = "relative_importance",
+      label = "Relative importance of predictors",
+      step  = 1L,
+      fun   = function() {
+        req(full_model(), fit_snap())
+        plot_relaimpo(rif_single_model(), var_info = fit_snap()$variable_list)
+      },
+      description = paste(
+        "Absolute standardised coefficient |beta| x sd(X) per predictor,",
+        "ranking how much each contributes to fitted welfare."
+      ),
+      width = 9, height = 6
+    )
+
+    wise_export_figure(
+      key   = "model_diagnostics",
+      label = "Model diagnostic plots",
+      step  = 1L,
+      fun   = function() {
+        req(full_model(), model_fit())
+        plot_diagnostics(rif_single_model(), engine = model_fit()$engine)
+      },
+      description = "Standard regression diagnostic panels for the full specification.",
+      width = 10, height = 8
+    )
 
     output$model_summary <- renderPrint({
       req(full_model())
@@ -239,6 +360,7 @@ mod_1_08_modelfit_server <- function(id,
           title = "Model fit",
           value = "model_fit",
           shiny::uiOutput(ns("fit_stale_banner")),
+          uiOutput(ns("selected_model_card")),
           shiny::h4(
             "Fit statistics",
             info_popover(
@@ -251,6 +373,7 @@ mod_1_08_modelfit_server <- function(id,
           ),
           shiny::uiOutput(ns("full_model_caption")),
           shiny::tableOutput(ns("additional_stats")),
+          csv_download_link(ns("additional_stats_csv")),
           shiny::hr(),
           shiny::h4("Residuals vs weather"),
           shiny::uiOutput(ns("resid_weather_layout")),

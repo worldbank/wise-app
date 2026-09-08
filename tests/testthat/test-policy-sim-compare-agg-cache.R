@@ -58,6 +58,48 @@ make_step3_scenarios_fixture_multi <- function() {
   )
 }
 
+test_that("shared pipeline table preserves historical and ensemble schemas", {
+  hist_pipe <- make_step3_pipe_fixture(n = 80L, yrs = 2020:2021)
+  hist <- aggregate_pipeline_table(
+    hist_pipe,
+    method    = "mean",
+    weighted  = TRUE,
+    residuals = "none",
+    is_log    = FALSE,
+    model_ids = "Historical",
+    scenario  = "Historical"
+  )
+  direct <- aggregate_pipeline_per_year(
+    hist_pipe, method = "mean", weighted = TRUE,
+    residuals = "none", is_log = FALSE
+  )
+
+  expect_identical(hist$sim_year, vapply(direct, `[[`, integer(1L), "sim_year"))
+  expect_equal(hist$value, vapply(direct, `[[`, numeric(1L), "value"))
+  expect_true(all(vapply(hist$model_id, identical, logical(1L), "Historical")))
+  expect_true(all(c("value_all_sd", "F_agg_all", "agg_method", "weighted") %in%
+                    names(hist)))
+  expect_true(all(hist$var_across == 0))
+  expect_setequal(hist$scenario, "Historical")
+
+  ensemble <- list(
+    low  = hist_pipe,
+    high = utils::modifyList(hist_pipe, list(y_point = hist_pipe$y_point + 0.2))
+  )
+  combined <- aggregate_pipeline_table(
+    ensemble,
+    method    = "mean",
+    weighted  = TRUE,
+    residuals = "none",
+    is_log    = FALSE,
+    model_ids = names(ensemble)
+  )
+
+  expect_true(all(vapply(combined$model_id, identical, logical(1L), names(ensemble))))
+  expect_true(all(vapply(combined$value_all, length, integer(1L)) == 2L))
+  expect_true(all(combined$var_across > 0))
+})
+
 # ---- INT-01: Step 3 filters and poverty line survive pane rebuilds ----------
 
 test_that("Step 3 scenario filter grid and poverty line survive rebuilds (INT-01)", {

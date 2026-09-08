@@ -30,6 +30,341 @@ info_popover <- function(..., title = NULL, docs = FALSE, placement = "right") {
   )
 }
 
+# ---- Inline "no data" warning --------------------------------------------------
+
+#' Amber inline warning with an exclamation icon, shown when a selection
+#' has no data (e.g. no variables found for the current level of analysis).
+#'
+#' @param ... Message text; multiple strings are wrapped in a single span.
+#' @noRd
+no_data_warning <- function(...) {
+  shiny::tags$div(
+    class = "no-data-warning warning-message",
+    shiny::icon("triangle-exclamation"),
+    shiny::tags$span(...)
+  )
+}
+
+# ---- Selection summary card ----------------------------------------------------
+# Thin "what is loaded" card at the top of the stats tabs (Survey, Outcome,
+# Weather, Model). Head: uppercase title + right-aligned badge; body: one row
+# per item with a bold name, muted sub-label and small pills.
+# Styled by .selection-card rules in inst/app/www/custom.css.
+
+#' Build one row of a `selection_summary_card()`
+#'
+#' @param name  Bold primary text (e.g. economy name, variable label).
+#' @param sub   Optional muted secondary text (e.g. survey program, variable
+#'   name).
+#' @param pills Optional character vector of small pill labels (e.g. years,
+#'   units, transform).
+#' @param note  Optional trailing note in grey text at the same size as
+#'   `name` (e.g. a plain-language interpretation of the selection).
+#'
+#' @noRd
+selection_card_row <- function(name, sub = NULL, pills = NULL, note = NULL) {
+  shiny::tags$div(
+    class = "selection-card-row",
+    shiny::tags$span(class = "selection-card-name", name),
+    if (!is.null(sub) && nzchar(sub)) {
+      shiny::tags$span(class = "selection-card-sub", sub)
+    },
+    if (length(pills)) {
+      shiny::tags$span(
+        class = "selection-card-pills",
+        lapply(pills, function(p) {
+          shiny::tags$span(class = "selection-card-pill", p)
+        })
+      )
+    },
+    if (!is.null(note) && nzchar(note)) {
+      shiny::tags$span(class = "selection-card-note", note)
+    }
+  )
+}
+
+#' Thin summary card describing the current selection
+#'
+#' Shared component for the "Selected sample" card on the Survey stats tab and
+#' the outcome/weather/model equivalents on other tabs.
+#'
+#' @param title Card title, rendered small and uppercase; `NULL` for a
+#'   headerless card.
+#' @param rows  List of row specs; each a list with `name`, optional `sub`
+#'   and `pills` (see `selection_card_row()`), or pre-built row tags.
+#' @param badge Optional right-aligned badge in the card head (e.g. level of
+#'   analysis).
+#' @param info  Optional text; when supplied an (i) popover explaining the
+#'   card is attached to the title.
+#' @param compact Logical; tighter paddings/font sizes for sidebar use.
+#'
+#' @noRd
+selection_summary_card <- function(title, rows, badge = NULL, info = NULL,
+                                   compact = FALSE) {
+  head <- if (is.null(title) && is.null(badge)) {
+    NULL
+  } else {
+    shiny::tags$div(
+      class = "selection-card-head",
+      if (!is.null(title)) {
+        shiny::tags$span(
+          class = "selection-card-title",
+          title,
+          if (!is.null(info) && nzchar(info)) info_popover(shiny::p(info))
+        )
+      },
+      if (!is.null(badge) && nzchar(badge)) {
+        shiny::tags$span(class = "selection-card-badge", badge)
+      }
+    )
+  }
+  # Headerless card with an info popover: anchor the (i) on the first row.
+  if (is.null(title) && !is.null(info) && nzchar(info)) {
+    rows[[1]] <- shiny::tagAppendChildren(rows[[1]], info_popover(shiny::p(info)))
+  }
+  shiny::tags$div(
+    class = paste("selection-card", if (isTRUE(compact)) "compact"),
+    head,
+    lapply(rows, function(r) {
+      # Accept both pre-built row tags and raw name/sub/pills spec lists
+      if (inherits(r, c("shiny.tag", "shiny.tag.list"))) {
+        r
+      } else {
+        selection_card_row(
+          name  = r$name,
+          sub   = r$sub,
+          pills = r$pills,
+          note  = r$note
+        )
+      }
+    })
+  )
+}
+
+#' Compact summary of the Step 2 simulation run
+#'
+#' Shared by the Results and Diagnostics tabs so both surfaces describe the
+#' same historical baseline, weather inputs, and saved future scenarios.
+#'
+#' @noRd
+simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
+                                    selected_hist = NULL,
+                                    selected_weather = NULL) {
+  if (is.null(hist_sim) || is.null(hist_sim$so)) return(NULL)
+
+  run <- hist_sim$sim_summary %||% list()
+  so <- hist_sim$so
+  so_label <- if ("label" %in% names(so)) as.character(so$label[1]) else "Selected outcome"
+  if (is.na(so_label) || !nzchar(so_label)) so_label <- "Selected outcome"
+
+  sw <- run$weather %||% if (is.data.frame(selected_weather)) selected_weather else NULL
+  weather_labels <- if (!is.null(sw) && "label" %in% names(sw))
+    as.character(sw$label) else character(0)
+  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
+  weather_labels <- weather_labels[nzchar(weather_labels)]
+  if (length(weather_labels) == 0L) weather_labels <- "Selected weather"
+
+  hist_years <- run$historical_years %||% tryCatch({
+    if (!is.null(selected_hist) && "year_range" %in% names(selected_hist))
+      unlist(selected_hist$year_range[[1]], use.names = FALSE)
+    else numeric(0)
+  }, error = function(e) numeric(0))
+  hist_period <- if (length(hist_years) >= 2L) {
+    paste0(hist_years[1], "-", hist_years[2])
+  } else {
+    as.character(hist_sim$hist_label %||% "Historical baseline")
+  }
+
+  residuals <- as.character(hist_sim$residuals %||% "original")
+  residual_label <- switch(residuals,
+    original = "Original residuals",
+    resample = "Resampled residuals",
+    none     = "No residuals",
+    normal   = "Normal residuals",
+    residuals
+  )
+
+  scenarios <- if (is.list(saved_scenarios)) names(saved_scenarios) else character(0)
+  scenario_count <- length(scenarios)
+  scenario_pills <- if (scenario_count > 0L) {
+    vapply(scenarios, function(key) {
+      n <- saved_scenarios[[key]]$n_models %||% NA_integer_
+      n_txt <- if (is.finite(n)) paste0(" (", n, " models)") else ""
+      paste0(key, n_txt)
+    }, character(1))
+  } else "None"
+
+  model <- run$model %||% list()
+  model_label <- model$label %||% "Fitted model"
+  model_bits <- c(
+    if (is.finite(model$fixed_effects %||% NA_integer_))
+      paste0(model$fixed_effects, " FE"),
+    if (is.finite(model$covariates %||% NA_integer_))
+      paste0(model$covariates, " covariates")
+  )
+
+  baseline <- run$baseline_survey %||% "Selected baseline survey"
+  baseline_n <- run$baseline_n %||% NA_integer_
+  baseline_pills <- c(
+    if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ",")),
+    residual_label
+  )
+  total_runs <- run$total_runs %||% NA_integer_
+  badge <- if (is.finite(total_runs)) {
+    paste(format(total_runs, big.mark = ","), "simulation years")
+  } else if (scenario_count == 0L) {
+    "Historical only"
+  } else {
+    paste(scenario_count, "future", if (scenario_count == 1L) "scenario" else "scenarios")
+  }
+
+  selection_summary_card(
+    title = "Selected Climate Scenario",
+    badge = badge,
+    rows = list(
+      list(
+        name = "Climate scenarios",
+        sub = paste0("Historical ", hist_period),
+        pills = scenario_pills
+      ),
+      list(
+        name = "Weather",
+        sub = paste(weather_labels, collapse = ", ")
+      ),
+      list(
+        name = "Model",
+        sub = model_label,
+        pills = c(paste0("Outcome: ", so_label), model_bits)
+      ),
+      list(
+        name = "Baseline",
+        sub = baseline,
+        pills = baseline_pills
+      )
+    ),
+    compact = TRUE
+  )
+}
+
+#' Compact summary of the selected Step 3 policy scenarios
+#'
+#' @noRd
+policy_summary_card <- function(selected_policies = NULL,
+                                baseline_hist_sim = NULL,
+                                policy_saved_scenarios = list(),
+                                selected_weather = NULL,
+                                sp_scenario = NULL) {
+  policies <- selected_policies %||% character(0)
+  policies <- policies[!is.na(policies) & nzchar(policies)]
+  labels <- vapply(policies, function(key) {
+    def <- POLICY_DEFINITIONS[[key]]
+    if (!is.null(def) && !is.null(def$label) && nzchar(def$label)) {
+      as.character(def$label)
+    } else {
+      key
+    }
+  }, character(1))
+
+  hs <- baseline_hist_sim
+  run <- if (!is.null(hs)) hs$sim_summary %||% list() else list()
+  so_label <- if (!is.null(hs) && "label" %in% names(hs$so)) {
+    as.character(hs$so$label[1])
+  } else "Selected outcome"
+  sw <- run$weather %||% selected_weather
+  weather_labels <- if (!is.null(sw) && "label" %in% names(sw)) {
+    as.character(sw$label)
+  } else character(0)
+  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
+  baseline <- run$baseline_survey %||% "Selected baseline survey"
+  baseline_n <- run$baseline_n %||% NA_integer_
+  model <- run$model %||% list()
+  model_bits <- c(
+    if (is.finite(model$fixed_effects %||% NA_integer_))
+      paste0(model$fixed_effects, " FE"),
+    if (is.finite(model$covariates %||% NA_integer_))
+      paste0(model$covariates, " covariates")
+  )
+  historical_years <- run$historical_years %||% integer(0)
+  historical <- if (length(historical_years) >= 2L) {
+    paste0("Historical ", historical_years[1], "-", historical_years[2])
+  } else NULL
+  policy_pills <- if (length(labels)) {
+    paste0(policies, " \u00B7 ", labels)
+  } else "None"
+  sp <- sp_scenario %||% list()
+  if (is.function(sp)) sp <- sp()
+  sp_active <- is.list(sp) && (
+    isTRUE(sp$transfer_amount_usd > 0) || isTRUE(sp$budget_fixed > 0)
+  )
+  sp_label <- if (sp_active) {
+    amount <- if (isTRUE(sp$transfer_amount_usd > 0)) {
+      paste0("$", format(sp$transfer_amount_usd, trim = TRUE, big.mark = ","), "/payment")
+    } else {
+      paste0("$", format(sp$budget_fixed, trim = TRUE, big.mark = ","), " budget")
+    }
+    payments <- if (is.finite(sp$transfer_n_payments %||% NA_integer_)) {
+      paste0(" x ", sp$transfer_n_payments, "/year")
+    } else ""
+    targeting <- sp$targeting %||% "universal"
+    paste("SP", amount, payments, "-", targeting)
+  } else NULL
+  policy_pills <- c(sp_label, policy_pills[policy_pills != "None"])
+  if (!length(policy_pills)) policy_pills <- "None"
+  configured_count <- length(policy_pills[policy_pills != "None"])
+  climate_scenarios <- names(policy_saved_scenarios)
+
+  selection_summary_card(
+    title = "Selected Policy Scenarios",
+    badge = paste(configured_count,
+                  if (configured_count == 1L) "policy" else "policies"),
+    rows = list(
+      list(
+        name = "Climate scenarios",
+        sub = if (length(historical)) historical else "Historical climate",
+        pills = climate_scenarios
+      ),
+      list(
+        name  = "Policies",
+        sub   = NULL,
+        pills = policy_pills
+      ),
+      list(
+        name = "Model",
+        sub = model$label %||% "Fitted model",
+        pills = c(
+          paste0("Outcome: ", so_label),
+          if (length(weather_labels)) paste0(
+            "Weather: ", paste(weather_labels, collapse = ", ")
+          ),
+          model_bits
+        )
+      ),
+      list(
+        name = "Baseline",
+        sub = baseline,
+        pills = c(
+          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
+        )
+      )
+    ),
+    compact = TRUE
+  )
+}
+
+#' Human label for an analysis unit code
+#'
+#' @param unit One of `"ind"`, `"hh"`, `"firm"` (or `NULL`).
+#' @return e.g. `"Household level"`; `NULL` for unknown codes.
+#' @noRd
+analysis_unit_label <- function(unit) {
+  switch(unit %||% "",
+    ind  = "Individual level",
+    hh   = "Household level",
+    firm = "Firm level",
+    NULL
+  )
+}
+
 # ---- Config flyout blocks (UI-02) ---------------------------------------------
 
 #' Accessible plot output (UI-36)
@@ -67,18 +402,28 @@ wise_plot_output <- function(plot_id, alt, ...) {
 #' own toggle instead of at a shared viewport position.
 #'
 #' The content stays in the DOM at all times (conditionalPanel odd/even parity,
-#' as before), so input defaults register immediately.
+#' as before). Note that this is not on its own enough for input defaults to
+#' register: a `uiOutput()` placed in here is still *hidden*, and hidden
+#' outputs are suspended until first shown. Callers that need the flyout's
+#' inputs to exist before it is opened must also set
+#' `outputOptions(output, "<id>", suspendWhenHidden = FALSE)` (see
+#' `mod_1_06_model.R` and `mod_1_04_weather.R`).
 #'
 #' @param toggle_id    Namespaced input id of the toggle button.
 #' @param title        Flyout header title.
 #' @param ...          Flyout content, rendered below the header.
-#' @param toggle_label Button label. Default "Configure".
+#' @param toggle_label  Button label. Default "Configure".
+#' @param display_label Optional label rendered beside the button.
 #'
 #' @noRd
-config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure") {
+config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure",
+                                display_label = NULL) {
   panel_id <- paste0(toggle_id, "_panel")
   shiny::tags$div(
-    class = "config-flyout-anchor",
+    class = paste(
+      "config-flyout-anchor",
+      if (!is.null(display_label)) "config-flyout-inline"
+    ),
     shiny::actionButton(
       toggle_id, toggle_label,
       icon  = shiny::icon("sliders"),
@@ -87,6 +432,9 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
       `aria-expanded` = "false",
       `aria-controls` = panel_id
     ),
+    if (!is.null(display_label)) {
+      shiny::tags$span(display_label, class = "config-flyout-label")
+    },
     shiny::conditionalPanel(
       condition = paste0("input['", toggle_id, "'] % 2 == 1"),
       class     = "config-flyout",
@@ -104,6 +452,241 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
       ),
       ...
     )
+  )
+}
+
+# ---- Number formatting for displayed figures (UI-32) -------------------------
+
+#' Format a number for display at one decimal place
+#'
+#' One rule for every dynamically computed figure the app shows - the Step 3
+#' sidebar's social-protection preview and the diagnostics tab's transfer
+#' summary included - so the same quantity never appears at two precisions.
+#' Values are rounded, not truncated, and thousands are separated.
+#'
+#' @param x       Numeric vector.
+#' @param digits  Decimal places. Default 1.
+#' @param prefix,suffix Optional strings placed either side of the number
+#'   (e.g. `prefix = "$"`, `suffix = "%"`).
+#' @param na Text used for non-finite values.
+#'
+#' @return A character vector the same length as `x`.
+#' @noRd
+fmt_num <- function(x, digits = 1, prefix = "", suffix = "", na = "\u2014") {
+  x <- suppressWarnings(as.numeric(x))
+  out <- vapply(x, function(v) {
+    if (!is.finite(v)) return(na)
+    paste0(prefix,
+           formatC(round(v, digits), format = "f", digits = digits,
+                   big.mark = ","),
+           suffix)
+  }, character(1))
+  out
+}
+
+#' Format a count for display
+#'
+#' Whole units (households, individuals, firms) are counts, so they get
+#' thousands separators and no decimals - even when survey weights make the
+#' underlying value fractional.
+#'
+#' @param x Numeric vector.
+#' @param na Text used for non-finite values.
+#' @return A character vector.
+#' @noRd
+fmt_count <- function(x, na = "\u2014") {
+  x <- suppressWarnings(as.numeric(x))
+  vapply(x, function(v) {
+    if (!is.finite(v)) return(na)
+    formatC(round(v), format = "d", big.mark = ",")
+  }, character(1))
+}
+
+
+# ---- Nav-header step status (UI-47) ------------------------------------------
+#
+# Steps can be visited in any order, and results survive a move to another tab,
+# so the navbar is the only place where the state of every step is visible at
+# once. Each step tab carries a small badge:
+#
+#   none  - the step has not produced results yet; no badge, navbar stays quiet
+#   done  - results exist and match the current inputs (check mark)
+#   stale - results exist but an input has changed since (reload arrow)
+#
+# "stale" reuses the per-step run signatures already maintained for the
+# in-page stale banners (INT-08), so the badge and the banner can never
+# disagree. A stale step is still fully usable - the badge asks for a re-run,
+# it does not lock anything.
+
+#' Placeholder for a step's status badge in the navbar
+#'
+#' @param output_id Output id, matched by `render_step_badge()` in the server.
+#' @return A `span` output container, safe to nest inside a nav link.
+#' @noRd
+step_badge_ui <- function(output_id) {
+  shiny::uiOutput(output_id, container = shiny::tags$span, inline = TRUE,
+                  class = "nav-step-status-slot")
+}
+
+#' Build the badge for one step state
+#'
+#' @param state One of `"none"`, `"done"`, `"stale"`.
+#' @param step_label Human name of the step, used in the accessible text.
+#' @return A `span` tag, or NULL for `"none"`.
+#' @noRd
+step_status_badge <- function(state, step_label = "This step") {
+  # The glyphs are decorative: aria-hidden takes them out of the
+  # accessibility tree (which also suppresses the aria-label shiny::icon()
+  # always attaches), and the visually-hidden text carries the meaning.
+  deco <- function(name) shiny::icon(name, `aria-hidden` = "true")
+
+  if (identical(state, "done")) {
+    tip <- paste0(step_label, ": complete \u2014 results are up to date.")
+    return(shiny::tags$span(
+      class = "nav-step-status nav-step-status-done",
+      title = tip,
+      deco("check"),
+      shiny::tags$span(class = "visually-hidden", tip)
+    ))
+  }
+  if (identical(state, "stale")) {
+    tip <- paste0(step_label, ": inputs changed \u2014 re-run to refresh ",
+                  "the results.")
+    return(shiny::tags$span(
+      class = "nav-step-status nav-step-status-stale",
+      title = tip,
+      deco("rotate"),
+      shiny::tags$span(class = "visually-hidden", tip)
+    ))
+  }
+  NULL
+}
+
+#' Classify a step as none / done / stale
+#'
+#' @param has_result Reactive returning the step's result object (NULL until it
+#'   has run), or a logical.
+#' @param is_stale   Reactive returning TRUE when the stored result no longer
+#'   matches the live inputs.
+#'
+#' @return A reactive returning `"none"`, `"done"` or `"stale"`.
+#' @noRd
+step_status <- function(has_result, is_stale = NULL) {
+  # Fail fast on a mis-wired badge. If an upstream module renames the key this
+  # reads, the argument arrives as NULL - and without this the badge would
+  # simply sit on "none" (or, for a missing staleness flag, permanently on
+  # "done"), which is worse than an error: it looks like working UI.
+  if (!is.function(has_result)) {
+    stop("step_status(): `has_result` must be a reactive, got ",
+         class(has_result)[1], ".", call. = FALSE)
+  }
+  if (!is.null(is_stale) && !is.function(is_stale)) {
+    stop("step_status(): `is_stale` must be a reactive or NULL, got ",
+         class(is_stale)[1], ".", call. = FALSE)
+  }
+
+  shiny::reactive({
+    res <- tryCatch(has_result(), error = function(e) NULL)
+    done <- if (is.logical(res) && length(res) == 1L) isTRUE(res) else !is.null(res)
+    if (!done) return("none")
+    stale <- if (is.null(is_stale)) FALSE else
+      isTRUE(tryCatch(is_stale(), error = function(e) FALSE))
+    if (stale) "stale" else "done"
+  })
+}
+
+#' Render a step's navbar status badge
+#'
+#' @param has_result,is_stale Reactives, as for `step_status()`.
+#' @param step_label Human name of the step, used in the accessible text.
+#'
+#' @return A `renderUI` expression to assign to the matching output id.
+#' @noRd
+render_step_badge <- function(has_result, is_stale = NULL,
+                              step_label = "This step") {
+  status <- step_status(has_result, is_stale)
+  shiny::renderUI(step_status_badge(status(), step_label))
+}
+
+
+# ---- Table CSV export (UI-45) ------------------------------------------------
+#
+# Every table in the app offers the same export affordance: one small, quiet
+# "Download CSV" control. For DT tables that is the Buttons extension, driven
+# by the two helpers below; for the handful of hand-built HTML tables it is
+# `csv_download_link()` over a `downloadHandler`. Both render as
+# `.wise-csv-btn` so they look identical wherever they appear (custom.css).
+
+#' DT `buttons` spec for a single, discreet CSV export
+#'
+#' @param filename Base name of the downloaded file, without extension.
+#' @param enabled  When FALSE, returns NULL so the button is omitted (used to
+#'   withhold exports while results are stale - INT-08).
+#'
+#' @return A list suitable for `DT::datatable(options = list(buttons = ...))`,
+#'   or NULL.
+#' @noRd
+wise_csv_button <- function(filename, enabled = TRUE) {
+  if (!isTRUE(enabled)) return(NULL)
+  list(list(
+    extend        = "csv",
+    text          = "Download CSV",
+    filename      = filename,
+    className     = "wise-csv-btn",
+    # Export every row, not just the visible page; keep any active search.
+    exportOptions = list(modifier = list(page = "all"))
+  ))
+}
+
+#' Add the Buttons placeholder to a DT `dom` string
+#'
+#' @param dom A DataTables `dom` string (e.g. "t", "lfrtip").
+#' @return The same string with a leading "B" if it lacked one.
+#' @noRd
+wise_csv_dom <- function(dom = "lfrtip") {
+  if (grepl("B", dom, fixed = TRUE)) dom else paste0("B", dom)
+}
+
+#' Small "Download CSV" link for a non-DT table
+#'
+#' Pairs with a `downloadHandler()` registered under the same output id. Use
+#' for hand-built HTML tables (`renderTable()` / `renderUI()`), which have no
+#' DataTables toolbar to hang a button off.
+#'
+#' @param output_id Namespaced id of the matching `downloadHandler` output.
+#' @param label     Link text. Default "Download CSV".
+#'
+#' @return A `downloadLink` tag.
+#' @noRd
+csv_download_link <- function(output_id, label = "Download CSV") {
+  shiny::downloadLink(
+    output_id,
+    label = shiny::tagList(shiny::icon("download"), label),
+    class = "wise-csv-btn wise-csv-link"
+  )
+}
+
+#' `downloadHandler` writing a data frame to CSV
+#'
+#' @param filename_base Base name of the file, without extension.
+#' @param data_fun      Function of no arguments returning a data frame, or
+#'   NULL when there is nothing to export.
+#'
+#' @return A shiny download handler.
+#' @noRd
+csv_download_handler <- function(filename_base, data_fun) {
+  shiny::downloadHandler(
+    filename = function() {
+      paste0(filename_base, "_", format(Sys.Date(), "%Y%m%d"), ".csv")
+    },
+    content = function(file) {
+      df <- tryCatch(data_fun(), error = function(e) NULL)
+      if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) {
+        df <- data.frame(Note = "No data available")
+      }
+      utils::write.csv(df, file, row.names = FALSE, na = "")
+    },
+    contentType = "text/csv"
   )
 }
 
@@ -257,6 +840,51 @@ shinyjs_disable_button <- function(input_id, enabled = TRUE) {
   )
 }
 
+# ---- Segmented radio controls -------------------------------------------------
+
+pill_toggle <- function(
+    inputId,
+    choices = NULL,
+    selected = NULL,
+    label = NULL,
+    width = NULL,
+    choiceNames = NULL,
+    choiceValues = NULL,
+    extra_class = NULL,
+    layout = c("horizontal", "vertical")
+) {
+  layout <- match.arg(layout)
+  if (is.null(choiceNames) && is.null(selected) && length(choices) > 0) {
+    selected <- unname(choices)[1]
+  }
+
+  args <- list(
+    inputId = inputId,
+    label = label,
+    selected = selected,
+    inline = TRUE,
+    width = width
+  )
+  if (!is.null(choiceNames)) {
+    args$choiceNames  <- choiceNames
+    args$choiceValues <- choiceValues
+  } else {
+    args$choices <- choices
+  }
+
+  rb <- do.call(shiny::radioButtons, args)
+  classes <- c(
+    "toggle-slider",
+    "pill-toggle",
+    if (identical(layout, "vertical")) "pill-toggle-vertical",
+    extra_class
+  )
+  htmltools::tagAppendAttributes(
+    rb,
+    class = paste(classes[!is.na(classes) & nzchar(classes)], collapse = " ")
+  )
+}
+
 # ---- Wave / Survey Year Toggle Slider ----------------------------------------
 
 #' Survey year / wave toggle-style slider input
@@ -274,20 +902,13 @@ shinyjs_disable_button <- function(input_id, enabled = TRUE) {
 #'
 #' @noRd
 wave_toggle_slider <- function(inputId, choices, selected = NULL, label = NULL, width = NULL) {
-  if (is.null(selected) && length(choices) > 0) {
-    selected <- unname(choices)[1]
-  }
-  rb <- shiny::radioButtons(
-    inputId  = inputId,
-    label    = label,
-    choices  = choices,
+  pill_toggle(
+    inputId = inputId,
+    choices = choices,
     selected = selected,
-    inline   = TRUE,
-    width    = width
-  )
-  htmltools::tagAppendAttributes(
-    rb,
-    class = "toggle-slider wave-toggle-slider"
+    label = label,
+    width = width,
+    extra_class = "wave-toggle-slider"
   )
 }
 
@@ -320,3 +941,14 @@ wave_slider_choices <- function(wave_df, include_all = TRUE) {
   }
 }
 
+#' Return wave labels shared by map controls and charts
+#'
+#' @param wave_df Data frame from `survey_wave_list()`.
+#' @return A named character vector keyed by `wave_df$label`.
+#' @noRd
+wave_plot_labels <- function(wave_df) {
+  if (is.null(wave_df) || nrow(wave_df) == 0) return(character(0))
+  choices <- wave_slider_choices(wave_df, include_all = FALSE)
+  chart_keys <- paste0(wave_df$economy, ", ", wave_df$year)
+  stats::setNames(names(choices), chart_keys)
+}

@@ -55,7 +55,7 @@ mod_1_modelling_ui <- function(id) {
         title = "Overview",
         value = "overview",
         div(
-          class = "empty-state",
+          class = "empty-state overview-empty-state",
           icon("chart-line"),
           h5("No results yet"),
           p(paste(

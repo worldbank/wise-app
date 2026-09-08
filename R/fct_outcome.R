@@ -152,6 +152,27 @@ outcome_transform <- function(type) {
 
 
 # ---------------------------------------------------------------------------- #
+# Outcome direction note                                                        #
+# ---------------------------------------------------------------------------- #
+
+#' Plain-language interpretation of an outcome direction
+#'
+#' @param direction A single character string, as returned by
+#'   `outcome_direction()`: `"higher_is_better"` or `"lower_is_better"`.
+#'
+#' @return A single character string, or `NULL` for unknown values.
+#'
+#' @export
+outcome_direction_note <- function(direction) {
+  switch(as.character(direction[1]) %||% "",
+    higher_is_better = "Higher values indicate better outcomes",
+    lower_is_better  = "Lower values indicate better outcomes",
+    NULL
+  )
+}
+
+
+# ---------------------------------------------------------------------------- #
 # Build selected outcome row                                                    #
 # ---------------------------------------------------------------------------- #
 
@@ -199,43 +220,6 @@ build_selected_outcome <- function(info, currency = NULL, poverty_line = NULL) {
 
 
 # ---------------------------------------------------------------------------- #
-# Outcome info message UI                                                       #
-# ---------------------------------------------------------------------------- #
-
-#' Build the informational tagList shown below the outcome selector
-#'
-#' Returns a `shiny::tagList` with styled divs describing the selected outcome
-#' type. Returns an empty `tagList` for unrecognised types.
-#'
-#' @param type A single character string - the outcome type (e.g. `"numeric"`,
-#'   `"logical"`).
-#'
-#' @return A `shiny.tag.list`.
-#'
-#' @export
-outcome_info_message <- function(type) {
-  type     <- tolower(as.character(type[1]))
-  messages <- shiny::tagList()
-
-  if (identical(type, "numeric")) {
-    messages <- shiny::tagList(messages, shiny::tags$div(
-      style = "margin-top:10px;padding:8px;background-color:#d1ecf1;border:1px solid #bee5eb;border-radius:4px;color:#0c5460;",
-      "Continuous outcomes will be log-transformed."
-    ))
-  }
-
-  if (identical(type, "logical")) {
-    messages <- shiny::tagList(messages, shiny::tags$div(
-      style = "margin-top:10px;padding:8px;background-color:#d4edda;border:1px solid #c3e6cb;border-radius:4px;color:#155724;",
-      "Binary outcome selected."
-    ))
-  }
-
-  messages
-}
-
-
-# ---------------------------------------------------------------------------- #
 # Outcome missingness summary                                                   #
 # ---------------------------------------------------------------------------- #
 
@@ -266,6 +250,26 @@ outcome_missing_summary <- function(df, outcome) {
 }
 
 
+# Outcome ridges use one colour per economy, matching the blue/teal series in
+# the interview-date chart. The ridge labels already identify each wave, so a
+# quiet economy-level fill is clearer than a separate legend entry per wave.
+#' @noRd
+.outcome_density_palette <- function(codes) {
+  codes <- sort(unique(as.character(codes)))
+  codes <- codes[!is.na(codes) & nzchar(codes)]
+  if (!length(codes)) return(character(0))
+
+  series <- c(
+    "#0071BC", # World Bank blue
+    "#00A6C7", # bright cyan
+    "#8667B3", # violet
+    "#C28C2C", # ochre
+    "#B85C6B"  # muted red
+  )
+  stats::setNames(rep(series, length.out = length(codes)), codes)
+}
+
+
 # # ---------------------------------------------------------------------------- #
 # ---------------------------------------------------------------------------- #
 # Outcome distribution ridge plot (by survey wave)                              #
@@ -273,7 +277,9 @@ outcome_missing_summary <- function(df, outcome) {
 
 #' Plot outcome distribution by survey wave
 #'
-#' Calls `ridge_distribution_plot()` on the specified outcome column.
+#' Calls `ridge_distribution_plot()` on the specified outcome column. The
+#' shared helper aggregates to a fixed histogram before smoothing, so plot
+#' construction remains responsive for very large country samples.
 #' For welfare, overlays dashed poverty line references. Numeric outcomes use
 #' log scale when all values are positive.
 #'
@@ -284,6 +290,7 @@ outcome_missing_summary <- function(df, outcome) {
 #' @param type Outcome type: `"numeric"` or `"logical"`.
 #' @param poverty_lines A data frame with columns `value` and `label`.
 #'   Only used when `outcome == "welfare"`.
+#' @param wave_labels Optional named character vector replacing wave labels.
 #'
 #' @return A `ggplot` object, or `NULL` invisibly.
 #'
@@ -292,36 +299,141 @@ plot_welfare_dist <- function(df,
                               outcome = "welfare",
                               label = NULL,
                               type = "numeric",
-                              poverty_lines = welfare_poverty_lines()) {
+                              poverty_lines = welfare_poverty_lines(),
+                              wave_labels = NULL) {
   if (is.null(df) || !(outcome %in% names(df))) return(invisible(NULL))
 
-  use_log <- identical(type, "numeric") &&
-    all(df[[outcome]][!is.na(df[[outcome]])] > 0)
-
-  x_label <- label %||% outcome
-  if (identical(outcome, "welfare")) x_label <- "$ per day (2021 PPP)"
-
-  p <- ridge_distribution_plot(
-    df,
-    x_var         = outcome,
-    x_label       = x_label,
-    wrap_width    = 40,
-    log_transform = use_log
-  )
-
-  if (is.null(p)) return(invisible(NULL))
-
-  # Binary outcomes: pin the x-axis to [0, 1] in 0.2 steps so that both the
-  # 0 and 1 values are clearly displayed.
   vals   <- df[[outcome]][!is.na(df[[outcome]])]
   type_l <- tolower(type %||% "")
   is_binary <- type_l %in% c("logical", "binary", "boolean") ||
     (length(vals) > 0 && is.numeric(vals) && all(vals %in% c(0, 1)))
+  x_label <- label %||% outcome
+  if (identical(outcome, "welfare")) x_label <- "$ per day (2021 PPP)"
+
+  # Binary outcomes are discrete proportions, not continuous densities. A
+  # 100% stacked bar makes the 0/1 shares immediately readable and avoids the
+  # unnecessary histogram/KDE pass used for continuous outcomes.
   if (is_binary) {
-    p <- p +
-      ggplot2::scale_x_continuous(breaks = seq(0, 1, by = 0.2)) +
-      ggplot2::coord_cartesian(xlim = c(0, 1), expand = FALSE)
+    if (!"countryyear" %in% names(df)) return(invisible(NULL))
+    x <- suppressWarnings(as.numeric(as.character(df[[outcome]])))
+    if (is.logical(df[[outcome]])) x <- as.integer(df[[outcome]])
+    keep <- is.finite(x) & x %in% c(0, 1) & !is.na(df$countryyear)
+    if (!any(keep)) return(invisible(NULL))
+    bars <- data.frame(
+      countryyear = as.character(df$countryyear[keep]),
+      value = factor(x[keep], levels = c(0, 1), labels = c("No", "Yes")),
+      stringsAsFactors = FALSE
+    )
+    bars <- collapse::fcount(
+      bars,
+      countryyear,
+      value,
+      name = "n",
+      sort = FALSE
+    )
+    bars <- bars[order(bars$countryyear, bars$value), , drop = FALSE]
+    bars$n_total <- ave(bars$n, bars$countryyear, FUN = sum)
+    bars$share <- bars$n / bars$n_total
+    bars$label <- ifelse(
+      bars$share >= 0.03,
+      paste0(round(100 * bars$share, 1), "%"),
+      ""
+    )
+    bars$label_colour <- ifelse(
+      bars$value == "No", "#1D2A35", "white"
+    )
+    bars$ymin <- ave(bars$share, bars$countryyear, FUN = function(z) {
+      c(0, head(cumsum(z), -1L))
+    })
+    bars$ymax <- bars$ymin + bars$share
+    bars$countryyear <- factor(
+      bars$countryyear, levels = sort(unique(bars$countryyear))
+    )
+    display_waves <- levels(bars$countryyear)
+    if (!is.null(wave_labels)) {
+      mapped <- unname(wave_labels[display_waves])
+      keep <- !is.na(mapped) & nzchar(mapped)
+      display_waves[keep] <- mapped[keep]
+    }
+
+    return(
+      ggplot2::ggplot(
+        bars,
+        ggplot2::aes(
+          x = .data$countryyear,
+          ymin = .data$ymin,
+          ymax = .data$ymax,
+          fill = .data$value
+        )
+      ) +
+        ggplot2::geom_rect(
+          ggplot2::aes(
+            xmin = as.numeric(.data$countryyear) - 0.45,
+            xmax = as.numeric(.data$countryyear) + 0.45,
+            ymin = .data$ymin,
+            ymax = .data$ymax
+          ),
+          colour = "white",
+          linewidth = 0.25
+        ) +
+        ggplot2::geom_text(
+          ggplot2::aes(
+            x = as.numeric(.data$countryyear),
+            y = (.data$ymin + .data$ymax) / 2,
+            label = .data$label,
+            colour = .data$label_colour
+          ),
+          size = 3,
+          fontface = "bold",
+          na.rm = TRUE
+        ) +
+        ggplot2::scale_fill_manual(
+          # Match the interview-location palette: pale blue for the
+          # baseline state, World Bank blue for the positive state.
+          values = c(No = "#D9EFF8", Yes = "#0071BC"),
+          drop = FALSE,
+          name = "Outcome"
+        ) +
+        ggplot2::scale_colour_identity() +
+        ggplot2::scale_y_continuous(
+          labels = scales::label_percent(),
+          limits = c(0, 1),
+          expand = ggplot2::expansion(mult = c(0, 0.03))
+        ) +
+        ggplot2::labs(
+          x = "Survey wave",
+          y = "Share of observations",
+          title = x_label
+        ) +
+        ggplot2::scale_x_discrete(labels = display_waves) +
+        theme_wise() +
+        ggplot2::theme(
+          legend.position = "top",
+          axis.text.x = ggplot2::element_text(angle = 35, hjust = 1)
+        )
+    )
   }
+
+  use_log <- identical(type, "numeric") &&
+    all(df[[outcome]][!is.na(df[[outcome]])] > 0)
+
+  p <- ridge_distribution_plot(
+    df,
+    x_var         = outcome,
+    fill_var      = "code",
+    x_label       = x_label,
+    wrap_width    = 40,
+    log_transform = use_log,
+    group_labels  = wave_labels
+  )
+
+  if (is.null(p)) return(invisible(NULL))
+
+  p <- p + ggplot2::scale_fill_manual(
+    values = .outcome_density_palette(df$code),
+    drop   = FALSE,
+    guide  = "none"
+  )
 
   if (identical(outcome, "welfare") && !is.null(poverty_lines)) {
     for (i in seq_len(nrow(poverty_lines))) {
@@ -491,7 +603,148 @@ plot_welfare_dist <- function(df,
 
 
 # ---------------------------------------------------------------------------- #
-# Outcome directionality                                                        #
+# Outcome mean-value map                                                       #
+# ---------------------------------------------------------------------------- #
+
+# Per-location mean of the outcome, pooled over the passed rows: the plain
+# mean of the sampled units' non-missing values plus how many of them sit
+# behind it. Unweighted, like the tab's pooled summary statistics - a sample
+# statistic, not a population estimate.
+#' @return A data frame keyed by `code/year/survname/loc_id` (whichever keys
+#'   the frame carries), or `NULL` when the inputs are unusable.
+#' @noRd
+.outcome_loc_means <- function(df, outcome) {
+  keys <- c("code", "year", "survname", "loc_id")
+  if (is.null(df) || !outcome %in% names(df) || !"loc_id" %in% names(df))
+    return(NULL)
+  df |>
+    dplyr::mutate(.val = suppressWarnings(as.numeric(.data[[outcome]]))) |>
+    dplyr::filter(!is.na(.data$.val)) |>
+    dplyr::summarise(
+      value = mean(.data$.val),
+      n_hh  = dplyr::n(),
+      .by   = dplyr::any_of(keys)
+    )
+}
+
+# Legend hover text for the mean map. The sample-statistics caveat is the
+# whole point of the view, so it rides along wherever the map is read.
+#' @noRd
+.outcome_mean_legend_info <- function(is_binary) paste0(
+  "Mean of the sampled units' outcome value at each location",
+  if (is_binary) " (share of 1s, shown as %)" else "",
+  ". Mean values reflect sample statistics in a given location, not ",
+  "population-representative statistics (location sample sizes are not ",
+  "sufficient)."
+)
+
+#' Columnar hex-map payload for the outcome mean-value map
+#'
+#' The mean-value companion of `.coverage_hex_payload()`: per-location means
+#' of the outcome's non-missing sampled values, merged onto cells with the
+#' same weighted rule and drawn with the weather maps' sequential ramp.
+#' Binary outcomes are shares and are scaled to percent on a fixed 0-100
+#' domain so two runs of the map stay comparable; continuous outcomes use a
+#' ramp over the range actually observed. Locations with no non-missing
+#' value drop out and their cells arrive as `NA` and are painted grey.
+#'
+#' @param cell_geo Per-cell geometry frame (`cell_data()$geom`).
+#' @param cmap     Wave-filtered location-to-cell map (`cell_data()$map`).
+#' @param df       Wave-filtered outcome data.
+#' @param outcome  Outcome variable name.
+#' @param type     Outcome type string (`"numeric"` / `"logical"`), as stored
+#'   in the variable list.
+#'
+#' @return A list with `payload` (for `hexmap_update()`) and `legend` (for
+#'   `.compact_legend_html()`); `NULL` when there is nothing to draw.
+#'
+#' @noRd
+.outcome_mean_hex_payload <- function(cell_geo, cmap, df, outcome,
+                                      type = "numeric") {
+  if (is.null(cell_geo) || is.null(cmap) || nrow(cmap) == 0) return(NULL)
+  loc_means <- .outcome_loc_means(df, outcome)
+  if (is.null(loc_means) || nrow(loc_means) == 0) return(NULL)
+
+  is_binary <- tolower(as.character(type[1])) %in%
+    c("logical", "binary", "boolean")
+
+  lv <- loc_means
+  if (is_binary) lv$value <- lv$value * 100
+
+  # by_wave = FALSE: one value per cell, pooling every selected wave, so a
+  # cell sampled by two waves is painted once (PERF-36 draw-once rule) -
+  # the same pooling the coverage map applies.
+  merged <- merge_loc_values_to_cells(cmap, lv, by_wave = FALSE)
+  if (is.null(merged) || nrow(merged) == 0) return(NULL)
+
+  vals <- suppressWarnings(as.numeric(merged$value))
+
+  # A share is a fixed 0-100 scale; anything else follows the observed range
+  # (the palette builds its own domain from the values when none is fixed).
+  pal_info <- .weather_map_palette(
+    vals, FALSE, NULL, "None",
+    domain = if (is_binary) c(0, 100) else NULL
+  )
+  rng <- pal_info$domain
+
+  # Drawn set: every selected-wave cell that carries geometry - cells the
+  # merge produced no mean for are sent with NA and painted grey.
+  cells <- cell_geo |>
+    dplyr::inner_join(dplyr::distinct(cmap, .data$h3), by = "h3") |>
+    dplyr::filter(!is.na(.data$geom), nchar(.data$geom) > 2)
+  if (nrow(cells) == 0) return(NULL)
+
+  by_h3 <- stats::setNames(vals, merged$loc_id)
+  v <- unname(by_h3[cells$h3])
+
+  # Tooltip identifiers from the cell map: the first contributing wave plus
+  # how many locations feed the cell.
+  wave_txt <- trimws(paste(
+    ifelse(is.na(merged$code), "", as.character(merged$code)),
+    ifelse(is.na(merged$year), "", as.character(merged$year)),
+    ifelse(is.na(merged$survname), "", as.character(merged$survname))
+  ))
+  info <- paste0(
+    wave_txt, ifelse(nzchar(wave_txt), " \u00b7 ", ""),
+    merged$n_locs, ifelse(merged$n_locs == 1L, " location", " locations")
+  )
+  info_by_h3 <- stats::setNames(info, merged$loc_id)
+  tip <- unname(info_by_h3[cells$h3])
+
+  bounds <- NULL
+  if (all(c("xmin", "ymin", "xmax", "ymax") %in% names(cells))) {
+    bounds <- c(
+      min(cells$xmin, na.rm = TRUE), min(cells$ymin, na.rm = TRUE),
+      max(cells$xmax, na.rm = TRUE), max(cells$ymax, na.rm = TRUE)
+    )
+  }
+
+  title <- if (is_binary) "Mean (%)" else "Mean value"
+  payload <- hexmap_payload(
+    h3     = cells$h3,
+    v      = v,
+    v_kind = "continuous",
+    stops  = list(domain = rng, colors = pal_info$colors),
+    bounds = bounds,
+    info   = tip,
+    label  = title,
+    unit   = if (is_binary) "%" else ""
+  )
+
+  list(
+    payload = payload,
+    legend = list(
+      pal_info = list(pal = pal_info$pal, domain = rng),
+      binned   = FALSE,
+      title    = title,
+      info     = .outcome_mean_legend_info(is_binary)
+    )
+  )
+}
+
+
+# ---------------------------------------------------------------------------- #
+# Outcome directionality                                                       #
 # ---------------------------------------------------------------------------- #
 
 #' Classify whether larger simulated values are better or worse for an outcome

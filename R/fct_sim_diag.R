@@ -470,12 +470,28 @@ plot_weather_density_panel <- function(survey_weather,
 # Returns a data.frame(x, density_raw) on the shared n-point grid.
 #' @noRd
 .kde_group <- function(vals, bw, x_lo, x_hi, n = 512L) {
-  if (length(vals) < 2L) {
-    return(data.frame(x           = seq(x_lo, x_hi, length.out = n),
+  vals <- as.numeric(vals)
+  vals <- vals[is.finite(vals)]
+  if (!length(vals)) {
+    return(data.frame(x = seq(x_lo, x_hi, length.out = n),
                       density_raw = 0))
   }
-  d <- stats::density(vals, bw = bw, from = x_lo, to = x_hi, n = n)
-  data.frame(x = d$x, density_raw = d$y)
+
+  rd <- build_ridge_distribution_data(
+    data.frame(.x = vals, .g = "ridge", .f = "ridge"),
+    x_var        = ".x",
+    group_var    = ".g",
+    fill_var     = ".f",
+    n_bins       = 256L,
+    n_grid       = n,
+    x_range      = c(x_lo, x_hi),
+    bandwidth    = bw
+  )
+  if (is.null(rd)) {
+    return(data.frame(x = seq(x_lo, x_hi, length.out = n),
+                      density_raw = 0))
+  }
+  data.frame(x = rd$data$x, density_raw = rd$data$height)
 }
 
 
@@ -554,14 +570,19 @@ build_ridge_kde_data <- function(hist_preds,
     unlist(scenario_groups, use.names = FALSE)
   )
   all_vals <- all_vals[is.finite(all_vals)]
-  # BW and P1-P99 clip always in linear space; log display via scale_x_log10().
-  global_bw <- tryCatch(
-    stats::bw.nrd0(all_vals),
-    error = function(e)
-      stats::bw.nrd0(all_vals[seq_len(min(1000L, length(all_vals)))])
+  # Build one compact histogram for bandwidth and clipping. This avoids sorting
+  # every simulated draw just to determine the display range and KDE scale.
+  global_rd <- build_ridge_distribution_data(
+    data.frame(.x = all_vals, .g = "all", .f = "all"),
+    x_var     = ".x",
+    group_var = ".g",
+    fill_var  = ".f",
+    n_bins    = 512L,
+    n_grid    = 64L
   )
-
-  qs <- stats::quantile(all_vals, probs = c(0.01, 0.99), na.rm = TRUE)
+  if (is.null(global_rd)) return(NULL)
+  global_bw <- global_rd$bandwidth
+  qs <- global_rd$quantile_range
 
   # Regression output:
   #   predicted = clean model fitted values (.fitted column, no residual noise)
@@ -577,17 +598,44 @@ build_ridge_kde_data <- function(hist_preds,
   }, error = function(e) numeric(0))
 
   actual_vals_clean <- tryCatch({
-    if (is.null(actual_vals)) return(numeric(0))
-    v <- as.numeric(actual_vals)
-    v[is.finite(v)]
+    if (is.null(actual_vals)) {
+      numeric(0)
+    } else {
+      v <- as.numeric(actual_vals)
+      v[is.finite(v)]
+    }
   }, error = function(e) numeric(0))
 
   # Separate bandwidth for regression curves: estimated from the regression
   # sample alone so it is not dominated by the 30yr x N hist_groups pool.
   reg_bw <- if (length(predicted_vals) >= 2L) {
-    tryCatch(stats::bw.nrd0(predicted_vals[is.finite(predicted_vals)]),
-             error = function(e) global_bw)
+    pred_rd <- build_ridge_distribution_data(
+      data.frame(.x = predicted_vals, .g = "pred", .f = "pred"),
+      x_var = ".x", group_var = ".g", fill_var = ".f",
+      n_bins = 256L, n_grid = 64L
+    )
+    if (is.null(pred_rd)) global_bw else pred_rd$bandwidth
   } else global_bw
+
+  # Materialise every curve once while the source vectors are available. The
+  # renderer can then switch between display modes without re-scanning the
+  # simulation draws or re-running a KDE for each visible curve.
+  hist_curves <- lapply(hist_groups, .kde_group,
+                        bw = global_bw, x_lo = qs[1L], x_hi = qs[2L])
+  scenario_curves <- lapply(scenario_groups, function(by_year) {
+    lapply(by_year, .kde_group, bw = global_bw,
+           x_lo = qs[1L], x_hi = qs[2L])
+  })
+  scenario_pooled_curves <- lapply(scenario_groups, function(by_year) {
+    vals <- unlist(by_year, use.names = FALSE)
+    .kde_group(vals, bw = global_bw, x_lo = qs[1L], x_hi = qs[2L])
+  })
+  predicted_curve <- if (length(predicted_vals) >= 2L) {
+    .kde_group(predicted_vals, bw = reg_bw, x_lo = qs[1L], x_hi = qs[2L])
+  } else NULL
+  actual_curve <- if (length(actual_vals_clean) >= 2L) {
+    .kde_group(actual_vals_clean, bw = reg_bw, x_lo = qs[1L], x_hi = qs[2L])
+  } else NULL
 
   scen_nms     <- names(scenario_groups)
   ssp_keys     <- vapply(scen_nms, .normalise_ssp, character(1))
@@ -610,7 +658,14 @@ build_ridge_kde_data <- function(hist_preds,
     outcome_name    = outcome_name,
     predicted_vals  = predicted_vals,
     actual_vals     = actual_vals_clean,
-    reg_bw          = reg_bw
+    reg_bw          = reg_bw,
+    ridge_curves    = list(
+      hist            = hist_curves,
+      scenario        = scenario_curves,
+      scenario_pooled = scenario_pooled_curves,
+      predicted       = predicted_curve,
+      actual          = actual_curve
+    )
   )
 }
 
@@ -681,6 +736,10 @@ plot_year_anchored_ridge <- function(kde_data,
   )
   predicted_vals  <- kde_data$predicted_vals  %||% numeric(0)
   actual_vals     <- kde_data$actual_vals     %||% numeric(0)
+  ridge_curves    <- kde_data$ridge_curves %||% list()
+  hist_curves     <- ridge_curves$hist %||% list()
+  scenario_curves <- ridge_curves$scenario %||% list()
+  pooled_curves   <- ridge_curves$scenario_pooled %||% list()
 
 
   hist_fill    <- "#d0d0d0"
@@ -707,7 +766,8 @@ plot_year_anchored_ridge <- function(kde_data,
     scen_nms
   )
 
-  .run_kde <- function(vals) {
+  .run_kde <- function(vals, precomputed = NULL) {
+    if (!is.null(precomputed)) return(precomputed)
     kv <- vals[is.finite(vals)]
     kd <- .kde_group(kv, global_bw, x_lo_tr, x_hi_tr)
     dns  <- kd$density_raw
@@ -728,7 +788,9 @@ plot_year_anchored_ridge <- function(kde_data,
 
     for (yr_chr in names(hist_groups)) {
       y_anch <- yr_rank[yr_chr]
-      kd     <- .run_kde(hist_groups[[yr_chr]])
+      kd     <- .run_kde(
+        hist_groups[[yr_chr]], hist_curves[[yr_chr]]
+      )
 
       hist_ribbons[[yr_chr]] <- data.frame(
         x         = kd$x,
@@ -743,7 +805,10 @@ plot_year_anchored_ridge <- function(kde_data,
         scen_nms
       )
       for (nm in active_sub) {
-        kd2 <- .run_kde(scenario_groups[[nm]][[yr_chr]])
+        kd2 <- .run_kde(
+          scenario_groups[[nm]][[yr_chr]],
+          scenario_curves[[nm]][[yr_chr]]
+        )
         scen_lines[[paste0(nm, "__", yr_chr)]] <- data.frame(
           x         = kd2$x,
           y         = y_anch + kd2$density_raw * ridge_scale * 0.85,
@@ -791,7 +856,9 @@ plot_year_anchored_ridge <- function(kde_data,
       all_scen_vals <- unlist(scenario_groups[[scen_nm]], use.names = FALSE)
       all_scen_vals <- all_scen_vals[is.finite(all_scen_vals)]
       if (length(all_scen_vals) >= 2L) {
-        kd_base <- .run_kde(all_scen_vals)
+        kd_base <- .run_kde(
+          all_scen_vals, pooled_curves[[scen_nm]]
+        )
         hist_ribbons[[scen_nm]] <- data.frame(
           x         = kd_base$x,
           ymin      = y_anch,
@@ -802,7 +869,9 @@ plot_year_anchored_ridge <- function(kde_data,
       for (yr_chr in yr_chrs) {
         yr_vals <- scenario_groups[[scen_nm]][[yr_chr]]
         if (is.null(yr_vals) || length(yr_vals) < 2L) next
-        kd2 <- .run_kde(yr_vals)
+        kd2 <- .run_kde(
+          yr_vals, scenario_curves[[scen_nm]][[yr_chr]]
+        )
         scen_lines[[paste0(scen_nm, "__", yr_chr)]] <- data.frame(
           x = kd2$x, y = y_anch + kd2$density_raw * ridge_scale * 0.85,
           line_col = yr_grey[yr_chr], lty = "solid",
@@ -845,7 +914,9 @@ plot_year_anchored_ridge <- function(kde_data,
       all_scen_vals <- unlist(scenario_groups[[scen_nm]], use.names = FALSE)
       all_scen_vals <- all_scen_vals[is.finite(all_scen_vals)]
       if (length(all_scen_vals) >= 2L) {
-        kd_base <- .run_kde(all_scen_vals)
+        kd_base <- .run_kde(
+          all_scen_vals, pooled_curves[[scen_nm]]
+        )
         hist_ribbons[[scen_nm]] <- data.frame(
           x         = kd_base$x,
           ymin      = y_anch,
@@ -856,7 +927,9 @@ plot_year_anchored_ridge <- function(kde_data,
       for (yr_chr in yr_chrs) {
         yr_vals <- scenario_groups[[scen_nm]][[yr_chr]]
         if (is.null(yr_vals) || length(yr_vals) < 2L) next
-        kd2 <- .run_kde(yr_vals)
+        kd2 <- .run_kde(
+          yr_vals, scenario_curves[[scen_nm]][[yr_chr]]
+        )
         scen_lines[[paste0(scen_nm, "__", yr_chr)]] <- data.frame(
           x = kd2$x, y = y_anch + kd2$density_raw * ridge_scale * 0.85,
           line_col = yr_grey[yr_chr], lty = "solid",
@@ -926,8 +999,9 @@ plot_year_anchored_ridge <- function(kde_data,
 
     if (has_predicted) {
       reg_bw_use  <- kde_data$reg_bw %||% global_bw
-      kd_pred_raw <- .kde_group(predicted_vals[is.finite(predicted_vals)],
-                                reg_bw_use, x_lo_tr, x_hi_tr)
+      kd_pred_raw <- ridge_curves$predicted %||%
+        .kde_group(predicted_vals[is.finite(predicted_vals)],
+                   reg_bw_use, x_lo_tr, x_hi_tr)
       pred_dns    <- kd_pred_raw$density_raw
       pred_dns    <- pred_dns / max(pred_dns[is.finite(pred_dns) & pred_dns > 0], 1e-12)
       pred_df <- data.frame(
@@ -958,7 +1032,8 @@ plot_year_anchored_ridge <- function(kde_data,
       reg_bw_use  <- kde_data$reg_bw %||% global_bw
       act_vals_fi <- actual_vals[is.finite(actual_vals)]
       # Use reg_bw from predicted_vals since both are on the same scale
-      kd_act_raw  <- .kde_group(act_vals_fi, reg_bw_use, x_lo_tr, x_hi_tr)
+      kd_act_raw  <- ridge_curves$actual %||%
+        .kde_group(act_vals_fi, reg_bw_use, x_lo_tr, x_hi_tr)
       act_dns     <- kd_act_raw$density_raw
       act_dns     <- act_dns / max(act_dns[is.finite(act_dns) & act_dns > 0], 1e-12)
       act_df <- data.frame(

@@ -86,3 +86,44 @@ test_that("INT-06: reload clears stale map/cell state; H3 failure leaves it clea
     }
   )
 })
+
+test_that("PERF-40: stats tables render from the shared union pass", {
+  # The fixture must survive the load pipeline untouched and carry one
+  # numeric hh-flagged variable (see make_raw_survey() above).
+  raw <- make_raw_survey()
+  raw$x1 <- c(1, 2, 3)
+  local_mocked_bindings(load_data = function(fnames, ...) raw)
+
+  vl <- data.frame(
+    name  = "x1",
+    label = "X one",
+    units = "x",
+    hh    = 1,
+    stringsAsFactors = FALSE
+  )
+
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id                = "ss",
+      connection_params = shiny::reactiveVal(list()),
+      variable_list     = shiny::reactiveVal(vl),
+      selected_surveys  = shiny::reactiveVal(make_selected_surveys_fixture()),
+      cpi_ppp           = shiny::reactiveVal(data.frame()),
+      tabset_id         = "step1_tabs"
+    ),
+    {
+      session$setInputs(survey_stats = 0L)
+      session$setInputs(survey_stats = 1L)
+      session$flushReact()
+
+      # Rendering the hh table evaluates stats_base() and filters its rows;
+      # the server-side payload carries the column headers.
+      payload <- paste(jsonlite::toJSON(output$hh_stats, auto_unbox = TRUE),
+                       collapse = "")
+      expect_match(payload, "Variable", fixed = TRUE)
+      expect_match(payload, "Country, Year", fixed = TRUE)
+      expect_match(payload, "Mean", fixed = TRUE)
+    }
+  )
+})

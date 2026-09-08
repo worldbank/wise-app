@@ -74,8 +74,7 @@ mod_3_02_infra_server <- function(id,
       if (isTRUE(any_selected())) return(NULL)
       # Only show placeholder if there are infrastructure variables in the survey
       if (length(infra_vars_available()) == 0) {
-        return(div(
-          class = "alert alert-warning",
+        return(no_data_warning(
           "No infrastructure variables found in the selected survey (or level of analysis)."
         ))
       }

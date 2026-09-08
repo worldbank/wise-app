@@ -10,12 +10,10 @@
 #' @importFrom ggplot2 ggplot aes geom_bar theme_minimal labs theme
 mod_1_02_surveystats_ui <- function(id) {
   ns <- NS(id)
-  tags$style(HTML("
-    table.dataTable td.dt-wrap {
-      white-space: normal !important;
-      word-break: break-word;
-    }
-  "))
+  # The `dt-wrap` column style lives in custom.css. It used to be built here
+  # as a bare tags$style() that was evaluated and then thrown away - the
+  # tagList below is what the function returns - so the rule never reached the
+  # page. It now also serves the weather stats tables (fct_weatherstats.R).
   tagList(
     uiOutput(ns("survey_stats_button_ui"))
   )
@@ -104,6 +102,44 @@ mod_1_02_surveystats_server <- function(
     cell_data    <- reactiveVal(NULL)
     # REACT-03: digest of the last successfully completed load request.
     last_load_sig <- reactiveVal(NULL)
+    # PERF-36: bumped whenever a new map dataset lands in cell_data(); the
+    # density observer fits the camera only when this changes. The fit must
+    # not key on digest(selected_surveys()): that reactive is read inside the
+    # observer, so changing the sample picker fired it against the old map
+    # and stamped the new selection's key onto stale payloads - the refit
+    # after the real load was then skipped and the camera kept the previous
+    # sample's extent.
+    map_data_version <- shiny::reactiveVal(0L)
+
+    # ---- Shared stats base (PERF-40) ----------------------------------------
+    # Every summary-stats table on the tab summarises the same survey frame;
+    # six independent renderDT pipelines each re-subset it and re-run the
+    # grouped collapse passes over their own var set on every load (~5s at
+    # Iran scale). One pass over the union of table variables feeds every
+    # table by row-filtering via make_stats_dt(base = ).
+    policy_vars <- unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
+
+    stats_base <- reactive({
+      sd <- survey_data()
+      shiny::req(sd)
+      vl <- if (is.function(variable_list)) variable_list() else variable_list
+
+      targets <- if (is.null(vl)) character(0) else {
+        unlist(lapply(c("outcome", "ind", "hh", "firm", "area"), function(fc) {
+          if (fc %in% names(vl)) vl$name[vl[[fc]] == 1] else character(0)
+        }), use.names = FALSE)
+      }
+
+      union_vars <- intersect(unique(c(targets, policy_vars)), names(sd))
+      if (!length(union_vars)) return(NULL)
+      list(
+        vars    = union_vars,
+        summary = weighted_summary_long(sd, vars = union_vars),
+        missing = if ("countryyear" %in% names(sd)) {
+          survey_missingness_long(sd, vars = union_vars)
+        } else NULL
+      )
+    })
 
     # ---- Load and prepare data on button click ------------------------------
 
@@ -229,6 +265,7 @@ mod_1_02_surveystats_server <- function(
             collect_deterministic(c("code", "year", "survname", "loc_id", "h3"))
 
           cell_data(list(geom = cell_geo, map = cell_map))
+          map_data_version(map_data_version() + 1L)
         }, error = function(e) {
           load_ok <<- FALSE
           notify(paste("Failed to build sample density map:", conditionMessage(e)),
@@ -276,12 +313,42 @@ mod_1_02_surveystats_server <- function(
 
       if (!survey_tab_added()) {
 
-        # Interview dates bar chart
+        # Interview dates bar chart. Grouped columns keep wave totals directly
+        # comparable; plot_interview_dates() also exposes faceted and heatmap
+        # variants for static outputs and design comparisons.
+        interview_date_fig <- function() {
+          unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
+          unit_label <- switch(
+            unit %||% "hh",
+            ind = "Individuals",
+            firm = "Firms",
+            "Households"
+          )
+          plot_interview_dates(
+            summarise_interview_dates(survey_data()),
+            unit_label = unit_label,
+            palette = "sequential",
+            wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
+          )
+        }
+
         output$interview_date <- renderPlot({
-          p <- plot_interview_dates(summarise_interview_dates(survey_data()))
+          p <- interview_date_fig()
           req(!is.null(p))
           p
         })
+
+        wise_export_figure(
+          key   = "interview_dates",
+          label = "Interview dates",
+          step  = 1L,
+          fun   = interview_date_fig,
+          description = paste(
+            "When the selected surveys were fielded, by month - the calendar",
+            "window the weather aggregation is matched against."
+          ),
+          width = 9, height = 5
+        )
 
         # Unit label for legend/tooltip text ("households", "individuals",
         # "firms"), resolved live so an analysis-unit switch re-labels.
@@ -309,14 +376,16 @@ mod_1_02_surveystats_server <- function(
           }
           if (is.null(pl)) {
             hexmap_clear(session, ns, "density_map")
+            density_key(NULL)
             density_lgd(NULL)
             density_nloc(NULL)
           } else {
             hexmap_update(session, ns, "density_map", pl$payload)
-            key <- digest::digest(selected_surveys())
-            if (!identical(key, density_key())) {
+            # PERF-36: refit only when a new map dataset has landed; wave
+            # re-colours keep pan/zoom.
+            if (!identical(map_data_version(), density_key())) {
               hexmap_fit(session, ns, "density_map", pl$payload$bounds)
-              density_key(key)
+              density_key(map_data_version())
             }
             density_lgd(pl$legend)
 
@@ -377,11 +446,44 @@ mod_1_02_surveystats_server <- function(
           )
         })
 
-        output$outcome_stats <- make_stats_dt(survey_data, variable_list, "outcome")
-        output$ind_stats     <- make_stats_dt(survey_data, variable_list, "ind")
-        output$hh_stats      <- make_stats_dt(survey_data, variable_list, "hh")
-        output$firm_stats    <- make_stats_dt(survey_data, variable_list, "firm")
-        output$area_stats    <- make_stats_dt(survey_data, variable_list, "area")
+        output$outcome_stats <- make_stats_dt(survey_data, variable_list, "outcome",
+                                              base = stats_base)
+        output$ind_stats     <- make_stats_dt(survey_data, variable_list, "ind",
+                                              base = stats_base)
+        output$hh_stats      <- make_stats_dt(survey_data, variable_list, "hh",
+                                              base = stats_base)
+        output$firm_stats    <- make_stats_dt(survey_data, variable_list, "firm",
+                                              base = stats_base)
+        output$area_stats    <- make_stats_dt(survey_data, variable_list, "area",
+                                              base = stats_base)
+
+        # UI-48: register the same builders with the export bundle. Nothing is
+        # computed here - the functions are called only if a bundle is asked
+        # for, and return NULL for a level the survey has no variables at.
+        local({
+          levels <- list(
+            outcome = "Outcome variables",
+            ind     = "Individual-level variables",
+            hh      = "Household-level variables",
+            firm    = "Firm-level variables",
+            area    = "Area-level variables"
+          )
+          for (flag in names(levels)) local({
+            f <- flag
+            wise_export_table(
+              key   = paste0("survey_summary_", f),
+              label = paste("Survey summary -", tolower(levels[[f]])),
+              step  = 1L,
+              fun   = function() build_stats_table(survey_data, variable_list, f,
+                                                   base = stats_base),
+              description = paste0(
+                "Weighted summary statistics (N, mean, SD, percentiles, % ",
+                "missing) for ", tolower(levels[[f]]),
+                ", by country and survey wave."
+              )
+            )
+          })
+        })
 
         # Only show characteristic tables relevant to the selected level of
         # analysis: individual level implies household + area also apply;
@@ -414,33 +516,83 @@ mod_1_02_surveystats_server <- function(
           )
         })
 
-        policy_vars <- unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
-        output$policy_stats  <- make_stats_dt(survey_data, variable_list,
-                                              vars = policy_vars)
+        # ---- Selection summary card (replaces the old DT table) -------------
+        # Binds live to selected_surveys()/analysis_unit() so the card follows
+        # the sidebar selection, like the DT table it replaces.
+
+        wise_export_table(
+          key   = "survey_summary_policy",
+          label = "Survey summary - policy-relevant variables",
+          step  = 1L,
+          fun   = function() build_stats_table(survey_data, variable_list,
+                                               vars = policy_vars,
+                                               base = stats_base),
+          description = paste(
+            "Weighted summary statistics for the variables that Step 3's",
+            "policy levers act on, by country and survey wave."
+          )
+        )
+
+        selected_surveys_df <- function() {
+          sel <- selected_surveys()
+          if (is.null(sel)) return(NULL)
+          sel |> dplyr::select(-dplyr::any_of(c("fname", "fpath")))
+        }
+
+        wise_export_table(
+          key   = "selected_surveys",
+          label = "Selected surveys",
+          step  = 1L,
+          fun   = selected_surveys_df,
+          description = paste(
+            "The survey rounds included in the analysis: country, year,",
+            "survey name and sample metadata."
+          )
+        )
 
         output$selected_surveys <- DT::renderDT({
           req(selected_surveys())
-          selected_surveys() |> dplyr::select(-dplyr::any_of(c("fname", "fpath")))
+          selected_surveys_df()
         }, rownames = FALSE,
-          options = list(dom = "t", paging = FALSE, searching = FALSE, info = FALSE),
+          extensions = "Buttons",
+          options = list(dom = wise_csv_dom("t"), paging = FALSE,
+                         searching = FALSE, info = FALSE,
+                         buttons = wise_csv_button("selected_surveys")),
           class = "compact")
 
-        output$selected_outcome_section <- renderUI({
-          if (is.null(selected_outcome) || !is.function(selected_outcome)) return(NULL)
-          sel <- tryCatch(selected_outcome(), error = function(e) NULL)
-          if (is.null(sel)) return(NULL)
-          tagList(br(), h4("Selected outcome variable"), DT::DTOutput(ns("selected_outcome")))
+        output$selected_surveys_card <- renderUI({
+          ss <- selected_surveys()
+          req(nrow(ss) > 0)
+
+          unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
+          badge <- analysis_unit_label(unit) %||%
+            analysis_unit_label(unique(ss$level)[1])
+
+          econ_rows <- lapply(
+            sort(unique(ss$code)),
+            function(code) {
+              s <- ss[ss$code == code, ]
+              programs <- sort(unique(s$survname))
+              selection_card_row(
+                name  = as.character(s$economy[1]),
+                sub   = if (length(programs)) paste(programs, collapse = " / "),
+                pills = as.character(sort(unique(s$year)))
+              )
+            }
+          )
+
+          selection_summary_card(
+            title = "Selected sample",
+            rows  = econ_rows,
+            badge = badge
+          )
         })
 
-        output$selected_outcome <- DT::renderDT({
-          if (is.null(selected_outcome) || !is.function(selected_outcome)) return(NULL)
-          sel <- tryCatch(selected_outcome(), error = function(e) NULL)
-          if (is.null(sel) || !is.data.frame(sel) || nrow(sel) == 0)
-            return(data.frame(Note = "No outcome selected"))
-          sel
-        }, rownames = FALSE,
-          options = list(dom = "t", paging = FALSE, searching = FALSE, info = FALSE),
-          class = "compact")
+        output$policy_stats  <- make_stats_dt(survey_data, variable_list,
+                                              vars = policy_vars,
+                                              base = stats_base)
+
+        # ---- Outcome summary moved to the Outcome stats tab's selection card --
 
         # Append Survey stats tab to parent tabset
         tryCatch(
@@ -449,19 +601,26 @@ mod_1_02_surveystats_server <- function(
             shiny::tabPanel(
               title = "Survey stats",
               value = "desc_stats",
+              uiOutput(ns("selected_surveys_card")),
               bslib::layout_columns(
                 col_widths = c(6, 6),
+                # gap = 0: bslib's default body gap would otherwise put
+                # 24px between the heading and the plot; the heading's own
+                # margin is the spacing that remains.
                 bslib::card(
-                  h4(
-                    "Timing of interviews", class = "mb-2",
-                    info_popover(
-                      title = "Timing of interviews",
-                      p("Monthly breakdown of interview waves.")
-                    )
-                  ),
-                  wise_plot_output(ns("interview_date"),
-                                   "Bar plot of the distribution of interview dates across the selected surveys",
-                                   height = "300px")
+                  bslib::card_body(
+                    gap = 0,
+                    h4(
+                      "Timing of interviews", class = "mb-2",
+                      info_popover(
+                        title = "Timing of interviews",
+                        p("Monthly breakdown of interview waves.")
+                      )
+                    ),
+                    wise_plot_output(ns("interview_date"),
+                                     "Bar plot of the distribution of interview dates across the selected surveys",
+                                     height = "300px")
+                  )
                 ),
                 # Pairing a definite card height with a 100%-height map is what
                 # lets the map fill the card in both the normal and the
@@ -472,37 +631,44 @@ mod_1_02_surveystats_server <- function(
                 bslib::card(
                   full_screen = TRUE,
                   height      = "400px",
-                  shiny::div(
-                    class = paste("d-flex align-items-center",
-                                  "justify-content-between flex-wrap gap-2 mb-2"),
-                    h4(
-                      "Location of interviews", class = "mb-0",
-                      info_popover(
-                        title = "Location of interviews",
-                        p(paste(
-                          "Geographic distribution of sampled interviews.",
-                          "Each hexagon is an H3 cell shaded by how many",
-                          "sampled units fall in it; cells tile without",
-                          "overlapping, so dense areas read directly off the",
-                          "colour. Pick the survey wave on the right."
-                        ))
-                      )
+                  # The explicit card_body with gap = 0: bslib's default body
+                  # gap would otherwise put 24px between the controls row and
+                  # the map; the controls' own mb-2 is the spacing that
+                  # remains.
+                  bslib::card_body(
+                    gap = 0,
+                    shiny::div(
+                      class = paste("d-flex align-items-center",
+                                    "justify-content-between flex-wrap gap-2 mb-2"),
+                      h4(
+                        "Location of interviews", class = "mb-0",
+                        info_popover(
+                          title = "Location of interviews",
+                          p(paste(
+                            "Geographic distribution of sampled interviews.",
+                            "Each hexagon is an H3 cell shaded by how many",
+                            "sampled units fall in it; cells tile without",
+                            "overlapping, so dense areas read directly off the",
+                            "colour. Pick the survey wave on the right."
+                          ))
+                        )
+                      ),
+                      shiny::uiOutput(ns("map_wave_ui"), inline = TRUE)
                     ),
-                    shiny::uiOutput(ns("map_wave_ui"), inline = TRUE)
-                  ),
-                  # The MapLibre hex map. hexmap_ui() is placed directly in
-                  # the card (no renderUI): the container persists for the
-                  # session and the payload observer drives everything.
-                  hexmap_ui(
-                    ns("density_map"),
-                    height     = "100%",
-                    aria_label = paste0(
-                      "Map of sample density: number of sampled units ",
-                      "per hexagonal area cell"
-                    ),
-                    legend = shiny::uiOutput(ns("map_legend_ui"))
-                  ) |>
-                    bslib::as_fill_carrier()
+                    # The MapLibre hex map. hexmap_ui() is placed directly in
+                    # the card (no renderUI): the container persists for the
+                    # session and the payload observer drives everything.
+                    hexmap_ui(
+                      ns("density_map"),
+                      height     = "100%",
+                      aria_label = paste0(
+                        "Map of sample density: number of sampled units ",
+                        "per hexagonal area cell"
+                      ),
+                      legend = shiny::uiOutput(ns("map_legend_ui"))
+                    ) |>
+                      bslib::as_fill_carrier()
+                  )
                 )
               ),
               h4(
@@ -522,11 +688,7 @@ mod_1_02_surveystats_server <- function(
               h4("Policy variables"),
               p(class = "text-muted small", "Variables that can be adjusted in Step 3 policy scenarios"),
               DT::DTOutput(ns("policy_stats")),
-              uiOutput(ns("characteristic_tables_ui")),
-              br(),
-              h4("Selected surveys"),           DT::DTOutput(ns("selected_surveys")),
-              br(),
-              uiOutput(ns("selected_outcome_section"))
+              uiOutput(ns("characteristic_tables_ui"))
             ),
             select  = TRUE,
             session = tabset_session

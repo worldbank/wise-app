@@ -13,8 +13,7 @@ mod_1_01_sample_ui <- function(id) {
     wellPanel(
       uiOutput(ns("unit_ui")),
       uiOutput(ns("sample_ui")),
-      uiOutput(ns("survey_year_ui")),
-      uiOutput(ns("load_button_ui"))
+      uiOutput(ns("survey_year_ui"))
     )
   )
 }
@@ -42,7 +41,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
     # ---- Level of analysis selector -----------------------------------------
 
     output$unit_ui <- renderUI({
-      radioButtons(
+      pill_toggle(
         inputId  = ns("unit"),
         label    = "Level of analysis",
         choices  = c(
@@ -68,9 +67,8 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
       req(surveys())
       sv <- surveys()
       if (nrow(sv) == 0) {
-        return(helpText(
-          "No data files found for the selected level of analysis.",
-          style = "color: red; font-size: 12px;"
+        return(no_data_warning(
+          "No data files found for the selected level of analysis."
         ))
       }
       choices         <- setNames(sv$code, sv$economy)
@@ -97,15 +95,19 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
 
     output$survey_year_ui <- renderUI({
       req(input$economy, available_years())
-      codes   <- input$economy
+      sv <- surveys()
+      req(nrow(sv) > 0)
+      codes <- intersect(input$economy, unique(sv$code))
+      req(length(codes) > 0)
       all_yrs <- available_years()
 
       year_inputs <- lapply(codes, function(code) {
         yrs          <- all_yrs[[code]]
-        economy_name <- surveys() |>
+        economy_name <- sv |>
           dplyr::filter(.data$code == !!code) |>
           dplyr::pull(.data$economy) |>
           head(1)
+        if (length(economy_name) == 0) economy_name <- code
         # INT-01: keep the user's year selection when the input is rebuilt
         # (economy toggled); reset only years no longer available.
         prev_yrs <- shiny::isolate(input[[paste0("year_", code)]])

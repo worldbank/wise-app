@@ -26,6 +26,7 @@ mod_3_07_results_ui <- function(id) {
 #' @param policy_hist_sim          Reactive (Step 2 schema) for policy.
 #' @param policy_saved_scenarios   Reactive named scenario list (policy).
 #' @param selected_hist            Reactive one-row historical metadata.
+#' @param selected_policies        Reactive selected policy scenario keys.
 #' @param sim_run_id               Reactive trigger; tabs appended once
 #'   this is > 0.
 #' @param tabset_id                Char id of the parent tabset.
@@ -35,13 +36,15 @@ mod_3_07_results_ui <- function(id) {
 mod_3_07_results_server <- function(id,
                                      baseline_hist_sim,
                                      baseline_saved_scenarios,
-                                     policy_hist_sim,
-                                     policy_saved_scenarios,
-                                     selected_hist  = reactive(NULL),
-                                     sim_run_id     = reactive(0L),
-                                     tabset_id,
-                                     tabset_session = NULL,
-                                     residuals      = reactive("original"),
+                                      policy_hist_sim,
+                                      policy_saved_scenarios,
+                                      selected_hist  = reactive(NULL),
+                                      sim_run_id     = reactive(0L),
+                                      tabset_id,
+                                      tabset_session = NULL,
+                                      selected_policies = reactive(NULL),
+                                      sp_scenario    = reactive(NULL),
+                                      residuals      = reactive("original"),
                                      stale          = reactive(FALSE)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -62,8 +65,10 @@ mod_3_07_results_server <- function(id,
       baseline_saved_scenarios = baseline_saved_scenarios,
       policy_hist_sim          = policy_hist_sim,
       policy_saved_scenarios   = policy_saved_scenarios,
-      selected_hist            = selected_hist,
-      residuals                = residuals,
+       selected_hist            = selected_hist,
+       selected_policies        = selected_policies,
+       sp_scenario              = sp_scenario,
+       residuals                = residuals,
       stale                    = stale
     )
 

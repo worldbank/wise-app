@@ -22,11 +22,17 @@
 #'
 #' @export
 add_time_columns <- function(df) {
-  df |>
-    dplyr::mutate(
-      month       = lubridate::month(timestamp),
-      countryyear = paste0(economy, ", ", year)
-    )
+  timestamp <- df$timestamp
+  month <- if (inherits(timestamp, "Date") || inherits(timestamp, "POSIXt")) {
+    # POSIXlt exposes the month directly and avoids formatting every date.
+    as.integer(as.POSIXlt(timestamp)$mon) + 1L
+  } else {
+    lubridate::month(timestamp)
+  }
+
+  df$month       <- month
+  df$countryyear <- paste0(df$economy, ", ", df$year)
+  df
 }
 
 
@@ -145,28 +151,64 @@ bottom_code_welfare <- function(df, floor_value = 0.28) {
 
 #' Summarise interview dates for the timing-of-interviews bar chart
 #'
-#' Groups survey microdata by `economy`, `countryyear`, and a year-month floor
-#' date, counting the number of household records (`hh`) in each month. Rows
-#' with missing timestamps are dropped before aggregating.
+#' Groups survey microdata by `economy`, `countryyear`, and interview month,
+#' counting the number of household records (`hh`) in each month. Rows with
+#' missing timestamps are dropped before aggregating. When the `month` column
+#' created by [add_time_columns()] is present, it is reused rather than
+#' extracting the month from `timestamp` a second time.
 #'
 #' @param df A data frame with columns `economy` (character), `countryyear`
 #'   (character), and `timestamp` (Date), as produced by `add_time_columns()`.
 #'
-#' @return A data frame with columns `economy`, `countryyear`, `month`
-#'   (Date, first of month), and `hh` (integer count). Returns a zero-row
+#' @return A data frame with columns `economy`, `countryyear`, `month_num`
+#'   (integer 1-12), and `hh` (integer count). Returns a zero-row
 #'   data frame when `df` is empty or all timestamps are `NA`.
 #'
 #' @export
 summarise_interview_dates <- function(df) {
-  df |>
-    dplyr::filter(!is.na(timestamp)) |>
-    dplyr::mutate(
-      month_num = as.integer(format(timestamp, "%m"))
-    ) |>
-    dplyr::summarise(
-      hh = dplyr::n(),
-      .by = c(economy, countryyear, month_num)
-    )
+  empty <- data.frame(
+    economy = character(0), countryyear = character(0),
+    month_num = integer(0), hh = integer(0),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(df) || nrow(df) == 0L ||
+      !all(c("timestamp", "economy") %in% names(df))) return(empty)
+
+  ok <- !is.na(df$timestamp)
+  if (!any(ok)) return(empty)
+
+  month_num <- if ("month" %in% names(df)) {
+    as.integer(df$month)
+  } else if (inherits(df$timestamp, "Date") || inherits(df$timestamp, "POSIXt")) {
+    as.integer(as.POSIXlt(df$timestamp)$mon) + 1L
+  } else {
+    lubridate::month(df$timestamp)
+  }
+  ok <- ok & !is.na(month_num)
+  if (!any(ok)) return(empty)
+
+  countryyear <- if ("countryyear" %in% names(df)) {
+    df$countryyear
+  } else {
+    paste0(df$economy, ", ", df$year)
+  }
+  grouped <- data.frame(
+    economy    = as.character(df$economy[ok]),
+    countryyear = as.character(countryyear[ok]),
+    month_num  = month_num[ok],
+    stringsAsFactors = FALSE
+  )
+
+  # GRP performs the only grouping pass needed by this chart and is already a
+  # package dependency used by the survey statistics tables.
+  groups <- collapse::GRP(
+    grouped,
+    by = c("economy", "countryyear", "month_num"),
+    group.sizes = TRUE
+  )
+  out <- groups$groups
+  out$hh <- as.integer(groups$group.sizes)
+  out
 }
 
 
@@ -197,53 +239,178 @@ welfare_poverty_lines <- function() {
 # Interview date bar chart                                                      #
 # ---------------------------------------------------------------------------- #
 
-#' Plot timing of survey interviews as a monthly bar chart, faceted by wave
+#' Plot timing of survey interviews by month.
 #'
-#' @param plot_data A data frame with columns `month` (Date, first of month),
+#' @param plot_data A data frame with columns `month_num` (integer 1-12),
 #'   `hh` (integer count), `economy` (character), and `countryyear`
 #'   (character), as returned by `summarise_interview_dates()`.
+#' @param variant Display style: `"grouped"` (default), `"faceted"`, or
+#'   `"heatmap"`.
+#' @param unit_label Y-axis noun for the observation unit. Defaults to
+#'   `"Households"`; use `"Individuals"` or `"Firms"` when the selected
+#'   survey files are at those levels.
+#' @param palette Fill palette. The default `"sequential"` assigns each
+#'   economy its own colour series and orders colours from older to newer
+#'   survey waves within that economy. Other options are `"okabe_ito"`,
+#'   `"wise"`, and `"blue"`.
+#' @param wave_labels Optional named character vector replacing wave labels.
 #'
 #' @return A `ggplot` object, or `NULL` invisibly when `plot_data` is
 #'   `NULL` or has zero rows.
 #'
-#' @importFrom ggplot2 ggplot aes geom_col facet_wrap scale_x_date labs
-#'   theme_minimal theme element_text
+#' @importFrom ggplot2 ggplot aes geom_col facet_wrap geom_tile geom_text
+#'   scale_x_discrete scale_fill_manual scale_fill_gradient scale_y_continuous
+#'   labs theme element_text
 #' @export
-plot_interview_dates <- function(plot_data) {
+plot_interview_dates <- function(plot_data,
+                                 variant = c("grouped", "faceted", "heatmap"),
+                                 unit_label = "Households",
+                                 palette = c("sequential", "okabe_ito", "wise", "blue"),
+                                 wave_labels = NULL) {
   if (is.null(plot_data) || nrow(plot_data) == 0) return(invisible(NULL))
+  variant <- match.arg(variant)
+  palette <- match.arg(palette)
+  unit_label <- as.character(unit_label)[1L]
+  if (is.na(unit_label) || !nzchar(unit_label)) unit_label <- "Observations"
 
   month_labels <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+  plot_data <- as.data.frame(plot_data)
   plot_data$month_fct <- factor(
     plot_data$month_num,
     levels = 1:12,
     labels = month_labels
   )
+  waves <- unique(as.character(plot_data$countryyear))
+  wave_info <- data.frame(
+    countryyear = waves,
+    year = suppressWarnings(as.integer(sub(
+      ".*,[[:space:]]*", "", waves
+    ))),
+    economy = vapply(waves, function(wave) {
+      as.character(plot_data$economy[
+        match(wave, as.character(plot_data$countryyear))
+      ])[1L]
+    }, character(1)),
+    stringsAsFactors = FALSE
+  )
+  wave_info$economy[is.na(wave_info$economy) |
+                     !nzchar(wave_info$economy)] <- "Unknown"
+  wave_info <- wave_info[order(
+    wave_info$economy,
+    is.na(wave_info$year),
+    wave_info$year,
+    wave_info$countryyear
+  ), , drop = FALSE]
+  waves <- wave_info$countryyear
+  display_waves <- waves
+  if (!is.null(wave_labels)) {
+    mapped <- unname(wave_labels[waves])
+    keep <- !is.na(mapped) & nzchar(mapped)
+    display_waves[keep] <- mapped[keep]
+  }
+  plot_data$countryyear <- factor(plot_data$countryyear, levels = waves)
+  wave_cols <- switch(
+    palette,
+    sequential = {
+      series <- list(
+        c("#264A79", "#0071BC"), # navy to World Bank blue
+        c("#185C78", "#00A6C7"), # deep teal to bright cyan
+        c("#493B70", "#8667B3"), # indigo to violet
+        c("#79501F", "#C28C2C"), # brown to ochre
+        c("#713443", "#B85C6B")  # burgundy to muted red
+      )
+      economies <- unique(wave_info$economy)
+      out <- stats::setNames(character(length(waves)), waves)
+      for (i in seq_along(economies)) {
+        these <- wave_info$countryyear[wave_info$economy == economies[i]]
+        out[these] <- grDevices::colorRampPalette(
+          series[[((i - 1L) %% length(series)) + 1L]]
+        )(length(these))
+      }
+      out
+    },
+    okabe_ito = c("#0072B2", "#009E73", "#E69F00", "#56B4E9", "#CC79A7"),
+    wise      = c("#0071BC", "#00AB51", "#FDB714", "#009FDA", "#5B6B79"),
+    blue      = c("#003B5C", "#0071BC", "#2C9CCB", "#78C6D0", "#B6DDE2")
+  )
+  if (palette != "sequential") {
+    wave_cols <- stats::setNames(rep(wave_cols, length.out = length(waves)), waves)
+  }
 
-  ggplot2::ggplot(
-    plot_data,
-    ggplot2::aes(
-      x = .data$month_fct,
-      y = .data$hh,
-      fill = .data$countryyear
+  if (variant == "heatmap") {
+    return(
+      ggplot2::ggplot(
+        plot_data,
+        ggplot2::aes(x = .data$month_fct, y = .data$countryyear,
+                     fill = .data$hh)
+      ) +
+        ggplot2::geom_tile(colour = "white", linewidth = 0.7) +
+        ggplot2::geom_text(
+          ggplot2::aes(label = scales::comma(.data$hh)),
+          size = 3, colour = "#1D2A35"
+        ) +
+        ggplot2::scale_x_discrete(drop = FALSE) +
+        ggplot2::scale_fill_gradient(
+          low = "#D9EFF8", high = "#0071BC",
+          labels = scales::label_number(big.mark = ","),
+          name = unit_label
+        ) +
+        ggplot2::labs(x = NULL, y = NULL) +
+        theme_wise(base_size = 12) +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(size = 10),
+          panel.grid = ggplot2::element_blank(),
+          legend.position = "top",
+          legend.justification = "left",
+          legend.key.width = grid::unit(1.5, "cm")
+        )
     )
-  ) +
-    ggplot2::geom_col(width = 0.7) +
-    ggplot2::scale_x_discrete(drop = FALSE) +
-    theme_wise() +
-    ggplot2::labs(
-      x = NULL, y = "Households", fill = "Survey wave"
+  }
+
+  p <- if (variant == "faceted") {
+    ggplot2::ggplot(
+      plot_data,
+      ggplot2::aes(x = .data$month_fct, y = .data$hh)
     ) +
+      ggplot2::geom_col(fill = "#0071BC", width = 0.72) +
+      ggplot2::facet_wrap(~ countryyear, ncol = 1, scales = "free_y")
+  } else {
+    ggplot2::ggplot(
+      plot_data,
+      ggplot2::aes(x = .data$month_fct, y = .data$hh,
+                   fill = .data$countryyear)
+    ) +
+      ggplot2::geom_col(
+        position = ggplot2::position_dodge2(width = 0.82, preserve = "single"),
+        width = 0.72, colour = "white", linewidth = 0.2
+      ) +
+      ggplot2::scale_fill_manual(
+        values = wave_cols, breaks = waves, labels = display_waves, drop = FALSE,
+        name = NULL
+      )
+  }
+
+  p +
+    ggplot2::scale_x_discrete(drop = FALSE) +
+    ggplot2::scale_y_continuous(
+      labels = scales::label_number(big.mark = ","),
+      expand = ggplot2::expansion(mult = c(0, 0.08))
+    ) +
+    ggplot2::labs(x = NULL, y = unit_label) +
+    theme_wise(base_size = 12) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(
-        angle = 0, hjust = 0.5, size = 9
-      ),
-      axis.ticks.x       = ggplot2::element_line(),
+      axis.text.x        = ggplot2::element_text(size = 10),
+      axis.text.y        = ggplot2::element_text(size = 10),
+      axis.ticks.x       = ggplot2::element_line(colour = "#5B6B79"),
       panel.grid.major.x = ggplot2::element_blank(),
       panel.grid.minor.x = ggplot2::element_blank(),
-      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.major.y = ggplot2::element_line(colour = "#E3E9EE"),
       panel.grid.minor.y = ggplot2::element_blank(),
-      legend.position    = "bottom"
+      legend.position    = if (variant == "faceted") "none" else "top",
+      legend.text        = ggplot2::element_text(size = 11),
+      legend.justification = "left",
+      plot.margin = ggplot2::margin(4, 8, 4, 4)
     )
 }
 
@@ -707,6 +874,120 @@ merge_loc_values_to_cells <- function(cell_map, loc_vals, by_wave = TRUE) {
 # Summary stats tables                                                         #
 # ---------------------------------------------------------------------------- #
 
+#' Build the summary-stats table frame by variable group flag
+#'
+#' Pure builder behind `make_stats_dt()`: aggregates (or row-filters the
+#' shared PERF-40 base), joins wave missingness and readable labels, and
+#' applies the display transformations (N filter, sort, column renames,
+#' HTML-escaped soft wrapping). Stateless and testable without a Shiny
+#' session.
+#'
+#' @param df A survey data frame.
+#' @param vl A data frame containing at least columns `name` and `label`
+#'   (plus the flag column named by `flag_col` when `vars` is not given).
+#' @param flag_col,vars,base See `make_stats_dt()`.
+#'
+#' @return The display-ready summary data frame.
+#' @noRd
+stats_table_frame <- function(df, vl, flag_col = NULL, vars = NULL, base = NULL) {
+  target <- if (!is.null(vars)) vars else vl$name[vl[[flag_col]] == 1]
+  vars   <- intersect(target, names(df))
+  if (length(vars) == 0) {
+    tag <- flag_col %||% "specified"
+    return(data.frame(Note = paste("No", tag, "variables found")))
+  }
+
+  # PERF-40: rows come from the module's shared union aggregation whenever
+  # it covers this table's variables; the row filter reproduces the
+  # per-table call exactly because the union pass computes the same
+  # grouped values per variable. Order is settled by the arrange() below
+  # (both key columns are always present on this path). Any base that
+  # does not cover the variables - a standalone caller, or a variable
+  # list that changed after the base was built - falls back to the local
+  # aggregation.
+  base_list <- if (is.function(base)) base() else base
+  shared <- !is.null(base_list) && all(vars %in% base_list$vars)
+
+  tab <- if (shared) {
+    st <- base_list$summary
+    st[st$variable %in% vars, , drop = FALSE]
+  } else {
+    weighted_summary_long(df, vars = vars)
+  }
+
+  # Add missingness by survey wave (countryyear) and variable
+  if ("variable" %in% names(tab) && "countryyear" %in% names(tab)) {
+    if (!"countryyear" %in% names(df)) {
+      stop("countryyear column is required in survey_data() to compute wave-specific missingness.")
+    }
+
+    # Wave-specific missingness by countryyear and variable, in one
+    # grouped pass (PERF-09)
+    fill_df <- if (shared) {
+      ms <- base_list$missing
+      if (is.null(ms)) survey_missingness_long(df, vars) else
+        ms[ms$variable %in% vars, , drop = FALSE]
+    } else {
+      survey_missingness_long(df, vars)
+    }
+
+    tab <- tab |>
+      dplyr::left_join(fill_df, by = c("countryyear", "variable"))
+  }
+
+  # Show only the readable variable label, falling back to the raw name
+  if ("variable" %in% names(tab)) {
+    lab_map <- vl[, c("name", "label"), drop = FALSE]
+    tab <- tab |>
+      dplyr::left_join(lab_map, by = c("variable" = "name")) |>
+      dplyr::mutate(variable = dplyr::coalesce(.data$label, .data$variable)) |>
+      dplyr::select(variable, dplyr::everything(), -dplyr::any_of("label"))
+  }
+
+  # Omit variables with no observed values and the redundant unweighted mean.
+  # The degenerate empty frame (no group/weight column, or no numeric target
+  # variables) carries no N column and renders as an empty table instead of
+  # erroring on the filter.
+  if ("N" %in% names(tab)) {
+    tab <- tab |>
+      dplyr::filter(is.na(.data$N) | .data$N > 0) |>
+      dplyr::select(-dplyr::any_of("unweighted_mean"))
+  }
+
+  # Sort by variable label, then wave (countryyear) where available
+  if (all(c("variable", "countryyear") %in% names(tab))) {
+    tab <- tab |>
+      dplyr::arrange(.data$variable, .data$countryyear)
+  }
+
+  # ---- Column renaming ----------------------------------------------------
+  if ("countryyear" %in% names(tab))    names(tab)[names(tab) == "countryyear"]    <- "Country, Year"
+
+  names(tab) <- vapply(names(tab), function(nm) {
+    if (!nzchar(nm)) return(nm)
+    paste0(toupper(substr(nm, 1, 1)), substr(nm, 2, nchar(nm)))
+  }, character(1))
+
+  wrap_width <- 28
+  text_cols <- names(tab)[vapply(tab, function(x) is.character(x) || is.factor(x), logical(1))]
+  if (length(text_cols) > 0) {
+    tab[text_cols] <- lapply(tab[text_cols], function(x) {
+      x_chr <- as.character(x)
+      vapply(x_chr, function(s) {
+        if (is.na(s)) return(NA_character_)
+        # HTML-escape each wrapped line before joining with the literal
+        # <br> markup below (the table is rendered with escape = FALSE,
+        # so any unescaped data-derived text would render as raw HTML;
+        # see SEC-05).
+        lines <- strwrap(s, width = wrap_width)
+        paste(htmltools::htmlEscape(lines), collapse = "<br>")
+      }, character(1))
+    })
+  }
+
+  tab
+}
+
 #' Build a formatted DT summary table by variable group flag
 #'
 #' Creates a `DT::renderDT()` expression for survey summary statistics of the
@@ -734,92 +1015,34 @@ merge_loc_values_to_cells <- function(cell_map, loc_vals, by_wave = TRUE) {
 #'   Ignored if `vars` is supplied.
 #' @param vars Optional character vector of variable names to summarise. When
 #'   supplied, takes precedence over `flag_col`.
+#' @param base Optional reactive or list containing the shared summary base.
 #'
 #' @return A `shiny.render.function` (from `DT::renderDT`) that renders the
 #'   formatted summary statistics table.
 #' @export
-make_stats_dt <- function(survey_data, variable_list, flag_col = NULL, vars = NULL) {
+make_stats_dt <- function(survey_data, variable_list, flag_col = NULL,
+                          vars = NULL, base = NULL) {
   DT::renderDT({
     shiny::req(survey_data())
-    df <- survey_data()
-    vl <- if (is.function(variable_list)) variable_list() else variable_list
-
-    target <- if (!is.null(vars)) vars else vl$name[vl[[flag_col]] == 1]
-    vars   <- intersect(target, names(df))
-    if (length(vars) == 0) {
+    tab <- build_stats_table(survey_data, variable_list, flag_col, vars, base)
+    if (is.null(tab)) {
       tag <- flag_col %||% "specified"
       return(data.frame(Note = paste("No", tag, "variables found")))
-    }
-
-    tab <- weighted_summary_long(df, vars = vars)
-
-    # Add missingness by survey wave (countryyear) and variable
-    if ("variable" %in% names(tab) && "countryyear" %in% names(tab)) {
-      if (!"countryyear" %in% names(df)) {
-        stop("countryyear column is required in survey_data() to compute wave-specific missingness.")
-      }
-
-      # Wave-specific missingness by countryyear and variable, in one
-      # grouped pass (PERF-09)
-      fill_df <- survey_missingness_long(df, vars)
-
-      tab <- tab |>
-        dplyr::left_join(fill_df, by = c("countryyear", "variable"))
-    }
-
-    # Show only the readable variable label, falling back to the raw name
-    if ("variable" %in% names(tab)) {
-      lab_map <- vl[, c("name", "label"), drop = FALSE]
-      tab <- tab |>
-        dplyr::left_join(lab_map, by = c("variable" = "name")) |>
-        dplyr::mutate(variable = dplyr::coalesce(.data$label, .data$variable)) |>
-        dplyr::select(variable, dplyr::everything(), -dplyr::any_of("label"))
-    }
-
-    # Omit variables with no observed values and the redundant unweighted mean.
-    tab <- tab |>
-      dplyr::filter(is.na(.data$N) | .data$N > 0) |>
-      dplyr::select(-dplyr::any_of("unweighted_mean"))
-
-    # Sort by variable label, then wave (countryyear) where available
-    if (all(c("variable", "countryyear") %in% names(tab))) {
-      tab <- tab |>
-        dplyr::arrange(.data$variable, .data$countryyear)
-    }
-
-    # ---- Column renaming ----------------------------------------------------
-    if ("countryyear" %in% names(tab))    names(tab)[names(tab) == "countryyear"]    <- "Country, Year"
-
-    names(tab) <- vapply(names(tab), function(nm) {
-      if (!nzchar(nm)) return(nm)
-      paste0(toupper(substr(nm, 1, 1)), substr(nm, 2, nchar(nm)))
-    }, character(1))
-
-    wrap_width <- 28
-    text_cols <- names(tab)[vapply(tab, function(x) is.character(x) || is.factor(x), logical(1))]
-    if (length(text_cols) > 0) {
-      tab[text_cols] <- lapply(tab[text_cols], function(x) {
-        x_chr <- as.character(x)
-        vapply(x_chr, function(s) {
-          if (is.na(s)) return(NA_character_)
-          # HTML-escape each wrapped line before joining with the literal
-          # <br> markup below (the table is rendered with escape = FALSE,
-          # so any unescaped data-derived text would render as raw HTML;
-          # see SEC-05).
-          lines <- strwrap(s, width = wrap_width)
-          paste(htmltools::htmlEscape(lines), collapse = "<br>")
-        }, character(1))
-      })
     }
 
     dt <- DT::datatable(
       tab,
       rownames = FALSE,
       escape = FALSE,
+      extensions = "Buttons",
       options = list(
         autoWidth = TRUE,
         pageLength = 10,
-        columnDefs = list(list(className = "dt-wrap", targets = "_all"))
+        columnDefs = list(list(className = "dt-wrap", targets = "_all")),
+        dom     = wise_csv_dom("lfrtip"),
+        buttons = wise_csv_button(
+          paste0("summary_stats_", flag_col %||% "selected")
+        )
       )
     )
 
@@ -832,4 +1055,245 @@ make_stats_dt <- function(survey_data, variable_list, flag_col = NULL, vars = NU
 
     dt
   })
+}
+
+#' Build the summary-statistics data frame for export consumers
+#'
+#' Uses the optimization branch's shared aggregation base when supplied.
+#'
+#' @noRd
+build_stats_table <- function(survey_data, variable_list, flag_col = NULL,
+                              vars = NULL, base = NULL) {
+  df <- tryCatch(if (is.function(survey_data)) survey_data() else survey_data,
+                 error = function(e) NULL)
+  if (is.null(df) || !nrow(as.data.frame(df))) return(NULL)
+  vl <- tryCatch(if (is.function(variable_list)) variable_list() else variable_list,
+                 error = function(e) NULL)
+  if (is.null(vl)) return(NULL)
+  base_value <- tryCatch(if (is.function(base)) base() else base,
+                         error = function(e) NULL)
+  tab <- stats_table_frame(df, vl, flag_col = flag_col, vars = vars,
+                           base = base_value)
+  if (identical(names(tab), "Note")) return(NULL)
+  tab
+}
+
+
+# ---------------------------------------------------------------------------- #
+# Outcome summary statistics                                                    #
+# ---------------------------------------------------------------------------- #
+
+#' Summary statistics for one outcome, pooled and per survey wave
+#'
+#' Computes the Outcome stats summary table in a few grouped `collapse`
+#' passes (PERF-41): every wave's statistics and the pooled sample's come
+#' out of one grouping, so switching the wave pill re-slices a precomputed
+#' table instead of re-running the quantiles over the whole sample.
+#'
+#' Observations, Missing and Coverage (%) are raw row counts of outcome
+#' availability. The remaining statistics are sample-weighted with the
+#' `weight` column (unweighted when the column is absent): Mean, Std Dev
+#' and the deciles P10-P90 (P50 = median) for numeric outcomes, and the
+#' weighted share of 1s for binary outcomes (the 1/0 counts stay raw
+#' counts). Weighted statistics use only rows with a finite, positive
+#' weight - the app-wide validity rule - and the weighted SD uses
+#' `collapse::fsd(w=)`, whose denominator is $\sum w - 1$ (NA when a
+#' wave's valid weights sum to at most 1).
+#'
+#' `collapse::fquantile()` does not group in 2.x, so the per-wave deciles
+#' run one weighted `fquantile()` (type 7) per contiguous group slice
+#' after a radix sort on the group id.
+#'
+#' @param df Survey data (as produced by `outcome_data()`), including the
+#'   outcome column, the `weight` column, and - for wave columns - `code`,
+#'   `year`, `survname`.
+#' @param outcome Character name of the outcome column in `df`.
+#' @param type Character outcome type: `"numeric"` for the continuous
+#'   statistics, anything else for the binary set.
+#'
+#' @return A list with `stat` (character stat ids, the matrix rownames),
+#'   `label` (display labels), `waves` (character wave keys, `"all"` for
+#'   the pooled sample first) and `mat` (numeric matrix: stats x waves,
+#'   unformatted).
+#'
+#' @noRd
+outcome_summary_wide <- function(df, outcome, type) {
+  empty <- list(
+    stat  = character(),
+    label = character(),
+    waves = "all",
+    mat   = matrix(NA_real_, 0, 1, dimnames = list(NULL, "all"))
+  )
+  if (is.null(df) || !nrow(df) || !outcome %in% names(df)) return(empty)
+
+  numeric <- identical(as.character(type)[1], "numeric")
+  x <- df[[outcome]]
+
+  # Sample weights: weighted statistics use only rows with a finite,
+  # positive weight (the app-wide validity rule); counts stay raw.
+  w_all <- if ("weight" %in% names(df)) as.numeric(df$weight) else
+    rep(1, nrow(df))
+  w_ok <- is.finite(w_all) & (w_all > 0)
+
+  stat_ids <- if (numeric) {
+    c("n", "n_miss", "coverage", "mean", "sd", "min",
+      paste0("p", seq(10, 90, 10)), "max")
+  } else {
+    c("n", "n_miss", "coverage", "n1", "n0", "share1")
+  }
+  stat_labels <- if (numeric) {
+    c("Observations", "Missing", "Coverage (%)", "Mean", "Std Dev", "Min",
+      "P10", "P20", "P30", "P40", "Median (P50)", "P60", "P70", "P80", "P90",
+      "Max")
+  } else {
+    c("Observations", "Missing", "Coverage (%)",
+      "Count = 1 (Yes)", "Count = 0 (No)", "Share = 1")
+  }
+
+  # Wave columns: the same "code|year|survname" keys the wave pickers use,
+  # with the pooled sample ("all") first.
+  w <- survey_wave_list(df)
+  has_waves <- !is.null(w)
+  waves <- if (has_waves) c("all", w$key) else "all"
+  mat <- matrix(NA_real_, nrow = length(stat_ids), ncol = length(waves),
+                dimnames = list(stat_ids, waves))
+
+  key <- if (has_waves) {
+    paste(df$code, as.character(df$year), df$survname, sep = "|")
+  } else {
+    rep("all", nrow(df))
+  }
+  g  <- collapse::GRP(key, group.sizes = TRUE)
+  gl <- as.character(g$groups[[1]])
+
+  # Row counts and available (non-missing) values per wave. Group levels
+  # are mapped by name onto the wave columns, so the pooled column and the
+  # per-wave columns cannot drift apart.
+  total <- setNames(as.numeric(g$group.sizes), gl)
+  avail <- setNames(
+    as.numeric(collapse::fsum(as.integer(!is.na(x)), g = g)), gl
+  )
+  miss <- total - avail
+
+  n_all <- nrow(df)
+  a_all <- sum(!is.na(x))
+  mat["n", "all"]        <- n_all
+  mat["n_miss", "all"]   <- n_all - a_all
+  mat["coverage", "all"] <- 100 * a_all / max(n_all, 1)
+
+  cols <- setdiff(intersect(gl, waves), "all")
+  if (length(cols)) {
+    mat["n", cols]        <- total[cols]
+    mat["n_miss", cols]   <- miss[cols]
+    mat["coverage", cols] <- 100 * avail[cols] / pmax(total[cols], 1)
+  }
+
+  if (numeric) {
+    xv <- as.numeric(x)
+    ok <- !is.na(xv) & w_ok
+    xv <- xv[ok]
+    xw <- w_all[ok]
+    probs <- seq(0.1, 0.9, 0.1)
+    deciles <- paste0("p", seq(10, 90, 10))
+
+    mat["mean", "all"] <- if (length(xv)) collapse::fmean(xv, w = xw) else NA_real_
+    # fsd's sum(w) - 1 denominator needs more than one unit of weight.
+    mat["sd", "all"] <- if (length(xv) > 1 && sum(xw) > 1) {
+      collapse::fsd(xv, w = xw)
+    } else NA_real_
+    mat["min", "all"]  <- if (length(xv)) collapse::fmin(xv) else NA_real_
+    mat["max", "all"]  <- if (length(xv)) collapse::fmax(xv) else NA_real_
+    if (length(xv)) {
+      mat[deciles, "all"] <- collapse::fquantile(xv, probs = probs, w = xw,
+                                                 type = 7)
+    }
+
+    if (length(xv)) {
+      gv <- collapse::GRP(key[ok], group.sizes = TRUE)
+      gvl <- as.character(gv$groups[[1]])
+      gcols <- intersect(gvl, waves)
+      mat["mean", gcols] <-
+        setNames(collapse::fmean(xv, g = gv, w = xw), gvl)[gcols]
+      sds <- setNames(collapse::fsd(xv, g = gv, w = xw), gvl)
+      swg <- setNames(collapse::fsum(xw, g = gv), gvl)
+      sds[swg <= 1] <- NA_real_
+      mat["sd", gcols]   <- sds[gcols]
+      mat["min", gcols]  <- setNames(collapse::fmin(xv, g = gv), gvl)[gcols]
+      mat["max", gcols]  <- setNames(collapse::fmax(xv, g = gv), gvl)[gcols]
+
+      # Grouped weighted deciles: sort valid rows by group id (radix), then
+      # one weighted fquantile per contiguous slice.
+      ord    <- order(gv$group.id, method = "radix")
+      xs     <- xv[ord]
+      ws     <- xw[ord]
+      sz     <- gv$group.sizes
+      starts <- c(1L, head(cumsum(sz), -1) + 1L)
+      for (j in seq_along(gvl)) {
+        wv <- gvl[[j]]
+        if (!wv %in% waves) next
+        idx <- starts[[j]] + seq_len(sz[[j]]) - 1L
+        mat[deciles, wv] <- collapse::fquantile(xs[idx], probs = probs,
+                                                w = ws[idx], type = 7)
+      }
+    }
+  } else {
+    xi   <- suppressWarnings(as.integer(x))
+    one  <- as.integer(!is.na(xi) & xi == 1L)
+    zero <- as.integer(!is.na(xi) & xi == 0L)
+
+    n1_all <- sum(one)
+    n0_all <- sum(zero)
+    mat["n1", "all"]     <- n1_all
+    mat["n0", "all"]     <- n0_all
+    # Weighted share of 1s among rows with a valid weight.
+    sw1_all <- sum(w_all * one * w_ok)
+    sw0_all <- sum(w_all * zero * w_ok)
+    mat["share1", "all"] <- if (sw1_all + sw0_all > 0) {
+      sw1_all / (sw1_all + sw0_all)
+    } else NA_real_
+
+    n1w <- setNames(as.numeric(collapse::fsum(one,  g = g)), gl)
+    n0w <- setNames(as.numeric(collapse::fsum(zero, g = g)), gl)
+    sw1w <- setNames(as.numeric(collapse::fsum(w_all * one * w_ok,  g = g)), gl)
+    sw0w <- setNames(as.numeric(collapse::fsum(w_all * zero * w_ok, g = g)), gl)
+    mat["n1", cols]     <- n1w[cols]
+    mat["n0", cols]     <- n0w[cols]
+    den <- sw1w[cols] + sw0w[cols]
+    share <- ifelse(den > 0, sw1w[cols] / den, NA_real_)
+    mat["share1", cols] <- share
+  }
+
+  list(stat = stat_ids, label = stat_labels, waves = waves, mat = mat)
+}
+
+#' Format one wave column of the outcome summary for display
+#'
+#' Counts get thousands separators, coverage a percent suffix, other
+#' statistics three decimals (the pooled table's formatting), and missing
+#' values an en dash.
+#'
+#' @param s    The list returned by `outcome_summary_wide()`.
+#' @param wave Wave key to format; falls back to the first wave when the
+#'   key is unknown.
+#'
+#' @return A two-column data frame (`Statistic`, `Value`).
+#'
+#' @noRd
+.format_outcome_summary <- function(s, wave = "all") {
+  wave <- if (wave %in% colnames(s$mat)) wave else s$waves[1]
+  v <- s$mat[, wave]
+  counts <- c("n", "n_miss", "n1", "n0")
+  fmt <- vapply(seq_along(v), function(i) {
+    x <- v[[i]]
+    if (is.na(x)) return("\u2013")
+    id <- s$stat[[i]]
+    if (id %in% counts) {
+      format(x, big.mark = ",", scientific = FALSE)
+    } else if (identical(id, "coverage")) {
+      paste0(as.character(round(x, 1)), "%")
+    } else {
+      as.character(round(x, 3))
+    }
+  }, character(1), USE.NAMES = FALSE)
+  data.frame(Statistic = s$label, Value = fmt, stringsAsFactors = FALSE)
 }

@@ -781,19 +781,32 @@ plot_weather_dist_with_ref <- function(df, df_ref = NULL, hv, label,
   survey_levels <- sort(unique(df_survey$source))
   df_all$source <- factor(df_all$source, levels = c(ref_label, survey_levels))
 
-  bw <- tryCatch(stats::bw.nrd0(df_all[[hv]]), error = function(e) NULL)
-  if (is.null(bw) || !is.finite(bw) || bw <= 0) bw <- NULL
-
   n_survey <- length(survey_levels)
   survey_colours <- scales::hue_pal()(n_survey)
   names(survey_colours) <- survey_levels
   all_colours <- c(setNames("#AAAAAA", ref_label), survey_colours)
 
-  ggplot2::ggplot(
+  rd <- build_ridge_distribution_data(
     df_all,
-    ggplot2::aes(x = .data[[hv]], y = .data$source, fill = .data$source)
+    x_var      = hv,
+    group_var  = "source",
+    fill_var   = "source",
+    ridge_var  = "source",
+    n_bins     = 256L,
+    n_grid     = 256L
+  )
+  if (is.null(rd)) return(invisible(NULL))
+
+  ggplot2::ggplot(
+    rd$data,
+    ggplot2::aes(x = .data$x, y = .data$y,
+                 group = .data$group, fill = .data$fill)
   ) +
-    ggridges::geom_density_ridges(alpha = 0.7, scale = 2, bandwidth = bw) +
+    ridge_geometry_layers(scale = 2, alpha = 0.7, linewidth = 0.3) +
+    ggplot2::scale_y_continuous(
+      breaks = seq_along(rd$ridges), labels = rd$ridges,
+      expand = ggplot2::expansion(mult = c(0.02, 0.12))
+    ) +
     ggplot2::scale_fill_manual(values = all_colours) +
     ggplot2::theme_minimal() +
     ggplot2::labs(x = x_label, y = "", fill = "") +

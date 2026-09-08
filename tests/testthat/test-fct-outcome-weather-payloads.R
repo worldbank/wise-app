@@ -174,3 +174,97 @@ test_that("weather payload: palette carries hex colours for both renderers", {
                    pal_d$pal(seq(pal_d$domain[1], pal_d$domain[2],
                                  length.out = 9)))
 })
+
+# ---- outcome mean payload ----------------------------------------------------
+
+test_that("loc means: unweighted mean and count of non-missing values only", {
+  df <- data.frame(
+    code = "TST", year = "2021", survname = "SRV",
+    loc_id = c("L1", "L1", "L1", "L2", "L2", "L3", "L3"),
+    welfare = c(1, 2, 3, 10, NA, NA, NA),
+    stringsAsFactors = FALSE
+  )
+  m <- wiseapp:::.outcome_loc_means(df, "welfare")
+  m <- m[order(m$loc_id), ]
+  expect_identical(m$loc_id, c("L1", "L2"))
+  expect_equal(m$value, c(2, 10), tolerance = 1e-9)
+  expect_identical(as.integer(m$n_hh), c(3L, 1L))
+})
+
+test_that("mean payload: continuous means over the observed range", {
+  geo  <- make_cell_geo(2)
+  cmap <- make_cmap(geo)
+  df <- data.frame(
+    code = "TST", year = "2021", survname = "SRV",
+    loc_id = c("L1", "L1", "L1", "L2", "L2"),
+    welfare = c(1, 2, 3, 10, NA),
+    stringsAsFactors = FALSE
+  )
+
+  pl <- wiseapp:::.outcome_mean_hex_payload(geo, cmap, df, "welfare")
+
+  expect_identical(pl$payload$action, "set")
+  expect_identical(pl$payload$v_kind, "continuous")
+  expect_identical(pl$payload$v, c(2, 10))
+  expect_identical(pl$payload$stops$domain, c(2, 10))
+  expect_identical(pl$payload$bounds,
+                   c(min(geo$xmin), min(geo$ymin),
+                     max(geo$xmax), max(geo$ymax)))
+  expect_match(pl$payload$info[1], "TST 2021 SRV")
+  # Legend shares the payload's domain and carries the sample-statistics note.
+  expect_equal(as.numeric(pl$legend$pal_info$domain),
+               pl$payload$stops$domain, tolerance = 1e-9)
+  expect_identical(pl$legend$title, "Mean value")
+  expect_match(pl$legend$info, "sample statistics", fixed = TRUE)
+  expect_match(pl$legend$info, "not population-representative", fixed = TRUE)
+})
+
+test_that("mean payload: binary outcomes are shares on a fixed 0-100 domain", {
+  geo  <- make_cell_geo(2)
+  cmap <- make_cmap(geo)
+  df <- data.frame(
+    code = "TST", year = "2021", survname = "SRV",
+    loc_id = c("L1", "L1", "L1", "L2", "L2"),
+    poor = c(1, 0, 0, 1, 1),
+    stringsAsFactors = FALSE
+  )
+
+  pl <- wiseapp:::.outcome_mean_hex_payload(geo, cmap, df, "poor",
+                                            type = "logical")
+
+  expect_equal(pl$payload$v, c(100 / 3, 100), tolerance = 1e-9)
+  expect_identical(pl$payload$stops$domain, c(0, 100))
+  expect_identical(pl$payload$unit, "%")
+  expect_identical(pl$legend$title, "Mean (%)")
+  expect_match(pl$legend$info, "share of 1s", fixed = TRUE)
+})
+
+test_that("mean payload: locations without data ride along as NA (grey)", {
+  geo  <- make_cell_geo(2)
+  cmap <- make_cmap(geo)
+  df <- data.frame(
+    code = "TST", year = "2021", survname = "SRV",
+    loc_id = c("L1", "L2", "L2"),
+    welfare = c(2, NA, NA),
+    stringsAsFactors = FALSE
+  )
+
+  pl <- wiseapp:::.outcome_mean_hex_payload(geo, cmap, df, "welfare")
+  expect_identical(pl$payload$h3, geo$h3)
+  expect_true(is.na(pl$payload$v[2]))
+  expect_false(is.na(pl$payload$v[1]))
+})
+
+test_that("mean payload: degenerate inputs return NULL", {
+  geo  <- make_cell_geo(2)
+  cmap <- make_cmap(geo)
+  df <- data.frame(code = "TST", year = "2021", survname = "SRV",
+                   loc_id = "L1", welfare = 1)
+  expect_null(wiseapp:::.outcome_mean_hex_payload(NULL, cmap, df, "welfare"))
+  expect_null(wiseapp:::.outcome_mean_hex_payload(geo, NULL, df, "welfare"))
+  expect_null(wiseapp:::.outcome_mean_hex_payload(geo, cmap, NULL, "welfare"))
+  # No non-missing values anywhere: nothing to draw.
+  df_na <- df
+  df_na$welfare <- NA_real_
+  expect_null(wiseapp:::.outcome_mean_hex_payload(geo, cmap, df_na, "welfare"))
+})

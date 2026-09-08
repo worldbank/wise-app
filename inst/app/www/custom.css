@@ -21,6 +21,57 @@
   font-weight: 600;
 }
 
+/* ---- Nav-header step status badges (UI-47) -------------------------------
+   A step tab shows a check once its results are up to date, and a reload
+   arrow once an input has changed since. Nothing is shown before the step has
+   been run, so the navbar stays quiet on a fresh session. Colours are picked
+   to read against the dark navbar (#002244) rather than reusing the
+   body-level success/warning tokens, which are tuned for a light ground. */
+
+.nav-step-status {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  font-size: 0.9em;
+  line-height: 1;
+  vertical-align: baseline;
+}
+
+.nav-step-status-done {
+  color: #5cd68a;
+}
+
+.nav-step-status-stale {
+  color: #ffc75a;
+}
+
+/* The reload arrow is the call to action, so it gets a little more presence
+   than the settled check - but not so much that it reads as an error. */
+.nav-step-status-stale .fa,
+.nav-step-status-stale .fas {
+  animation: nav-step-stale-in 240ms ease-out;
+}
+
+@keyframes nav-step-stale-in {
+  from { transform: rotate(-90deg); opacity: 0.4; }
+  to   { transform: rotate(0deg);   opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-step-status-stale .fa,
+  .nav-step-status-stale .fas {
+    animation: none;
+  }
+}
+
+/* Reserve roughly the badge's width so tabs do not reflow the moment a run
+   finishes. Approximate by design - the icon is a single glyph and the exact
+   width varies with the navbar font. */
+.nav-step-status-slot {
+  display: inline-block;
+  min-width: 1.35em;
+}
+
 /* ---- Step pages ---------------------------------------------------------- */
 
 .step-question {
@@ -53,6 +104,214 @@
 
 .sidebar .accordion-body {
   padding: 0.9rem;
+}
+
+/* wellPanel boxes in the sidebar: drop the outline, blend with sidebar */
+.sidebar .well {
+  border: none;
+  background-color: transparent;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+/* "No data files found" warning (sample panel) */
+.no-data-warning {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.warning-message {
+  color: #9a4d00;
+}
+
+.warning-message .fa,
+.warning-message .fas,
+.warning-message .far {
+  color: #9a4d00;
+}
+
+.alert.warning-message {
+  --bs-alert-color: #9a4d00;
+  --bs-alert-bg: #fff4e5;
+  --bs-alert-border-color: #e6a15c;
+}
+
+/* ---- Selection summary card (stats tabs) ---------------------------------
+   Thin "what is loaded" card at the top of the stats tabs. Head: uppercase
+   title + right badge; body: one row per item (bold name, muted sub, pills). */
+
+.selection-card {
+  background: #ffffff;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 34, 68, 0.06);
+  padding: 0.65rem 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.selection-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.3rem;
+}
+
+.selection-card-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--bs-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.selection-card-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--bs-primary);
+  background: rgba(0, 113, 188, 0.08);
+  border-radius: 2rem;
+  padding: 0.1rem 0.65rem;
+  white-space: nowrap;
+}
+
+.selection-card-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+.selection-card-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.selection-card-sub {
+  color: var(--bs-secondary);
+  font-size: 0.78rem;
+}
+
+.selection-card-note {
+  color: var(--bs-secondary);
+  font-size: 0.88rem;
+}
+
+/* Model card: sparse formula line */
+.selection-card-formula {
+  font-weight: 400;
+  font-size: 0.88rem;
+}
+
+.selection-card-op {
+  color: #9fb0be;
+  font-weight: 700;
+  margin: 0 0.12rem;
+}
+
+.selection-card-muted {
+  color: var(--bs-secondary);
+  font-size: 0.88rem;
+}
+
+/* Weather pipeline card: variable name column + left-to-right stage chips */
+.selection-card-wname {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 8.5rem;
+  line-height: 1.35;
+}
+
+.selection-card-pipe {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.selection-card-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.35rem;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--bs-body-color);
+  background: #fff;
+  white-space: nowrap;
+}
+
+.selection-card-stage svg {
+  display: block;
+}
+
+.selection-card-symbol {
+  font-weight: 700;
+  color: var(--bs-primary);
+}
+
+.selection-card-chevron {
+  color: #9fb0be;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+/* Compact variant for the sidebar (live config feedback) */
+.selection-card.compact {
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.selection-card.compact .selection-card-row {
+  padding: 0.1rem 0;
+  gap: 0.4rem;
+}
+
+.selection-card.compact .selection-card-wname {
+  min-width: 0;
+}
+
+.selection-card.compact .selection-card-name {
+  font-size: 0.82rem;
+}
+
+.selection-card.compact .selection-card-sub {
+  font-size: 0.72rem;
+}
+
+.selection-card.compact .selection-card-stage {
+  font-size: 0.68rem;
+  padding: 0.08rem 0.4rem;
+  gap: 0.25rem;
+}
+
+.selection-card.compact .selection-card-chevron {
+  font-size: 0.7rem;
+}
+
+.selection-card.compact .selection-card-badge {
+  font-size: 0.68rem;
+  padding: 0.06rem 0.5rem;
+}
+
+.selection-card-pills {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.selection-card-pill {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--bs-primary);
+  background: rgba(0, 113, 188, 0.08);
+  border-radius: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  white-space: nowrap;
 }
 
 /* Numbered step badge used in accordion panel titles */
@@ -189,6 +448,29 @@
   margin-bottom: 0;
 }
 
+/* Keep the Step 1 landing placeholder from dominating the overview. */
+.overview-empty-state {
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.overview-empty-state .fa,
+.overview-empty-state .fas,
+.overview-empty-state .far {
+  font-size: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.overview-empty-state h5 {
+  font-size: 1rem;
+  margin-bottom: 0.2rem;
+}
+
+.overview-empty-state p {
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 /* ---- Settings summary banner (Step 1 weather/model, matches Step 2) ------ */
 
 .settings-summary {
@@ -221,6 +503,24 @@
    deliberately no !important so Shiny's inline display:none still hides it. */
 .shiny-panel-conditional.config-flyout {
   display: block;
+}
+
+.config-flyout-anchor.config-flyout-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.config-flyout-anchor.config-flyout-inline .config-flyout-toggle {
+  margin-bottom: 0 !important;
+}
+
+.config-flyout-label {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--bs-dark);
+  margin-bottom: 0.25rem;
 }
 
 .config-flyout {
@@ -345,24 +645,86 @@ details[open] summary {
   color: var(--bs-primary);
 }
 
+.lasso-disclosure {
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.45rem;
+  border-color: rgba(33, 102, 172, 0.35);
+  background-color: transparent;
+}
+
+.lasso-disclosure summary {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--bs-secondary-color, #5c6770);
+}
+
+.lasso-disclosure[open] summary {
+  font-weight: 600;
+}
+
+.lasso-disclosure > .shiny-html-output {
+  padding-top: 0.35rem;
+}
+
 /* ---- Overview landing page ---------------------------------------------- */
+
+.overview-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: calc(100% + var(--bs-gutter-x, 1.5rem));
+  margin-left: calc(-0.5 * var(--bs-gutter-x, 1.5rem));
+}
+
+body.bslib-page-navbar:has(> .container-fluid > .tab-content > .tab-pane.active > .overview-shell) > .container-fluid {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body.bslib-page-navbar:has(> .container-fluid > .tab-content > .tab-pane.active > .overview-shell) > .container-fluid > .tab-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.tab-pane.active:has(> .overview-shell) {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 0;
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+.overview-page {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto 0.5rem;
+}
 
 .hero-panel {
   background: linear-gradient(135deg, #002244 0%, #0a3a6b 60%, #0071bc 100%);
   color: #fff;
   border-radius: var(--bs-border-radius-lg);
-  padding: 2rem;
-  margin-bottom: 1rem;
+  padding: 1.45rem 1.75rem;
+  margin-bottom: 0.75rem;
 }
 
 .hero-panel-inner {
   display: flex;
   align-items: center;
-  gap: 1.75rem;
+  gap: 1.5rem;
 }
 
 .hero-logo {
-  width: 108px;
+  width: 100px;
   height: auto;
   flex-shrink: 0;
   filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.35));
@@ -378,7 +740,7 @@ details[open] summary {
 .hero-panel .hero-subtitle {
   font-weight: 600;
   opacity: 0.85;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.55rem;
 }
 
 .hero-panel p {
@@ -393,7 +755,7 @@ details[open] summary {
 }
 
 .hero-panel .hero-team {
-  margin-top: 0.75rem;
+  margin-top: 0.55rem;
   margin-bottom: 0;
   font-size: 0.78rem;
   text-transform: uppercase;
@@ -413,8 +775,13 @@ details[open] summary {
 }
 
 .step-card .card-body {
-  padding: 0.85rem 1.1rem;
+  padding: 0.4rem 1.1rem 0.65rem;
   gap: 0.35rem; /* override bslib's ~1rem flex gap between title and text */
+}
+
+.overview-page > .bslib-grid,
+.overview-page > .connect-card {
+  margin-bottom: 0.6rem;
 }
 
 .step-card-title {
@@ -441,32 +808,96 @@ details[open] summary {
   margin-bottom: 0;
 }
 
-/* Data connection card: full width, natural height, no internal scroll */
+/* Data and limitations cards: shared neutral treatment */
 .connect-card .card-body {
-  padding: 0.9rem 1.1rem;
+  padding: 0.65rem 1.1rem;
   overflow: visible;
   flex: none;
 }
 
-.connect-card {
+.connect-card,
+.limitation-card {
   overflow: visible;
   flex: 0 0 auto; /* don't stretch to fill the page's remaining height */
+  border: 1px solid var(--bs-border-color);
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 34, 68, 0.09);
+}
+
+.connect-card .card-header,
+.limitation-card .card-header {
+  padding: 0.55rem 1.1rem;
+  background-color: rgba(0, 113, 188, 0.035);
 }
 
 .connect-card .form-group,
 .connect-card .shiny-input-container {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.connection-source-field {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.connection-source-label {
+  color: var(--bs-secondary);
+  flex: 0 0 auto;
+  font-size: 0.87rem;
+}
+
+.connection-source-field .toggle-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.connection-options .shiny-input-container {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.connection-options .shiny-input-container > label {
+  color: var(--bs-secondary);
+  flex: 0 0 auto;
+  font-size: 0.87rem;
+  font-weight: 400;
+  margin-bottom: 0;
+}
+
+.connection-options .shiny-input-container > .form-control,
+.connection-options .shiny-input-container > .form-select {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .connect-card .help-block,
 .connect-card .form-text {
   margin-top: -0.35rem;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.3rem;
   line-height: 1.3;
 }
 
-.connect-card .btn {
-  margin-top: 0.3rem;
+.connection-action-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.35rem;
+}
+
+.connection-action-row > .btn {
+  width: 75%;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .connection-action-row > .btn {
+    width: 100%;
+  }
+}
+
+.connection-options-output {
+  min-width: 0;
 }
 
 .connect-card pre {
@@ -477,18 +908,73 @@ details[open] summary {
   overflow-y: auto;
 }
 
-/* Limitations card: full width, natural height, no internal scroll */
-.limitation-card {
-  overflow: visible;
-  flex: 0 0 auto;
+.limitation-card .card-body {
+  padding: 0.5rem 1.1rem;
 }
 
-.limitation-card .card-body {
-  padding: 0.9rem 1.1rem;
+.limitation-card .card-header {
+  padding: 0.55rem 1.1rem;
+}
+
+.overview-page > .limitation-card {
+  margin-bottom: 0;
 }
 
 .limitation-card .card-body > p:first-child {
+  color: var(--bs-secondary);
+  font-size: 0.87rem;
+  line-height: 1.35;
   margin-bottom: 0;
+}
+
+.overview-footer {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: auto;
+  margin-left: 0;
+  padding: 0.75rem max(
+    0.75rem,
+    calc((100% - 1480px) / 2)
+  );
+  background: #002244;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+}
+
+.overview-footer-brand,
+.overview-footer-meta,
+.overview-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.overview-footer-brand strong {
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+
+.overview-footer-links a {
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+}
+
+.overview-footer-links a:hover,
+.overview-footer-links a:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+}
+
+@media (max-width: 700px) {
+  .overview-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 /* ---- Misc ---------------------------------------------------------------- */
@@ -521,6 +1007,33 @@ details[open] summary {
   margin-bottom: 0.25rem;
 }
 
+/* Match select/entry font size to the pill (segmented control) text */
+.sidebar .form-control,
+.sidebar .form-select,
+.sidebar .selectize-input,
+.sidebar .selectize-dropdown {
+  font-size: 0.78rem;
+}
+
+.sidebar .form-control,
+.sidebar .form-select,
+.sidebar .selectize-input {
+  padding: 0.25rem 0.6rem;
+}
+
+/* Modern rounded action buttons (sidebar steps + overview connect card) */
+.sidebar .btn,
+.connect-card .btn {
+  border-radius: 2rem;
+}
+
+.sidebar .btn-primary,
+.connect-card .btn-primary {
+  font-weight: 600;
+  padding: 0.45rem 1.1rem;
+  box-shadow: 0 1px 3px rgba(0, 34, 68, 0.18);
+}
+
 .sidebar .help-block,
 .sidebar .form-text {
   font-size: 0.78rem;
@@ -529,6 +1042,179 @@ details[open] summary {
 /* DT tables: lighter chrome */
 table.dataTable {
   font-size: 0.88rem;
+}
+
+/* Wrapped summary-table cells: long variable labels stay readable instead of
+   forcing horizontal scroll. Applied via columnDefs className = "dt-wrap"
+   (fct_surveystats.R, fct_weatherstats.R). */
+table.dataTable td.dt-wrap {
+  white-space: normal !important;
+  word-break: break-word;
+}
+
+/* ---- Navbar export menu (UI-48) ------------------------------------------ */
+
+.navbar .dropdown-menu .export-menu-head {
+  padding: 0.4rem 0.9rem 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.navbar .dropdown-menu .export-menu-link {
+  display: block;
+  padding: 0.4rem 0.9rem;
+  color: var(--bs-body-color);
+  text-decoration: none;
+}
+
+.navbar .dropdown-menu .export-menu-link:hover,
+.navbar .dropdown-menu .export-menu-link:focus-visible {
+  background: var(--bs-tertiary-bg, #f8f9fa);
+  text-decoration: none;
+}
+
+.export-menu-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.87rem;
+}
+
+/* The explanation of what each option produces - the reason the menu is a
+   list of descriptions rather than four bare verbs. */
+.export-menu-note {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  white-space: normal;
+  max-width: 22rem;
+  margin-top: 0.1rem;
+}
+
+.export-menu-sep {
+  margin: 0.3rem 0;
+  opacity: 0.3;
+}
+
+/* ---- Step 3 social-protection reach preview (UI-32) ----------------------
+   Live "who does this reach, what does it cost" feedback under the targeting
+   controls, so a cutoff can be chosen without running a full simulation. */
+
+.sp-reach {
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-left: 3px solid var(--bs-primary);
+  border-radius: 0.25rem;
+  background: var(--bs-tertiary-bg, #f8f9fa);
+  font-size: 0.82rem;
+}
+
+.sp-reach-title {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.sp-reach-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.5rem;
+  padding: 0.12rem 0;
+  align-items: baseline;
+}
+
+.sp-reach-label {
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.sp-reach-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The qualifier sits under the pair it explains, spanning both columns. */
+.sp-reach-hint {
+  grid-column: 1 / -1;
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.sp-reach-note {
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--bs-border-color, #dee2e6);
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+/* ---- Table CSV export (UI-45) -------------------------------------------
+   One affordance for every table in the app: a small, quiet "Download CSV".
+   `.wise-csv-btn` covers both the DataTables Buttons control and the
+   `downloadLink` used under the hand-built HTML tables, so they are visually
+   identical wherever they appear. Kept deliberately understated - the export
+   is a secondary action next to reading the table itself. */
+
+div.dt-buttons {
+  float: none !important;
+  display: block;
+  margin: 0 0 0.35rem !important;
+  padding: 0;
+}
+
+/* !important throughout the DataTables case: the Buttons stylesheet ships
+   its own gradients, padding and hover states at a specificity that varies
+   between DT releases, and its load order relative to this file is not
+   guaranteed. The plain link variant needs no such help. */
+button.wise-csv-btn,
+a.wise-csv-btn,
+div.dt-buttons .wise-csv-btn.dt-button {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 !important;
+  padding: 0.1rem 0.45rem !important;
+  font-size: 0.72rem !important;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--bs-secondary-color, #6c757d) !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: 1px solid var(--bs-border-color, #dee2e6) !important;
+  border-radius: 0.2rem !important;
+  box-shadow: none !important;
+  text-decoration: none !important;
+  text-transform: none;
+  cursor: pointer;
+}
+
+button.wise-csv-btn:hover,
+a.wise-csv-btn:hover,
+button.wise-csv-btn:focus-visible,
+a.wise-csv-btn:focus-visible,
+div.dt-buttons .wise-csv-btn.dt-button:hover,
+div.dt-buttons .wise-csv-btn.dt-button:focus-visible,
+div.dt-buttons .wise-csv-btn.dt-button:active {
+  color: var(--bs-primary) !important;
+  border-color: var(--bs-primary) !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-decoration: none !important;
+}
+
+/* The link variant sits under its table rather than above it. */
+a.wise-csv-link {
+  margin-top: 0.4rem;
+}
+
+a.wise-csv-link .fa,
+a.wise-csv-link .fas,
+button.wise-csv-btn .fa {
+  font-size: 0.7em;
 }
 
 /* ---- Info popovers (info_popover() in R/utils_ui.R) ---------------------- */
@@ -631,6 +1317,19 @@ table.dataTable {
   display: none !important;
 }
 
+.pill-toggle > label.control-label:not(.shiny-label-null) {
+  display: block !important;
+  color: var(--bs-body-color);
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.pill-toggle:has(> label.control-label:not(.shiny-label-null)) {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
 .toggle-slider .shiny-options-group {
   display: inline-flex !important;
   flex-direction: row !important;
@@ -717,3 +1416,30 @@ table.dataTable {
   outline-offset: 1px;
 }
 
+/* Long-label pills stack vertically after the base segmented-control rules. */
+.pill-toggle-vertical {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.pill-toggle-vertical .shiny-options-group {
+  align-items: stretch;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-x: visible;
+  width: 100%;
+}
+
+.pill-toggle-vertical .radio-inline,
+.pill-toggle-vertical .form-check-inline {
+  width: 100%;
+}
+
+.pill-toggle-vertical .radio-inline span,
+.pill-toggle-vertical .form-check-inline label,
+.pill-toggle-vertical .form-check-inline span {
+  justify-content: flex-start;
+  width: 100%;
+}

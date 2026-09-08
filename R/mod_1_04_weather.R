@@ -43,7 +43,7 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
     output$weather_selector_ui <- renderUI({
       wl <- weather_vars()
 
-      choice_labels <- paste0(wl$label, " (", wl$name, ")")
+      choice_labels <- wl$label
       choice_map <- stats::setNames(wl$name, choice_labels)
 
       # INT-01: keep the user's variable selection when the choice set is
@@ -57,7 +57,9 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
         multiple = TRUE,
         options  = list(
           placeholder = "Select up to 2 weather variables",
-          maxItems    = 2
+          maxItems    = 2,
+          # Selectize otherwise sorts the displayed labels alphabetically.
+          sortField  = list(field = "$order", direction = "asc")
         )
       )
     })
@@ -73,12 +75,11 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
         v        <- input$weather_variable_selector[i]
         var_info <- wl[wl$name == v, ]
         units    <- as.character(var_info$units[1])
+        display_label <- sub("^Monthly\\s+", "", as.character(var_info$label[1]))
         prefix   <- paste0(v, "_")
 
         tagList(
           if (i > 1 && n_vars > 1) hr(),
-          tags$p(tags$strong(paste0(var_info$label, ":")),
-                 style = "font-size: 15px;"),
           # Options render in a floating panel beside the sidebar
           # (.config-flyout in custom.css) so they are visible without
           # scrolling. Content stays in the DOM at all times, so input
@@ -95,21 +96,32 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
                 min   = 0, max = 12,
                 value = c(1, 1)
               ),
-              shiny::selectInput(
-                ns(paste0(prefix, "temporalAgg")),
-                "Aggregation over reference period:",
-                choices  = temporal_agg_choices(units),
-                selected = temporal_agg_default(units)
+              # Aggregation is only meaningful when the window spans more
+              # than one month; for a single month the value is that month's
+              # own reading, so the selector is hidden.
+              shiny::conditionalPanel(
+                condition = paste0(
+                  "input['", ns(paste0(prefix, "relativePeriod")),
+                  "'][0] !== input['", ns(paste0(prefix, "relativePeriod")),
+                  "'][1]"
+                ),
+                shiny::selectInput(
+                  ns(paste0(prefix, "temporalAgg")),
+                  "Aggregation over reference period:",
+                  choices  = temporal_agg_choices(units),
+                  selected = temporal_agg_default(units)
+                )
               ),
-              shiny::radioButtons(
+              pill_toggle(
                 ns(paste0(prefix, "varConstruction")),
-                "Transformation",
+                label = "Transformation",
                 choices  = transformation_choices(units),
-                selected = transformation_default(units)
+                selected = transformation_default(units),
+                layout = "vertical"
               ),
-              shiny::radioButtons(
+              pill_toggle(
                 ns(paste0(prefix, "contOrBinned")),
-                "Continuous or binned",
+                label = "Continuous or binned",
                 choices = c("Binned", "Continuous")
               ),
               shiny::conditionalPanel(
@@ -120,10 +132,11 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
                     "Number of bins:",
                     min = 2, max = 10, value = 5
                   ),
-                  shiny::radioButtons(
+                  pill_toggle(
                     ns(paste0(prefix, "binningMethod")),
-                    "Binning method:",
-                    choices = c("Equal frequency", "Equal width", "K-means", "Custom")
+                    label = "Binning method:",
+                    choices = c("Equal frequency", "Equal width", "K-means", "Custom"),
+                    layout = "vertical"
                   ),
                   shiny::conditionalPanel(
                     condition = paste0("input['", ns(paste0(prefix, "binningMethod")), "'] == 'Custom'"),
@@ -158,7 +171,8 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
                   choices = c("Quadratic" = "2", "Cubic" = "3")
                 )
               )
-            )
+            ),
+            display_label = display_label
           )
         )
       })
@@ -181,19 +195,20 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
       # configurable sections rather than a list plus an odd one out.
       tagList(
         hr(),
-        tags$p(tags$strong("Historical comparison:"),
-               style = "font-size: 15px;"),
         config_flyout_block(
           ns("hist_toggle"),
           "Historical comparison settings",
           tagList(
-            shiny::numericInput(
-              ns("hist_year_from"), "From year",
-              value = 1991L, min = 1950, max = this_year, step = 1
-            ),
-            shiny::numericInput(
-              ns("hist_year_to"), "To year",
-              value = 2020L, min = 1950, max = this_year, step = 1
+            shiny::sliderInput(
+              inputId = ns("hist_years"),
+              label = shiny::tags$span(
+                class = "visually-hidden",
+                "Historical comparison period"
+              ),
+              min = 1950,
+              max = this_year,
+              value = c(1991, 2020),
+              sep = ""
             ),
             shiny::helpText(
               paste(
@@ -205,21 +220,20 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
               ),
               style = "font-size: 12px;"
             )
-          )
+          ),
+          display_label = "Historical comparison"
         )
       )
     })
     shiny::outputOptions(output, "hist_config_ui", suspendWhenHidden = FALSE)
 
-    # Falls back to 1991-2020 before the inputs have registered, and orders
-    # the two years so a reversed range still loads.
+    # Falls back to 1991-2020 before the range slider has registered, and
+    # orders the two years so a reversed range still loads.
     hist_years <- reactive({
-      as_year <- function(x, default) {
-        y <- suppressWarnings(as.integer(x))
-        if (length(y) != 1L || is.na(y)) default else y
-      }
-      yf <- as_year(input$hist_year_from, 1991L)
-      yt <- as_year(input$hist_year_to,   2020L)
+      years <- suppressWarnings(as.integer(input$hist_years))
+      if (length(years) != 2L || anyNA(years)) years <- c(1991L, 2020L)
+      yf <- years[1]
+      yt <- years[2]
       if (yf > yt) {
         tmp <- yf; yf <- yt; yt <- tmp
       }
@@ -258,53 +272,31 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
       )
     })
 
-    # ---- Settings summary banner --------------------------------------------
+    # ---- Live weather configuration card ------------------------------------
+    # Same pipeline card as on the Weather stats tab, but bound to the live
+    # selection so it doubles as instant config feedback in the sidebar.
+    # Headerless and stripped back: the variable row + stages speak for
+    # themselves; the history range rides in the badge.
 
     output$weather_summary_ui <- renderUI({
       sw <- tryCatch(selected_weather(), error = function(e) NULL)
       if (is.null(sw) || nrow(sw) == 0) return(NULL)
 
-      rows <- lapply(seq_len(nrow(sw)), function(i) {
-        r <- sw[i, ]
-
-        ref_txt <- if (identical(r$ref_start, r$ref_end)) {
-          paste0(r$ref_start, if (r$ref_start == 1) " month" else " months",
-                 " before interview")
-        } else {
-          paste0(r$ref_start, "-", r$ref_end, " months before interview")
-        }
-
-        form_txt <- if (identical(r$cont_binned, "Binned")) {
-          paste0("binned * ", r$num_bins, " (", tolower(r$binning_method), ")")
-        } else {
-          poly <- unlist(r$polynomial)
-          if (length(poly) > 0) {
-            paste0("continuous, polynomial ", paste(poly, collapse = "+"))
-          } else "continuous"
-        }
-
-        parts <- c(
-          paste0(r$temporalAgg, " over ", ref_txt),
-          if (!identical(r$transformation, "None")) tolower(r$transformation),
-          form_txt
-        )
-
-        tagList(
-          tags$b(paste0(r$label, ":")),
-          paste0(" ", paste(parts, collapse = " \u00B7 ")),
-          tags$br()
-        )
-      })
-
       hy <- hist_years()
-
-      div(
-        class = "settings-summary",
-        rows,
-        tagList(
-          tags$b("Historical comparison:"),
-          paste0(" ", hy[["from"]], "-", hy[["to"]])
-        )
+      selection_summary_card(
+        title   = NULL,
+        badge   = paste0("History ", hy[["from"]], "-", hy[["to"]]),
+        rows    = weather_pipeline_rows(sw),
+        info    = paste(
+          "Each row reads left to right: the reference window (months before",
+          "each interview), how those months are aggregated into one value",
+          "(shown only when the window spans several months), any",
+          "transformation against the historical mean, and the form the",
+          "variable takes in the model (bins or continuous curve). The",
+          "history badge is the comparison period: same locations and",
+          "calendar months, per survey wave."
+        ),
+        compact = TRUE
       )
     })
 

@@ -51,6 +51,7 @@ mod_3_scenario_ui <- function(id) {
         )
       ),
       hr(),
+      uiOutput(ns("run3_prereq_ui")),
       uiOutput(ns("run_policy_sim_ui"))
     ),
     h4("How could policy and structural adjustments mitigate the welfare impacts of weather?",
@@ -61,27 +62,15 @@ mod_3_scenario_ui <- function(id) {
         title = "Overview",
         value = "overview",
         div(
-          class = "empty-state",
+          class = "empty-state overview-empty-state",
           icon("scale-balanced"),
           h5("No policy simulations yet"),
           p(paste(
-            "Configure one or more policy levers in the sidebar, then click",
-            "'Run simulation' to compare baseline and policy outcomes.",
-            "Outputs: baseline-vs-policy outcome comparisons, exceedance",
-            "probabilities, diagnostics, and a decomposition of policy effects",
-            "will appear here as new tabs."
-          )),
-          p(
-            class = "text-muted small mb-0",
-            paste(
-              "Simulations for large surveys (tens of thousands of households)",
-              "can take several minutes to run; charts take a few seconds to",
-              "update after changing filters."
-            )
-          )
+            "Configure policy scenarios in the sidebar, then click",
+            "'Run simulation'. Results will appear here as new tabs."
+          ))
         ),
-        welfare_equation_ui(predicted = TRUE),
-        mod_3_06_policy_sim_ui(ns("policy_sim"))
+        welfare_equation_ui(predicted = TRUE)
       )
     )
   )
@@ -180,7 +169,10 @@ mod_3_scenario_server <- function(id,
       selected_outcome = selected_outcome,
       survey_weather   = survey_weather,
       variable_list    = variable_list,
-      analysis_unit    = analysis_unit
+      analysis_unit    = analysis_unit,
+      # UI-32: the reach preview must estimate over the same survey the policy
+      # run consumes (Step 2's baseline round), not the full multi-round frame.
+      hist_sim         = hist_sim
     )
 
     # ---- Infrastructure scenario -----------------------------------------
@@ -252,8 +244,10 @@ mod_3_scenario_server <- function(id,
       selected_hist            = selected_hist,
       sim_run_id               = s6$sim_run_id,
       tabset_id                = "step3_output_tabs",
-      tabset_session           = session,
-      residuals                = residuals,
+       tabset_session           = session,
+       selected_policies        = selected_policies,
+       sp_scenario              = s6$sp_scenario,
+       residuals                = residuals,
       stale                    = s6$stale
     )
 
@@ -265,7 +259,12 @@ mod_3_scenario_server <- function(id,
       sim_run_id     = s6$sim_run_id,
       tabset_id      = "step3_output_tabs",
       tabset_session = session,
-      analysis_unit  = analysis_unit
+      analysis_unit  = analysis_unit,
+      selected_policies = selected_policies,
+      baseline_hist_sim = s6$baseline_hist_sim,
+      selected_weather = selected_weather,
+      sp_scenario = s6$sp_scenario,
+      policy_saved_scenarios = s6$policy_saved_scenarios
     )
 
     # ---- Decomposition tab: effect channels -----------------------------
@@ -275,7 +274,12 @@ mod_3_scenario_server <- function(id,
       decomp_scenarios = s6$decomp_scenarios,
       model_fit        = model_fit,
       variable_list    = variable_list,
-      so            = reactive({
+      selected_policies = selected_policies,
+      baseline_hist_sim = s6$baseline_hist_sim,
+      selected_weather = selected_weather,
+      sp_scenario = s6$sp_scenario,
+      policy_saved_scenarios = s6$policy_saved_scenarios,
+      so               = reactive({
         hs <- hist_sim()
         if (!is.null(hs)) hs$so else NULL
       }),
@@ -311,16 +315,48 @@ mod_3_scenario_server <- function(id,
       )
     })
 
-    # REACT-02: keep the button disabled while the policy simulation runs.
-    observeEvent(s6$running(), {
+    # ---- Run-button prerequisites (UI-44) --------------------------------
+    # The policy run needs a Step 1 fit and a Step 2 simulation. Those were
+    # only discovered inside run(), where an unmet upstream req() made the
+    # click a silent no-op; name them here, before the click.
+    run3_prereqs_missing <- reactive({
+      missing <- character(0)
+      mf <- tryCatch(model_fit(),        error = function(e) NULL)
+      hs <- tryCatch(hist_sim(),         error = function(e) NULL)
+      sw <- tryCatch(selected_weather(), error = function(e) NULL)
+      if (is.null(sw) || nrow(as.data.frame(sw)) == 0)
+        missing <- c(missing, "weather variables (Step 1)")
+      if (is.null(mf))
+        missing <- c(missing, "a fitted model (Step 1)")
+      if (is.null(hs))
+        missing <- c(missing, "a historical simulation (Step 2)")
+      missing
+    })
+
+    output$run3_prereq_ui <- renderUI({
+      missing <- run3_prereqs_missing()
+      if (!length(missing)) return(NULL)
+      div(
+        class = "alert alert-warning",
+        role  = "alert",
+        style = "font-size: 13px; margin-bottom: 4px;",
+        tags$b("Prerequisites: "), "you still need ",
+        paste(missing, collapse = ", "), " to run a policy simulation."
+      )
+    })
+
+    # REACT-02: keep the button disabled while the policy simulation runs,
+    # and while a prerequisite is missing.
+    observe({
+      blocked <- isTRUE(s6$running()) || length(run3_prereqs_missing()) > 0
       tryCatch(
         shiny::updateActionButton(
           session, inputId = "run_policy_sim",
-          disabled = isTRUE(s6$running())
+          disabled = blocked
         ),
         error = function(e) NULL
       )
-    }, ignoreInit = TRUE)
+    })
 
     # ---- Run policy simulation on button click ---------------------------
     # REACT-09: handled by the run_trigger reactive passed to the child.
@@ -329,7 +365,10 @@ mod_3_scenario_server <- function(id,
 
     list(
       policy_hist_sim        = s6$policy_hist_sim,
-      policy_saved_scenarios = s6$policy_saved_scenarios
+      policy_saved_scenarios = s6$policy_saved_scenarios,
+      # UI-47: consumed by the navbar step badge in app_server.
+      stale                  = s6$stale,
+      sim_run_id             = s6$sim_run_id
     )
   })
 }

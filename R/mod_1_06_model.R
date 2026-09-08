@@ -117,18 +117,32 @@ mod_1_06_model_server <- function(id,
       )
       cov_txt <- input$covariates %||% "User-defined"
 
-      shiny::div(
-        class = "settings-summary",
-        tags$b("Outcome:"), so$label,
-        tags$br(),
-        tags$b("Weather:"), paste(sw$label, collapse = ", "),
-        tags$br(),
-        tags$b("Model:"), model_txt,
-        tags$b(" \u00B7 Covariates:"), cov_txt,
-        tags$br(),
-        tags$b("Interaction:"), ixn_txt,
-        tags$br(),
-        tags$b("Fixed effects:"), fe_txt
+      selection_summary_card(
+        title = NULL,
+        badge = model_txt,
+        rows = list(
+          list(
+            name  = "Outcome",
+            sub   = so$label
+          ),
+          list(
+            name = "Weather",
+            sub  = paste(sw$label, collapse = ", ")
+          ),
+          list(
+            name = "Interaction:",
+            sub  = ixn_txt
+          ),
+          list(
+            name = "FE:",
+            sub  = fe_txt
+          ),
+          list(
+            name = "Covariates:",
+            sub  = cov_txt
+          )
+        ),
+        compact = TRUE
       )
     })
 
@@ -150,10 +164,11 @@ mod_1_06_model_server <- function(id,
       }
 
       mc <- model_type_choices(selected_outcome()$type)
-      shiny::radioButtons(
+      pill_toggle(
         inputId  = ns("model_type"),
         label    = mc$label,
-        choices  = mc$choices
+        choices  = mc$choices,
+        layout   = "vertical"
       )
     })
 
@@ -184,7 +199,7 @@ mod_1_06_model_server <- function(id,
       tagList(
         shiny::selectizeInput(
           ns("selected_policies"),
-          label    = "Select policy scenarios:",
+          label    = "Policy scenario:",
           choices  = avail,
           selected = NULL,
           multiple = TRUE,
@@ -218,7 +233,7 @@ mod_1_06_model_server <- function(id,
       tagList(
         tags$small(
           class = "text-muted",
-          "The following variables are locked as interaction terms with the weather hazard:"
+          "Variables interacted with weather:"
         ),
         do.call(tags$ul, c(items, list(style = "font-size: 12px;")))
       )
@@ -347,9 +362,18 @@ mod_1_06_model_server <- function(id,
         hr(),
 
         # Covariate selection method
-        shiny::radioButtons(
+        pill_toggle(
           ns("covariates"),
-          "Covariate selection:",
+          label = shiny::tagList(
+            "Covariate selection:",
+            info_popover(
+              title = "Lasso covariate selection",
+              shiny::p(
+                "Lasso selects from all available covariates except weather,",
+                "interactions, and fixed effects."
+              )
+            )
+          ),
           choices  = c("User-defined", "Lasso"),
           selected = "User-defined"
         ),
@@ -443,49 +467,29 @@ mod_1_06_model_server <- function(id,
       } else if (input$covariates == "Lasso") {
 
         tagList(
-
-          shiny::helpText(
-            "Lasso will select from all available covariates except weather, interactions, and fixed effects.",
-            style = "font-size: 12px;"
+          shiny::tags$details(
+            class = "lasso-disclosure",
+            shiny::tags$summary("Forced inclusion / exclusion"),
+            uiOutput(ns("lasso_force_ui"))
           ),
-
-          # ------------------------------
-          # Toggle for forced inclusion / exclusion
-          # ------------------------------
-
-          shiny::actionButton(
-            ns("show_lasso_force"),
-            "Show forced inclusion / exclusion",
-            style = "margin-bottom:12px;"
-          ),
-
-          uiOutput(ns("lasso_force_ui")),
-
-          # ------------------------------
-          # Toggle for advanced settings
-          # ------------------------------
-
-          shiny::actionButton(
-            ns("show_lasso_advanced"),
-            "Show advanced settings",
-            style = "margin-bottom:12px;"
-          ),
-
-          uiOutput(ns("lasso_advanced_ui"))
+          shiny::tags$details(
+            class = "lasso-disclosure",
+            shiny::tags$summary("Advanced settings"),
+            uiOutput(ns("lasso_advanced_ui"))
+          )
 
         )
       }
     })
 
-    lasso_advanced_open <- reactiveVal(FALSE)
-    observeEvent(input$show_lasso_advanced, {
-      lasso_advanced_open(!lasso_advanced_open())
-    })
-
-    lasso_force_open <- reactiveVal(FALSE)
-    observeEvent(input$show_lasso_force, {
-      lasso_force_open(!lasso_force_open())
-    })
+    # UI-42: both panels live inside the "Model settings" flyout, which is a
+    # conditionalPanel - hidden outputs are suspended by default, so the
+    # interaction / fixed-effect / covariate inputs (and their defaults) never
+    # existed until the user opened the flyout, and "Run model" silently
+    # no-opped on `req(input$covariates)` until they did. Render them eagerly;
+    # the flyout still controls visibility.
+    shiny::outputOptions(output, "model_specs_ui",    suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "covariate_inputs",  suspendWhenHidden = FALSE)
 
     # Helper: vars at a given level (ind/hh/firm/area) from valid_vl
     .vars_at_level <- function(role) {
@@ -510,7 +514,6 @@ mod_1_06_model_server <- function(id,
 
     output$lasso_force_ui <- renderUI({
       req(input$covariates == "Lasso")
-      if (!lasso_force_open()) return(NULL)
 
       already_in <- unique(c(input$interactions, input$fixedeffects))
 
@@ -624,8 +627,6 @@ mod_1_06_model_server <- function(id,
 
       req(input$covariates == "Lasso")
 
-      if (!lasso_advanced_open()) return(NULL)
-
       # INT-01: the panel is destroyed/recreated on every toggle; restore the
       # previous settings so closing and reopening does not reset them.
       prev <- function(id) shiny::isolate(input[[id]])
@@ -663,9 +664,9 @@ mod_1_06_model_server <- function(id,
           step = 1
         ),
 
-        shiny::radioButtons(
+        pill_toggle(
           ns("lasso_standardize"),
-          "Standardize predictors:",
+          label = "Standardize predictors:",
           choices  = c("Standardize", "Do not standardize"),
           selected = .restore_selection(prev("lasso_standardize"),
                                         c("Standardize", "Do not standardize"),
@@ -709,15 +710,30 @@ mod_1_06_model_server <- function(id,
     })
 
     # --- LASSO MODEL ---------------------------------------------------------
+    #
+    # REACT-16: the Lasso is a *run-time* step, not a selection-time one.
+    # It used to be an eventReactive that `selected_model()` pulled on, which
+    # meant merely switching "Covariate selection" to Lasso invalidated
+    # `selected_model()`, and the first downstream reader (the stale-tracking
+    # observers in mod_1_07) forced the fit right there in the sidebar. The
+    # result is now held in a plain reactiveVal that only the run-button
+    # observer below writes, so reading the model spec can never start a fit.
+    lasso_store <- reactiveVal(NULL)
 
-    lasso_result <- eventReactive(input$run_model, {
-      req(isTRUE(input$covariates == "Lasso"))
-      req(survey_weather())
-      req(selected_outcome())
-      req(selected_weather())
-      # REACT-02: skip if a fit is already running (stale eventReactive replay)
-      req(fit_guard$is_running() == FALSE)
+    # Selecting a different covariate method, or changing anything the
+    # selection depends on, drops the stored result: a Lasso set chosen for
+    # another specification must not silently carry over into the next fit.
+    observe({
+      input$covariates
+      input$interactions
+      input$fixedeffects
+      selected_outcome()
+      selected_weather()
+      lasso_forced()
+      lasso_store(NULL)
+    })
 
+    .compute_lasso <- function() {
       withProgress(message = "Running Lasso...", value = 0, {
         incProgress(0.05, detail = "Preparing inputs")
 
@@ -778,12 +794,27 @@ mod_1_06_model_server <- function(id,
           glmnet_tol = 1e-4
         )
       })
-    })
+    }
 
-    # Showing notifications based on Lasso execution.
-    # Only fires when the user has chosen Lasso covariate selection.
+    # Run the Lasso on the click, before mod_1_07's fit observer reads
+    # `selected_model()`. The explicit priority is what orders the two - both
+    # observers key off the same button, and flush order between equal
+    # priorities is not something to rely on.
     observeEvent(input$run_model, {
-      req(isTRUE(input$covariates == "Lasso"))
+      if (!isTRUE(input$covariates == "Lasso")) {
+        lasso_store(NULL)
+        return(invisible(NULL))
+      }
+      sw <- tryCatch(survey_weather(),   error = function(e) NULL)
+      so <- tryCatch(selected_outcome(), error = function(e) NULL)
+      wx <- tryCatch(selected_weather(), error = function(e) NULL)
+      if (is.null(sw) || is.null(so) || is.null(wx)) {
+        showNotification(
+          "Lasso needs an outcome, weather variables and loaded data.",
+          type = "error", duration = 5
+        )
+        return(invisible(NULL))
+      }
       # REACT-02: one fit at a time
       if (!fit_guard$begin()) return(invisible(NULL))
       on.exit(fit_guard$end(), add = TRUE)
@@ -791,15 +822,16 @@ mod_1_06_model_server <- function(id,
                       type = "message",
                       duration = 2)
       result <- tryCatch({
-        lasso_result()
+        .compute_lasso()
       }, error = function(e) {
         showNotification(
-          paste("Lasso failed:", e$message),
+          paste("Lasso failed:", conditionMessage(e)),
           type = "error",
           duration = 5
         )
         return(NULL)
       })
+      lasso_store(result)
       if (!is.null(result)) {
         showNotification(
           "Lasso completed successfully.",
@@ -807,17 +839,26 @@ mod_1_06_model_server <- function(id,
           duration = 3
         )
       }
-    })
+    }, priority = 100)
 
     # ---- Return API ---------------------------------------------------------
 
     selected_model <- reactive({
 
-      req(input$model_type, input$covariates)
+      req(input$model_type)
+
+      # UI-42: the covariate/interaction/fixed-effect controls live inside the
+      # "Model settings" flyout. Their inputs are registered eagerly (see the
+      # outputOptions calls above), but the spec must still be well-defined on
+      # the very first flush, before any of them has reported in - otherwise
+      # the model has weather, a default interaction and default fixed effects
+      # and still refuses to run. Fall back to the rendered defaults instead
+      # of req()-ing on them.
+      cov_method <- input$covariates %||% "User-defined"
 
       # Resolve covariates by role
-      covs <- if (input$covariates == "Lasso") {
-        selected <- lasso_result()$selected_covariates
+      covs <- if (cov_method == "Lasso") {
+        selected <- lasso_store()$selected_covariates
         vl       <- valid_vl()
         forced   <- lasso_forced()
         resolve <- function(role) {
@@ -840,7 +881,19 @@ mod_1_06_model_server <- function(id,
       # Policy-locked vars are enforced as interactions
       locked <- policy_locked()
       all_locked <- unique(c(locked$ind, locked$hh, locked$firm, locked$area))
-      interactions <- unique(c(input$interactions, all_locked))
+      # UI-42: mirror the defaults `model_specs_ui` renders with, so a spec
+      # read before those inputs have reported carries the same interaction
+      # and fixed effects the sidebar is showing.
+      ixn_sel <- input$interactions %||% {
+        ixn <- tryCatch(interact_vars(), error = function(e) NULL)
+        if (!is.null(ixn) && "urban" %in% ixn$name) "urban" else character(0)
+      }
+      fe_sel <- input$fixedeffects %||% {
+        fe <- tryCatch(fe_vars(), error = function(e) NULL)
+        if (is.null(fe)) character(0) else
+          intersect(c("year", "gaul1_code"), fe$name)
+      }
+      interactions <- unique(c(ixn_sel, all_locked))
 
       # Cluster-robust VCV at the survey-location panel level. Matches
       # COEF_VCOV_SPEC (~loc_id_panel) in fct_simulations.R so that the SEs
@@ -855,8 +908,8 @@ mod_1_06_model_server <- function(id,
       build_selected_model(
         model_type          = input$model_type,
         interactions        = interactions,
-        fixedeffects        = input$fixedeffects,
-        covariate_selection = input$covariates,
+        fixedeffects        = fe_sel,
+        covariate_selection = cov_method,
         hh_covariates       = covs$hh,
         area_covariates     = covs$area,
         ind_covariates      = covs$ind,
@@ -906,7 +959,7 @@ mod_1_06_model_server <- function(id,
       missing <- run_prereqs_missing()
       if (!length(missing)) return(NULL)
       shiny::div(
-        class = "alert alert-warning",
+        class = "alert alert-warning warning-message",
         role  = "alert",
         style = "font-size: 13px; margin-bottom: 4px;",
         shiny::tags$b("Prerequisites: "), "select ",

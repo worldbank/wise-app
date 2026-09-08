@@ -73,8 +73,7 @@ mod_3_04_labor_server <- function(id,
       if (isTRUE(any_selected())) return(NULL)
       # Only show placeholder if there are labour variables in the survey
       if (length(labor_vars_available()) == 0) {
-        return(div(
-          class = "alert alert-warning",
+        return(no_data_warning(
           "No labour market variables found in the selected survey (or level of analysis in the selected survey)."
         ))
       }

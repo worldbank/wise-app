@@ -22,11 +22,9 @@ mod_2_02_results_ui <- function(id) {
   tagList(
     # ---- 0. Stale banner (INT-08) -------------------------------------------
     shiny::uiOutput(ns("stale_banner")),
+    shiny::uiOutput(ns("simulation_summary_ui")),
 
-    # ---- 1. Results header -------------------------------------------------
-    shiny::uiOutput(ns("results_header_ui")),
-
-    # ---- 2. Analysis controls ----------------------------------------------
+    # ---- 1. Analysis controls ----------------------------------------------
     shiny::wellPanel(
       class = "results-controls",
       style = "padding: 8px 12px 4px 12px;",
@@ -128,15 +126,14 @@ mod_2_02_results_ui <- function(id) {
             )
           ),
           shiny::tags$div(style = "flex:1; min-width:160px;",
-            shiny::radioButtons(
+            pill_toggle(
               ns("cmp_group_order"),
               label    = "Group by",
               choices  = c(
                 "Scenario \u00D7 Year" = "scenario_x_year",
                 "Year \u00D7 Scenario" = "year_x_scenario"
               ),
-              selected = "scenario_x_year",
-              inline   = TRUE
+              selected = "scenario_x_year"
             )
           )
         ),
@@ -278,6 +275,7 @@ mod_2_02_results_ui <- function(id) {
 #'   \code{$train_data}, \code{$n_pre_join}.
 #' @param saved_scenarios ReactiveVal holding named scenario entries.
 #' @param selected_hist   Reactive one-row data frame from weathersim.
+#' @param selected_weather Reactive data frame of selected weather variables.
 #' @param tabset_id       Character id of the parent tabset panel.
 #' @param tabset_session  Shiny session for the tabset.
 #'
@@ -286,6 +284,7 @@ mod_2_02_results_server <- function(id,
                                      hist_sim,
                                      saved_scenarios,
                                      selected_hist,
+                                     selected_weather = NULL,
                                      tabset_id,
                                      tabset_session = NULL,
                                      residuals = reactive("original"),
@@ -303,6 +302,15 @@ mod_2_02_results_server <- function(id,
         "Step 2 simulation results",
         note = "Interpretation and exports are disabled until then."
       ) else NULL
+    })
+
+    output$simulation_summary_ui <- renderUI({
+      simulation_summary_card(
+        hist_sim        = hist_sim(),
+        saved_scenarios = saved_scenarios(),
+        selected_hist   = if (!is.null(selected_hist)) selected_hist() else NULL,
+        selected_weather = if (is.function(selected_weather)) selected_weather() else selected_weather
+      )
     })
 
     # ---- Lazy delta-method aggregation -------------------------------------
@@ -337,51 +345,6 @@ mod_2_02_results_server <- function(id,
     AGG_BAND_Q <- c(lo = 0.10, hi = 0.90)
     .POV_LINE_METHODS   <- c("headcount_ratio", "gap", "fgt2")
     .BANDWIDTH_METHODS  <- "headcount_ratio"
-
-    .one_member_delta <- function(pipe, idx, method, weighted, pov_line,
-                                  band_q, is_log, seed, res_mode,
-                                  resid_lookup = NULL, resid_sigma2 = NULL) {
-      # Some upstream paths can hand us F_loading as a length-K numeric
-      # vector instead of a 1*K matrix (single-row residual / dropped dim).
-      # Promote to matrix before any row-subset so the indexing below never
-      # triggers "incorrect number of dimensions".
-      F_full <- pipe$F_loading
-      if (!is.null(F_full) && is.null(dim(F_full))) {
-        F_full <- matrix(F_full, nrow = 1L)
-      }
-
-      # Filter to non-NA y_point rows only (NA rows cause non-finite h,
-      # which silently zeros out F_agg and var_coef)
-      valid  <- idx & !is.na(pipe$y_point)
-
-      F_idx <- if (!is.null(F_full) && !isTRUE(skip_coef_draws()))
-                 F_full[valid, , drop = FALSE] else NULL
-      w_idx <- if (weighted && !is.null(pipe$weight)) pipe$weight[valid] else NULL
-      id_idx <- if (!is.null(pipe$id_vec)) pipe$id_vec[valid] else NULL
-      # RIF pipelines set train_aug = NULL by construction (fct_simulations.R).
-      # If the residuals selector still says "original" or "resample", honour
-      # the pipeline by falling back to "none" so draw_residuals_vec doesn't
-      # blow up on a missing .resid column.
-      if (is.null(pipe$train_aug) && !identical(res_mode, "none"))
-        res_mode <- "none"
-      aggregate_with_uncertainty_delta(
-        y_point      = pipe$y_point[valid],
-        F_loading    = F_idx,
-        method       = method,
-        weights      = w_idx,
-        pov_line     = pov_line,
-        residuals    = res_mode,
-        train_aug    = pipe$train_aug,
-        id_vec       = id_idx,
-        id_col       = pipe$id_col,
-        is_log       = is_log,
-        band_q       = band_q,
-        bandwidth_p0 = bandwidth_p0(),
-        seed          = seed,
-        resid_lookup  = resid_lookup,
-        resid_sigma2  = resid_sigma2
-      )
-    }
 
     # ---- Aggregation workspace + per-method cache --------------------------
     # Captures the heavy dependencies that invalidate every cached method
@@ -421,37 +384,22 @@ mod_2_02_results_server <- function(id,
 
     .build_hist_for_method <- function(ws, method, pl_v) {
       pl   <- ws$hs$pipeline
-      yrs  <- sort(unique(pl$sim_year))
       bq   <- AGG_BAND_Q
       is_log <- isTRUE(ws$hs$so$transform == "log")
-      # PERF-34: residual lookup/variance are per-pipeline constants.
-      lk   <- .residual_lookup(pl$train_aug, pl$id_col)
-      sg2  <- .residual_sigma2(pl$train_aug)
       build_for <- function(weighted) {
-        rows <- lapply(yrs, function(yr) {
-          idx <- pl$sim_year == yr
-          m   <- .one_member_delta(
-            pl, idx, method, weighted, pl_v, bq, is_log,
-            seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", yr),
-            res_mode = ws$res, resid_lookup = lk, resid_sigma2 = sg2
-          )
-          sd_yr <- sqrt((m$var_coef %||% 0) + (m$var_resid %||% 0))
-          F_yr  <- m$F_agg
-          tibble::tibble(
-            sim_year     = yr,
-            value        = m$value,
-            model_id     = list("Historical"),
-            value_all    = list(m$value),
-            value_all_sd = list(sd_yr),
-            F_agg_all    = list(if (is.null(F_yr)) NULL else matrix(F_yr, nrow = 1L)),
-            var_within   = sd_yr^2,
-            var_across   = 0,
-            agg_method   = method,
-            weighted     = weighted,
-            scenario     = "Historical"
-          )
-        })
-        out <- dplyr::bind_rows(rows)
+        out <- aggregate_pipeline_table(
+          pipelines    = pl,
+          method       = method,
+          weighted     = weighted,
+          pov_line     = pl_v,
+          residuals    = ws$res,
+          is_log       = is_log,
+          band_q       = bq,
+          skip_coef    = ws$skip,
+          bandwidth_p0 = bandwidth_p0(),
+          model_ids    = "Historical",
+          scenario     = "Historical"
+        )
         setNames(list(out), method)
       }
       has_w <- !is.null(pl$weight)
@@ -468,60 +416,20 @@ mod_2_02_results_server <- function(id,
       setNames(lapply(sc, function(s) {
         pipes  <- s$pipelines
         is_log <- isTRUE(s$so$transform == "log")
-        yrs    <- sort(unique(pipes[[1L]]$sim_year))
         has_w  <- !is.null(pipes[[1L]]$weight)
-        # PERF-34: per-member lookup/variance, built once per member.
-        lk_s   <- lapply(pipes, function(pp) .residual_lookup(pp$train_aug, pp$id_col))
-        sg2_s  <- lapply(pipes, function(pp) .residual_sigma2(pp$train_aug))
         build_for <- function(weighted) {
-          rows <- lapply(yrs, function(yr) {
-            mod_ids <- names(pipes) %||% paste0("m", seq_along(pipes))
-            per_member_named <- lapply(seq_along(pipes), function(i) {
-              idx <- pipes[[i]]$sim_year == yr
-              m   <- .one_member_delta(
-                pipes[[i]], idx, method, weighted, pl_v, bq, is_log,
-                seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", yr),
-                res_mode = ws$res, resid_lookup = lk_s[[i]],
-                resid_sigma2 = sg2_s[[i]]
-              )
-              if (is.null(m)) return(NULL)
-              list(id = mod_ids[[i]], m = m)
-            })
-            per_member_named <- Filter(Negate(is.null), per_member_named)
-            if (length(per_member_named) == 0L) return(NULL)
-            comb <- combine_ensemble_results(
-              lapply(per_member_named, `[[`, "m"), band_q = bq)
-            if (is.null(comb)) return(NULL)
-            vals_m <- vapply(per_member_named,
-                             function(x) x$m$value, numeric(1L))
-            sd_m   <- sqrt(pmax(vapply(per_member_named,
-                                       function(x) (x$m$var_coef  %||% 0)
-                                                 + (x$m$var_resid %||% 0),
-                                       numeric(1L)), 0))
-            ids_m  <- vapply(per_member_named,
-                             function(x) x$id, character(1L))
-            F_list <- lapply(per_member_named, function(x) x$m$F_agg)
-            F_mat  <- if (all(vapply(F_list, is.null, logical(1L)))) NULL
-                      else do.call(rbind, lapply(F_list, function(v) {
-                        if (is.null(v)) rep(NA_real_, length(F_list[[which(!vapply(F_list, is.null, logical(1L)))[1]]]))
-                        else as.numeric(v)
-                      }))
-            tibble::tibble(
-              sim_year     = yr,
-              value        = mean(vals_m, na.rm = TRUE),
-              model_id     = list(ids_m),
-              value_all    = list(vals_m),
-              value_all_sd = list(sd_m),
-              F_agg_all    = list(F_mat),
-              var_within   = comb$var_within %||% mean(sd_m^2, na.rm = TRUE),
-              var_across   = comb$var_across %||%
-                               (if (length(vals_m) > 1L)
-                                  stats::var(vals_m, na.rm = TRUE) else 0),
-              agg_method   = method,
-              weighted     = weighted
-            )
-          })
-          out <- dplyr::bind_rows(Filter(Negate(is.null), rows))
+          out <- aggregate_pipeline_table(
+            pipelines    = pipes,
+            method       = method,
+            weighted     = weighted,
+            pov_line     = pl_v,
+            residuals    = ws$res,
+            is_log       = is_log,
+            band_q       = bq,
+            skip_coef    = ws$skip,
+            bandwidth_p0 = bandwidth_p0(),
+            model_ids    = names(pipes) %||% paste0("m", seq_along(pipes))
+          )
           setNames(list(out), method)
         }
         list(
@@ -854,32 +762,6 @@ mod_2_02_results_server <- function(id,
     })
 
     # ---- renderUI / render* outputs ----------------------------------------
-
-    output$results_header_ui <- renderUI({
-      req(hist_sim(), input$cmp_agg_method, input$cmp_deviation)
-      so <- hist_sim()$so
-
-      agg_label    <- label_agg_method(input$cmp_agg_method)
-      dev_label    <- label_deviation(input$cmp_deviation)
-      pov_txt      <- if (!is.null(pov_line_val()))
-        paste0(" | Poverty line: $", pov_line_val(), "/day") else ""
-
-      notes_txt <- paste0(
-        "Showing ", agg_label, " of ", so$label %||% so$name,
-        " expressed as ", dev_label, pov_txt, "."
-      )
-
-      shiny::div(
-        style = paste0(
-          "border-left: 4px solid #2166ac; background: #f4f8fd; ",
-          "padding: 10px 14px; margin-bottom: 12px; border-radius: 3px;"
-        ),
-        shiny::tags$strong(style = "font-size:15px;",
-                           paste0("Results: ", so$label %||% so$name)),
-        shiny::tags$br(),
-        shiny::tags$span(style = "color:#555; font-size:12px;", notes_txt)
-      )
-    })
 
     output$scenario_filter_ui <- renderUI({
       sc <- saved_scenarios()
@@ -1335,6 +1217,32 @@ mod_2_02_results_server <- function(id,
       dplyr::bind_rows(Filter(Negate(is.null), rows))
     })
 
+    # UI-48: register Step 2's result figures for the export bundle.
+    wise_export_figure(
+      key   = "climate_outcome_distribution",
+      label = "Simulated welfare by scenario and period",
+      step  = 2L,
+      fun   = function() {
+        bands <- pointrange_bands_rv()
+        if (is.null(bands)) return(NULL)
+        if (!isTRUE(input$show_model_spread)) {
+          bands$intermod_lo <- NA_real_
+          bands$intermod_hi <- NA_real_
+        }
+        plot_pointrange_climate(
+          bands_tbl    = bands,
+          x_label      = agg_hist()$x_label,
+          group_order  = input$cmp_group_order %||% "scenario_x_year",
+          show_coef    = isTRUE(input$show_coef_uncertainty) && has_draws()
+        )
+      },
+      description = paste(
+        "Simulated welfare by climate scenario and projection period, with",
+        "coefficient and inter-model uncertainty bands where enabled."
+      ),
+      width = 10, height = 6.5
+    )
+
     output$summary_box_plot <- renderPlot({
       req(pointrange_bands_rv())
       bands <- pointrange_bands_rv()
@@ -1349,6 +1257,32 @@ mod_2_02_results_server <- function(id,
         show_coef    = isTRUE(input$show_coef_uncertainty) && has_draws()
       )
     }, height = 600)
+
+    # UI-48: one builder behind the on-screen table, its CSV button and the
+    # export bundle.
+    threshold_table_df <- function() {
+      tbl <- threshold_table_rv()
+      if (is.null(tbl)) return(NULL)
+      if (!isTRUE(input$show_model_spread)) {
+        tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
+      }
+      build_threshold_table_df(
+        threshold_tbl = tbl,
+        group_order   = input$cmp_group_order %||% "scenario_x_year",
+        show_coef     = isTRUE(input$show_coef_uncertainty) && has_draws()
+      )
+    }
+
+    wise_export_table(
+      key   = "climate_outcome_thresholds",
+      label = "Outcome threshold exceedance",
+      step  = 2L,
+      fun   = threshold_table_df,
+      description = paste(
+        "Simulated welfare outcomes against each threshold, by climate",
+        "scenario and projection period, with uncertainty bounds."
+      )
+    )
 
     output$summary_threshold_table <- DT::renderDT({
       req(threshold_table_rv())
@@ -1367,12 +1301,13 @@ mod_2_02_results_server <- function(id,
                              options  = list(dom = "t")))
       # INT-08: export is disabled while the results are stale - the table
       # stays visible, the CSV button does not.
-      dt_buttons <- if (isTRUE(stale())) NULL else
-        list(list(extend = "csv", filename = "outcome_thresholds"))
+      dt_buttons <- wise_csv_button("outcome_thresholds",
+                                    enabled = !isTRUE(stale()))
       DT::datatable(
         df, rownames = FALSE, class = "compact stripe",
         options = list(
-          pageLength = 15, dom = "Btip", ordering = list(list(2, "desc")),
+          pageLength = 15, dom = wise_csv_dom("tip"),
+          ordering = list(list(2, "desc")),
           columnDefs = list(list(className = "dt-center", targets = "_all")),
           buttons = dt_buttons
         ),
@@ -1420,6 +1355,37 @@ mod_2_02_results_server <- function(id,
         shiny::icon("circle-info"), " above for definitions."
       )
     })
+
+    # UI-48: the exceedance curve, for the export bundle.
+    wise_export_figure(
+      key   = "climate_exceedance_curve",
+      label = "Welfare exceedance probability",
+      step  = 2L,
+      fun   = function() {
+        curves <- exceedance_curves_rv()
+        ah     <- agg_hist()
+        if (is.null(curves) || is.null(ah)) return(NULL)
+        ens_q <- if (isTRUE(input$show_model_spread))
+          resolve_band_q(input$ensemble_band %||% "minmax")
+        else c(lo = 0.5, hi = 0.5)
+        enhance_exceedance(
+          curves_tbl      = curves,
+          x_label         = ah$x_label,
+          return_period   = isTRUE(input$show_return_period),
+          n_sim_years     = nrow(ah$out),
+          logit_x         = isTRUE(input$exceedance_logit_x),
+          band_q          = if (isTRUE(input$show_coef_uncertainty) && has_draws())
+                              resolve_band_q(input$uncertainty_band %||% "p10_p90")
+                            else NULL,
+          ensemble_band_q = ens_q
+        )
+      },
+      description = paste(
+        "Probability of welfare falling below each level, by climate scenario",
+        "and projection period."
+      ),
+      width = 10, height = 6.5
+    )
 
     output$exceedance_plot <- renderPlot({
       req(exceedance_curves_rv())
@@ -1472,23 +1438,43 @@ mod_2_02_results_server <- function(id,
         return()
       }
 
-      shiny::appendTab(
-        inputId = tabset_id,
-        shiny::tabPanel(
-          title = "Results",
-          value = "sim_tab",
-          shiny::div(id = "results_section")
-        ),
-        select  = TRUE,
-        session = tabset_session
-      )
+      # UI-50: only ever one Results tab. This used to append unconditionally,
+      # so every re-run of Step 2 added another copy - and because the new tab
+      # carried a second `#results_section`, the `insertUI()` below targeted
+      # the *first* match, filling the original tab and leaving the new one
+      # empty. Steps 1 and 3 already guarded their appends; this brings Step 2
+      # into line.
+      if (!results_tab_added()) {
+        shiny::appendTab(
+          inputId = tabset_id,
+          shiny::tabPanel(
+            title = "Results",
+            value = "sim_tab",
+            shiny::div(id = "results_section")
+          ),
+          select  = TRUE,
+          session = tabset_session
+        )
+        results_tab_added(TRUE)
+      } else {
+        # The tab is already there. Clear its contents so the re-run's results
+        # replace the previous run's rather than stacking beneath them - the
+        # pane is built from `hist_sim()$so`, which a new run may have changed.
+        # Both this and the insert below are deferred to the end of the flush
+        # and run in call order, so the clear always precedes the rewrite.
+        # Deferring also keeps the first-run path byte-for-byte as it was:
+        # appendTab's DOM insertion lands before anything targets
+        # #results_section.
+        shiny::removeUI(selector = "#results_section > *", multiple = TRUE)
+        try(shiny::updateTabsetPanel(tabset_session, inputId = tabset_id,
+                                     selected = "sim_tab"), silent = TRUE)
+      }
 
       shiny::insertUI(
         selector = "#results_section",
         where    = "afterBegin",
         ui       = .results_content_ui(ns, hist_sim()$so)
       )
-      results_tab_added(TRUE)
     }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
     # On subsequent runs, just re-select the tab.
@@ -1518,7 +1504,6 @@ mod_2_02_results_server <- function(id,
     outputOptions(output, "summary_box_plot",        suspendWhenHidden = TRUE)
     outputOptions(output, "summary_threshold_table", suspendWhenHidden = TRUE)
     outputOptions(output, "exceedance_plot",         suspendWhenHidden = TRUE)
-    outputOptions(output, "results_header_ui",       suspendWhenHidden = TRUE)
     outputOptions(output, "scenario_filter_ui",      suspendWhenHidden = TRUE)
     outputOptions(output, "threshold_table_header",  suspendWhenHidden = TRUE)
     outputOptions(output, "threshold_table_footer",  suspendWhenHidden = TRUE)

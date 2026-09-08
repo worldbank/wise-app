@@ -154,7 +154,7 @@ mod_2_01_weathersim_ui <- function(id) {
         ),
         style = "font-weight:600; margin-bottom:4px;"
       ),
-      shiny::radioButtons(
+      pill_toggle(
         inputId  = ns("residuals"),
         label    = shiny::tags$span(class = "visually-hidden",
                                     "Simulation residuals"),
@@ -544,7 +544,7 @@ mod_2_01_weathersim_server <- function(id,
         shiny::tagList(
           if (length(missing)) {
             shiny::div(
-              class = "alert alert-warning",
+              class = "alert alert-warning warning-message",
               role  = "alert",
               style = "font-size: 13px; margin-top: 4px;",
               shiny::tags$b("Prerequisites: "), "select ",
@@ -713,6 +713,25 @@ mod_2_01_weathersim_server <- function(id,
         # INT-05: bind the historical scenario label into the result so the
         # Step 3 pane describes the simulated run, not the live selection.
         result$hist_sim_result$hist_label <- sh$scenario_name
+        model_spec <- mf$.snap$model %||% list()
+        result$hist_sim_result$sim_summary <- list(
+          weather = sw,
+          historical_years = unlist(sh$year_range[[1]], use.names = FALSE),
+          baseline_survey = {
+            ch <- baseline_survey_choices()
+            sel <- input$baseline_survey %||% baseline_default()
+            nms <- names(ch)[ch %in% sel]
+            if (length(nms)) paste(nms, collapse = ", ") else "Selected baseline survey"
+          },
+          baseline_n = nrow(svy),
+          model = list(
+            label = if (length(model_spec)) model_badge(model_spec) else "Fitted model",
+            weather_terms = length(mf$weather_terms %||% character(0)),
+            fixed_effects = length(model_spec$fixedeffects %||% mf$fe_terms %||% character(0)),
+            covariates = if (length(model_spec)) model_covariate_total(model_spec) else NA_integer_
+          ),
+          total_runs = result$total_runs
+        )
         # INT-08: the immutable run signature travels with the result so
         # Step 3 can detect that it is consuming a superseded simulation.
         result$hist_sim_result$.sig <- .sim_sig_from_live(mf$.sig %||% NULL)
