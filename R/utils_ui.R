@@ -197,8 +197,6 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
   model <- run$model %||% list()
   model_label <- model$label %||% "Fitted model"
   model_bits <- c(
-    if (is.finite(model$weather_terms %||% NA_integer_))
-      paste0(model$weather_terms, " weather terms"),
     if (is.finite(model$fixed_effects %||% NA_integer_))
       paste0(model$fixed_effects, " FE"),
     if (is.finite(model$covariates %||% NA_integer_))
@@ -224,13 +222,25 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     title = "Selected Climate Scenario",
     badge = badge,
     rows = list(
-      list(name = "Climate scenarios", sub = paste0(
-        "Historical ", hist_period, "; ", scenario_count, " future selected"
-      ), pills = scenario_pills),
-      list(name = "Outcome", sub = so_label),
-      list(name = "Weather", sub = paste(weather_labels, collapse = ", ")),
-      list(name = "Model", sub = model_label, pills = model_bits),
-      list(name = "Baseline survey", sub = baseline, pills = baseline_pills)
+      list(
+        name = "Climate scenarios",
+        sub = paste0("Historical ", hist_period),
+        pills = scenario_pills
+      ),
+      list(
+        name = "Weather",
+        sub = paste(weather_labels, collapse = ", ")
+      ),
+      list(
+        name = "Model",
+        sub = model_label,
+        pills = c(paste0("Outcome: ", so_label), model_bits)
+      ),
+      list(
+        name = "Baseline",
+        sub = baseline,
+        pills = baseline_pills
+      )
     ),
     compact = TRUE
   )
@@ -269,8 +279,6 @@ policy_summary_card <- function(selected_policies = NULL,
   baseline_n <- run$baseline_n %||% NA_integer_
   model <- run$model %||% list()
   model_bits <- c(
-    if (is.finite(model$weather_terms %||% NA_integer_))
-      paste0(model$weather_terms, " weather terms"),
     if (is.finite(model$fixed_effects %||% NA_integer_))
       paste0(model$fixed_effects, " FE"),
     if (is.finite(model$covariates %||% NA_integer_))
@@ -312,30 +320,30 @@ policy_summary_card <- function(selected_policies = NULL,
     rows = list(
       list(
         name = "Climate scenarios",
-        sub = if (length(historical)) {
-          paste0(historical, "; ", length(climate_scenarios), " future selected")
-        } else {
-          paste(length(climate_scenarios), "future selected")
-        },
+        sub = if (length(historical)) historical else "Historical climate",
         pills = climate_scenarios
       ),
       list(
         name  = "Policies",
-        sub   = if (length(policy_pills) && !identical(policy_pills, "None")) {
-          paste(policy_pills, collapse = ", ")
-        } else "None",
+        sub   = NULL,
         pills = policy_pills
       ),
-      list(name = "Outcome", sub = so_label),
-      list(name = "Weather", sub = if (length(weather_labels))
-        paste(weather_labels, collapse = ", ") else "Selected weather"),
-      list(name = "Model", sub = model$label %||% "Fitted model", pills = model_bits),
+      list(
+        name = "Model",
+        sub = model$label %||% "Fitted model",
+        pills = c(
+          paste0("Outcome: ", so_label),
+          if (length(weather_labels)) paste0(
+            "Weather: ", paste(weather_labels, collapse = ", ")
+          ),
+          model_bits
+        )
+      ),
       list(
         name = "Baseline",
         sub = baseline,
         pills = c(
-          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ",")),
-          historical
+          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
         )
       )
     ),

@@ -69,7 +69,8 @@ mod_3_scenario_ui <- function(id) {
             "Configure policy scenarios in the sidebar, then click",
             "'Run simulation'. Results will appear here as new tabs."
           ))
-        )
+        ),
+        welfare_equation_ui(predicted = TRUE)
       )
     )
   )

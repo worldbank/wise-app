@@ -50,7 +50,8 @@ mod_2_simulation_ui <- function(id) {
             "Configure climate scenarios in the sidebar, then click",
             "'Run simulation'. Results will appear here as new tabs."
           ))
-        )
+        ),
+        welfare_equation_ui(predicted = TRUE)
       )
     )
   )
