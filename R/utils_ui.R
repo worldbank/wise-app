@@ -218,22 +218,7 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     paste(scenario_count, "future", if (scenario_count == 1L) "scenario" else "scenarios")
   }
 
-  context_id <- hist_sim$run_id %||% "session run"
-
-  shiny::tagList(
-    shiny::tags$div(
-      class = "run-context-banner",
-      shiny::tags$div(
-        class = "run-context-kicker",
-        "Stress-test scenario - not a forecast"
-      ),
-      shiny::tags$div(
-        class = "run-context-copy",
-        "The survey population and non-weather characteristics are fixed; projection windows are separate climate regimes."
-      ),
-      shiny::tags$span(class = "run-context-id", paste0("Run ID: ", context_id))
-    ),
-    selection_summary_card(
+  selection_summary_card(
     title = "Selected Climate Scenario",
     badge = badge,
     rows = list(
@@ -257,8 +242,7 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
         pills = baseline_pills
       )
     ),
-      compact = TRUE
-    )
+    compact = TRUE
   )
 }
 
@@ -345,20 +329,7 @@ policy_summary_card <- function(selected_policies = NULL,
   configured_count <- length(policy_pills[policy_pills != "None"])
   climate_scenarios <- names(policy_saved_scenarios)
 
-  shiny::tagList(
-    shiny::tags$div(
-      class = "run-context-banner",
-      shiny::tags$div(class = "run-context-kicker", "Stress-test scenario - not a forecast"),
-      shiny::tags$div(
-        class = "run-context-copy",
-        "The survey population and non-weather characteristics are fixed; projection windows are separate climate regimes."
-      ),
-      shiny::tags$span(
-        class = "run-context-id",
-        paste0("Run ID: ", if (!is.null(hs)) hs$run_id %||% "session run" else "session run")
-      )
-    ),
-    selection_summary_card(
+  selection_summary_card(
       title = "Selected Policy Scenarios",
       badge = paste(configured_count,
                     if (configured_count == 1L) "policy" else "policies"),
@@ -388,8 +359,7 @@ policy_summary_card <- function(selected_policies = NULL,
           )
         )
       ),
-      compact = TRUE
-    )
+    compact = TRUE
   )
 }
 

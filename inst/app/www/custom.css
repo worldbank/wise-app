@@ -487,40 +487,6 @@
   color: #333;
 }
 
-.run-context-banner {
-  border: 1px solid #c9d8e6;
-  border-left: 5px solid #0072b2;
-  background: #f5f9fc;
-  padding: 10px 14px;
-  margin: 0 0 10px;
-  border-radius: 4px;
-  position: relative;
-}
-
-.run-context-kicker {
-  color: #003b5c;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.run-context-copy {
-  color: #425466;
-  font-size: 0.82rem;
-  line-height: 1.4;
-  padding-right: 8rem;
-}
-
-.run-context-id {
-  color: #66788a;
-  font-family: var(--bs-font-monospace);
-  font-size: 0.72rem;
-  position: absolute;
-  right: 12px;
-  top: 11px;
-}
-
 .headline-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -560,10 +526,6 @@
   margin-top: 3px;
 }
 
-@media (max-width: 640px) {
-  .run-context-copy { padding-right: 0; }
-  .run-context-id { display: block; position: static; margin-top: 4px; }
-}
 
 /* ---- Configure flyout (weather variable settings) ------------------------
    Content stays in the DOM (conditionalPanel), but is presented as a
