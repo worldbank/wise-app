@@ -94,10 +94,18 @@ mod_3_07_results_server <- function(id,
           shiny::tabPanel(
             title = "Results",
             value = "results_tab",
-            .results_pane_ui(ns, bs$so)
+            # Insert the module UI after the tab exists in the browser. This
+            # mirrors Step 2 and lets Shiny bind the nested outputs/inputs.
+            shiny::div(id = ns("results_section"))
           ),
           select  = TRUE,
           session = tabset_session
+        )
+        shiny::insertUI(
+          selector = paste0("#", ns("results_section")),
+          where = "afterBegin",
+          ui = .results_pane_ui(ns, bs$so),
+          session = session
         )
         tabs_added(TRUE)
       }

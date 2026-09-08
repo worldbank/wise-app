@@ -621,7 +621,7 @@ plot_welfare_dist <- function(df,
     dplyr::mutate(.val = suppressWarnings(as.numeric(.data[[outcome]]))) |>
     dplyr::filter(!is.na(.data$.val)) |>
     dplyr::summarise(
-      value = mean(.data$.val),
+      value = mean(.data$.val, na.rm = TRUE),
       n_hh  = dplyr::n(),
       .by   = dplyr::any_of(keys)
     )

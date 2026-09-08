@@ -299,8 +299,14 @@ mod_3_scenario_server <- function(id,
           shiny::tabPanel(
             title = "Decomposition",
             value = "decomposition_tab",
-            mod_3_09_decomposition_ui(ns("decomposition"))
+            shiny::div(id = ns("decomposition_section"))
           ),
+          session = session
+        )
+        shiny::insertUI(
+          selector = paste0("#", ns("decomposition_section")),
+          where = "afterBegin",
+          ui = mod_3_09_decomposition_ui(ns("decomposition")),
           session = session
         )
         decomp_tab_added(TRUE)

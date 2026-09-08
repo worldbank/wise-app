@@ -140,6 +140,18 @@ test_that("policy covariate support flags range and rare categories", {
   expect_true(out$warning[out$variable == "sector"])
 })
 
+test_that("policy covariate support tolerates unmatched and missing categories", {
+  train <- data.frame(sector = factor(c("a", "b", "a")), x = c(1, 2, NA))
+  policy <- data.frame(sector = c("a", NA, ""), x = c(1, 3, NA))
+  out <- wiseapp:::policy_covariate_support(
+    train, policy, vars = c("sector", "x", "missing_from_both")
+  )
+
+  expect_setequal(out$variable, c("sector", "x"))
+  expect_true(out$warning[out$variable == "sector"])
+  expect_true(out$warning[out$variable == "x"])
+})
+
 test_that("log effects convert to percent without losing model-scale additivity", {
   level <- 0.10
   resilience <- -0.04

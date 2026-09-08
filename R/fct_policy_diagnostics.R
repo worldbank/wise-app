@@ -32,18 +32,27 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
 }
 
 policy_covariate_support <- function(training, policy, vars = NULL,
-                                     rare_share = 0.01) {
-  if (is.null(training) || is.null(policy)) return(data.frame())
+                                      rare_share = 0.01) {
+  if (is.null(training) || is.null(policy) ||
+      !is.data.frame(training) || !is.data.frame(policy)) {
+    return(data.frame())
+  }
   vars <- vars %||% intersect(names(training), names(policy))
+  # A caller may provide the Step 1 variable list, which can contain a
+  # variable dropped from either the training or policy frame. Only shared
+  # columns can be compared safely.
+  vars <- intersect(vars, intersect(names(training), names(policy)))
   vars <- setdiff(vars, c("welfare", "weight", "sim_year", "year"))
   dplyr::bind_rows(lapply(vars, function(v) {
     tr <- training[[v]]; po <- policy[[v]]
     if (is.numeric(tr) && is.numeric(po)) {
-      lo <- min(tr, na.rm = TRUE); hi <- max(tr, na.rm = TRUE)
-      out <- po < lo | po > hi
+      finite_tr <- is.finite(tr)
+      lo <- if (any(finite_tr)) min(tr[finite_tr]) else NA_real_
+      hi <- if (any(finite_tr)) max(tr[finite_tr]) else NA_real_
+      out <- if (is.finite(lo) && is.finite(hi)) po < lo | po > hi else rep(FALSE, length(po))
       data.frame(variable = v, type = "numeric", training_lo = lo,
                  training_hi = hi, policy_outside_n = sum(out, na.rm = TRUE),
-                 policy_outside_share = mean(out, na.rm = TRUE),
+                 policy_outside_share = if (length(out)) mean(out, na.rm = TRUE) else NA_real_,
                  rare_or_absent = FALSE, warning = any(out, na.rm = TRUE),
                  stringsAsFactors = FALSE)
     } else {
@@ -51,8 +60,11 @@ policy_covariate_support <- function(training, policy, vars = NULL,
       freq <- prop.table(table(trc, useNA = "no"))
       absent <- !(poc %in% names(freq))
       rare <- !absent & vapply(poc, function(x) {
-        if (!x %in% names(freq)) return(FALSE)
-        as.numeric(freq[[x]]) < rare_share
+        # Use an integer match before indexing. This avoids `[[` errors for
+        # missing or unusual category values in policy-adjusted frames.
+        idx <- match(x, names(freq), nomatch = 0L)
+        if (idx == 0L) return(FALSE)
+        as.numeric(freq[[idx]]) < rare_share
       }, logical(1L))
       data.frame(variable = v, type = "categorical", training_lo = NA,
                  training_hi = NA, policy_outside_n = 0,

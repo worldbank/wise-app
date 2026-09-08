@@ -355,10 +355,16 @@ mod_3_08_diagnostics_server <- function(id,
           shiny::tabPanel(
             title = "Diagnostics",
             value = "diag_tab",
-            .diagnostics_content_ui(ns)
+            shiny::div(id = ns("diagnostics_section"))
           ),
           select = FALSE,
           session = tabset_session
+        )
+        shiny::insertUI(
+          selector = paste0("#", ns("diagnostics_section")),
+          where = "afterBegin",
+          ui = .diagnostics_content_ui(ns),
+          session = session
         )
         diag_tab_added(TRUE)
       }
