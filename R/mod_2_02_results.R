@@ -1310,6 +1310,57 @@ mod_2_02_results_server <- function(id,
       )
     }, height = 460)
 
+    # Export the same tidy annual aggregates used by the distribution plot.
+    annual_distribution_export <- function() {
+      curves <- timeseries_curves_rv()
+      req(curves)
+      annotate_visualization_export(
+        curves,
+        input$cmp_agg_method %||% "mean",
+        hist_sim()$so,
+        observation_unit = "annual aggregate for fixed survey population under one weather-year draw",
+        aggregation_order = "weighted household aggregate by model and weather-year; model means retained",
+        uncertainty = "inter-annual weather variation"
+      )
+    }
+    wise_export_figure(
+      key = "climate_annual_distribution",
+      label = "Annual outcome distribution across weather years",
+      step = 2L,
+      fun = function() {
+        plot_annual_distribution(
+          timeseries_curves_rv(),
+          x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                      hist_sim()$so,
+                                      input$cmp_deviation %||% "none")
+        )
+      },
+      description = "Annual aggregate distribution for the fixed population; one observation is one model-weather-year draw.",
+      width = 10, height = 6.5
+    )
+    wise_export_table(
+      key = "climate_annual_distribution_data",
+      label = "Annual outcome distribution data",
+      step = 2L,
+      fun = annual_distribution_export,
+      description = "Tidy data behind the annual aggregate distribution, including metric and aggregation metadata."
+    )
+    wise_export_table(
+      key = "climate_expected_outcomes",
+      label = "Expected outcome summaries",
+      step = 2L,
+      fun = function() {
+        annotate_visualization_export(
+          pointrange_bands_rv(), input$cmp_agg_method %||% "mean",
+          hist_sim()$so,
+          observation_unit = "scenario-period annual aggregate summary",
+          aggregation_order = "model means across weather-year draws, then median across equally weighted models",
+          uncertainty = "inter-model ensemble spread and coefficient uncertainty"
+        )
+      },
+      description = "Expected annual outcomes by scenario and projection window with separately labelled uncertainty sources."
+    )
+
     # UI-48: one builder behind the on-screen table, its CSV button and the
     # export bundle.
     threshold_table_df <- function() {

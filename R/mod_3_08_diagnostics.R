@@ -297,6 +297,19 @@ mod_3_08_diagnostics_server <- function(id,
               baseline_vals, policy_vals, var_name
             )
           })
+          wise_export_figure(
+            key = paste0("policy_before_after_", var_name),
+            label = paste("Policy-adjusted before/after", var_name),
+            step = 3L,
+            fun = function() .make_before_after_hist(
+              baseline_vals, policy_vals, var_name
+            ),
+            description = paste(
+              "Baseline and policy-adjusted distributions for the manipulated",
+              "variable", var_name, "."
+            ),
+            width = 9, height = 5
+          )
         })
       }
     }, ignoreInit = TRUE)

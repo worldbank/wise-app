@@ -462,6 +462,42 @@ plot_weather_density_panel <- function(survey_weather,
     ggplot2::theme(legend.position = "bottom")
 }
 
+#' Tidy data behind the weather-support density panels.
+#' @noRd
+weather_density_data <- function(survey_weather, weather_raw, weather_vars,
+                                 scenario_weather = NULL,
+                                 active_scenarios = NULL,
+                                 show_regression = TRUE) {
+  weather_vars <- intersect(weather_vars, names(weather_raw))
+  if (!length(weather_vars)) return(data.frame())
+  hist_filt <- .filter_hist_weather(weather_raw, survey_weather)
+  if (!"int_month" %in% names(survey_weather) && "timestamp" %in% names(survey_weather)) {
+    survey_weather$int_month <- as.integer(format(as.Date(survey_weather$timestamp), "%m"))
+  }
+  if ("timestamp" %in% names(survey_weather)) {
+    survey_weather$cal_year <- as.integer(format(as.Date(survey_weather$timestamp), "%Y"))
+  }
+  reg_filt <- hist_filt[hist_filt$cal_year %in% unique(survey_weather$cal_year), , drop = FALSE]
+  rows <- list()
+  add <- function(df, source) {
+    if (is.null(df)) return()
+    for (wv in weather_vars) {
+      x <- suppressWarnings(as.numeric(df[[wv]]))
+      rows[[length(rows) + 1L]] <<- data.frame(
+        weather_variable = wv, source = source, value = x,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  add(reg_filt, "Step 1 regression input")
+  add(hist_filt, "Full historical archive")
+  visible <- names(scenario_weather %||% list())
+  if (!is.null(active_scenarios)) visible <- intersect(visible, active_scenarios)
+  for (nm in visible) add(scenario_weather[[nm]], nm)
+  dplyr::bind_rows(rows) |>
+    dplyr::filter(is.finite(.data$value))
+}
+
 # ---------------------------------------------------------------------------- #
 # Year-anchored welfare ridge plot                                             #
 # ---------------------------------------------------------------------------- #

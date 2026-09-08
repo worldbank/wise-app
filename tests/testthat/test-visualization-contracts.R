@@ -51,3 +51,37 @@ test_that("variance display uses separate aligned bars", {
   expect_true(any(vapply(p$layers, function(x) inherits(x$position, "PositionDodge"),
                          logical(1L))))
 })
+
+test_that("visualization exports carry metric and observation metadata", {
+  out <- wiseapp:::annotate_visualization_export(
+    data.frame(value = 1:2),
+    method = "headcount_ratio",
+    observation_unit = "annual aggregate",
+    aggregation_order = "weighted household aggregate by model and year",
+    uncertainty = "inter-model spread"
+  )
+  expect_identical(out$metric_id, c("headcount_ratio", "headcount_ratio"))
+  expect_identical(out$direction, c("lower_is_better", "lower_is_better"))
+  expect_identical(out$adverse_tail, c("high", "high"))
+  expect_identical(out$observation_unit, rep("annual aggregate", 2L))
+  expect_identical(out$uncertainty_type, rep("inter-model spread", 2L))
+})
+
+test_that("weather support export preserves source and variable", {
+  survey <- data.frame(
+    loc_id = c("a", "a"), int_month = c(1L, 1L),
+    timestamp = as.Date(c("2020-01-01", "2021-01-01"))
+  )
+  weather <- data.frame(
+    loc_id = c("a", "a"), int_month = c(1L, 1L),
+    timestamp = as.Date(c("2020-01-01", "2021-01-01")),
+    temp = c(10, 20)
+  )
+  out <- wiseapp:::weather_density_data(
+    survey, weather, "temp",
+    scenario_weather = list(`SSP2 / 2030` = transform(weather, temp = temp + 1))
+  )
+  expect_true(all(c("weather_variable", "source", "value") %in% names(out)))
+  expect_setequal(unique(out$source), c("Step 1 regression input", "Full historical archive", "SSP2 / 2030"))
+  expect_true(all(is.finite(out$value)))
+})

@@ -1288,6 +1288,107 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
   }, height = 420)
   outputOptions(output, "paired_adverse_plot", suspendWhenHidden = TRUE)
 
+  paired_effect_summary_export <- function() {
+    annotate_visualization_export(
+      paired_effect_summary_rv(), input$cmp_agg_method %||% "mean",
+      baseline_hist_sim()$so,
+      observation_unit = "scenario-period paired annual aggregate effect",
+      aggregation_order = "paired policy minus baseline by model and weather-year; model means, then median across equally weighted models",
+      uncertainty = "paired coefficient contrast and inter-model spread"
+    )
+  }
+  paired_annual_effect_export <- function() {
+    annotate_visualization_export(
+      paired_annual_effects_rv(), input$cmp_agg_method %||% "mean",
+      baseline_hist_sim()$so,
+      observation_unit = "paired annual aggregate effect for one model-weather-year draw",
+      aggregation_order = "policy aggregate minus baseline aggregate on matched household, model, and weather-year draws",
+      uncertainty = "paired coefficient contrast"
+    )
+  }
+  paired_adverse_effect_export <- function() {
+    annotate_visualization_export(
+      paired_adverse_effects_rv(), input$cmp_agg_method %||% "mean",
+      baseline_hist_sim()$so,
+      observation_unit = "scenario-period equal-probability tail contrast",
+      aggregation_order = "policy quantile minus baseline quantile within each model, then median across equally weighted models",
+      uncertainty = "inter-model spread of paired quantile contrasts"
+    )
+  }
+  wise_export_table(
+    key = "policy_paired_effect_summary",
+    label = "Paired policy effect summaries",
+    step = 3L,
+    fun = paired_effect_summary_export,
+    description = "Expected policy-minus-baseline effects with paired uncertainty and model counts."
+  )
+  wise_export_table(
+    key = "policy_annual_effect_data",
+    label = "Annual paired policy effects",
+    step = 3L,
+    fun = paired_annual_effect_export,
+    description = "Tidy annual policy-minus-baseline effects for matched model-weather-year draws."
+  )
+  wise_export_table(
+    key = "policy_adverse_effects",
+    label = "Adverse-year policy effects",
+    step = 3L,
+    fun = paired_adverse_effect_export,
+    description = "Equal-probability adverse-tail policy effects; not same-weather-event effects."
+  )
+  wise_export_figure(
+    key = "policy_annual_effect_distribution",
+    label = "Annual paired policy-effect distribution",
+    step = 3L,
+    fun = function() {
+      plot_annual_distribution(
+        paired_annual_effects_rv(),
+        x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                    baseline_hist_sim()$so,
+                                    input$cmp_deviation %||% "none"),
+        title = "Distribution of annual policy effects across simulated weather years"
+      )
+    },
+    description = "Distribution of paired annual policy effects, not household welfare outcomes.",
+    width = 10, height = 6.5
+  )
+  wise_export_figure(
+    key = "policy_adverse_effect_plot",
+    label = "Adverse-year paired policy effect",
+    step = 3L,
+    fun = function() {
+      plot_adverse_effects(
+        paired_adverse_effects_rv(),
+        x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                    baseline_hist_sim()$so,
+                                    input$cmp_deviation %||% "none")
+      )
+    },
+    description = "Equal-probability tail contrast of policy minus baseline at adverse return-period probabilities.",
+    width = 10, height = 6.5
+  )
+  wise_export_table(
+    key = "policy_outcome_thresholds",
+    label = "Policy outcome threshold details",
+    step = 3L,
+    fun = function() {
+      tbl <- threshold_table_rv()
+      if (is.null(tbl)) return(NULL)
+      annotate_visualization_export(
+        build_threshold_table_df(
+          threshold_tbl = tbl,
+          group_order = input$cmp_group_order %||% "scenario_x_year",
+          show_coef = isTRUE(input$show_coef_uncertainty) && has_draws()
+        ),
+        input$cmp_agg_method %||% "mean", baseline_hist_sim()$so,
+        observation_unit = "scenario-period return-period annual aggregate",
+        aggregation_order = "per-model return-period interpolation, then across-model summary",
+        uncertainty = "coefficient, ensemble, and pooled bands where supported"
+      )
+    },
+    description = "Technical baseline, policy, and threshold detail table behind the advanced risk view."
+  )
+
   output$summary_threshold_table <- DT::renderDT({
     req(threshold_table_rv())
     tbl <- threshold_table_rv()

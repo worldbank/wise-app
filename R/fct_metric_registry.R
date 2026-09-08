@@ -73,3 +73,36 @@ metric_adverse_probabilities <- function() {
   c("Adverse 1-in-5" = 0.10, "Adverse 1-in-10" = 0.05,
     "Adverse 1-in-20" = 0.025)
 }
+
+# Add the definitions needed to interpret a chart-data export. Keeping these
+# fields beside the values makes a CSV useful outside the live Shiny session.
+visualization_export_metadata <- function(method = "mean", so = NULL,
+                                          observation_unit,
+                                          aggregation_order,
+                                          uncertainty = "none") {
+  spec <- metric_metadata(method, so)
+  data.frame(
+    metric_id = spec$method,
+    metric_label = spec$label,
+    unit = spec$unit,
+    number_format = spec$format,
+    direction = spec$direction,
+    adverse_tail = spec$adverse_tail,
+    observation_unit = observation_unit,
+    aggregation_order = aggregation_order,
+    uncertainty_type = uncertainty,
+    stringsAsFactors = FALSE
+  )
+}
+
+annotate_visualization_export <- function(data, method = "mean", so = NULL,
+                                          observation_unit,
+                                          aggregation_order,
+                                          uncertainty = "none") {
+  if (is.null(data) || !is.data.frame(data)) return(data)
+  meta <- visualization_export_metadata(
+    method, so, observation_unit, aggregation_order, uncertainty
+  )
+  for (nm in names(meta)) data[[nm]] <- meta[[nm]][[1L]]
+  data
+}

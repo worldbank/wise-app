@@ -239,6 +239,28 @@ mod_3_09_decomposition_server <- function(id,
     output$beta_curve_plot1 <- .render_beta_curve(1L)
     output$beta_curve_plot2 <- .render_beta_curve(2L)
 
+    for (idx in seq_len(2L)) local({
+      i <- idx
+      wise_export_figure(
+        key = paste0("policy_rif_weather_curve_", i),
+        label = paste("RIF weather-sensitivity curve", i),
+        step = 3L,
+        fun = function() {
+          req(is_rif(), model_fit())
+          mf <- model_fit()
+          req(length(mf$weather_terms) >= i)
+          make_weather_effect_plot(
+            fit = NULL, pred_var = mf$weather_terms[i],
+            interaction_terms = mf$interaction_terms %||% character(0),
+            is_binned = FALSE, label_fun = get_label,
+            engine = "rif", rif_grid = mf$rif_grid
+          )
+        },
+        description = "RIF weather coefficient by baseline welfare quantile; interpolation is limited to the estimated grid.",
+        width = 9, height = 6
+      )
+    })
+
     # --- Scenario range panel ---
     output$scenario_range_ui <- renderUI({
       sc <- decomp_scenarios()

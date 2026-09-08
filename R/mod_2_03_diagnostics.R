@@ -349,6 +349,93 @@ mod_2_03_diagnostics_server <- function(id,
       width = 9, height = 6
     )
 
+    wise_export_table(
+      key = "simulation_variance_data",
+      label = "Simulation uncertainty components",
+      step = 2L,
+      fun = function() {
+        vb <- variance_breakdown()
+        if (is.null(vb) || !nrow(vb)) return(NULL)
+        annotate_visualization_export(
+          vb, hist_sim()$so$method %||% "mean", hist_sim()$so,
+          observation_unit = "scenario-level annual aggregate summary",
+          aggregation_order = "weighted aggregate by model and weather-year; components retained separately",
+          uncertainty = "coefficient, inter-annual, and inter-model components"
+        )
+      },
+      description = "Tidy uncertainty components behind the aligned standard-deviation chart."
+    )
+    wise_export_figure(
+      key = "simulation_weather_support",
+      label = "Weather inputs and Step 1 model support",
+      step = 2L,
+      fun = function() {
+        req(hist_sim(), survey_weather())
+        vars <- input$diag_weather_vars
+        req(length(vars) > 0L)
+        plot_weather_density_panel(
+          survey_weather(), hist_sim()$weather_raw, vars,
+          scenario_weather = scenario_weather_data(),
+          active_scenarios = active_scenarios_data(),
+          show_regression = input$show_regression_input %||% TRUE
+        )
+      },
+      description = "Weather input distributions compared with the Step 1 regression support.",
+      width = 10, height = 6.5
+    )
+    wise_export_table(
+      key = "simulation_weather_support_data",
+      label = "Weather support data",
+      step = 2L,
+      fun = function() {
+        req(hist_sim(), survey_weather())
+        vars <- input$diag_weather_vars
+        req(length(vars) > 0L)
+        annotate_visualization_export(
+          weather_density_data(
+            survey_weather(), hist_sim()$weather_raw, vars,
+            scenario_weather_data(), active_scenarios_data(),
+            input$show_regression_input %||% TRUE
+          ),
+          hist_sim()$so$method %||% "mean", hist_sim()$so,
+          observation_unit = "weather input value entering the simulation",
+          aggregation_order = "raw weather inputs retained by source and scenario",
+          uncertainty = "distributional support comparison"
+        )
+      },
+      description = "Underlying tidy weather values used by the support comparison."
+    )
+    wise_export_figure(
+      key = "simulation_model_trajectories",
+      label = "Climate-model annual trajectories",
+      step = 2L,
+      fun = function() {
+        req(timeseries_curves)
+        tc <- timeseries_curves()
+        req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+        plot_timeseries_spaghetti(tc$tbl, x_label = tc$x_label)
+      },
+      description = "Advanced climate-model trajectories by discrete simulation window.",
+      width = 10, height = 6.5
+    )
+    wise_export_table(
+      key = "simulation_model_trajectories_data",
+      label = "Climate-model trajectory data",
+      step = 2L,
+      fun = function() {
+        req(timeseries_curves)
+        tc <- timeseries_curves()
+        req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+        annotate_visualization_export(
+          tc$tbl, hist_sim()$so$method %||% "mean", hist_sim()$so,
+          observation_unit = "annual aggregate for one climate model and weather-year draw",
+          aggregation_order = "weighted aggregate retained by model, simulation year, and scenario",
+          uncertainty = "inter-model spread shown separately from annual draws"
+        )
+      },
+      description = "Tidy data behind the advanced climate-model trajectory view."
+    )
+
     output$variance_contribution_plot <- renderPlot({
       req(variance_breakdown)
       vb <- variance_breakdown()
