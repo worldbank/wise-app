@@ -1340,7 +1340,7 @@ mod_2_02_results_server <- function(id,
       label = "Simulated welfare by scenario and period",
       step  = 2L,
       fun   = function() {
-        bands <- tryCatch(pointrange_bands_rv(), error = function(e) NULL)
+        bands <- pointrange_bands_rv()
         if (is.null(bands)) return(NULL)
         if (!isTRUE(input$show_model_spread)) {
           bands$intermod_lo <- NA_real_
@@ -1348,7 +1348,7 @@ mod_2_02_results_server <- function(id,
         }
         plot_pointrange_climate(
           bands_tbl    = bands,
-          x_label      = tryCatch(agg_hist()$x_label, error = function(e) NULL),
+          x_label      = agg_hist()$x_label,
           group_order  = input$cmp_group_order %||% "scenario_x_year",
           show_coef    = isTRUE(input$show_coef_uncertainty) && has_draws()
         )
@@ -1378,7 +1378,7 @@ mod_2_02_results_server <- function(id,
     # UI-48: one builder behind the on-screen table, its CSV button and the
     # export bundle.
     threshold_table_df <- function() {
-      tbl <- tryCatch(threshold_table_rv(), error = function(e) NULL)
+      tbl <- threshold_table_rv()
       if (is.null(tbl)) return(NULL)
       if (!isTRUE(input$show_model_spread)) {
         tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
@@ -1479,8 +1479,8 @@ mod_2_02_results_server <- function(id,
       label = "Welfare exceedance probability",
       step  = 2L,
       fun   = function() {
-        curves <- tryCatch(exceedance_curves_rv(), error = function(e) NULL)
-        ah     <- tryCatch(agg_hist(), error = function(e) NULL)
+        curves <- exceedance_curves_rv()
+        ah     <- agg_hist()
         if (is.null(curves) || is.null(ah)) return(NULL)
         ens_q <- if (isTRUE(input$show_model_spread))
           resolve_band_q(input$ensemble_band %||% "minmax")

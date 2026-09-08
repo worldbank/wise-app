@@ -326,9 +326,9 @@ mod_2_03_diagnostics_server <- function(id,
       label = "Variance contribution by source",
       step  = 2L,
       fun   = function() {
-        vb <- tryCatch(variance_breakdown(), error = function(e) NULL)
+        vb <- variance_breakdown()
         if (is.null(vb) || !nrow(vb)) return(NULL)
-        active <- tryCatch(active_scenarios_data(), error = function(e) character(0))
+        active <- active_scenarios_data()
         if (length(active) > 0L) {
           vb <- vb[vb$is_historical | vb$scenario %in% active, , drop = FALSE]
         }

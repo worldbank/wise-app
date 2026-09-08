@@ -139,7 +139,7 @@ mod_3_09_decomposition_server <- function(id,
       label = "Policy effect by channel",
       step  = 3L,
       fun   = function() {
-        res <- tryCatch(decomp_result(), error = function(e) NULL)
+        res <- decomp_result()
         if (is.null(res) || !is.data.frame(res) || nrow(res) == 0) return(NULL)
         .plot_decomp_bars(res, is_rif(),
                           show_coef = isTRUE(show_coef_uncertainty()))
@@ -156,7 +156,7 @@ mod_3_09_decomposition_server <- function(id,
       label = "Policy effect range across scenarios",
       step  = 3L,
       fun   = function() {
-        sc <- tryCatch(decomp_scenarios(), error = function(e) NULL)
+        sc <- decomp_scenarios()
         if (is.null(sc) || !is.data.frame(sc) || nrow(sc) == 0) return(NULL)
         .plot_decomp_scenario_range(sc, is_rif())
       },
@@ -258,7 +258,7 @@ mod_3_09_decomposition_server <- function(id,
       label = "Policy effect decomposition",
       step  = 3L,
       fun   = function() {
-        res <- tryCatch(decomp_result(), error = function(e) NULL)
+        res <- decomp_result()
         if (is.null(res) || !is.data.frame(res) || nrow(res) == 0) return(NULL)
         res
       },

@@ -198,7 +198,7 @@ mod_3_08_diagnostics_server <- function(id,
       label = "Social protection transfer summary",
       step  = 3L,
       fun   = function() {
-        d <- tryCatch(diag_data(), error = function(e) NULL)
+        d <- diag_data()
         if (is.null(d) || !is.null(d$status)) return(NULL)
         data.frame(
           metric = c("total_transfer_population", "transfer_per_unit"),
@@ -217,7 +217,7 @@ mod_3_08_diagnostics_server <- function(id,
       label = "Policy input diagnostics",
       step  = 3L,
       fun   = function() {
-        d <- tryCatch(diag_data(), error = function(e) NULL)
+        d <- diag_data()
         if (is.null(d) || !is.null(d$status)) return(NULL)
         vars <- d$manipulated_vars
         if (!length(vars)) return(NULL)

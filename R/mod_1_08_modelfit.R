@@ -191,8 +191,7 @@ mod_1_08_modelfit_server <- function(id,
       key   = "model_fit_statistics",
       label = "Model fit statistics",
       step  = 1L,
-      fun   = function() tryCatch(additional_stats_df(),
-                                  error = function(e) NULL),
+      fun   = function() additional_stats_df(),
       description = paste(
         "Goodness-of-fit measures for the full specification: R-squared,",
         "within R-squared and related statistics."
@@ -236,72 +235,74 @@ mod_1_08_modelfit_server <- function(id,
       plot_diagnostics(m, engine = model_fit()$engine)
     })
 
-    # UI-48: model-fit figures for the export bundle. Each builder returns NULL
-    # when its inputs are not ready, so an un-run step contributes nothing.
-    local({
-      guard <- function(f) function() {
-        if (is.null(tryCatch(full_model(), error = function(e) NULL))) return(NULL)
-        tryCatch(f(), error = function(e) NULL)
-      }
-
-      for (i in 1:2) local({
-        idx <- i
-        wise_export_figure(
-          key   = paste0("residuals_vs_weather_", idx),
-          label = paste0("Residuals vs weather ", idx),
-          step  = 1L,
-          fun   = guard(function() {
-            mf <- model_fit()
-            h  <- mf$weather_terms[idx]
-            if (is.na(h) || is.null(h)) return(NULL)
-            plot_resid_weather(rif_single_model(), h,
-                               weather_df = fit_snap()$survey_weather,
-                               x_label = snap_label_fun()(h))
-          }),
-          description = paste(
-            "Model residuals against the realised weather variable, for",
-            "checking that no systematic structure is left unexplained."
-          ),
-          width = 9, height = 6
-        )
-      })
-
+    # UI-48: model-fit figures for the export bundle. Each builder req()s on
+    # the same inputs its on-screen renderer does, so a not-run step throws
+    # shiny.silent.error and is skipped quietly, while a genuine failure is
+    # named in the README's "Not exported" section.
+    for (i in 1:2) local({
+      idx <- i
       wise_export_figure(
-        key   = "predicted_vs_actual_welfare",
-        label = "Predicted vs actual welfare",
+        key   = paste0("residuals_vs_weather_", idx),
+        label = paste0("Residuals vs weather ", idx),
         step  = 1L,
-        fun   = guard(function() pred_welf_fig()),
+        fun   = function() {
+          req(full_model(), model_fit(), fit_snap())
+          h <- model_fit()$weather_terms[idx]
+          if (is.na(h) || is.null(h)) return(NULL)
+          plot_resid_weather(rif_single_model(), h,
+                             weather_df = fit_snap()$survey_weather,
+                             x_label = snap_label_fun()(h))
+        },
         description = paste(
-          "Distribution of predicted welfare against observed welfare in the",
-          "training data (for RIF models, the welfare distribution with",
-          "predicted quantile markers)."
+          "Model residuals against the realised weather variable, for",
+          "checking that no systematic structure is left unexplained."
         ),
         width = 9, height = 6
-      )
-
-      wise_export_figure(
-        key   = "relative_importance",
-        label = "Relative importance of predictors",
-        step  = 1L,
-        fun   = guard(function() plot_relaimpo(rif_single_model(),
-                                               var_info = fit_snap()$variable_list)),
-        description = paste(
-          "Absolute standardised coefficient |beta| x sd(X) per predictor,",
-          "ranking how much each contributes to fitted welfare."
-        ),
-        width = 9, height = 6
-      )
-
-      wise_export_figure(
-        key   = "model_diagnostics",
-        label = "Model diagnostic plots",
-        step  = 1L,
-        fun   = guard(function() plot_diagnostics(rif_single_model(),
-                                                  engine = model_fit()$engine)),
-        description = "Standard regression diagnostic panels for the full specification.",
-        width = 10, height = 8
       )
     })
+
+    wise_export_figure(
+      key   = "predicted_vs_actual_welfare",
+      label = "Predicted vs actual welfare",
+      step  = 1L,
+      fun   = function() {
+        req(full_model(), fit_snap())
+        pred_welf_fig()
+      },
+      description = paste(
+        "Distribution of predicted welfare against observed welfare in the",
+        "training data (for RIF models, the welfare distribution with",
+        "predicted quantile markers)."
+      ),
+      width = 9, height = 6
+    )
+
+    wise_export_figure(
+      key   = "relative_importance",
+      label = "Relative importance of predictors",
+      step  = 1L,
+      fun   = function() {
+        req(full_model(), fit_snap())
+        plot_relaimpo(rif_single_model(), var_info = fit_snap()$variable_list)
+      },
+      description = paste(
+        "Absolute standardised coefficient |beta| x sd(X) per predictor,",
+        "ranking how much each contributes to fitted welfare."
+      ),
+      width = 9, height = 6
+    )
+
+    wise_export_figure(
+      key   = "model_diagnostics",
+      label = "Model diagnostic plots",
+      step  = 1L,
+      fun   = function() {
+        req(full_model(), model_fit())
+        plot_diagnostics(rif_single_model(), engine = model_fit()$engine)
+      },
+      description = "Standard regression diagnostic panels for the full specification.",
+      width = 10, height = 8
+    )
 
     output$model_summary <- renderPrint({
       req(full_model())

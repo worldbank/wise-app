@@ -262,8 +262,8 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
         })
 
         outcome_dist_fig <- function() {
-          spec <- tryCatch(outcome_spec(), error = function(e) NULL)
-          od   <- tryCatch(outcome_data(), error = function(e) NULL)
+          spec <- outcome_spec()
+          od   <- outcome_data()
           if (is.null(spec) || is.null(od)) return(NULL)
           inf <- spec$info
           plot_welfare_dist(

@@ -376,7 +376,7 @@ mod_1_07_results_server <- function(id,
       # through a tidy data frame of the same estimates rather than scraping
       # the rendered markup.
       regtable_df <- function() {
-        mf <- tryCatch(model_fit_val(), error = function(e) NULL)
+        mf <- model_fit_val()
         if (is.null(mf)) return(NULL)
         make_regtable_df(
           fit1 = extract_native_fit(mf$fit1, mf$engine),

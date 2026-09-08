@@ -534,7 +534,7 @@ mod_1_02_surveystats_server <- function(
         )
 
         selected_surveys_df <- function() {
-          sel <- tryCatch(selected_surveys(), error = function(e) NULL)
+          sel <- selected_surveys()
           if (is.null(sel)) return(NULL)
           sel |> dplyr::select(-dplyr::any_of(c("fname", "fpath")))
         }

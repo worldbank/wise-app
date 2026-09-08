@@ -1299,7 +1299,7 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     label = "Baseline vs policy welfare by scenario",
     step  = 3L,
     fun   = function() {
-      bands <- tryCatch(pointrange_bands_rv(), error = function(e) NULL)
+      bands <- pointrange_bands_rv()
       if (is.null(bands)) return(NULL)
       if (!isTRUE(input$show_model_spread)) {
         bands$intermod_lo <- NA_real_
@@ -1307,8 +1307,7 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       }
       plot_pointrange_climate(
         bands_tbl   = bands,
-        x_label     = tryCatch(baseline_agg_hist()$x_label,
-                               error = function(e) NULL),
+        x_label     = baseline_agg_hist()$x_label,
         group_order = input$cmp_group_order %||% "scenario_x_year",
         show_coef   = isTRUE(input$show_coef_uncertainty) && has_draws()
       )

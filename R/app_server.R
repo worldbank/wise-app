@@ -99,13 +99,22 @@ app_server <- function(input, output, session) {
     Filter(Negate(is.null), list(
       step1 = wise_provenance(1L, tryCatch(step1_api$model_fit(),
                                            error = function(e) NULL),
-                              connection_params = cp),
+                              connection_params = cp,
+                              extra = list(stale = tryCatch(
+                                isTRUE(step1_api$fit_stale()),
+                                error = function(e) NA))),
       step2 = wise_provenance(2L, tryCatch(step2_api$hist_sim(),
                                            error = function(e) NULL),
-                              connection_params = cp),
+                              connection_params = cp,
+                              extra = list(stale = tryCatch(
+                                isTRUE(step2_api$stale()),
+                                error = function(e) NA))),
       step3 = wise_provenance(3L, tryCatch(step3_api$policy_hist_sim(),
                                            error = function(e) NULL),
-                              connection_params = cp)
+                              connection_params = cp,
+                              extra = list(stale = tryCatch(
+                                isTRUE(step3_api$stale()),
+                                error = function(e) NA)))
     ))
   })
 

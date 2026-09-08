@@ -253,9 +253,8 @@ mod_1_05_weatherstats_server <- function(
         # UI-48: builder first, renderer second, so the export bundle and the
         # screen draw the same figure.
         weather_dist_fig <- function(idx) function() {
-          swx <- tryCatch(wx_spec(), error = function(e) NULL)
-          swd <- tryCatch(survey_weather(), error = function(e) NULL)
-          if (is.null(swx) || is.null(swd)) return(NULL)
+          swx <- req(wx_spec())
+          swd <- req(survey_weather())
           sw <- swx$sw
           if (is.null(sw) || nrow(sw) < idx) return(NULL)
           df   <- swd |>
@@ -310,9 +309,8 @@ mod_1_05_weatherstats_server <- function(
         # deviation-from-mean / anomaly configuration carries through.
 
         weather_dist_cont_fig <- function(idx) function() {
-          swx <- tryCatch(wx_spec(), error = function(e) NULL)
-          swc <- tryCatch(survey_weather_cont(), error = function(e) NULL)
-          if (is.null(swx) || is.null(swc)) return(NULL)
+          swx <- req(wx_spec())
+          swc <- req(survey_weather_cont())
           sw <- swx$sw
           if (is.null(sw) || nrow(sw) < idx) return(NULL)
           df  <- swc |>
@@ -359,10 +357,13 @@ mod_1_05_weatherstats_server <- function(
         # -- Binscatter plots (one per variable) ------------------------------
 
         binscatter_fig <- function(idx) function() {
-          so  <- tryCatch(wx_spec_so(), error = function(e) NULL)
-          swd <- tryCatch(survey_weather(), error = function(e) NULL)
+          # Mirrors the on-screen renderer's readiness gate; the selected
+          # binned-weather spec may legitimately be absent, so only that one
+          # is tolerated as NULL rather than readied.
+          so  <- req(wx_spec_so())
+          swd <- req(survey_weather())
           sw  <- tryCatch(wx_spec_sw(), error = function(e) NULL)
-          if (is.null(so) || is.null(swd) || is.null(sw) || nrow(sw) < idx) {
+          if (is.null(sw) || nrow(sw) < idx) {
             return(NULL)
           }
           df <- swd |> prepare_outcome_df(so)
@@ -543,7 +544,7 @@ mod_1_05_weatherstats_server <- function(
           key   = "weather_specification",
           label = "Weather variable specification",
           step  = 1L,
-          fun   = function() tryCatch(wx_spec_sw(), error = function(e) NULL),
+          fun   = wx_spec_sw,
           description = paste(
             "The configuration of each selected weather variable: aggregation",
             "period, temporal aggregation, transformation and binning."

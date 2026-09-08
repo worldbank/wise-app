@@ -343,16 +343,18 @@ wise_config_apply <- function(config, session, existing = character(0)) {
   if (!is.data.frame(df) || !ncol(df)) return(df)
   as.data.frame(
     lapply(df, function(col) {
-      # A matrix column: one string per row.
+      # A matrix column: one string per row. digits = 15 keeps the double
+      # precision write.csv() itself would give - format()'s 7-digit default
+      # silently rounded specification values (bin breaks, polynomials).
       if (is.matrix(col)) {
         return(apply(col, 1L, function(r)
-          paste(format(r, trim = TRUE), collapse = "; ")))
+          paste(format(r, trim = TRUE, digits = 15), collapse = "; ")))
       }
       if (is.list(col)) {
         return(vapply(col, function(x) {
           if (is.null(x) || !length(x)) return(NA_character_)
           x <- unlist(x, use.names = FALSE)
-          paste(format(x, trim = TRUE), collapse = "; ")
+          paste(format(x, trim = TRUE, digits = 15), collapse = "; ")
         }, character(1)))
       }
       # Factors and dates write fine; everything else atomic passes through.
@@ -369,11 +371,17 @@ wise_config_apply <- function(config, session, existing = character(0)) {
 .export_write_item <- function(item, dir, file) {
   fail <- function(msg) list(status = "error", note = msg)
 
-  value <- tryCatch(item$fun(), error = function(e) {
-    structure(list(), class = "wise_export_error", message = conditionMessage(e))
-  })
-  if (inherits(value, "wise_export_error")) {
-    return(fail(attr(value, "message") %||% "artefact could not be produced"))
+  value <- tryCatch(item$fun(), error = function(e) e)
+  if (inherits(value, "error")) {
+    # A req() throw (shiny.silent.error) means "this surface is not ready" -
+    # the step has not produced anything to export. That is not a failure:
+    # it is skipped exactly like a NULL return, with no note. Any other
+    # error is a genuine failure: the artefact is named in the README's
+    # "Not exported" section rather than vanishing beside the not-run ones.
+    if (inherits(value, "shiny.silent.error")) return(NULL)
+    msg <- conditionMessage(value)
+    if (!nzchar(msg)) msg <- "artefact could not be produced"
+    return(fail(msg))
   }
   if (is.null(value)) return(NULL)
 
@@ -577,12 +585,17 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
         "Observations"   = if (is.na(p$n_observations %||% NA)) NULL
                            else fmt_count(p$n_observations),
         "Random seed"    = p$random_seed,
+        # A stale run's numbers still describe its own inputs, but the
+        # session's current inputs have moved on: say so, rather than letting
+        # a diff-hunting reader wonder why a re-run disagrees.
+        "Results stale"  = if (isTRUE(p$stale))
+          "yes - current inputs have changed since this run" else NULL,
         "App version"    = p$app_version
       )
       extra_keys <- setdiff(names(p), c(
         "step", "step_label", "run_signature", "source", "survey_version",
         "outcome", "weather", "model_spec", "engine", "n_observations",
-        "random_seed", "app_version", "fallbacks"))
+        "random_seed", "app_version", "fallbacks", "stale"))
       for (k in extra_keys) kv[[k]] <- p[[k]]
       for (k in names(kv)) {
         v <- kv[[k]]

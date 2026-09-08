@@ -127,6 +127,36 @@ test_that("an artefact that errors is skipped with a warning, not fatal", {
   expect_true(file.exists(zf))
 })
 
+test_that("a req() throw means not-ready: skipped quietly, not named (UI-53)", {
+  res <- .export_write_item(item("pending", fun = function() shiny::req(NULL)),
+                            tempdir(), "x.csv")
+  expect_null(res)
+})
+
+test_that("a genuine builder failure is named, not silently dropped (UI-53)", {
+  res <- .export_write_item(item("boom", fun = function() stop("grid mismatch")),
+                            tempdir(), "x.csv")
+  expect_equal(res$status, "error")
+  expect_match(res$note, "grid mismatch")
+})
+
+test_that("a req() throw inside a registered artefact leaves no failure note", {
+  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
+  zf <- withr::local_tempfile(fileext = ".zip")
+  items <- list(item("ok"),
+                item("pending", kind = "figure",
+                     fun = function() shiny::req(FALSE)))
+
+  expect_silent(mf <- wise_export_bundle(zf, items, config = NULL))
+  expect_equal(mf$file, "01_step1_ok.csv")
+
+  d <- withr::local_tempdir()
+  utils::unzip(zf, exdir = d)
+  md <- paste(readLines(file.path(d, "README.md")), collapse = "\n")
+  # Not-run is not a failure: no "Not exported" section at all.
+  expect_no_match(md, "## Not exported", fixed = TRUE)
+})
+
 test_that("include= selects which parts are written", {
   skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   skip_if_not_installed("ggplot2")
@@ -196,6 +226,18 @@ test_that("the README is honest when nothing has been run", {
   md <- paste(wise_export_readme(list(), list(), list()), collapse = "\n")
   expect_match(md, "No tables or figures were exported", fixed = TRUE)
   expect_match(md, "no run to describe", fixed = TRUE)
+})
+
+test_that("a stale run is flagged in the README provenance block (UI-54)", {
+  mk <- function(stale) list(step1 = wise_provenance(
+    1L, result = list(.sig = list(step = "fit")),
+    connection_params = list(type = "local"), extra = list(stale = stale)))
+  md <- paste(wise_export_readme(list(), mk(TRUE), list()), collapse = "\n")
+  expect_match(md, "Results stale", fixed = TRUE)
+  expect_match(md, "current inputs have changed", fixed = TRUE)
+  # A fresh run records nothing about staleness.
+  expect_no_match(paste(wise_export_readme(list(), mk(FALSE), list()),
+                        collapse = "\n"), "Results stale", fixed = TRUE)
 })
 
 
@@ -529,6 +571,16 @@ test_that("flattening handles matrix columns and empty frames", {
   df$m <- matrix(1:4, nrow = 2)
   expect_equal(.export_flatten_df(df)$m, c("1; 3", "2; 4"))
   expect_equal(ncol(.export_flatten_df(data.frame())), 0L)
+})
+
+test_that("list-column numbers keep full double precision in the CSV (UI-55)", {
+  # format()'s 7-significant-digit default silently rounded specification
+  # values (bin breaks, polynomial coefficients) on their way to the CSV.
+  df <- data.frame(name = "tx")
+  df$polynomial <- list(c(1.23456789012345, 9.87654321098765))
+  flat <- .export_flatten_df(df)
+  vals <- as.numeric(strsplit(flat$polynomial, "; ")[[1]])
+  expect_equal(vals, c(1.23456789012345, 9.87654321098765), tolerance = 1e-13)
 })
 
 test_that("a table that cannot be written is skipped, not fatal", {
