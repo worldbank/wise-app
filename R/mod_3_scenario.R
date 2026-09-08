@@ -244,11 +244,14 @@ mod_3_scenario_server <- function(id,
       selected_hist            = selected_hist,
       sim_run_id               = s6$sim_run_id,
       tabset_id                = "step3_output_tabs",
-       tabset_session           = session,
-       selected_policies        = selected_policies,
-       sp_scenario              = s6$sp_scenario,
-       residuals                = residuals,
-      stale                    = s6$stale
+      tabset_session           = session,
+      selected_policies        = selected_policies,
+      sp_scenario              = s6$sp_scenario,
+      residuals                = residuals,
+      stale                    = s6$stale,
+      decomp_result            = s6$decomp_result,
+      baseline_svy             = s6$baseline_svy,
+      policy_svy               = s6$policy_svy
     )
 
     # ---- Diagnostics tab: before/after variable analysis ----------------

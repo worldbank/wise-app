@@ -481,6 +481,116 @@ paired_effect_plot <- function(tbl, x_label = "Policy effect (outcome units)") {
     theme_wise(base_size = 12)
 }
 
+#' Horizontal dumbbell chart for Step 3 Outcome Levels (Figure S3-2B)
+#' @noRd
+plot_policy_levels_dumbbell <- function(baseline_df, policy_df,
+                                        x_label = "Outcome level (outcome units)",
+                                        show_intervals = TRUE) {
+  if (is.null(baseline_df) || !nrow(baseline_df) ||
+      is.null(policy_df) || !nrow(policy_df)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "Baseline and policy levels are unavailable."))
+  }
+
+  b <- baseline_df[!baseline_df$is_historical, , drop = FALSE]
+  p <- policy_df[!policy_df$is_historical, , drop = FALSE]
+  hist_b <- baseline_df[baseline_df$is_historical, , drop = FALSE]
+
+  common_scenarios <- intersect(b$scenario, p$scenario)
+  if (!length(common_scenarios)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "No matching scenarios between baseline and policy."))
+  }
+
+  b <- b[b$scenario %in% common_scenarios, , drop = FALSE]
+  p <- p[p$scenario %in% common_scenarios, , drop = FALSE]
+
+  merged <- merge(
+    b[, c("scenario", "value", "intermod_lo", "intermod_hi")],
+    p[, c("scenario", "value", "intermod_lo", "intermod_hi")],
+    by = "scenario", suffixes = c("_base", "_policy")
+  )
+  merged$diff <- merged$value_policy - merged$value_base
+  merged$diff_label <- paste0(ifelse(merged$diff >= 0, "+", ""), fmt_num(merged$diff, 2))
+  merged$ssp_key <- vapply(merged$scenario, .normalise_ssp, character(1L))
+  merged$ssp_col <- vapply(merged$ssp_key, function(k) {
+    .ssp_colours[[k]] %||% "#0072B2"
+  }, character(1L))
+
+  scen_order <- rev(unique(merged$scenario))
+  if (nrow(hist_b) > 0L) {
+    hist_row <- data.frame(
+      scenario = "Historical",
+      value_base = hist_b$value[[1L]],
+      intermod_lo_base = NA_real_,
+      intermod_hi_base = NA_real_,
+      value_policy = hist_b$value[[1L]],
+      intermod_lo_policy = NA_real_,
+      intermod_hi_policy = NA_real_,
+      diff = 0,
+      diff_label = "Reference",
+      ssp_key = "Historical",
+      ssp_col = "#808080",
+      stringsAsFactors = FALSE
+    )
+    merged <- rbind(hist_row, merged)
+    scen_order <- c("Historical", scen_order)
+  }
+  merged$scenario <- factor(merged$scenario, levels = rev(scen_order))
+
+  plt <- ggplot2::ggplot(merged, ggplot2::aes(y = .data$scenario))
+
+  fut_merged <- merged[merged$scenario != "Historical", , drop = FALSE]
+  if (nrow(fut_merged) > 0L) {
+    plt <- plt + ggplot2::geom_segment(
+      data = fut_merged,
+      ggplot2::aes(x = .data$value_base, xend = .data$value_policy,
+                   y = .data$scenario, yend = .data$scenario),
+      colour = "grey55", linewidth = 1.0, na.rm = TRUE
+    )
+  }
+
+  plt <- plt + ggplot2::geom_point(
+    ggplot2::aes(x = .data$value_base),
+    shape = 21, fill = "white", colour = "#4b5563", size = 3.6, stroke = 1.4, na.rm = TRUE
+  )
+
+  if (nrow(fut_merged) > 0L) {
+    x_span <- max(c(merged$value_base, merged$value_policy), na.rm = TRUE) -
+              min(c(merged$value_base, merged$value_policy), na.rm = TRUE)
+    nudge <- if (is.finite(x_span) && x_span > 0) x_span * 0.04 else 0.5
+    plt <- plt +
+      ggplot2::geom_point(
+        data = fut_merged,
+        ggplot2::aes(x = .data$value_policy, fill = .data$ssp_col),
+        shape = 21, colour = "#243746", size = 4.0, stroke = 1.2, na.rm = TRUE
+      ) +
+      ggplot2::scale_fill_identity() +
+      ggplot2::geom_text(
+        data = fut_merged,
+        ggplot2::aes(x = pmax(.data$value_base, .data$value_policy),
+                     label = .data$diff_label),
+        nudge_x = nudge,
+        size = 3.2, fontface = "bold", colour = "#243746", na.rm = TRUE
+      )
+  }
+
+  if (nrow(hist_b) > 0L) {
+    plt <- plt + ggplot2::geom_vline(
+      xintercept = hist_b$value[[1L]], linetype = "dotted", colour = "grey50", linewidth = 0.6
+    )
+  }
+
+  plt <- plt +
+    ggplot2::labs(
+      x = x_label, y = NULL,
+      title = "Baseline and policy-adjusted outcomes",
+      subtitle = "Connected points use identical climate-weather draws; open = Baseline, filled = Policy. Separation is the policy effect."
+    ) +
+    theme_wise(base_size = 12) +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_line(colour = "grey92"))
+
+  plt
+}
+
 plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                                       title = "Distribution of annual outcome across simulated weather years") {
   if (is.null(tbl) || !nrow(tbl)) {
@@ -590,6 +700,78 @@ plot_paired_adverse_table <- function(tbl, x_label = "Policy effect (outcome uni
     ggplot2::labs(x = x_label, y = NULL,
                   subtitle = "Equal-probability policy quantile minus baseline quantile; unsupported tails are omitted.") +
     theme_wise(base_size = 12)
+}
+
+#' Data behind the Step 2 return-period dot plot (Figure S2-4)
+#' @noRd
+step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
+  if (is.null(threshold_tbl) || !nrow(threshold_tbl)) return(tibble::tibble())
+  rp_map <- metric_decision_return_periods(method, so)
+  keep_rps <- unname(rp_map)
+  tbl <- threshold_tbl[threshold_tbl$rp_name %in% keep_rps, , drop = FALSE]
+  if (!nrow(tbl)) return(tibble::tibble())
+
+  central <- tbl[tbl$Estimate == "Central (P50)", , drop = FALSE]
+  if (!nrow(central)) return(tibble::tibble())
+  central$rp_label <- names(rp_map)[match(central$rp_name, unname(rp_map))]
+
+  ens_lo <- tbl[grepl("^Ensemble ", tbl$Estimate) & grepl("(0%|5%|10%|2.5%|0.5%)", tbl$Estimate), , drop = FALSE]
+  ens_hi <- tbl[grepl("^Ensemble ", tbl$Estimate) & grepl("(100%|95%|90%|97.5%|99.5%)", tbl$Estimate), , drop = FALSE]
+  if (!nrow(ens_lo)) {
+    ens_rows <- tbl[grepl("^Ensemble ", tbl$Estimate), , drop = FALSE]
+    if (nrow(ens_rows)) {
+      ens_lo <- ens_rows[1L, , drop = FALSE]
+      ens_hi <- ens_rows[nrow(ens_rows), , drop = FALSE]
+    }
+  }
+
+  central$intermod_lo <- NA_real_
+  central$intermod_hi <- NA_real_
+  for (i in seq_len(nrow(central))) {
+    sc <- central$scenario[[i]]
+    rp <- central$rp_name[[i]]
+    lo_val <- ens_lo$value[ens_lo$scenario == sc & ens_lo$rp_name == rp]
+    hi_val <- ens_hi$value[ens_hi$scenario == sc & ens_hi$rp_name == rp]
+    if (length(lo_val)) central$intermod_lo[[i]] <- lo_val[[1L]]
+    if (length(hi_val)) central$intermod_hi[[i]] <- hi_val[[1L]]
+  }
+
+  central$ssp_key <- ifelse(central$is_historical, "Historical",
+                            vapply(central$scenario, .normalise_ssp, character(1L)))
+  central$yr_lbl  <- ifelse(central$is_historical, "Historical",
+                            vapply(central$scenario, .parse_year, character(1L)))
+  central$rp_label <- factor(central$rp_label,
+                             levels = rev(c("Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20")))
+  central
+}
+
+#' Render Step 2 Return-Period Dot Plot (Figure S2-4)
+#' @noRd
+plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "Return-period outcomes are unavailable."))
+  }
+  scen_colours <- c("Historical" = "#808080", .ssp_colours)
+  p <- ggplot2::ggplot(tbl, ggplot2::aes(y = .data$rp_label, x = .data$value,
+                                         colour = .data$ssp_key)) +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$intermod_lo, xend = .data$intermod_hi,
+                                       y = .data$rp_label, yend = .data$rp_label),
+                          linewidth = 2.0, alpha = 0.65, na.rm = TRUE) +
+    ggplot2::geom_point(size = 3.2, na.rm = TRUE) +
+    ggplot2::scale_colour_manual(values = scen_colours, name = "Climate scenario") +
+    ggplot2::labs(
+      x = x_label, y = NULL,
+      title = "Outcome in adverse weather years",
+      subtitle = "Points show expected and adverse-year outcomes; thick intervals show inter-model ensemble spread."
+    ) +
+    theme_wise(base_size = 12) +
+    ggplot2::theme(legend.position = "bottom")
+
+  fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
+  if (length(fut_periods) > 1L) {
+    p <- p + ggplot2::facet_wrap(~yr_lbl)
+  }
+  p
 }
 
 # ---------------------------------------------------------------------------- #
@@ -879,7 +1061,11 @@ plot_timeseries_spaghetti <- function(ts_tbl,
     )
   }
   p +
-    ggplot2::labs(x = "Simulation year", y = x_label) +
+    ggplot2::labs(
+      x = "Historical weather-year draw (simulated)",
+      y = x_label,
+      subtitle = "Lines show simulation draws within each climate regime, not a continuous calendar forecast."
+    ) +
     theme_wise() +
     ggplot2::theme(legend.position = "bottom")
 }
@@ -1207,27 +1393,21 @@ enhance_exceedance <- function(curves_tbl,
     )
   )
 
-  # Inter-model ribbon (futures only). When source is present we draw a
-  # ribbon per source - both faded so the baseline ribbon stays readable.
+  # Inter-model ribbon (futures only). When source is present, avoid overlaying
+  # baseline and policy ribbons by default (displaying policy spread).
   if (nrow(fut_mod_df) > 0L) {
+    ribbon_df <- if (has_source) fut_policy_df else fut_mod_df
     ribbon_aes <- if (has_source)
       ggplot2::aes(y = .data$exceed_prob, xmin = .data$intermod_lo,
                    xmax = .data$intermod_hi, fill = .data$ribbon_key,
-                   alpha = .data$source, group = .data$line_id)
+                   group = .data$line_id)
     else
       ggplot2::aes(y = .data$exceed_prob, xmin = .data$intermod_lo,
                    xmax = .data$intermod_hi, fill = .data$ribbon_key,
                    group = .data$line_id)
-    ribbon_layer <- if (has_source) {
-      ggplot2::geom_ribbon(
-        data = fut_mod_df, mapping = ribbon_aes, inherit.aes = FALSE
-      )
-    } else {
-      ggplot2::geom_ribbon(
-        data = fut_mod_df, mapping = ribbon_aes, alpha = 0.18,
-        inherit.aes = FALSE
-      )
-    }
+    ribbon_layer <- ggplot2::geom_ribbon(
+      data = ribbon_df, mapping = ribbon_aes, alpha = 0.18, inherit.aes = FALSE
+    )
     p <- p + ribbon_layer
   }
 
@@ -1268,11 +1448,11 @@ enhance_exceedance <- function(curves_tbl,
   p <- if (has_source) {
     p +
       ggplot2::geom_line(data = hist_df, colour = "black", na.rm = TRUE) +
-      # Baseline retains the Mod 2 scenario colour and period linetype;
-      # policy is the additional red overlay drawn last.
-      ggplot2::geom_line(data = fut_baseline_df, na.rm = TRUE) +
-      # Draw policy last so the red centre line stays visible at crossings.
-      ggplot2::geom_line(data = fut_policy_df, colour = "#c62828",
+      # Baseline: dashed line with scenario colour.
+      # Policy: solid line with scenario colour, avoiding hardcoded red.
+      ggplot2::geom_line(data = fut_baseline_df, linetype = "dashed",
+                         alpha = 0.8, na.rm = TRUE) +
+      ggplot2::geom_line(data = fut_policy_df, linetype = "solid",
                          na.rm = TRUE,
                          show.legend = c(colour = FALSE, linetype = FALSE,
                                          linewidth = TRUE))
@@ -1317,12 +1497,12 @@ enhance_exceedance <- function(curves_tbl,
   if (has_source) {
     p <- p +
       ggplot2::scale_linewidth_manual(
-        values = c(Baseline = 0.7, Policy = 1.35),
+        values = c(Baseline = 0.8, Policy = 1.3),
         breaks = c("Baseline", "Policy"),
         name   = "Series",
         guide  = ggplot2::guide_legend(
           override.aes = list(
-            colour = c("#4b5563", "#c62828"), linetype = "solid"
+            colour = c("#4b5563", "#243746"), linetype = c("dashed", "solid")
           )
         )
       ) +

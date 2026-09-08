@@ -21,7 +21,9 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
   dplyr::bind_rows(lapply(names(labels), function(k) {
     ok <- as.character(status) == k
     data.frame(
-      status = labels[[k]], eligible_baseline = b[ok], treated_policy = p[ok],
+      status = labels[[k]],
+      eligible_baseline = startsWith(k, "TRUE"),
+      treated_policy = endsWith(k, "TRUE"),
       n = sum(ok), weighted_n = sum(w[ok]),
       weighted_share = if (sum(w) > 0) sum(w[ok]) / sum(w) else NA_real_,
       stringsAsFactors = FALSE

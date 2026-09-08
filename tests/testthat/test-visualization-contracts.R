@@ -172,3 +172,91 @@ test_that("decision return periods follow metric adverse direction", {
   expect_identical(unname(high[["Adverse 1-in-10"]]), "9:10")
   expect_identical(unname(low[["Adverse 1-in-10"]]), "1:10")
 })
+
+test_that("step2 adverse dot data extracts supported periods and ensemble bounds", {
+  tbl <- data.frame(
+    scenario = c("Historical", "Historical", "SSP2-4.5 / 2030", "SSP2-4.5 / 2030", "SSP2-4.5 / 2030"),
+    Estimate = c("Central (P50)", "Central (P50)", "Central (P50)", "Ensemble 0%", "Ensemble 100%"),
+    rp_name = c("1:1", "9:10", "1:1", "1:1", "1:1"),
+    value = c(10, 8, 12, 11, 14),
+    is_historical = c(TRUE, TRUE, FALSE, FALSE, FALSE),
+    stringsAsFactors = FALSE
+  )
+  out <- wiseapp:::step2_adverse_dot_data(tbl, method = "mean")
+  expect_true(nrow(out) >= 1)
+  expect_true("rp_label" %in% names(out))
+  fut <- out[!out$is_historical, ]
+  if (nrow(fut)) {
+    expect_equal(fut$intermod_lo[[1]], 11)
+    expect_equal(fut$intermod_hi[[1]], 14)
+  }
+})
+
+test_that("policy levels dumbbell chart renders without error", {
+  b <- data.frame(
+    scenario = c("Historical", "SSP2 / 2030"),
+    value = c(10, 12),
+    intermod_lo = c(NA, 11),
+    intermod_hi = c(NA, 13),
+    is_historical = c(TRUE, FALSE),
+    stringsAsFactors = FALSE
+  )
+  p <- data.frame(
+    scenario = c("Historical", "SSP2 / 2030"),
+    value = c(10, 15),
+    intermod_lo = c(NA, 14),
+    intermod_hi = c(NA, 16),
+    is_historical = c(TRUE, FALSE),
+    stringsAsFactors = FALSE
+  )
+  plt <- wiseapp:::plot_policy_levels_dumbbell(b, p, "Mean consumption")
+  expect_s3_class(plt, "ggplot")
+})
+
+test_that("decomposition scenario range has no continuous lines across periods", {
+  sc <- data.frame(
+    scenario = rep(c("SSP2 / 2030", "SSP2 / 2050"), each = 2),
+    year_start = rep(c(2030, 2050), each = 2),
+    year_end = rep(c(2040, 2060), each = 2),
+    sim_year = rep(1:2, 2),
+    delta_main = 0.05,
+    delta_res1 = 0.01,
+    delta_res2 = 0.01,
+    delta_total = 0.07,
+    weight = 1,
+    stringsAsFactors = FALSE
+  )
+  plt <- wiseapp:::.plot_decomp_scenario_range(sc, is_rif = TRUE)
+  expect_s3_class(plt, "ggplot")
+  line_layers <- vapply(plt$layers, function(l) inherits(l$geom, "GeomLine"), logical(1))
+  expect_false(any(line_layers))
+})
+
+test_that("new export keys return valid figures or data frames", {
+  # 1. climate_adverse_return_periods
+  tbl <- data.frame(
+    scenario = "SSP2 / 2030", Estimate = "Central (P50)",
+    rp_name = "1:1", value = 10, is_historical = FALSE, stringsAsFactors = FALSE
+  )
+  dot_data <- wiseapp:::step2_adverse_dot_data(tbl, "mean")
+  p_dot <- wiseapp:::plot_step2_adverse_dot(dot_data)
+  expect_s3_class(p_dot, "ggplot")
+
+  # 2. policy_levels_dumbbell
+  b <- data.frame(scenario = "SSP2 / 2030", value = 10, intermod_lo = 9, intermod_hi = 11, is_historical = FALSE, stringsAsFactors = FALSE)
+  p <- data.frame(scenario = "SSP2 / 2030", value = 12, intermod_lo = 11, intermod_hi = 13, is_historical = FALSE, stringsAsFactors = FALSE)
+  p_db <- wiseapp:::plot_policy_levels_dumbbell(b, p)
+  expect_s3_class(p_db, "ggplot")
+
+  # 3. policy_distributional_incidence
+  inc <- data.frame(decile = 1:10, effect = rep(1, 10))
+  p_inc <- wiseapp:::plot_incidence_by_decile(inc)
+  expect_s3_class(p_inc, "ggplot")
+
+  # 4. policy_construction_summary & treatment_matrix & covariate_support
+  df1 <- data.frame(welfare = 1:5, x = 1:5)
+  df2 <- data.frame(welfare = 2:6, x = 2:6)
+  expect_s3_class(wiseapp:::policy_construction_summary(df1, df2), "data.frame")
+  expect_s3_class(wiseapp:::policy_treatment_matrix(df1, df2), "data.frame")
+  expect_s3_class(wiseapp:::policy_covariate_support(df1, df2), "data.frame")
+})

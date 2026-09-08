@@ -103,26 +103,46 @@ mod_2_03_diagnostics_ui <- function(id) {
       )
     ),
 
-    # ---- 3. Per-model trajectories (moved from Simulation Results) ----------
+    # ---- 3. Climate-model robustness (Figure D2-3A default) -----------------
     shiny::wellPanel(
-      shiny::h4("Per-model trajectories across simulation years",
-                info_popover(title = "Reading this chart",
-                  shiny::p("Thin coloured lines = one CMIP6 ensemble member."),
-                  shiny::p("Bold line = across-model median curve."),
-                  docs = TRUE)),
-      wise_plot_output(ns("timeseries_plot"),
-                       "Time series of the outcome across survey years",
-                       height = "380px"),
-      shiny::tags$p(class = "text-muted small",
-                    "Thin lines = ensemble members; bold = median; ribbon = inter-model spread.")
-    ),
-    shiny::wellPanel(
-      shiny::h4("Climate-model robustness"),
+      shiny::h4("Climate-model robustness",
+                info_popover(
+                  title = "Climate-model agreement",
+                  shiny::p("Each point is one climate model's mean outcome across simulated weather years."),
+                  shiny::p("Historical appears once as a neutral reference. Intervals reflect ensemble spread, not probabilities."),
+                  docs = TRUE
+                )),
       wise_plot_output(ns("model_robustness_plot"),
                        "Climate-model mean outcome by scenario and period",
                        height = "420px"),
       shiny::tags$p(class = "text-muted small",
                     "Historical appears once. Future points are model means across weather-year draws; intervals are ensemble spread, not probabilities.")
+    ),
+
+    # ---- 4. Weather-year trajectories (Figure D2-3B advanced) ---------------
+    shiny::wellPanel(
+      shiny::tags$details(
+        shiny::tags$summary(
+          style = "cursor:pointer; font-size:14px; font-weight:600; color:#333; margin-bottom:8px;",
+          "Advanced detail: Weather-year trajectories by climate model \u25BC"
+        ),
+        shiny::p(
+          class = "text-muted small",
+          "Shows annual outcome variation within each climate model across simulated weather years."
+        ),
+        info_popover(
+          title = "Reading this chart",
+          shiny::p("Thin lines = one CMIP6 ensemble member across historical weather-year draws."),
+          shiny::p("Bold line = across-model median trajectory."),
+          shiny::p("Observations represent simulation draws, not calendar-year forecasts."),
+          docs = TRUE
+        ),
+        wise_plot_output(ns("timeseries_plot"),
+                         "Time series of the outcome across simulated weather years",
+                         height = "380px"),
+        shiny::tags$p(class = "text-muted small",
+                      "Thin lines = ensemble members; bold = median; ribbon = inter-model spread.")
+      )
     )
   )
 }
@@ -510,9 +530,13 @@ mod_2_03_diagnostics_server <- function(id,
         return(DT::datatable(data.frame(Message = "Approximate shares are hidden by default."),
                             rownames = FALSE, options = list(dom = "t")))
       }
-      DT::datatable(variance_component_data(variance_breakdown(), TRUE),
-                    rownames = FALSE, class = "compact stripe",
-                    options = list(pageLength = 20))
+      DT::datatable(
+        variance_component_data(variance_breakdown(), TRUE),
+        rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("tp"), pageLength = 20,
+                       buttons = wise_csv_button("simulation_variance_shares"))
+      )
     })
     outputOptions(output, "variance_share_table", suspendWhenHidden = FALSE)
 

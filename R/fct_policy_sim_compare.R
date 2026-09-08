@@ -16,7 +16,7 @@
 
   if (length(all_vals) == 0) return(blank_plot("No data available"))
 
-  fill_vals <- c(Baseline = "#bdbdbd", `Policy-adjusted` = "#d32f2f")
+  fill_vals <- c(Baseline = "#9e9e9e", `Policy-adjusted` = "#0072B2")
   uniq_vals <- unique(all_vals)
   is_binary <- length(uniq_vals) <= 2 && all(uniq_vals %in% c(0, 1))
 
@@ -391,8 +391,24 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
                     "Expected, 1-in-5, 1-in-10, and 1-in-20 rows are shown when supported by the available weather years.")
     ),
     shiny::wellPanel(
-      shiny::h4(
-        "Exceedance probability by climate scenario",
+      shiny::h4("Policy benefit by baseline welfare decile"),
+      wise_plot_output(ns("paired_incidence_plot"),
+                       "Household-level simulated policy effect by fixed baseline welfare decile",
+                       height = "420px"),
+      DT::DTOutput(ns("paired_incidence_table")),
+      shiny::tags$p(class = "text-muted small",
+                    "Deciles are fixed from weighted observed baseline welfare; policy effects are not re-ranked after treatment.")
+    ),
+    shiny::wellPanel(
+      shiny::tags$details(
+        shiny::tags$summary(
+          style = "cursor:pointer; font-size:14px; font-weight:600; color:#333; margin-bottom:8px;",
+          "Advanced annual risk curves: baseline and policy \u25BC"
+        ),
+        shiny::p(
+          class = "text-muted small",
+          "Complete baseline and policy exceedance-probability curves across all simulated weather-year thresholds."
+        ),
         info_popover(
           title = "Exceedance probability",
           shiny::p(
@@ -403,34 +419,33 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
           ),
           shiny::p(shiny::tags$b("Central line"),
             " = median across climate-model ensemble members at each",
-            " exceedance probability. Baseline retains the scenario colour;",
-            " policy is the red overlay."
+            " exceedance probability. Baseline is drawn with a dashed line;",
+            " policy is drawn with a solid line in the scenario colour."
           ),
           shiny::p(shiny::tags$b("Filled ribbon"),
-            " = inter-model spread. Baseline and policy ribbons use the",
-            " same SSP colour, with transparency keeping the central lines",
-            " visible."
+            " = inter-model ensemble spread for policy.",
+            " Overlapping ribbons are avoided by default."
           ),
           docs = TRUE
-        )
-      ),
-      shiny::tags$div(
-        style = "display:flex; gap:20px; flex-wrap:wrap; margin-bottom:6px;",
-        shiny::checkboxInput(
-          ns("exceedance_logit_x"),
-          "Logit probability axis (emphasise both tails)",
-          value = FALSE
         ),
-        shiny::checkboxInput(
-          ns("show_return_period"),
-          "Show return period lines",
-          value = TRUE
-        )
-      ),
-      wise_plot_output(ns("exceedance_plot"),
-                       "Plot of the probability that the outcome exceeds a given threshold, by climate scenario",
-                       height = "400px"),
-      shiny::uiOutput(ns("exceedance_caption"))
+        shiny::tags$div(
+          style = "display:flex; gap:20px; flex-wrap:wrap; margin-bottom:6px; margin-top:8px;",
+          shiny::checkboxInput(
+            ns("exceedance_logit_x"),
+            "Logit probability axis (emphasise both tails)",
+            value = FALSE
+          ),
+          shiny::checkboxInput(
+            ns("show_return_period"),
+            "Show return period lines",
+            value = TRUE
+          )
+        ),
+        wise_plot_output(ns("exceedance_plot"),
+                         "Plot of the probability that the outcome exceeds a given threshold, by climate scenario",
+                         height = "400px"),
+        shiny::uiOutput(ns("exceedance_caption"))
+      )
     ),
     shiny::wellPanel(
       shiny::uiOutput(ns("threshold_table_header")),
@@ -476,7 +491,10 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
                                selected_policies = reactive(NULL),
                                sp_scenario = reactive(NULL),
                                residuals = reactive("original"),
-                               stale = reactive(FALSE)) {
+                               stale = reactive(FALSE),
+                               decomp_result = reactive(NULL),
+                               baseline_svy = reactive(NULL),
+                               policy_svy = reactive(NULL)) {
   ns <- session$ns
 
   # INT-08: stale banner above the results pane. This surface gates its
@@ -511,18 +529,61 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       adverse[adverse$scenario == focus$scenario[[1L]] &
                 grepl("1-in-10", adverse$tail), , drop = FALSE][1L, ]
     } else NULL
+
+    # Baseline context
+    base_agg <- tryCatch(baseline_agg_scenarios(), error = function(e) NULL)
+    pol_agg  <- tryCatch(policy_agg_scenarios(), error = function(e) NULL)
+    pol_context_val <- "Unavailable"
+    pol_context_note <- "Outcome levels"
+    if (!is.null(base_agg) && !is.null(pol_agg)) {
+      b_val <- base_agg$value[base_agg$scenario == focus$scenario[[1L]]]
+      p_val <- pol_agg$value[pol_agg$scenario == focus$scenario[[1L]]]
+      if (length(b_val) && length(p_val) && is.finite(mean(b_val, na.rm = TRUE)) && is.finite(mean(p_val, na.rm = TRUE))) {
+        pol_context_val <- fmt_num(mean(p_val, na.rm = TRUE), 2)
+        pol_context_note <- paste0("Baseline: ", fmt_num(mean(b_val, na.rm = TRUE), 2))
+      }
+    }
+
+    # Level & Resilience effects
+    d_res <- tryCatch(decomp_result(), error = function(e) NULL)
+    lev_str <- "Unavailable"
+    res_str <- "Unavailable"
+    if (!is.null(d_res) && is.data.frame(d_res) && nrow(d_res) > 0) {
+      is_r <- "delta_res1" %in% names(d_res) && any(abs(d_res$delta_res1 %||% 0) > 1e-12)
+      d_sum <- decomposition_summary_data(d_res, is_rif = is_r)
+      if (nrow(d_sum)) {
+        l_pct <- d_sum$percent[d_sum$channel_id == "level"]
+        r_pct <- d_sum$percent[d_sum$channel_id == "resilience"]
+        if (length(l_pct) && is.finite(l_pct[[1L]])) lev_str <- paste0(fmt_num(l_pct[[1L]], 2), "%")
+        if (length(r_pct) && is.finite(r_pct[[1L]])) res_str <- paste0(fmt_num(r_pct[[1L]], 2), "%")
+      }
+    }
+
+    # Program scale
+    p_svy <- tryCatch(policy_svy(), error = function(e) NULL)
+    sp <- tryCatch(sp_scenario(), error = function(e) NULL)
+    realized <- if (!is.null(p_svy)) tryCatch(.sp_transfer_totals(p_svy, "hh"), error = function(e) NULL) else NULL
+    scale_val <- paste(focus$n_models, "/", focus$n_years)
+    scale_note <- "Models / weather years"
+    if (!is.null(realized) && is.finite(realized$total) && realized$total > 0) {
+      scale_val <- paste0("$", format(round(realized$total), big.mark = ","))
+      scale_note <- paste0(format(round(realized$n_recipients_weighted), big.mark = ","), " beneficiaries")
+    } else if (is.list(sp) && is.finite(sp$budget_fixed %||% NA_real_)) {
+      scale_val <- paste0("$", format(round(sp$budget_fixed), big.mark = ","))
+      scale_note <- "Annual program budget"
+    }
+
     cards <- list(
       list(label = "Expected paired effect", value = fmt_num(focus$value, 2),
            note = "Policy minus baseline"),
-      list(label = "Coefficient interval",
-           value = paste(fmt_num(focus$coef_lo, 2), "to", fmt_num(focus$coef_hi, 2)),
-           note = "Paired contrast uncertainty"),
+      list(label = "Policy-adjusted expected", value = pol_context_val,
+           note = pol_context_note),
       list(label = "Adverse 1-in-10 effect",
            value = if (!is.null(adverse_focus) && nrow(adverse_focus)) fmt_num(adverse_focus$effect, 2) else "Unavailable",
            note = "Equal-probability tail contrast"),
-      list(label = "Models / weather years",
-           value = paste(focus$n_models, "/", focus$n_years),
-           note = "Equal model weighting")
+      list(label = "Level effect", value = lev_str, note = "Direct level channel"),
+      list(label = "Resilience effect", value = res_str, note = "Weather-sensitivity channel"),
+      list(label = "Program scale", value = scale_val, note = scale_note)
     )
     headline_cards_ui(cards)
   })
@@ -1276,15 +1337,12 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
   output$summary_box_plot <- renderPlot({
     if (identical(input$display_mode, "levels")) {
       req(baseline_agg_scenarios(), policy_agg_scenarios())
-      return(plot_pointrange_climate(
-        dplyr::bind_rows(
-          dplyr::mutate(baseline_agg_scenarios(), source = "Baseline"),
-          dplyr::mutate(policy_agg_scenarios(), source = "Policy")
-        ),
-        x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
-                                    baseline_hist_sim()$so,
-                                    input$cmp_deviation %||% "none"),
-        show_coef = FALSE
+      return(plot_policy_levels_dumbbell(
+        baseline_df = baseline_agg_scenarios(),
+        policy_df   = policy_agg_scenarios(),
+        x_label     = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                        baseline_hist_sim()$so,
+                                        input$cmp_deviation %||% "none")
       ))
     }
     req(paired_effect_summary_rv())
@@ -1337,6 +1395,56 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     )
   })
   outputOptions(output, "paired_adverse_table", suspendWhenHidden = FALSE)
+
+  step3_incidence_data <- reactive({
+    res <- tryCatch(decomp_result(), error = function(e) NULL)
+    bs <- tryCatch(baseline_svy(), error = function(e) NULL)
+    bh <- baseline_hist_sim()
+    if (is.null(res) || !is.data.frame(res) || !nrow(res) || is.null(bs)) {
+      return(tibble::tibble())
+    }
+    so_name <- bh$so$name %||% "welfare"
+    step3_incidence_by_decile(res, bs, so_name)
+  })
+  output$paired_incidence_plot <- renderPlot({
+    req(step3_incidence_data())
+    plot_incidence_by_decile(
+      step3_incidence_data(),
+      y_label = "Paired policy minus baseline effect"
+    )
+  }, height = 420)
+  outputOptions(output, "paired_incidence_plot", suspendWhenHidden = TRUE)
+  output$paired_incidence_table <- DT::renderDT({
+    req(step3_incidence_data())
+    DT::datatable(
+      step3_incidence_data(), rownames = FALSE, class = "compact stripe",
+      extensions = "Buttons",
+      options = list(dom = wise_csv_dom("tp"), pageLength = 10,
+                     buttons = wise_csv_button("policy_distributional_incidence"))
+    )
+  })
+  outputOptions(output, "paired_incidence_table", suspendWhenHidden = FALSE)
+
+  wise_export_figure(
+    key = "policy_distributional_incidence",
+    label = "Policy effect by baseline decile",
+    step = 3L,
+    fun = function() plot_incidence_by_decile(step3_incidence_data(), "Paired policy minus baseline effect"),
+    description = "Paired policy-minus-baseline welfare effect by fixed baseline welfare decile.",
+    width = 9, height = 5.5
+  )
+  wise_export_table(
+    key = "policy_distributional_incidence_data",
+    label = "Policy effect by baseline decile data",
+    step = 3L,
+    fun = function() annotate_visualization_export(
+      step3_incidence_data(), input$cmp_agg_method %||% "mean", baseline_hist_sim()$so,
+      observation_unit = "household-level paired policy minus baseline effect",
+      aggregation_order = "fixed weighted baseline decile; weighted mean over households",
+      uncertainty = "paired contrast"
+    ),
+    description = "Tidy policy effect data by fixed baseline welfare decile."
+  )
 
   paired_effect_summary_export <- function() {
     annotate_visualization_export(
@@ -1530,6 +1638,24 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       "Simulated welfare under the baseline and the policy scenario, by",
       "climate scenario and projection period."
     ),
+    width = 10, height = 6.5
+  )
+
+  wise_export_figure(
+    key = "policy_levels_dumbbell",
+    label = "Baseline and policy outcome levels",
+    step = 3L,
+    fun = function() {
+      req(baseline_agg_scenarios(), policy_agg_scenarios())
+      plot_policy_levels_dumbbell(
+        baseline_df = baseline_agg_scenarios(),
+        policy_df   = policy_agg_scenarios(),
+        x_label     = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                        baseline_hist_sim()$so,
+                                        input$cmp_deviation %||% "none")
+      )
+    },
+    description = "Connected baseline and policy-adjusted outcome levels across climate scenarios and projection periods.",
     width = 10, height = 6.5
   )
 

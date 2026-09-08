@@ -1,8 +1,37 @@
+#' Diagnostics tab content UI.
+#' @noRd
+.diagnostics_content_ui <- function(ns) {
+  shiny::tagList(
+    shiny::uiOutput(ns("policy_summary_ui")),
+    shiny::h4("Total social protection transfer amount"),
+    DT::DTOutput(ns("transfer_summary_ui")),
+    shiny::h4("Policy construction and realized treatment"),
+    shiny::uiOutput(ns("construction_warning_ui")),
+    DT::DTOutput(ns("construction_table")),
+    shiny::h4("Treatment assignment"),
+    DT::DTOutput(ns("treatment_table")),
+    shiny::h4("Covariate support against Step 1 training data"),
+    shiny::uiOutput(ns("covariate_support_warning_ui")),
+    DT::DTOutput(ns("covariate_support_table")),
+    shiny::div(style = "margin: 12px 0;"),
+    shiny::h4("Summary of manipulated variables"),
+    shiny::tags$small(
+      class = "text-muted",
+      "Summary statistics (mean, SD) for variables changed by policy adjustments."
+    ),
+    DT::DTOutput(ns("diag_summary_table")),
+    shiny::h4("Before/after distributions"),
+    shiny::tags$small(
+      class = "text-muted",
+      "Density and coverage comparisons between baseline (grey) and policy-adjusted (blue) populations."
+    ),
+    shiny::uiOutput(ns("hist_plots_ui"))
+  )
+}
+
 #' 3_08_diagnostics UI Function
 #'
-#' @description A shiny Module. The Diagnostics tab is inserted into the
-#'   parent tabset on the first successful policy simulation run, so this
-#'   UI returns nothing.
+#' @description A shiny Module. Renders the Diagnostics tab content.
 #'
 #' @param id Internal parameter for {shiny}.
 #'
@@ -11,16 +40,7 @@
 #' @importFrom shiny NS tagList
 mod_3_08_diagnostics_ui <- function(id) {
   ns <- shiny::NS(id)
-  shiny::tagList(
-    shiny::h4("Policy construction and realized treatment"),
-    shiny::uiOutput(ns("construction_warning_ui")),
-    DT::DTOutput(ns("construction_table")),
-    shiny::h4("Treatment assignment"),
-    DT::DTOutput(ns("treatment_table")),
-    shiny::h4("Covariate support against Step 1 training data"),
-    shiny::uiOutput(ns("covariate_support_warning_ui")),
-    DT::DTOutput(ns("covariate_support_table"))
-  )
+  .diagnostics_content_ui(ns)
 }
 
 #' 3_08_diagnostics Server Functions
@@ -335,32 +355,7 @@ mod_3_08_diagnostics_server <- function(id,
           shiny::tabPanel(
             title = "Diagnostics",
             value = "diag_tab",
-            shiny::uiOutput(ns("policy_summary_ui")),
-             shiny::h4("Total social protection transfer amount"),
-             DT::DTOutput(ns("transfer_summary_ui")),
-             shiny::h4("Policy construction and realized treatment"),
-             shiny::uiOutput(ns("construction_warning_ui")),
-             DT::DTOutput(ns("construction_table")),
-             shiny::h4("Treatment assignment"),
-             DT::DTOutput(ns("treatment_table")),
-             shiny::h4("Covariate support against Step 1 training data"),
-             shiny::uiOutput(ns("covariate_support_warning_ui")),
-             DT::DTOutput(ns("covariate_support_table")),
-             shiny::div(style = "margin: 12px 0;"),
-            shiny::h4("Summary of manipulated variables"),
-            shiny::tags$small(
-              class = "text-muted",
-              "Summary statistics (mean, SD) for variables changed by ",
-              "policy adjustments."
-            ),
-            DT::DTOutput(ns("diag_summary_table")),
-            shiny::h4("Before/after distributions"),
-            shiny::tags$small(
-              class = "text-muted",
-              "Kernel density plots comparing baseline (grey) vs. ",
-              "policy-adjusted (red) distributions."
-            ),
-            shiny::uiOutput(ns("hist_plots_ui"))
+            .diagnostics_content_ui(ns)
           ),
           select = FALSE,
           session = tabset_session
@@ -385,7 +380,10 @@ mod_3_08_diagnostics_server <- function(id,
       DT::datatable(
         policy_construction_summary(d$baseline_svy, d$policy_svy,
                                     sp_scenario(), analysis_unit()),
-        rownames = FALSE, class = "compact stripe", options = list(dom = "t")
+        rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("t"),
+                       buttons = wise_csv_button("policy_construction_summary"))
       )
     })
     output$treatment_table <- DT::renderDT({
@@ -400,7 +398,10 @@ mod_3_08_diagnostics_server <- function(id,
             error = function(e) NULL
           )
         ),
-        rownames = FALSE, class = "compact stripe", options = list(dom = "t")
+        rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("t"),
+                       buttons = wise_csv_button("policy_treatment_assignment"))
       )
     })
     covariate_support_data <- reactive({
@@ -411,8 +412,13 @@ mod_3_08_diagnostics_server <- function(id,
     })
     output$covariate_support_table <- DT::renderDT({
       req(covariate_support_data())
-      DT::datatable(covariate_support_data(), rownames = FALSE,
-                    class = "compact stripe", options = list(pageLength = 20))
+      DT::datatable(
+        covariate_support_data(), rownames = FALSE,
+        class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("tp"), pageLength = 20,
+                       buttons = wise_csv_button("policy_covariate_support"))
+      )
     })
     output$covariate_support_warning_ui <- renderUI({
       tbl <- covariate_support_data()

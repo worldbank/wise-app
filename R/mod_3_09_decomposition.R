@@ -220,7 +220,10 @@ mod_3_09_decomposition_server <- function(id,
         headline_decomp_data()[headline_decomp_data()$channel_id %in%
                                  c("level", "resilience", "total"),
                                c("channel", "log_points", "percent", "share_of_total")],
-        rownames = FALSE, class = "compact stripe", options = list(dom = "t")
+        rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("t"),
+                       buttons = wise_csv_button("policy_decomposition_headline"))
       )
     })
     outputOptions(output, "headline_decomp_table", suspendWhenHidden = FALSE)
@@ -331,8 +334,12 @@ mod_3_09_decomposition_server <- function(id,
     outputOptions(output, "incidence_plot", suspendWhenHidden = TRUE)
     output$incidence_table <- DT::renderDT({
       req(incidence_data())
-      DT::datatable(incidence_data(), rownames = FALSE,
-                    class = "compact stripe", options = list(pageLength = 10))
+      DT::datatable(
+        incidence_data(), rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("tp"), pageLength = 10,
+                       buttons = wise_csv_button("policy_distributional_incidence"))
+      )
     })
     outputOptions(output, "incidence_table", suspendWhenHidden = FALSE)
     wise_export_figure(
@@ -670,16 +677,11 @@ mod_3_09_decomposition_server <- function(id,
       alpha = 0.25, outlier.size = 1, linewidth = 0.5,
       position = ggplot2::position_dodge(width = 0.6)
     ) +
-    # For main effect (constant across years): point + line across periods
+    # For main effect (constant across years): point only, never connect across periods
     ggplot2::geom_point(
       data = ~ dplyr::filter(.x, !weather_sensitive),
       size = 3,
       position = ggplot2::position_dodge(width = 0.6)
-    ) +
-    ggplot2::geom_line(
-      data = ~ dplyr::filter(.x, !weather_sensitive),
-      ggplot2::aes(group = ssp),
-      linewidth = 0.8
     ) +
     ggplot2::facet_wrap(
       ~channel, scales = "free_y",
@@ -691,8 +693,9 @@ mod_3_09_decomposition_server <- function(id,
       x        = "Projection period",
       y        = "Effect (% change in welfare)",
       subtitle = paste0(
-        "Main effect is constant across weather years; ",
-        "boxes show within-period year-to-year variation for weather-sensitive channels"
+        "Level effects are constant across weather years (points); ",
+        "boxes show within-period variation for weather-sensitive channels. ",
+        "Projection windows are discrete regimes, not continuous paths."
       )
     ) +
     theme_wise() +

@@ -224,10 +224,44 @@ mod_2_02_results_ui <- function(id) {
                     "One bar is the weighted mean household effect for a selected scenario-period. Deciles are fixed from observed baseline welfare.")
     ),
 
-    # ---- 5. Exceedance curve -----------------------------------------------
+    # ---- 4b. Adverse-year outcomes (Figure S2-4) ----------------------------
     shiny::wellPanel(
       shiny::h4(
-        "Exceedance probability by climate scenario",
+        "Outcome in adverse weather years",
+        info_popover(
+          title = "Adverse-year outcomes",
+          shiny::p(
+            "An adverse 1-in-10-year outcome is reached or exceeded in the unfavorable",
+            "direction in approximately one out of ten simulated weather years under",
+            "the selected climate regime."
+          ),
+          shiny::p(
+            "Points show expected outcomes and adverse-year thresholds; intervals",
+            "show disagreement across climate models (ensemble spread)."
+          ),
+          docs = TRUE
+        )
+      ),
+      wise_plot_output(ns("adverse_dot_plot"),
+                       "Expected and adverse-year outcomes with climate-model ensemble spread",
+                       height = "380px"),
+      shiny::tags$p(
+        class = "text-muted small",
+        "Adverse tail direction is determined automatically by the selected metric. Intervals show inter-model ensemble spread."
+      )
+    ),
+
+    # ---- 5. Exceedance curve (Advanced companion) ---------------------------
+    shiny::wellPanel(
+      shiny::tags$details(
+        shiny::tags$summary(
+          style = "cursor:pointer; font-size:14px; font-weight:600; color:#333; margin-bottom:8px;",
+          "Advanced risk curve: Exceedance probability \u25BC"
+        ),
+        shiny::p(
+          class = "text-muted small",
+          "Complete exceedance-probability curve across all simulated weather-year thresholds."
+        ),
         info_popover(
           title = "Exceedance probability",
           shiny::p(
@@ -251,25 +285,25 @@ mod_2_02_results_ui <- function(id) {
             "value reached in all but 1-in-N years."
           ),
           docs = TRUE
-        )
-      ),
-      shiny::tags$div(
-        style = "display:flex; gap:20px; flex-wrap:wrap; margin-bottom:6px;",
-        shiny::checkboxInput(
-          ns("exceedance_logit_x"),
-          "Logit probability axis (emphasise both tails)",
-          value = FALSE
         ),
-        shiny::checkboxInput(
-          ns("show_return_period"),
-          "Show return period lines",
-          value = TRUE
+        shiny::tags$div(
+          style = "display:flex; gap:20px; flex-wrap:wrap; margin-bottom:6px; margin-top:8px;",
+          shiny::checkboxInput(
+            ns("exceedance_logit_x"),
+            "Logit probability axis (emphasise both tails)",
+            value = FALSE
+          ),
+          shiny::checkboxInput(
+            ns("show_return_period"),
+            "Show return period lines",
+            value = TRUE
+          )
         ),
-      ),
-      wise_plot_output(ns("exceedance_plot"),
-                       "Plot of the population share above the poverty threshold by scenario",
-                       height = "400px"),
-      shiny::uiOutput(ns("exceedance_caption"))
+        wise_plot_output(ns("exceedance_plot"),
+                         "Plot of the population share above the poverty threshold by scenario",
+                         height = "400px"),
+        shiny::uiOutput(ns("exceedance_caption"))
+      )
     ),
 
     # ---- 6. Threshold table ------------------------------------------------
@@ -342,6 +376,22 @@ mod_2_02_results_server <- function(id,
       hist <- bands[bands$is_historical, , drop = FALSE][1L, ]
       future <- bands[!bands$is_historical, , drop = FALSE][1L, ]
       focus <- if (nrow(future)) future else hist
+
+      # Adverse 1-in-10 outcome for the focus scenario
+      adverse_10_str <- "Unavailable"
+      tbl <- tryCatch(threshold_table_rv(), error = function(e) NULL)
+      if (!is.null(tbl) && nrow(tbl)) {
+        rp_map <- metric_decision_return_periods(
+          input$cmp_agg_method %||% "mean", hist_sim()$so
+        )
+        rp_10 <- unname(rp_map[["Adverse 1-in-10"]])
+        val_row <- tbl[tbl$scenario == focus$scenario & tbl$rp_name == rp_10 &
+                         tbl$Estimate == "Central (P50)", , drop = FALSE]
+        if (nrow(val_row) && is.finite(val_row$value[[1L]])) {
+          adverse_10_str <- fmt_num(val_row$value[[1L]], 2)
+        }
+      }
+
       cards <- list(
         list(label = "Historical expected", value = fmt_num(hist$value, 2),
              note = "Fixed population baseline"),
@@ -349,6 +399,8 @@ mod_2_02_results_server <- function(id,
              note = if (nrow(future)) focus$scenario else "Historical only"),
         list(label = "Change from historical", value = fmt_num(focus$value - hist$value, 2),
              note = "Expected annual aggregate"),
+        list(label = "Adverse 1-in-10 outcome", value = adverse_10_str,
+             note = "Severe weather-year threshold"),
         list(label = "Climate-model range", value = if (nrow(future)) {
           paste(fmt_num(focus$intermod_lo, 2), "to", fmt_num(focus$intermod_hi, 2))
         } else "Not applicable", note = "Ensemble spread, not a probability"),
@@ -1346,8 +1398,12 @@ mod_2_02_results_server <- function(id,
     outputOptions(output, "incidence_plot", suspendWhenHidden = TRUE)
     output$incidence_table <- DT::renderDT({
       req(incidence_data_rv())
-      DT::datatable(incidence_data_rv(), rownames = FALSE,
-                    class = "compact stripe", options = list(pageLength = 10))
+      DT::datatable(
+        incidence_data_rv(), rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("tp"), pageLength = 10,
+                       buttons = wise_csv_button("climate_distributional_incidence"))
+      )
     })
     outputOptions(output, "incidence_table", suspendWhenHidden = FALSE)
 
@@ -1468,10 +1524,53 @@ mod_2_02_results_server <- function(id,
     )
     output$decision_threshold_table <- DT::renderDT({
       req(decision_threshold_df())
-      DT::datatable(decision_threshold_df(), rownames = FALSE,
-                    class = "compact stripe", options = list(pageLength = 20))
+      DT::datatable(
+        decision_threshold_df(), rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("tp"), pageLength = 20,
+                       buttons = wise_csv_button("climate_decision_thresholds"))
+      )
     })
     outputOptions(output, "decision_threshold_table", suspendWhenHidden = FALSE)
+
+    adverse_dot_data_rv <- reactive({
+      req(threshold_table_rv())
+      step2_adverse_dot_data(
+        threshold_table_rv(),
+        method = input$cmp_agg_method %||% "mean",
+        so = hist_sim()$so
+      )
+    })
+    output$adverse_dot_plot <- renderPlot({
+      req(adverse_dot_data_rv())
+      plot_step2_adverse_dot(
+        adverse_dot_data_rv(),
+        x_label = metric_axis_label(
+          input$cmp_agg_method %||% "mean",
+          hist_sim()$so,
+          input$cmp_deviation %||% "none"
+        )
+      )
+    }, height = 380)
+    outputOptions(output, "adverse_dot_plot", suspendWhenHidden = TRUE)
+
+    wise_export_figure(
+      key = "climate_adverse_return_periods",
+      label = "Outcome in adverse weather years",
+      step = 2L,
+      fun = function() {
+        plot_step2_adverse_dot(
+          adverse_dot_data_rv(),
+          x_label = metric_axis_label(
+            input$cmp_agg_method %||% "mean",
+            hist_sim()$so,
+            input$cmp_deviation %||% "none"
+          )
+        )
+      },
+      description = "Expected and adverse return-period outcomes with inter-model ensemble spread.",
+      width = 9, height = 5
+    )
 
     wise_export_table(
       key   = "climate_outcome_thresholds",

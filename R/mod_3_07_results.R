@@ -36,16 +36,19 @@ mod_3_07_results_ui <- function(id) {
 mod_3_07_results_server <- function(id,
                                      baseline_hist_sim,
                                      baseline_saved_scenarios,
-                                      policy_hist_sim,
-                                      policy_saved_scenarios,
-                                      selected_hist  = reactive(NULL),
-                                      sim_run_id     = reactive(0L),
-                                      tabset_id,
-                                      tabset_session = NULL,
-                                      selected_policies = reactive(NULL),
-                                      sp_scenario    = reactive(NULL),
-                                      residuals      = reactive("original"),
-                                     stale          = reactive(FALSE)) {
+                                     policy_hist_sim,
+                                     policy_saved_scenarios,
+                                     selected_hist  = reactive(NULL),
+                                     sim_run_id     = reactive(0L),
+                                     tabset_id,
+                                     tabset_session = NULL,
+                                     selected_policies = reactive(NULL),
+                                     sp_scenario    = reactive(NULL),
+                                     residuals      = reactive("original"),
+                                     stale          = reactive(FALSE),
+                                     decomp_result  = reactive(NULL),
+                                     baseline_svy   = reactive(NULL),
+                                     policy_svy     = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     if (is.null(tabset_session)) {
@@ -65,11 +68,14 @@ mod_3_07_results_server <- function(id,
       baseline_saved_scenarios = baseline_saved_scenarios,
       policy_hist_sim          = policy_hist_sim,
       policy_saved_scenarios   = policy_saved_scenarios,
-       selected_hist            = selected_hist,
-       selected_policies        = selected_policies,
-       sp_scenario              = sp_scenario,
-       residuals                = residuals,
-      stale                    = stale
+      selected_hist            = selected_hist,
+      selected_policies        = selected_policies,
+      sp_scenario              = sp_scenario,
+      residuals                = residuals,
+      stale                    = stale,
+      decomp_result            = decomp_result,
+      baseline_svy             = baseline_svy,
+      policy_svy               = policy_svy
     )
 
     observeEvent(sim_run_id(), {
