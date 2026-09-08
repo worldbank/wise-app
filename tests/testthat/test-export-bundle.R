@@ -102,7 +102,7 @@ test_that("a bundle contains the artefacts, manifest and README", {
   expect_true("02_step1_coefficients.csv" %in% files)
 })
 
-test_that("surfaces that produced nothing are skipped, numbering stays contiguous", {
+test_that("surfaces that produced nothing are skipped; numbering keeps their slots", {
   skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   zf <- withr::local_tempfile(fileext = ".zip")
   items <- list(
@@ -113,8 +113,40 @@ test_that("surfaces that produced nothing are skipped, numbering stays contiguou
   )
   mf <- wise_export_bundle(zf, items, config = NULL)
 
+  # Numbers follow the registry's fixed order: an absent surface leaves a
+  # gap instead of shifting every later file (UI-57).
   expect_equal(nrow(mf), 2L)
-  expect_equal(mf$file, c("01_step1_first.csv", "02_step1_second.csv"))
+  expect_equal(mf$file, c("01_step1_first.csv", "04_step1_second.csv"))
+})
+
+test_that("file names are stable across bundles whose steps differ (UI-57)", {
+  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
+  items_all_ok <- list(item("first"), item("ok"), item("ok2"), item("second"))
+  items_partial <- list(
+    item("first"),
+    item("never_run", fun = function() NULL),   # not run in this session
+    item("boom", fun = function() stop("kaboom")),
+    item("second")
+  )
+  mf1 <- wise_export_bundle(withr::local_tempfile(fileext = ".zip"),
+                            items_all_ok, config = NULL)
+  suppressWarnings(
+    mf2 <- wise_export_bundle(withr::local_tempfile(fileext = ".zip"),
+                              items_partial, config = NULL)
+  )
+  # The same key keeps the same number whether or not its neighbours produced
+  # anything, so two bundles of one analysis diff file by file.
+  expect_equal(mf2$file[mf2$file == "04_step1_second.csv"],
+               mf1$file[mf1$file == "04_step1_second.csv"])
+})
+
+test_that("bundle assembly does not consume the session RNG (UI-58)", {
+  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
+  zf <- withr::local_tempfile(fileext = ".zip")
+  items <- list(item("first"), item("never_run", fun = function() NULL))
+  before <- .Random.seed
+  wise_export_bundle(zf, items, config = NULL)
+  expect_identical(.Random.seed, before)
 })
 
 test_that("an artefact that errors is skipped with a warning, not fatal", {
@@ -269,8 +301,11 @@ test_that("transient UI state is excluded from the exported configuration", {
             "stats_rows_current", "tbl_search", "map_zoom",
             "step3-run_policy_sim", "overview-apply_connection",
             "import_config_file")
+  # Result-shaping toggles travel: the exported figures read them (UI-56).
   keep <- c("step1-model-model_type", "step3-sp-targeting",
-            "step1-model-fixedeffects")
+            "step1-model-fixedeffects",
+            "step2-cmp-show_model_spread", "step2-cmp-show_coef_uncertainty",
+            "step2-cmp-show_return_period", "step2-diag-show_regression_input")
   expect_false(any(.export_keep_input(drop)))
   expect_true(all(.export_keep_input(keep)))
 })

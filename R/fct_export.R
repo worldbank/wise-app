@@ -55,7 +55,7 @@
 #' @param step  Integer step number (0-3) the artefact belongs to.
 #' @param kind  `"table"` or `"figure"`.
 #' @param fun   Zero-argument function returning a data frame (tables) or a
-#'   ggplot / recordedplot (figures). Return NULL when unavailable.
+#'   ggplot (figures). Return NULL when unavailable.
 #' @param description One sentence on what the artefact contains.
 #' @param width,height Figure size in inches. Ignored for tables.
 #' @param session Shiny session; defaults to the current reactive domain.
@@ -171,13 +171,17 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
 # Restoring them would replay clicks (re-running models on import) or fight the
 # user's current layout, so they are dropped from the exported config. Buttons
 # that trigger work (`apply_connection` connects) and the import control's own
-# state are replayable clicks too. Credential-shaped ids are dropped outright:
-# the bundle is meant to be shared, and `.provenance_source()` redacts the
-# same shapes on the provenance side - the snapshot must agree with it.
+# state are replayable clicks too. The Lasso panel toggles (`show_lasso_*`)
+# open and close flyouts - layout state, not analysis state - while the
+# result-shaping toggles (`show_model_spread`, `show_coef_uncertainty`,
+# `show_return_period`, `show_regression_input`) travel: the exported figures
+# read them. Credential-shaped ids are dropped outright: the bundle is meant
+# to be shared, and `.provenance_source()` redacts the same shapes on the
+# provenance side - the snapshot must agree with it.
 .EXPORT_INPUT_DROP <- c(
   "^run_model$", "^run_sim$", "^run_policy_sim$", "^load_", "^refresh",
-  "^apply_", "^import_config",
-  "_toggle$", "_open$", "^show_", "^hide_",
+  "^apply_", "^import_config", "^show_lasso",
+  "_toggle$", "_open$", "^hide_",
   "_rows_current$", "_rows_all$", "_rows_selected$", "_columns_selected$",
   "_cells_selected$", "_search$", "_state$", "_cell_clicked$",
   "^plotly_", "_click$", "_hover$", "_brush$", "_dblclick$",
@@ -401,18 +405,12 @@ wise_config_apply <- function(config, session, existing = character(0)) {
     }, error = function(e) fail(conditionMessage(e))))
   }
 
-  # Figures: ggplot objects render through ggsave; base-R plots recorded with
-  # recordPlot() replay onto a device. Anything else is skipped rather than
-  # guessed at.
+  # Figures: ggplot objects render through ggsave at the registered
+  # dimensions. Anything else is skipped rather than guessed at.
   tryCatch({
     if (inherits(value, "ggplot")) {
       ggplot2::ggsave(path, plot = value, width = item$width,
                       height = item$height, dpi = 150, bg = "white")
-    } else if (inherits(value, "recordedplot")) {
-      grDevices::png(path, width = item$width, height = item$height,
-                     units = "in", res = 150, bg = "white")
-      on.exit(grDevices::dev.off(), add = TRUE)
-      grDevices::replayPlot(value)
     } else {
       return(NULL)
     }
@@ -527,7 +525,9 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
     "",
     paste(
       "Names are stable across exports of the same analysis, so two bundles",
-      "can be diffed file by file."
+      "can be diffed file by file. Numbers follow the registry's fixed",
+      "order, so a step that produced nothing leaves its number unused",
+      "rather than shifting every later file."
     ),
     ""
   )
@@ -679,9 +679,7 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
 wise_export_bundle <- function(zipfile, items, config = NULL,
                                provenance = list(),
                                include = c("config", "tables", "figures")) {
-  stage <- file.path(tempdir(), paste0("wise-export-",
-                                       format(Sys.time(), "%Y%m%d%H%M%S"),
-                                       "-", sample.int(1e6, 1)))
+  stage <- tempfile("wise-export-")
   dir.create(stage, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
 
@@ -692,19 +690,17 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
 
   entries <- list()
   skipped <- list()
-  idx <- 0L
-  for (it in wanted) {
-    idx <- idx + 1L
-    file <- .export_filename(idx, it$step, it$key, it$kind)
+  # Numbering follows the registry's stable order (step, then tables before
+  # figures): a surface that contributes nothing - not run, or a named
+  # failure - leaves a gap instead of renumbering every later file, so two
+  # bundles of the same analysis stay file-by-file diffable even when steps
+  # differ in what they produced.
+  for (i in seq_along(wanted)) {
+    it   <- wanted[[i]]
+    file <- .export_filename(i, it$step, it$key, it$kind)
     res  <- .export_write_item(it, stage, file)
-    if (is.null(res)) {
-      # Nothing to export from this surface (the step has not been run);
-      # keep numbering contiguous.
-      idx <- idx - 1L
-      next
-    }
+    if (is.null(res)) next
     if (identical(res$status, "error")) {
-      idx <- idx - 1L
       # Recorded and reported in the README rather than dropped in silence -
       # a missing file with no explanation is worse than a named failure.
       skipped[[length(skipped) + 1L]] <- list(
