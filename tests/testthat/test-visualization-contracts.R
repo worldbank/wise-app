@@ -85,3 +85,30 @@ test_that("weather support export preserves source and variable", {
   expect_setequal(unique(out$source), c("Step 1 regression input", "Full historical archive", "SSP2 / 2030"))
   expect_true(all(is.finite(out$value)))
 })
+
+test_that("weighted baseline deciles are fixed and cover supported households", {
+  svy <- data.frame(welfare = 1:10, weight = c(rep(1, 9), 9))
+  d <- wiseapp:::weighted_baseline_deciles(svy, "welfare", "weight")
+  expect_equal(d[[1]], 1L)
+  expect_equal(d[[10]], 10L)
+  expect_true(all(d >= 1L & d <= 10L))
+})
+
+test_that("paired adverse table includes expected supported periods", {
+  x <- tibble::tibble(
+    model_id = "m1", baseline = 1:20, policy = 2:21,
+    effect = 1, effect_sd = 0
+  )
+  out <- wiseapp:::paired_adverse_effect_table(x, "mean")
+  expect_setequal(out$period, c("Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20"))
+  expect_true(all(abs(out$effect - 1) < 1e-12))
+})
+
+test_that("unsupported adverse return periods are omitted", {
+  x <- tibble::tibble(
+    model_id = "m1", baseline = 1:10, policy = 2:11,
+    effect = 1, effect_sd = 0
+  )
+  out <- wiseapp:::paired_adverse_effect_table(x, "mean")
+  expect_false("Adverse 1-in-20" %in% out$period)
+})

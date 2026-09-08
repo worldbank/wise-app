@@ -530,6 +530,68 @@ plot_adverse_effects <- function(tbl, x_label = "Policy effect (outcome units)")
     theme_wise(base_size = 12)
 }
 
+paired_adverse_effect_table <- function(effect_tbl,
+                                        metric = NULL,
+                                        band_q = c(lo = 0.10, hi = 0.90)) {
+  if (is.null(effect_tbl) || !nrow(effect_tbl)) return(tibble::tibble())
+  probs <- c("Expected" = 0.50, "Adverse 1-in-5" = 0.20,
+             "Adverse 1-in-10" = 0.10, "Adverse 1-in-20" = 0.05)
+  spec <- metric_metadata(metric %||% "mean")
+  target <- if (identical(spec$adverse_tail, "high")) 1 - probs else probs
+  rows <- lapply(split(effect_tbl, effect_tbl$model_id), function(x) {
+    do.call(rbind, lapply(seq_along(probs), function(i) {
+      b <- x$baseline[is.finite(x$baseline)]
+      p <- x$policy[is.finite(x$policy)]
+      # An empirical 1-in-N tail is reported only when the model has at least
+      # N usable weather years. This avoids presenting the single most extreme
+      # draw as a supported return-period estimate.
+      support_n <- ceiling(1 / min(probs[[i]], 1 - probs[[i]]))
+      if (length(b) < support_n || length(p) < support_n) return(NULL)
+      data.frame(
+        model_id = x$model_id[[1L]], period = names(probs)[[i]],
+        probability = probs[[i]],
+        baseline = as.numeric(stats::quantile(b, target[[i]], names = FALSE)),
+        policy = as.numeric(stats::quantile(p, target[[i]], names = FALSE)),
+        stringsAsFactors = FALSE
+      )
+    }))
+  })
+  long <- dplyr::bind_rows(Filter(Negate(is.null), rows))
+  if (!nrow(long)) return(long)
+  dplyr::group_by(long, .data$period, .data$probability) |>
+    dplyr::summarise(
+      baseline = stats::median(.data$baseline, na.rm = TRUE),
+      policy = stats::median(.data$policy, na.rm = TRUE),
+      effect = .data$policy - .data$baseline,
+      ensemble_lo = stats::quantile(.data$policy - .data$baseline,
+                                    band_q[[1L]], na.rm = TRUE),
+      ensemble_hi = stats::quantile(.data$policy - .data$baseline,
+                                    band_q[[2L]], na.rm = TRUE),
+      n_models = dplyr::n_distinct(.data$model_id),
+      n_weather_years = dplyr::n(),
+      .groups = "drop"
+    )
+}
+
+plot_paired_adverse_table <- function(tbl, x_label = "Policy effect (outcome units)") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "Adverse-year effects are unavailable."))
+  }
+  tbl$period <- factor(tbl$period, levels = rev(c(
+    "Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20"
+  )))
+  ggplot2::ggplot(tbl, ggplot2::aes(x = .data$effect, y = .data$period)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$ensemble_lo,
+                                       xend = .data$ensemble_hi,
+                                       y = .data$period, yend = .data$period),
+                          linewidth = 4, colour = "#0072B2", alpha = 0.35) +
+    ggplot2::geom_point(shape = 21, fill = "#0072B2", colour = "#243746", size = 3) +
+    ggplot2::labs(x = x_label, y = NULL,
+                  subtitle = "Equal-probability policy quantile minus baseline quantile; unsupported tails are omitted.") +
+    theme_wise(base_size = 12)
+}
+
 # ---------------------------------------------------------------------------- #
 # Threshold table data frame                                                   #
 # ---------------------------------------------------------------------------- #

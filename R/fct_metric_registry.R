@@ -70,8 +70,10 @@ metric_axis_label <- function(method = "mean", so = NULL, deviation = "none") {
 }
 
 metric_adverse_probabilities <- function() {
-  c("Adverse 1-in-5" = 0.10, "Adverse 1-in-10" = 0.05,
-    "Adverse 1-in-20" = 0.025)
+  # Exceedance probabilities use the app's return-period convention: a
+  # 1-in-N adverse event has probability 1/N (0.20, 0.10, 0.05).
+  c("Adverse 1-in-5" = 0.20, "Adverse 1-in-10" = 0.10,
+    "Adverse 1-in-20" = 0.05)
 }
 
 # Add the definitions needed to interpret a chart-data export. Keeping these

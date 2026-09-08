@@ -214,6 +214,15 @@ mod_2_02_results_ui <- function(id) {
         "One observation is one annual aggregate for the fixed population under one weather-year draw; this is not a household welfare distribution."
       )
     ),
+    shiny::wellPanel(
+      shiny::h4("Distributional incidence by baseline welfare decile"),
+      wise_plot_output(ns("incidence_plot"),
+                       "Household-level simulated welfare effect by fixed baseline welfare decile",
+                       height = "420px"),
+      DT::DTOutput(ns("incidence_table")),
+      shiny::tags$p(class = "text-muted small",
+                    "One bar is the weighted mean household effect for a selected scenario-period. Deciles are fixed from observed baseline welfare.")
+    ),
 
     # ---- 5. Exceedance curve -----------------------------------------------
     shiny::wellPanel(
@@ -1309,6 +1318,55 @@ mod_2_02_results_server <- function(id,
         title = "Distribution of annual outcome across simulated weather years"
       )
     }, height = 460)
+
+    incidence_data_rv <- reactive({
+      req(hist_sim(), saved_scenarios(), input$cmp_agg_method)
+      sc <- selected_scenario_names()
+      if (!length(sc)) return(tibble::tibble())
+      is_log <- identical(hist_sim()$so$transform, "log")
+      svy <- hist_sim()$svy %||% hist_sim()$survey
+      if (is.null(svy)) return(tibble::tibble())
+      dplyr::bind_rows(lapply(sc, function(nm) {
+        entry <- saved_scenarios()[[nm]]
+        pipes <- entry$pipelines %||% list(entry$pipeline %||% entry)
+        step2_incidence_by_decile(
+          svy, hist_sim()$so$name, hist_sim()$pipeline, pipes, is_log, nm
+        )
+      }))
+    })
+
+    output$incidence_plot <- renderPlot({
+      req(incidence_data_rv())
+      plot_incidence_by_decile(incidence_data_rv())
+    }, height = 420)
+    outputOptions(output, "incidence_plot", suspendWhenHidden = TRUE)
+    output$incidence_table <- DT::renderDT({
+      req(incidence_data_rv())
+      DT::datatable(incidence_data_rv(), rownames = FALSE,
+                    class = "compact stripe", options = list(pageLength = 10))
+    })
+    outputOptions(output, "incidence_table", suspendWhenHidden = FALSE)
+
+    wise_export_figure(
+      key = "climate_distributional_incidence",
+      label = "Distributional incidence by baseline decile",
+      step = 2L,
+      fun = function() plot_incidence_by_decile(incidence_data_rv()),
+      description = "Weighted household-level simulated effects by fixed observed baseline welfare decile.",
+      width = 10, height = 6
+    )
+    wise_export_table(
+      key = "climate_distributional_incidence_data",
+      label = "Distributional incidence data",
+      step = 2L,
+      fun = function() annotate_visualization_export(
+        incidence_data_rv(), input$cmp_agg_method %||% "mean", hist_sim()$so,
+        observation_unit = "household-level simulated welfare effect",
+        aggregation_order = "fixed weighted observed baseline decile; weighted mean over households and model summaries",
+        uncertainty = "scenario/model variation summarized by selected model set"
+      ),
+      description = "Tidy weighted incidence data by fixed baseline welfare decile."
+    )
 
     # Export the same tidy annual aggregates used by the distribution plot.
     annual_distribution_export <- function() {

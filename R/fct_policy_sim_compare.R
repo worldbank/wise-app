@@ -384,6 +384,12 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
                     "Equal-probability tail contrast: the policy quantile minus the baseline quantile at the same return-period probability. This is not a same-weather-event effect.")
     ),
     shiny::wellPanel(
+      shiny::h4("Adverse-year policy effect table"),
+      DT::DTOutput(ns("paired_adverse_table")),
+      shiny::tags$p(class = "text-muted small",
+                    "Expected, 1-in-5, 1-in-10, and 1-in-20 rows are shown when supported by the available weather years.")
+    ),
+    shiny::wellPanel(
       shiny::h4(
         "Exceedance probability by climate scenario",
         info_popover(
@@ -848,25 +854,22 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
   paired_adverse_effects_rv <- reactive({
     dat <- paired_effect_data()
     if (!length(dat)) return(tibble::tibble())
-    method <- input$cmp_agg_method %||% "mean"
-    spec <- metric_metadata(method, baseline_hist_sim()$so)
-    probs <- metric_adverse_probabilities()
-    target_probs <- if (identical(spec$adverse_tail, "high")) 1 - probs else probs
-    out <- dplyr::bind_rows(lapply(names(dat), function(nm) {
-      x <- paired_equal_probability_effects(dat[[nm]], target_probs)
-      if (is.null(x) || !nrow(x)) return(NULL)
-      x$scenario <- nm
-      x$tail <- names(probs)[match(x$probability, target_probs)]
-      x
-    }))
-    if (!nrow(out)) return(out)
-    dplyr::bind_rows(lapply(split(out, interaction(out$scenario, out$tail,
-                                                   drop = TRUE)), function(x) {
-      q <- stats::quantile(x$effect, c(lo = 0.10, hi = 0.90), na.rm = TRUE,
-                           names = FALSE)
-      tibble::tibble(scenario = x$scenario[[1L]], tail = x$tail[[1L]],
-                     effect = stats::median(x$effect, na.rm = TRUE),
-                     lo = q[[1L]], hi = q[[2L]])
+    tbl <- paired_adverse_table_rv()
+    tbl <- tbl[tbl$period != "Expected", , drop = FALSE]
+    if (!nrow(tbl)) return(tibble::tibble())
+    dplyr::transmute(
+      tbl, scenario = .data$scenario, tail = .data$period,
+      effect = .data$effect, lo = .data$ensemble_lo,
+      hi = .data$ensemble_hi
+    )
+  })
+
+  paired_adverse_table_rv <- reactive({
+    dat <- paired_effect_data()
+    if (!length(dat)) return(tibble::tibble())
+    dplyr::bind_rows(lapply(names(dat), function(nm) {
+      x <- paired_adverse_effect_table(dat[[nm]], input$cmp_agg_method %||% "mean")
+      if (nrow(x)) dplyr::mutate(x, scenario = nm) else x
     }))
   })
 
@@ -1288,6 +1291,21 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
   }, height = 420)
   outputOptions(output, "paired_adverse_plot", suspendWhenHidden = TRUE)
 
+  output$paired_adverse_table <- DT::renderDT({
+    req(paired_adverse_table_rv())
+    df <- paired_adverse_table_rv()
+    if (!nrow(df)) {
+      return(DT::datatable(data.frame(Message = "Insufficient weather-year support"),
+                          rownames = FALSE, options = list(dom = "t")))
+    }
+    DT::datatable(
+      df, rownames = FALSE, class = "compact stripe", extensions = "Buttons",
+      options = list(dom = wise_csv_dom("tp"), pageLength = 20,
+                     buttons = wise_csv_button("policy_adverse_effects"))
+    )
+  })
+  outputOptions(output, "paired_adverse_table", suspendWhenHidden = FALSE)
+
   paired_effect_summary_export <- function() {
     annotate_visualization_export(
       paired_effect_summary_rv(), input$cmp_agg_method %||% "mean",
@@ -1335,6 +1353,19 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     step = 3L,
     fun = paired_adverse_effect_export,
     description = "Equal-probability adverse-tail policy effects; not same-weather-event effects."
+  )
+  wise_export_table(
+    key = "policy_adverse_effect_table",
+    label = "Adverse-year policy effect table",
+    step = 3L,
+    fun = function() annotate_visualization_export(
+      paired_adverse_table_rv(), input$cmp_agg_method %||% "mean",
+      baseline_hist_sim()$so,
+      observation_unit = "scenario-period equal-probability tail contrast",
+      aggregation_order = "per-model policy and baseline quantiles, paired by probability, then median across models",
+      uncertainty = "inter-model spread of policy-minus-baseline quantile effects"
+    ),
+    description = "Expected, 1-in-5, 1-in-10, and 1-in-20 equal-probability paired tail effects where supported."
   )
   wise_export_figure(
     key = "policy_annual_effect_distribution",

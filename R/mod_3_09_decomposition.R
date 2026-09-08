@@ -33,6 +33,15 @@ mod_3_09_decomposition_ui <- function(id) {
         "Bars = average effect by channel and welfare decile (decile 1 = poorest)."
       )
     ),
+    shiny::wellPanel(
+      shiny::h4("Paired policy incidence by baseline welfare decile"),
+      wise_plot_output(ns("incidence_plot"),
+                       "Paired policy minus baseline effect by fixed baseline welfare decile",
+                       height = "420px"),
+      DT::DTOutput(ns("incidence_table")),
+      shiny::tags$p(class = "text-muted small",
+                    "Deciles are fixed from weighted observed baseline welfare; policy effects are not re-ranked after treatment.")
+    ),
     shiny::uiOutput(ns("beta_curve_ui")),
     shiny::uiOutput(ns("scenario_range_ui")),
     shiny::wellPanel(
@@ -79,6 +88,7 @@ mod_3_09_decomposition_ui <- function(id) {
 #' @param so Reactive selected outcome metadata.
 #' @param selected_policies Reactive selected policy scenario keys.
 #' @param baseline_hist_sim Reactive Step 2-style baseline simulation result.
+#' @param baseline_svy      Reactive baseline survey used for fixed deciles.
 #' @param selected_weather Reactive selected weather specification.
 #' @param policy_saved_scenarios Reactive named future scenario list.
 #'
@@ -92,6 +102,7 @@ mod_3_09_decomposition_server <- function(id,
                                            show_coef_uncertainty = reactive(TRUE),
                                            selected_policies = reactive(NULL),
                                            baseline_hist_sim = reactive(NULL),
+                                           baseline_svy = reactive(NULL),
                                            selected_weather = reactive(NULL),
                                            sp_scenario = reactive(NULL),
                                            policy_saved_scenarios = reactive(list())) {
@@ -192,6 +203,47 @@ mod_3_09_decomposition_server <- function(id,
       .plot_decomp_bars(decomp_result(), is_rif(),
                         show_coef = isTRUE(show_coef_uncertainty()))
     })
+
+    incidence_data <- reactive({
+      res <- decomp_result()
+      bh <- baseline_hist_sim()
+      outcome <- so()
+      if (is.null(res) || is.null(bh) || is.null(outcome)) return(tibble::tibble())
+      step3_incidence_by_decile(res, baseline_svy(), outcome$name)
+    })
+    output$incidence_plot <- shiny::renderPlot({
+      req(incidence_data())
+      plot_incidence_by_decile(incidence_data(), "Paired policy minus baseline effect")
+    }, height = 420)
+    outputOptions(output, "incidence_plot", suspendWhenHidden = TRUE)
+    output$incidence_table <- DT::renderDT({
+      req(incidence_data())
+      DT::datatable(incidence_data(), rownames = FALSE,
+                    class = "compact stripe", options = list(pageLength = 10))
+    })
+    outputOptions(output, "incidence_table", suspendWhenHidden = FALSE)
+    wise_export_figure(
+      key = "policy_distributional_incidence",
+      label = "Paired policy incidence by baseline decile",
+      step = 3L,
+      fun = function() plot_incidence_by_decile(
+        incidence_data(), "Paired policy minus baseline effect"
+      ),
+      description = "Weighted paired policy-minus-baseline effects by fixed observed baseline welfare decile.",
+      width = 10, height = 6
+    )
+    wise_export_table(
+      key = "policy_distributional_incidence_data",
+      label = "Paired policy incidence data",
+      step = 3L,
+      fun = function() annotate_visualization_export(
+        incidence_data(), "mean", outcome,
+        observation_unit = "household-level paired policy-minus-baseline effect",
+        aggregation_order = "fixed weighted observed baseline decile; weighted mean over households",
+        uncertainty = "paired policy contrast"
+      ),
+      description = "Tidy paired policy effects by fixed baseline welfare decile."
+    )
 
     # --- Beta curve (RIF only): one panel per weather variable -------------
     output$beta_curve_ui <- renderUI({
