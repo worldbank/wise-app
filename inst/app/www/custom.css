@@ -645,6 +645,27 @@ details[open] summary {
   color: var(--bs-primary);
 }
 
+.lasso-disclosure {
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.45rem;
+  border-color: rgba(33, 102, 172, 0.35);
+  background-color: transparent;
+}
+
+.lasso-disclosure summary {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--bs-secondary-color, #5c6770);
+}
+
+.lasso-disclosure[open] summary {
+  font-weight: 600;
+}
+
+.lasso-disclosure > .shiny-html-output {
+  padding-top: 0.35rem;
+}
+
 /* ---- Overview landing page ---------------------------------------------- */
 
 .overview-shell {

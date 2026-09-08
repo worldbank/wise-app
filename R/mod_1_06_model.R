@@ -117,18 +117,29 @@ mod_1_06_model_server <- function(id,
       )
       cov_txt <- input$covariates %||% "User-defined"
 
-      shiny::div(
-        class = "settings-summary",
-        tags$b("Outcome:"), so$label,
-        tags$br(),
-        tags$b("Weather:"), paste(sw$label, collapse = ", "),
-        tags$br(),
-        tags$b("Model:"), model_txt,
-        tags$b(" \u00B7 Covariates:"), cov_txt,
-        tags$br(),
-        tags$b("Interaction:"), ixn_txt,
-        tags$br(),
-        tags$b("Fixed effects:"), fe_txt
+      selection_summary_card(
+        title = NULL,
+        badge = model_txt,
+        rows = list(
+          list(
+            name  = "Outcome",
+            sub   = so$label,
+            pills = so$name
+          ),
+          list(
+            name = "Weather",
+            sub  = paste(sw$label, collapse = ", ")
+          ),
+          list(
+            name  = "Terms",
+            sub   = paste0("Interaction: ", ixn_txt),
+            pills = c(
+              paste0("Covariates: ", cov_txt),
+              paste0("Fixed effects: ", fe_txt)
+            )
+          )
+        ),
+        compact = TRUE
       )
     })
 
@@ -185,7 +196,7 @@ mod_1_06_model_server <- function(id,
       tagList(
         shiny::selectizeInput(
           ns("selected_policies"),
-          label    = "Select policy scenarios:",
+          label    = "Policy scenario:",
           choices  = avail,
           selected = NULL,
           multiple = TRUE,
@@ -219,7 +230,7 @@ mod_1_06_model_server <- function(id,
       tagList(
         tags$small(
           class = "text-muted",
-          "The following variables are locked as interaction terms with the weather hazard:"
+          "Variables interacted with weather:"
         ),
         do.call(tags$ul, c(items, list(style = "font-size: 12px;")))
       )
@@ -350,7 +361,16 @@ mod_1_06_model_server <- function(id,
         # Covariate selection method
         pill_toggle(
           ns("covariates"),
-          label = "Covariate selection:",
+          label = shiny::tagList(
+            "Covariate selection:",
+            info_popover(
+              title = "Lasso covariate selection",
+              shiny::p(
+                "Lasso selects from all available covariates except weather,",
+                "interactions, and fixed effects."
+              )
+            )
+          ),
           choices  = c("User-defined", "Lasso"),
           selected = "User-defined"
         ),
@@ -444,35 +464,16 @@ mod_1_06_model_server <- function(id,
       } else if (input$covariates == "Lasso") {
 
         tagList(
-
-          shiny::helpText(
-            "Lasso will select from all available covariates except weather, interactions, and fixed effects.",
-            style = "font-size: 12px;"
+          shiny::tags$details(
+            class = "lasso-disclosure",
+            shiny::tags$summary("Forced inclusion / exclusion"),
+            uiOutput(ns("lasso_force_ui"))
           ),
-
-          # ------------------------------
-          # Toggle for forced inclusion / exclusion
-          # ------------------------------
-
-          shiny::actionButton(
-            ns("show_lasso_force"),
-            "Show forced inclusion / exclusion",
-            style = "margin-bottom:12px;"
-          ),
-
-          uiOutput(ns("lasso_force_ui")),
-
-          # ------------------------------
-          # Toggle for advanced settings
-          # ------------------------------
-
-          shiny::actionButton(
-            ns("show_lasso_advanced"),
-            "Show advanced settings",
-            style = "margin-bottom:12px;"
-          ),
-
-          uiOutput(ns("lasso_advanced_ui"))
+          shiny::tags$details(
+            class = "lasso-disclosure",
+            shiny::tags$summary("Advanced settings"),
+            uiOutput(ns("lasso_advanced_ui"))
+          )
 
         )
       }
@@ -486,16 +487,6 @@ mod_1_06_model_server <- function(id,
     # the flyout still controls visibility.
     shiny::outputOptions(output, "model_specs_ui",    suspendWhenHidden = FALSE)
     shiny::outputOptions(output, "covariate_inputs",  suspendWhenHidden = FALSE)
-
-    lasso_advanced_open <- reactiveVal(FALSE)
-    observeEvent(input$show_lasso_advanced, {
-      lasso_advanced_open(!lasso_advanced_open())
-    })
-
-    lasso_force_open <- reactiveVal(FALSE)
-    observeEvent(input$show_lasso_force, {
-      lasso_force_open(!lasso_force_open())
-    })
 
     # Helper: vars at a given level (ind/hh/firm/area) from valid_vl
     .vars_at_level <- function(role) {
@@ -520,7 +511,6 @@ mod_1_06_model_server <- function(id,
 
     output$lasso_force_ui <- renderUI({
       req(input$covariates == "Lasso")
-      if (!lasso_force_open()) return(NULL)
 
       already_in <- unique(c(input$interactions, input$fixedeffects))
 
@@ -633,8 +623,6 @@ mod_1_06_model_server <- function(id,
     output$lasso_advanced_ui <- renderUI({
 
       req(input$covariates == "Lasso")
-
-      if (!lasso_advanced_open()) return(NULL)
 
       # INT-01: the panel is destroyed/recreated on every toggle; restore the
       # previous settings so closing and reopening does not reset them.
