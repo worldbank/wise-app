@@ -490,3 +490,15 @@ wave_slider_choices <- function(wave_df, include_all = TRUE) {
     wave_choices
   }
 }
+
+#' Return wave labels shared by map controls and charts
+#'
+#' @param wave_df Data frame from `survey_wave_list()`.
+#' @return A named character vector keyed by `wave_df$label`.
+#' @noRd
+wave_plot_labels <- function(wave_df) {
+  if (is.null(wave_df) || nrow(wave_df) == 0) return(character(0))
+  choices <- wave_slider_choices(wave_df, include_all = FALSE)
+  chart_keys <- paste0(wave_df$economy, ", ", wave_df$year)
+  stats::setNames(names(choices), chart_keys)
+}

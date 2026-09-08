@@ -36,6 +36,11 @@ test_that("get_weather_vars returns correct columns", {
   expect_setequal(names(out), c("name", "label", "units"))
 })
 
+test_that("get_weather_vars preserves metadata row order", {
+  vl <- make_var_info()[c(3L, 1L, 2L), , drop = FALSE]
+  expect_identical(get_weather_vars(vl)$name, c("spi6", "tx", "pr"))
+})
+
 # ============================================================================ #
 # temporal_agg_choices / temporal_agg_default                                 #
 # ============================================================================ #

@@ -264,7 +264,8 @@ welfare_poverty_lines <- function() {
 plot_interview_dates <- function(plot_data,
                                  variant = c("grouped", "faceted", "heatmap"),
                                  unit_label = "Households",
-                                 palette = c("sequential", "okabe_ito", "wise", "blue")) {
+                                 palette = c("sequential", "okabe_ito", "wise", "blue"),
+                                 wave_labels = NULL) {
   if (is.null(plot_data) || nrow(plot_data) == 0) return(invisible(NULL))
   variant <- match.arg(variant)
   palette <- match.arg(palette)
@@ -301,6 +302,12 @@ plot_interview_dates <- function(plot_data,
     wave_info$countryyear
   ), , drop = FALSE]
   waves <- wave_info$countryyear
+  display_waves <- waves
+  if (!is.null(wave_labels)) {
+    mapped <- unname(wave_labels[waves])
+    keep <- !is.na(mapped) & nzchar(mapped)
+    display_waves[keep] <- mapped[keep]
+  }
   plot_data$countryyear <- factor(plot_data$countryyear, levels = waves)
   wave_cols <- switch(
     palette,
@@ -378,8 +385,8 @@ plot_interview_dates <- function(plot_data,
         width = 0.72, colour = "white", linewidth = 0.2
       ) +
       ggplot2::scale_fill_manual(
-        values = wave_cols, breaks = waves, drop = FALSE,
-         name = NULL
+        values = wave_cols, breaks = waves, labels = display_waves, drop = FALSE,
+        name = NULL
       )
   }
 

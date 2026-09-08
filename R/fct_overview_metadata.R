@@ -212,7 +212,12 @@ load_overview_metadata <- function(connection_params, force_refresh = FALSE) {
 
   load_one <- function(name, path) {
     tryCatch(
-      load_data(path, connection_params, collect = TRUE),
+      load_data(
+        path,
+        connection_params,
+        collect = TRUE,
+        preserve_order = identical(name, "variable_list")
+      ),
       error = function(e) {
         errors[[name]] <<- conditionMessage(e)
         NULL
@@ -287,8 +292,12 @@ load_overview_metadata <- function(connection_params, force_refresh = FALSE) {
   out <- list()
   for (name in names(responses)) {
     parsed <- tryCatch(
-      .parse_db_csv_response(responses[[name]], urls[[name]]) |>
-        collect_deterministic(),
+      {
+        value <- .parse_db_csv_response(responses[[name]], urls[[name]])
+        if (identical(name, "variable_list")) value else {
+          collect_deterministic(value)
+        }
+      },
       error = function(e) {
         errors[[name]] <<- conditionMessage(e)
         NULL

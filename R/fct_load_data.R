@@ -450,7 +450,8 @@ load_data <- function(
     format            = NULL,
     unify_schemas     = FALSE,
     collect           = FALSE,
-    order_by          = NULL
+    order_by          = NULL,
+    preserve_order    = FALSE
 ) {
 
   if (length(paths) == 0) return(tibble::tibble())
@@ -613,7 +614,9 @@ load_data <- function(
     # Fast path: single CSV - bypass DuckDB entirely
     if (format == "csv" && length(paths) == 1L) {
       out <- .fetch_db_csv_direct(paths, db_token)
-      return(if (collect) collect_deterministic(out, order_by) else out)
+      return(if (collect && !isTRUE(preserve_order)) {
+        collect_deterministic(out, order_by)
+      } else out)
     }
 
     # Build the base URL for bundled DuckDB extensions.
@@ -641,12 +644,21 @@ load_data <- function(
   # ---------------------------------------------------------------------------
 
   read_expr <- .build_read_expr(paths, format, unify_schemas)
+  source_order_col <- "__wise_source_order"
+  view_expr <- if (isTRUE(preserve_order)) {
+    sprintf(
+      "SELECT *, row_number() OVER () AS %s FROM %s",
+      source_order_col, read_expr
+    )
+  } else {
+    paste0("SELECT * FROM ", read_expr)
+  }
   view_name <- paste0("_ld_", substr(digest::digest(read_expr), 1, 12))
 
   tryCatch(
     DBI::dbExecute(con, sprintf(
-      "CREATE OR REPLACE VIEW %s AS SELECT * FROM %s;",
-      view_name, read_expr
+      "CREATE OR REPLACE VIEW %s AS %s;",
+      view_name, view_expr
     )),
     error = function(e) stop(sprintf(
       "load_data(): Failed to open dataset.\n  paths : %s\n  format: %s\n  error : %s",
@@ -660,5 +672,16 @@ load_data <- function(
   # 6. Collect or return lazy
   # ---------------------------------------------------------------------------
 
-  if (collect) collect_deterministic(tbl, order_by) else tbl
+  if (collect && !isTRUE(preserve_order)) {
+    collect_deterministic(tbl, order_by)
+  } else if (collect) {
+    out <- dplyr::collect(tbl)
+    if (source_order_col %in% names(out)) {
+      out <- out[order(out[[source_order_col]], method = "radix"), , drop = FALSE]
+      out[[source_order_col]] <- NULL
+    }
+    out
+  } else {
+    tbl
+  }
 }

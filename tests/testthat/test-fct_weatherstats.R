@@ -180,3 +180,34 @@ test_that("plot_binscatter returns ggplot for binary outcome", {
   p  <- plot_binscatter(df, "tx", "Max temp", "poor", "Poor (0/1)")
   expect_s3_class(p, "ggplot")
 })
+
+test_that("plot_binscatter handles binned weather with continuous outcome", {
+  skip_if_not_installed("ggplot2")
+  df <- merge_survey_weather(make_survey(), make_weather()) |>
+    dplyr::mutate(
+      tx = cut(tx, breaks = c(-Inf, 28, Inf), include.lowest = TRUE)
+    )
+  p <- plot_binscatter(df, "tx", "Max temp", "welfare", "Welfare")
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot_binscatter handles binned weather with binary outcome", {
+  skip_if_not_installed("ggplot2")
+  df <- merge_survey_weather(make_survey(), make_weather()) |>
+    dplyr::mutate(
+      tx = cut(tx, breaks = c(-Inf, 28, Inf), include.lowest = TRUE),
+      poor = as.integer(welfare < 3)
+    )
+  p <- plot_binscatter(df, "tx", "Max temp", "poor", "Poor")
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot_binscatter samples large tibbles with integer row indices", {
+  skip_if_not_installed("ggplot2")
+  df <- tibble::tibble(
+    tx = rep(seq(20, 40, length.out = 100), 40),
+    welfare = rep(c(1, 2, 3, 4), 1000)
+  )
+  p <- plot_binscatter(df, "tx", "Max temp", "welfare", "Welfare")
+  expect_s3_class(p, "ggplot")
+})

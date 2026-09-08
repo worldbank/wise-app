@@ -153,6 +153,7 @@ survey_missingness_long <- function(df, vars, group = "countryyear") {
 #' @param log_transform Logical; if TRUE, aggregate and smooth in log10-space.
 #' @param x_range Optional two-value range in transformed display space.
 #' @param bandwidth Optional bandwidth in transformed display space.
+#' @param bandwidth_scale Multiplier for the automatically estimated bandwidth.
 #'
 #' @return A list with `data`, `groups`, `bandwidth`, `log_transform`, and
 #'   `x_range`, or NULL if inputs are invalid.
@@ -169,7 +170,8 @@ build_ridge_distribution_data <- function(
     n_grid = 256L,
     log_transform = FALSE,
     x_range = NULL,
-    bandwidth = NULL
+    bandwidth = NULL,
+    bandwidth_scale = 0.85
 ) {
     if (is.null(df) || !nrow(df)) return(NULL)
     if (!all(c(x_var, group_var) %in% names(df))) return(NULL)
@@ -262,7 +264,41 @@ build_ridge_distribution_data <- function(
     scale_x <- min(sd_x, iqr_x / 1.34)
     bin_width <- diff(breaks)[1L]
     if (is.null(bandwidth)) {
-        bandwidth <- 0.9 * scale_x * n_obs^(-0.2)
+        # Estimate each series independently using effective sample size. Raw
+        # survey-weight totals can be much larger than the information in the
+        # weighted sample when weights are unequal. A common median bandwidth
+        # keeps the waves visually comparable while still adapting to their
+        # different sizes and weight distributions.
+        series_bandwidth <- vapply(sort(unique(hist$group)), function(g) {
+            take_g <- hist$group == g
+            wg <- w[take_g]
+            xg <- h_x[take_g]
+            n_eff <- sum(wg)^2 / sum(wg^2)
+            sd_g <- sqrt(sum((xg - sum(xg * wg) / sum(wg))^2 * wg) /
+                max(sum(wg) - 1, 1))
+            ord_g <- order(xg)
+            cum_g <- cumsum(wg[ord_g])
+            quantile_g <- function(prob) {
+                target <- prob * sum(wg)
+                idx <- match(TRUE, cum_g >= target)
+                if (is.na(idx) || idx == 1L) return(xg[ord_g][1L])
+                x_sorted <- xg[ord_g]
+                prev <- cum_g[idx - 1L]
+                span <- max(cum_g[idx] - prev, 1)
+                x_sorted[idx - 1L] + (x_sorted[idx] - x_sorted[idx - 1L]) *
+                    (target - prev) / span
+            }
+            iqr_g <- quantile_g(0.75) - quantile_g(0.25)
+            scale_g <- min(sd_g, iqr_g / 1.34)
+            0.9 * scale_g * n_eff^(-0.2)
+        }, numeric(1))
+        series_bandwidth <- series_bandwidth[is.finite(series_bandwidth) &
+            series_bandwidth > 0]
+        bandwidth <- if (length(series_bandwidth)) {
+            stats::median(series_bandwidth) * bandwidth_scale
+        } else {
+            0
+        }
     } else {
         bandwidth <- suppressWarnings(as.numeric(bandwidth[1L]))
     }
@@ -346,7 +382,8 @@ ridge_distribution_plot <- function(
     fill_var = "code",
     x_label = NULL,
     wrap_width = NULL,
-    log_transform = FALSE
+    log_transform = FALSE,
+    group_labels = NULL
 ) {
     agg <- build_ridge_distribution_data(
         df,
@@ -367,6 +404,13 @@ ridge_distribution_plot <- function(
         label <- paste0(label, " (log scale)")
     }
 
+    display_groups <- agg$groups
+    if (!is.null(group_labels)) {
+        mapped <- unname(group_labels[display_groups])
+        keep <- !is.na(mapped) & nzchar(mapped)
+        display_groups[keep] <- mapped[keep]
+    }
+
     p <- ggplot2::ggplot(
         agg$data,
         ggplot2::aes(
@@ -377,7 +421,7 @@ ridge_distribution_plot <- function(
         ridge_geometry_layers(scale = 2, alpha = 0.7, linewidth = 0.3) +
         ggplot2::scale_y_continuous(
             breaks = seq_along(agg$groups),
-            labels = agg$groups,
+            labels = display_groups,
             expand = ggplot2::expansion(mult = c(0.02, 0.12))
         ) +
         theme_wise() +

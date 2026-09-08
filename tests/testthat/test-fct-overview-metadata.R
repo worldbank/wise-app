@@ -215,6 +215,32 @@ test_that("local Overview metadata loads as one validated bundle", {
 })
 
 
+test_that("metadata variable order can be preserved on collection", {
+  skip_if_not_installed("duckdb")
+  path <- tempfile("wiseapp-order-")
+  dir.create(path, recursive = TRUE)
+  withr::defer(unlink(path, recursive = TRUE, force = TRUE))
+
+  readr::write_csv(
+    data.frame(
+      name = c("t", "tn", "tx", "spei6"),
+      label = c("Monthly temperature", "Monthly minimum temperature",
+                "Monthly maximum temperature", "Monthly SPEI-6"),
+      stringsAsFactors = FALSE
+    ),
+    file.path(path, "variable_list.csv")
+  )
+
+  out <- load_data(
+    "variable_list.csv",
+    list(type = "local", path = path),
+    collect = TRUE,
+    preserve_order = TRUE
+  )
+  expect_identical(out$name, c("t", "tn", "tx", "spei6"))
+})
+
+
 test_that("Overview metadata validation reports missing columns", {
   metadata <- list(
     survey_list = data.frame(code = "TST"),

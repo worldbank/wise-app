@@ -269,7 +269,8 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
             outcome_data(),
             outcome = as.character(inf$name[1]),
             label   = as.character(inf$label[1]),
-            type    = as.character(inf$type[1])
+            type    = as.character(inf$type[1]),
+            wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
           )
           if (is.null(p)) {
             plot.new()
@@ -287,10 +288,11 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
         cov_key <- shiny::reactiveVal(NULL)
         cov_lgd <- shiny::reactiveVal(NULL)
 
-        # The view chosen by the picker above the map: what share of the
-        # sample at each location has a non-missing outcome (coverage), or
-        # what those sampled units report on average (mean value).
-        cov_view_val <- shiny::reactiveVal("coverage")
+        # The view chosen by the picker above the map: what those sampled
+        # units report on average (mean value), or what share of the sample
+        # at each location has a non-missing outcome (coverage). Mean value
+        # leads the picker and is the default.
+        cov_view_val <- shiny::reactiveVal("mean")
         cov_view <- shiny::reactive(cov_view_val())
 
         observeEvent(input$cov_view, {

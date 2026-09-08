@@ -160,24 +160,24 @@ test_that("outcome map switches between coverage and mean-value views", {
       session$setInputs(outcome_stats_btn = 0L)
       session$setInputs(outcome_stats_btn = 1L); settle()
 
-      # Default view is coverage. The payload observer reads and rewrites
+      # Default view is mean value. The payload observer reads and rewrites
       # its own fit key, so one flush runs it twice (also true of the
       # weather module's map observer) - count deltas between flushes,
       # not totals.
       cov0 <- cov_calls; mean0 <- mean_calls
-      expect_gt(cov0, 0L)
-      expect_equal(mean0, 0L)
+      expect_gt(mean0, 0L)
+      expect_equal(cov0, 0L)
 
-      # Switch to the mean view: the mean payload builder takes over.
-      session$setInputs(cov_view = "mean"); settle()
-      expect_gt(mean_calls - mean0, 0L)
-      expect_equal(cov_calls - cov0, 0L)
-
-      # Back to coverage: no further mean payloads.
-      cov1 <- cov_calls; mean1 <- mean_calls
+      # Switch to coverage: the coverage payload builder takes over.
       session$setInputs(cov_view = "coverage"); settle()
-      expect_gt(cov_calls - cov1, 0L)
-      expect_equal(mean_calls - mean1, 0L)
+      expect_gt(cov_calls - cov0, 0L)
+      expect_equal(mean_calls - mean0, 0L)
+
+      # Back to mean value: no further coverage payloads.
+      cov1 <- cov_calls; mean1 <- mean_calls
+      session$setInputs(cov_view = "mean"); settle()
+      expect_gt(mean_calls - mean1, 0L)
+      expect_equal(cov_calls - cov1, 0L)
     }
   )
 })

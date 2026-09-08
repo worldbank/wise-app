@@ -298,7 +298,8 @@ plot_welfare_dist <- function(df,
                               outcome = "welfare",
                               label = NULL,
                               type = "numeric",
-                              poverty_lines = welfare_poverty_lines()) {
+                              poverty_lines = welfare_poverty_lines(),
+                              wave_labels = NULL) {
   if (is.null(df) || !(outcome %in% names(df))) return(invisible(NULL))
 
   vals   <- df[[outcome]][!is.na(df[[outcome]])]
@@ -347,6 +348,12 @@ plot_welfare_dist <- function(df,
     bars$countryyear <- factor(
       bars$countryyear, levels = sort(unique(bars$countryyear))
     )
+    display_waves <- levels(bars$countryyear)
+    if (!is.null(wave_labels)) {
+      mapped <- unname(wave_labels[display_waves])
+      keep <- !is.na(mapped) & nzchar(mapped)
+      display_waves[keep] <- mapped[keep]
+    }
 
     return(
       ggplot2::ggplot(
@@ -397,6 +404,7 @@ plot_welfare_dist <- function(df,
           y = "Share of observations",
           title = x_label
         ) +
+        ggplot2::scale_x_discrete(labels = display_waves) +
         theme_wise() +
         ggplot2::theme(
           legend.position = "top",
@@ -414,7 +422,8 @@ plot_welfare_dist <- function(df,
     fill_var      = "code",
     x_label       = x_label,
     wrap_width    = 40,
-    log_transform = use_log
+    log_transform = use_log,
+    group_labels  = wave_labels
   )
 
   if (is.null(p)) return(invisible(NULL))

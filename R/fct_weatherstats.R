@@ -81,12 +81,12 @@ merge_survey_weather <- function(survey_data, weather_data) {
 
 # Label used for the sample series across both plots.
 #' @noRd
-.wx_sample_lab <- "Survey sample"
+.wx_sample_lab <- "Survey"
 
 # Label used for the historical series across both plots.
 #' @noRd
 .wx_hist_lab <- function(year_from, year_to) {
-  paste0("Historical ", year_from, "-", year_to)
+  "Historical"
 }
 
 
@@ -206,7 +206,7 @@ merge_survey_weather <- function(survey_data, weather_data) {
 #' @export
 plot_weather_bins_compare <- function(df, hv, label, hist_df = NULL,
                                       breaks = NULL, year_from = NULL,
-                                      year_to = NULL) {
+                                      year_to = NULL, wave_labels = NULL) {
   if (is.null(df) || is.na(hv) || !(hv %in% names(df))) return(invisible(NULL))
   if (!("countryyear" %in% names(df))) return(invisible(NULL))
 
@@ -271,8 +271,10 @@ plot_weather_bins_compare <- function(df, hv, label, hist_df = NULL,
       position = ggplot2::position_dodge(preserve = "single"),
       colour   = "grey45", linewidth = 0.25, alpha = 0.9
     ) +
-    ggplot2::scale_fill_manual(values = key_cols, name = NULL,
-                               drop = FALSE) +
+    ggplot2::scale_fill_manual(
+      values = key_cols, name = NULL, drop = FALSE,
+      labels = .wx_display_series_labels(series$key, wave_labels)
+    ) +
     theme_wise() +
     ggplot2::labs(
       x = stringr::str_wrap(paste0(label, "\n(as configured)"), 40),
@@ -303,6 +305,29 @@ plot_weather_bins_compare <- function(df, hv, label, hist_df = NULL,
   g[, c("wave", "source", "key")]
 }
 
+#' @noRd
+.wx_display_series_labels <- function(series_keys, wave_labels = NULL) {
+  labels <- as.character(series_keys)
+  if (is.null(wave_labels) || !length(labels)) return(labels)
+  wave <- sub(" - .*", "", labels)
+  source <- sub("^.* - ", "", labels)
+  mapped <- unname(wave_labels[wave])
+  keep <- !is.na(mapped) & nzchar(mapped)
+  labels[keep] <- paste0(mapped[keep], " - ", source[keep])
+  labels
+}
+
+#' @noRd
+.wx_display_wave_labels <- function(series_keys, wave_labels = NULL) {
+  labels <- as.character(series_keys)
+  if (is.null(wave_labels) || !length(labels)) return(labels)
+  wave <- sub(" - .*", "", labels)
+  mapped <- unname(wave_labels[wave])
+  keep <- !is.na(mapped) & nzchar(mapped)
+  labels[keep] <- mapped[keep]
+  labels
+}
+
 
 #' Ridge plot of a continuous weather variable, sample against its own history
 #'
@@ -328,7 +353,8 @@ plot_weather_bins_compare <- function(df, hv, label, hist_df = NULL,
 #'
 #' @export
 plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
-                                        year_from = NULL, year_to = NULL) {
+                                         year_from = NULL, year_to = NULL,
+                                         wave_labels = NULL) {
   if (is.null(df) || is.na(hv) || !(hv %in% names(df))) return(invisible(NULL))
   if (!("countryyear" %in% names(df))) return(invisible(NULL))
 
@@ -408,7 +434,8 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
     weight_var = "w",
     ridge_var  = "countryyear",
     n_bins     = 256L,
-    n_grid     = 256L
+    n_grid     = 256L,
+    bandwidth_scale = 0.85
   )
   if (is.null(rd)) return(invisible(NULL))
   ridge_data <- rd$data
@@ -443,17 +470,19 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
       ggplot2::aes(y = .data$y + .data$height * 2),
       linewidth = 0.5
     ) +
-    ggplot2::scale_y_continuous(
-      breaks = seq_along(rd$ridges), labels = rd$ridges,
-      expand = ggplot2::expansion(mult = c(0.02, 0.12))
+     ggplot2::scale_y_continuous(
+       breaks = seq_along(rd$ridges),
+       labels = .wx_display_wave_labels(rd$ridges, wave_labels),
+       expand = ggplot2::expansion(mult = c(0.02, 0.12))
     ) +
-    ggplot2::scale_fill_manual(values = fills, na.value = NA, guide = "none") +
+     ggplot2::scale_fill_manual(values = fills, na.value = NA, guide = "none") +
     ggplot2::scale_colour_manual(values = lines, guide = "none") +
-    ggplot2::scale_linetype_manual(
+     ggplot2::scale_linetype_manual(
       values = stats::setNames(
         c("solid", "22")[seq_along(sources)], sources
       ),
-      name = NULL
+        labels = sources,
+        name = NULL
     ) +
     theme_wise() +
     ggplot2::labs(
@@ -462,6 +491,7 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
     ) +
     ggplot2::theme(
       legend.position = if (length(sources) > 1) "top" else "none",
+      legend.key      = ggplot2::element_rect(fill = "white", colour = "white"),
       legend.text     = ggplot2::element_text(size = 9)
     )
 
@@ -492,18 +522,18 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
 #' @export
 plot_weather_dist <- function(df, hv, label, cont_binned, hist_df = NULL,
                               breaks = NULL, year_from = NULL,
-                              year_to = NULL) {
+                              year_to = NULL, wave_labels = NULL) {
   if (is.null(df) || is.na(hv) || !(hv %in% names(df))) return(invisible(NULL))
 
   if (!is.na(cont_binned) && cont_binned == "Binned") {
     plot_weather_bins_compare(
-      df = df, hv = hv, label = label, hist_df = hist_df, breaks = breaks,
-      year_from = year_from, year_to = year_to
+       df = df, hv = hv, label = label, hist_df = hist_df, breaks = breaks,
+       year_from = year_from, year_to = year_to, wave_labels = wave_labels
     )
   } else {
     plot_weather_ridges_compare(
-      df = df, hv = hv, label = label, hist_df = hist_df,
-      year_from = year_from, year_to = year_to
+       df = df, hv = hv, label = label, hist_df = hist_df,
+       year_from = year_from, year_to = year_to, wave_labels = wave_labels
     )
   }
 }
@@ -531,47 +561,111 @@ plot_weather_dist <- function(df, hv, label, cont_binned, hist_df = NULL,
 plot_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var) {
   if (is.null(df) || !all(c(hv, y_var) %in% names(df))) return(NULL)
 
-  d <- df[, c(hv, y_var), drop = FALSE]
-  names(d) <- c("x", "y")
-  d <- d[stats::complete.cases(d), , drop = FALSE]
-  if (nrow(d) == 0) return(NULL)
+  raw <- df[, c(hv, y_var), drop = FALSE]
+  x_raw <- raw[[1L]]
+  y_raw <- raw[[2L]]
 
-  # Outcome: detect binary vs continuous
-  y_raw <- d$y
-  y_num <- suppressWarnings(as.numeric(as.character(y_raw)))
-  is_binary_y <- FALSE
-
-  if (!all(is.na(y_num))) {
-    uy <- sort(unique(y_num[!is.na(y_num)]))
-    is_binary_y <- length(uy) <= 2 && all(uy %in% c(0, 1))
+  # Weather factors/characters are model bins; numeric weather is continuous.
+  is_binned_x <- is.factor(x_raw) || is.character(x_raw)
+  if (is_binned_x) {
+    x_levels <- if (is.factor(x_raw)) {
+      levels(x_raw)
+    } else {
+      unique(as.character(x_raw[!is.na(x_raw)]))
+    }
+    x_num <- factor(as.character(x_raw), levels = x_levels)
+  } else {
+    x_levels <- NULL
+    x_num <- suppressWarnings(as.numeric(as.character(x_raw)))
   }
 
-  if (!is_binary_y && (is.logical(y_raw) || is.factor(y_raw))) {
-    y_fac <- as.factor(y_raw)
-    if (nlevels(y_fac) == 2) {
+  # Normalize all supported outcome representations before sampling. This also
+  # ensures the capped point layer has the same rows and types as the summary.
+  y_num <- suppressWarnings(as.numeric(as.character(y_raw)))
+  is_binary_y <- FALSE
+  finite_y <- y_num[is.finite(y_num)]
+  if (length(finite_y) && all(unique(finite_y) %in% c(0, 1))) {
+    is_binary_y <- TRUE
+  } else if (is.logical(y_raw)) {
+    y_num <- as.integer(y_raw)
+    is_binary_y <- TRUE
+  } else if (is.factor(y_raw) && nlevels(y_raw) == 2L) {
+    y_levels <- levels(y_raw)
+    y_num <- match(as.character(y_raw), y_levels) - 1L
+    is_binary_y <- TRUE
+  } else if (is.character(y_raw)) {
+    y_levels <- sort(unique(as.character(y_raw[!is.na(y_raw)])))
+    if (length(y_levels) == 2L) {
+      y_num <- match(as.character(y_raw), y_levels) - 1L
       is_binary_y <- TRUE
-      y_num <- as.integer(y_fac) - 1
     }
   }
 
-  if (is_binary_y) {
-    d$y <- y_num
-  } else {
-    d$y <- suppressWarnings(as.numeric(d$y))
-    d <- d[!is.na(d$y), , drop = FALSE]
-    if (nrow(d) == 0) return(NULL)
+  if (!is_binary_y) {
+    y_num <- suppressWarnings(as.numeric(as.character(y_raw)))
   }
 
-  # X: detect binned/categorical vs continuous
-  is_binned_x <- is.factor(d$x) || is.character(d$x)
+  keep <- is.finite(y_num)
+  if (is_binned_x) {
+    keep <- keep & !is.na(x_num)
+  } else {
+    keep <- keep & is.finite(x_num)
+  }
+  if (!any(keep)) return(NULL)
+
+  d <- data.frame(x = x_num[keep], y = y_num[keep],
+                  stringsAsFactors = FALSE)
+
+  # Keep the point layer bounded; bin summaries below still use every row.
+  # Round to integer row positions because tibble row slicing rejects the
+  # fractional doubles returned by seq(..., length.out = ...).
+  point_max <- 2500L
+  point_df <- if (nrow(d) > point_max) {
+    idx <- unique(as.integer(round(
+      seq(1, nrow(d), length.out = point_max)
+    )))
+    d[idx, , drop = FALSE]
+  } else d
+
+  summarise_bins <- function(bin, x_value = NULL) {
+    g <- collapse::GRP(data.frame(bin = bin), by = "bin")
+    out <- data.frame(
+      bin = as.character(g$groups[[1]]),
+      mean = as.numeric(collapse::fmean(d$y, g = g, na.rm = TRUE)),
+      n = as.integer(collapse::fnobs(d$y, g = g)),
+      stringsAsFactors = FALSE
+    )
+    if (!is.null(x_value)) {
+      idx <- suppressWarnings(as.integer(out$bin))
+      out$x <- x_value[idx]
+    }
+    out
+  }
 
   if (is_binned_x) {
-    d$x <- as.factor(d$x)
+    summary_df <- summarise_bins(d$x)
+    summary_df$bin <- factor(summary_df$bin, levels = x_levels)
 
     p <- ggplot2::ggplot(d, ggplot2::aes(x = .data$x, y = .data$y)) +
+      ggplot2::geom_jitter(
+        data = transform(point_df, x = factor(as.character(x), levels = x_levels)),
+        width = 0.12, height = if (is_binary_y) 0.025 else 0,
+        alpha = 0.10, colour = "#264A79", size = 0.8
+      ) +
+      ggplot2::geom_line(
+        data = summary_df,
+        ggplot2::aes(x = .data$bin, y = .data$mean, group = 1),
+        colour = "#0071BC", linewidth = 0.7
+      ) +
+      ggplot2::geom_point(
+        data = summary_df,
+        ggplot2::aes(x = .data$bin, y = .data$mean, size = .data$n),
+        colour = "#00A6C7"
+      ) +
+      ggplot2::scale_size_continuous(range = c(2, 5), guide = "none") +
       theme_wise() +
       ggplot2::theme(
-        axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1)
       ) +
       ggplot2::labs(
         x = stringr::str_wrap(hv_label, 40),
@@ -579,27 +673,42 @@ plot_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var) {
       )
 
     if (is_binary_y) {
-      p <- p +
-        ggplot2::geom_jitter(width = 0.15, height = 0.03, alpha = 0.10) +
-        ggplot2::stat_summary(fun = mean, geom = "point", color = "orange", size = 2.5) +
-        ggplot2::scale_y_continuous(limits = c(0, 1))
-    } else {
-      p <- p +
-        ggplot2::geom_jitter(width = 0.15, alpha = 0.10) +
-        ggplot2::stat_summary(fun = mean, geom = "point", color = "orange", size = 2.5)
+      p <- p + ggplot2::scale_y_continuous(limits = c(0, 1))
     }
 
     return(p)
   }
 
   # Continuous x
-  d$x <- suppressWarnings(as.numeric(d$x))
-  d <- d[!is.na(d$x), , drop = FALSE]
-  if (nrow(d) == 0) return(NULL)
+  x_range <- range(d$x, finite = TRUE)
+  if (!all(is.finite(x_range))) return(NULL)
+  breaks <- if (diff(x_range) == 0) {
+    x_range[1] + c(-0.5, 0.5)
+  } else {
+    seq(x_range[1], x_range[2], length.out = 21L)
+  }
+  bin <- cut(d$x, breaks = breaks, include.lowest = TRUE, labels = FALSE)
+  bin_mid <- (breaks[-length(breaks)] + breaks[-1L]) / 2
+  summary_df <- summarise_bins(bin, bin_mid)
+  summary_df <- summary_df[is.finite(summary_df$mean), , drop = FALSE]
 
-  p <- ggplot2::ggplot(d, ggplot2::aes(x = .data$x, y = .data$y)) +
-    ggplot2::geom_point(alpha = 0.10) +
-    ggplot2::stat_summary_bin(fun = mean, bins = 20, color = "orange", size = 2, geom = "point") +
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_point(
+      data = point_df,
+      ggplot2::aes(x = .data$x, y = .data$y),
+      alpha = 0.10, colour = "#264A79", size = 0.8
+    ) +
+    ggplot2::geom_line(
+      data = summary_df,
+      ggplot2::aes(x = .data$x, y = .data$mean),
+      colour = "#0071BC", linewidth = 0.9
+    ) +
+    ggplot2::geom_point(
+      data = summary_df,
+      ggplot2::aes(x = .data$x, y = .data$mean, size = .data$n),
+      colour = "#00A6C7"
+    ) +
+    ggplot2::scale_size_continuous(range = c(2, 5), guide = "none") +
     theme_wise() +
     ggplot2::labs(
       x = stringr::str_wrap(hv_label, 40),
@@ -1355,11 +1464,14 @@ isTRUE_vec <- function(x) !is.na(x) & x
 #' Weather summary stats DT renderer
 #'
 #' @param survey_weather Reactive returning merged survey-weather data.
+#' @param survey_reference Reactive returning the original survey data, used for
+#'   missingness denominators before the weather merge.
 #' @param selected_weather Reactive returning selected weather rows (needs name/label).
 #'
 #' @return A DT render function.
 #' @export
-make_weather_stats_dt <- function(survey_weather, selected_weather) {
+make_weather_stats_dt <- function(survey_weather, selected_weather,
+                                   survey_reference = NULL) {
   DT::renderDT({
     shiny::req(survey_weather(), selected_weather())
 
@@ -1377,10 +1489,27 @@ make_weather_stats_dt <- function(survey_weather, selected_weather) {
       ))
     }
 
-    # Add wave-specific missingness (% Missing) by countryyear and variable
-    # in one grouped pass (PERF-09)
+    # Missingness is measured against the original survey rows. Weather joins
+    # can drop location-months, so using df here would inflate completeness.
     if ("countryyear" %in% names(tab) && "variable" %in% names(tab)) {
-      miss_df <- survey_missingness_long(df, vars)
+      miss_source <- if (is.null(survey_reference)) df else survey_reference()
+      if (!is.null(survey_reference)) {
+        join_keys <- intersect(
+          c("code", "year", "survname", "loc_id", "timestamp"),
+          intersect(names(miss_source), names(df))
+        )
+        weather_values <- df |>
+          dplyr::mutate(year = as.character(.data$year)) |>
+          dplyr::select(dplyr::all_of(c(join_keys, vars))) |>
+          dplyr::distinct(dplyr::across(dplyr::all_of(join_keys)), .keep_all = TRUE)
+        miss_source <- miss_source |>
+          dplyr::mutate(year = as.character(.data$year)) |>
+          dplyr::left_join(weather_values, by = join_keys)
+      }
+      miss_source <- miss_source |>
+        dplyr::mutate(countryyear = paste0(.data$economy, ", ", .data$year))
+      for (v in setdiff(vars, names(miss_source))) miss_source[[v]] <- NA
+      miss_df <- survey_missingness_long(miss_source, vars)
       tab <- dplyr::left_join(tab, miss_df, by = c("countryyear", "variable"))
     }
 
@@ -1429,12 +1558,15 @@ make_weather_stats_dt <- function(survey_weather, selected_weather) {
 #' weather variables are skipped (handled by `make_weather_stats_dt`).
 #'
 #' @param survey_weather   Reactive returning merged survey-weather data.
+#' @param survey_reference Reactive returning the original survey data, used for
+#'   missingness denominators before the weather merge.
 #' @param selected_weather Reactive returning selected weather rows
 #'   (needs `name` and `label`).
 #'
 #' @return A DT render function.
 #' @export
-make_weather_binned_stats_dt <- function(survey_weather, selected_weather) {
+make_weather_binned_stats_dt <- function(survey_weather, selected_weather,
+                                          survey_reference = NULL) {
   DT::renderDT({
     shiny::req(survey_weather(), selected_weather())
 
@@ -1455,10 +1587,29 @@ make_weather_binned_stats_dt <- function(survey_weather, selected_weather) {
       ))
     }
 
-    # One grouped pass for every binned variable's missingness (PERF-09)
-    miss_all <- survey_missingness_long(df, binned_vars)
+    # Measure missingness against all original survey rows, not only rows that
+    # survived the survey-weather inner join.
+    miss_source <- if (is.null(survey_reference)) df else survey_reference()
+    if (!is.null(survey_reference)) {
+      join_keys <- intersect(
+        c("code", "year", "survname", "loc_id", "timestamp"),
+        intersect(names(miss_source), names(df))
+      )
+      weather_values <- df |>
+        dplyr::mutate(year = as.character(.data$year)) |>
+        dplyr::select(dplyr::all_of(c(join_keys, binned_vars))) |>
+        dplyr::distinct(dplyr::across(dplyr::all_of(join_keys)), .keep_all = TRUE)
+      miss_source <- miss_source |>
+        dplyr::mutate(year = as.character(.data$year)) |>
+        dplyr::left_join(weather_values, by = join_keys)
+    }
+    miss_source <- miss_source |>
+      dplyr::mutate(countryyear = paste0(.data$economy, ", ", .data$year))
+    for (v in setdiff(binned_vars, names(miss_source))) miss_source[[v]] <- NA
+    miss_all <- survey_missingness_long(miss_source, binned_vars)
 
     rows_list <- lapply(binned_vars, function(v) {
+      level_values <- if (is.factor(df[[v]])) levels(df[[v]]) else NULL
       counts <- df |>
         dplyr::filter(!is.na(.data[[v]])) |>
         dplyr::group_by(.data$countryyear, .data[[v]]) |>
@@ -1467,11 +1618,16 @@ make_weather_binned_stats_dt <- function(survey_weather, selected_weather) {
         dplyr::mutate(share = 100 * .data$N / sum(.data$N, na.rm = TRUE)) |>
         dplyr::ungroup() |>
         dplyr::mutate(
-          variable = v,
-          level    = as.character(.data[[v]])
+           variable = v,
+           level    = as.character(.data[[v]]),
+           level_order = if (is.null(level_values)) {
+             match(as.character(.data[[v]]), unique(as.character(df[[v]])))
+           } else {
+             match(as.character(.data[[v]]), level_values)
+           }
         ) |>
         dplyr::select(.data$variable, .data$countryyear, .data$level,
-                      .data$N, .data$share)
+                      .data$N, .data$share, .data$level_order)
 
       miss_df <- miss_all[miss_all$variable == v,
                           c("countryyear", "% Missing"), drop = FALSE]
@@ -1495,13 +1651,15 @@ make_weather_binned_stats_dt <- function(survey_weather, selected_weather) {
         dplyr::mutate(
           variable = dplyr::coalesce(.data$label, .data$variable)
         ) |>
-        dplyr::select(.data$variable, .data$countryyear, .data$level,
-                      .data$N, .data$share, .data$`% Missing`)
+      dplyr::select(.data$variable, .data$countryyear, .data$level,
+                    .data$N, .data$share, .data$`% Missing`,
+                    .data$level_order)
     }
 
-    # Sort: by variable, country-year, then by level (factor order if available)
+    # Sort bins by their factor/creation order rather than interval text.
     tab <- tab |>
-      dplyr::arrange(.data$variable, .data$countryyear, .data$level)
+      dplyr::arrange(.data$variable, .data$countryyear, .data$level_order) |>
+      dplyr::select(-.data$level_order)
 
     if ("variable" %in% names(tab))
       names(tab)[names(tab) == "variable"] <- "Variable"
@@ -1559,7 +1717,7 @@ weather_plot_layout <- function(ns, n_vars, ids, height = "500px",
   }
   if (isTRUE(n_vars >= 2)) {
     bslib::layout_columns(
-      col_widths = c(6, 6),
+      col_widths = c(12, 12),
       bslib::card(plot_at(1)),
       bslib::card(plot_at(2))
     )

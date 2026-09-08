@@ -329,7 +329,8 @@ mod_1_02_surveystats_server <- function(
           p <- plot_interview_dates(
             summarise_interview_dates(survey_data()),
             unit_label = unit_label,
-            palette = "sequential"
+            palette = "sequential",
+            wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
           )
           req(!is.null(p))
           p

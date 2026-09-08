@@ -57,7 +57,9 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
         multiple = TRUE,
         options  = list(
           placeholder = "Select up to 2 weather variables",
-          maxItems    = 2
+          maxItems    = 2,
+          # Selectize otherwise sorts the displayed labels alphabetically.
+          sortField  = list(field = "$order", direction = "asc")
         )
       )
     })
