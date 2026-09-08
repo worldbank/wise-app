@@ -262,8 +262,6 @@ mod_3_scenario_server <- function(id,
       analysis_unit  = analysis_unit,
       selected_policies = selected_policies,
       baseline_hist_sim = s6$baseline_hist_sim,
-      baseline_svy      = s6$baseline_svy,
-      policy_svy        = s6$policy_svy,
       selected_weather = selected_weather,
       sp_scenario = s6$sp_scenario,
       policy_saved_scenarios = s6$policy_saved_scenarios
