@@ -89,11 +89,15 @@ rsconnect::writeManifest(
 ## Suggests to runtime-optional features only (model backends parsnip /
 ## ranger / xgboost live in Imports now); dev/test-only packages (covr,
 ## testthat, arrow, bit64, spelling) were dropped so they leave the manifest.
+## The optional zip package is also omitted: the app falls back to the system
+## zip utility when it is unavailable on Connect.
 m <- jsonlite::fromJSON("manifest.json", simplifyVector = FALSE)
 m$packages[["sf"]] <- NULL
+m$packages[["zip"]] <- NULL
 jsonlite::write_json(m, "manifest.json", auto_unbox = TRUE, pretty = TRUE, null = "null")
 ## Verify before committing:
 ##   jq -r '.packages | has("sf")' manifest.json           ->  false
+##   jq -r '.packages | has("zip")' manifest.json          ->  false
 ##   jq -r '.packages | has("leaflet")' manifest.json      ->  false
 ##   jq -r '.packages | has("mapgl")' manifest.json        ->  false
 ##   jq -r '.packages | has("brand.yml")' manifest.json    ->  true
