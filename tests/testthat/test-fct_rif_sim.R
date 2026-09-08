@@ -40,6 +40,86 @@ test_that("predict_rif returns correct structure", {
   expect_true(any(abs(deltas) > 0.01))
 })
 
+test_that("direct RIF prediction matches fixest prediction with fixed effects", {
+  skip_if_not_installed("fixest")
+  set.seed(142)
+  n <- 160
+  df <- data.frame(
+    y = rnorm(n), temp = rnorm(n), rain = rnorm(n),
+    loc = factor(sample(letters[1:4], n, replace = TRUE)),
+    year = factor(sample(2010:2015, n, replace = TRUE))
+  )
+  taus <- seq(0.1, 0.9, by = 0.2)
+  rif_cols <- paste0("rif_", formatC(taus * 100, format = "d"))
+  for (i in seq_along(taus)) df[[rif_cols[i]]] <- compute_rif(df$y, taus[i])
+  fit_multi <- fixest::feols(
+    stats::as.formula(paste0("c(", paste(rif_cols, collapse = ","), ") ~ temp + rain | loc + year")),
+    data = df, warn = FALSE
+  )
+  base <- df[1:60, ]
+  scen <- base
+  scen$temp <- scen$temp + 0.75
+  direct <- .direct_rif_prediction_pair(fit_multi, base, scen)
+  metadata <- build_direct_rif_metadata(fit_multi)
+  direct_cached <- .direct_rif_prediction_pair(fit_multi, base, scen, metadata)
+  expect_length(direct, length(taus))
+  expect_length(metadata, length(taus))
+  for (i in seq_along(taus)) {
+    expect_equal(direct[[i]]$base,
+                 as.numeric(predict(fit_multi[[i]], newdata = base)),
+                 tolerance = 1e-12)
+    expect_equal(direct[[i]]$scenario,
+                 as.numeric(predict(fit_multi[[i]], newdata = scen)),
+                 tolerance = 1e-12)
+    expect_equal(direct_cached[[i]]$base, direct[[i]]$base, tolerance = 1e-12)
+    expect_equal(direct_cached[[i]]$scenario, direct[[i]]$scenario, tolerance = 1e-12)
+  }
+})
+
+test_that("predict_rif direct mode matches fallback within numeric tolerance", {
+  skip_if_not_installed("fixest")
+  set.seed(143)
+  n <- 140
+  df <- data.frame(
+    y = rnorm(n), temp = rnorm(n), rain = rnorm(n),
+    loc = factor(sample(letters[1:3], n, replace = TRUE)),
+    year = factor(sample(2010:2014, n, replace = TRUE))
+  )
+  taus <- seq(0.1, 0.9, by = 0.2)
+  rif_cols <- paste0("rif_", formatC(taus * 100, format = "d"))
+  for (i in seq_along(taus)) df[[rif_cols[i]]] <- compute_rif(df$y, taus[i])
+  fit_multi <- fixest::feols(
+    stats::as.formula(paste0("c(", paste(rif_cols, collapse = ","), ") ~ temp + rain | loc + year")),
+    data = df, warn = FALSE
+  )
+  svy <- df[1:50, ]
+  svy$.svy_row_id <- seq_len(nrow(svy))
+  scen <- svy
+  scen$temp <- scen$temp + 0.4
+  fallback <- predict_rif(
+    fit_multi, scen, svy, df, taus, "y", c("temp", "rain"),
+    batch_predictions = FALSE, direct_predictions = FALSE
+  )
+  direct <- predict_rif(
+    fit_multi, scen, svy, df, taus, "y", c("temp", "rain"),
+    batch_predictions = FALSE, direct_predictions = TRUE
+  )
+  expect_identical(names(direct), names(fallback))
+  expect_equal(direct$.fitted, fallback$.fitted, tolerance = 1e-10)
+  expect_equal(direct$y, fallback$y, tolerance = 1e-10)
+})
+
+test_that("direct RIF metadata rejects unsupported model structures", {
+  skip_if_not_installed("fixest")
+  set.seed(144)
+  d <- data.frame(y = rnorm(80), x = rnorm(80), fe = factor(sample(letters[1:3], 80, TRUE)))
+  fit <- fixest::feols(y ~ x | fe, data = d, warn = FALSE)
+  fit_iv <- fit
+  fit_iv$iv <- TRUE
+  expect_length(build_direct_rif_metadata(list(fit)), 1L)
+  expect_null(build_direct_rif_metadata(list(fit_iv)))
+})
+
 test_that("predict_rif F_loading contrast is ~0 when scenario == baseline weather", {
   # Regression test for the X_diff -> X_scenario switch in predict_rif().
   # The level-mode F_loading is now built from X_scenario directly, so the

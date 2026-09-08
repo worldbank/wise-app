@@ -312,7 +312,7 @@ mod_3_06_policy_sim_server <- function(id,
                 svy_policy   = svy_mod,
                 model_fit    = mf,
                 so           = hs$so,
-                weather_raw  = hs$weather_raw,
+                weather_raw  = step2_resolve_weather(hs$weather_raw, hs),
                 skip_coef    = skip_coef_val,
                 deltas       = deltas_pre,
                 F_hat        = F_hat_pre
@@ -330,7 +330,7 @@ mod_3_06_policy_sim_server <- function(id,
               decomp_sc_errors <- character(0)
               decomp_sc <- lapply(seq_along(sc_list), function(i) {
                 sc       <- sc_list[[i]]
-                w_raw    <- sc$weather_raw
+                w_raw    <- step2_resolve_weather(sc$weather_raw, sc)
                 if (is.null(w_raw)) return(NULL)
                 sc_label <- names(sc_list)[i] %||% paste0("Scenario ", i)
 

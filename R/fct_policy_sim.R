@@ -868,6 +868,7 @@ resimulate_with_svy <- function(svy, sw, so, mf,
   pov_line   <- hist_sim_baseline$pov_line
   residuals  <- hist_sim_baseline$residuals %||%
                 hist_sim_baseline$pipeline$residuals %||% "none"
+  shared_context <- hist_sim_baseline$shared_context %||% list()
   # Canonical Cholesky-factor key is $chol_obj (matches Step 2 hist_sim and
   # the primary run_sim_pipeline parameter). Older Mod 3 outputs stored it
   # under $chol_Sigma; read that as a fallback so existing in-memory state
@@ -910,6 +911,9 @@ resimulate_with_svy <- function(svy, sw, so, mf,
   precomputed_ecdf_train <- if (is_rif) tryCatch({
     stats::ecdf(mf$train_data[[so$name]])
   }, error = function(e) NULL) else NULL
+  direct_rif_metadata <- if (is_rif) {
+    tryCatch(build_direct_rif_metadata(fit_multi), error = function(e) NULL)
+  } else NULL
 
   # train_aug: identical for every run_one() call below (same model, same
   # train_data). Compute once here instead of repeating
@@ -962,8 +966,10 @@ resimulate_with_svy <- function(svy, sw, so, mf,
         svy_baseline = svy_baseline,
         rif_grid     = rif_grid,
         precomputed_train_aug = precomputed_train_aug,
-        svy_prepared = svy_prepared,
-        precomputed_ecdf_train = precomputed_ecdf_train
+         svy_prepared = svy_prepared,
+         precomputed_ecdf_train = precomputed_ecdf_train,
+         direct_rif_predictions = TRUE,
+         direct_rif_metadata = direct_rif_metadata
       ),
       error = function(e) {
         warning("[resimulate_with_svy] run_sim_pipeline failed: ",
@@ -1024,7 +1030,7 @@ resimulate_with_svy <- function(svy, sw, so, mf,
       if (length(pipes_new) == 0L) return(NULL)
     }
 
-    list(
+    out_scenario <- list(
       pipelines   = pipes_new,
       weather_raw = s$weather_raw,
       chol_obj    = chol_obj,
@@ -1032,6 +1038,12 @@ resimulate_with_svy <- function(svy, sw, so, mf,
       year_range  = s$year_range,
       n_models    = length(pipes_new)
     )
+    if (!is.null(s$weather_store)) {
+      out_scenario$weather_store <- s$weather_store
+      out_scenario$weather_signature <- s$weather_signature %||%
+        s$weather_store$signature
+    }
+    out_scenario
   })
   names(saved_scenarios_new) <- names(saved_scenarios_baseline)
   saved_scenarios_new <- saved_scenarios_new[
@@ -1118,6 +1130,8 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
       is.null(model_fit) || is.null(so) ||
       is.null(hist_sim_baseline)) return(NULL)
 
+  shared_context <- hist_sim_baseline$shared_context %||% list()
+
   # PERF-22: both pieces are identical for every pipeline and scenario, so
   # build them once instead of inside delta_for() per call.
   deltas <- deltas %||% .compute_policy_deltas(
@@ -1166,7 +1180,7 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     # survey, else skip the policy correction with a warning.
     sri <- pipe$svy_row_id
     if (is.null(sri) || length(sri) != length(pipe$y_point)) {
-      id_col <- pipe$id_col
+      id_col <- pipe$id_col %||% shared_context$id_col
       if (!is.null(id_col) && !is.null(pipe$id_vec) &&
           id_col %in% names(svy_baseline)) {
         lookup <- match(pipe$id_vec, svy_baseline[[id_col]])
@@ -1189,7 +1203,10 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
 
   hist_pipeline_new <- apply_to_pipeline(
     hist_sim_baseline$pipeline,
-    hist_sim_baseline$weather_raw %||% hist_sim_baseline$pipeline$weather_raw
+    step2_resolve_weather(
+      hist_sim_baseline$weather_raw %||% hist_sim_baseline$pipeline$weather_raw,
+      hist_sim_baseline
+    )
   )
 
   hist_sim_new <- hist_sim_baseline
@@ -1198,7 +1215,10 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
   saved_scenarios_new <- lapply(saved_scenarios_baseline, function(s) {
     if (is.null(s) || is.null(s$pipelines)) return(s)
     pipes_new <- lapply(s$pipelines, function(pipe) {
-      apply_to_pipeline(pipe, pipe$weather_raw %||% s$weather_raw)
+      apply_to_pipeline(
+        pipe,
+        step2_resolve_weather(pipe$weather_raw %||% s$weather_raw, s)
+      )
     })
     names(pipes_new) <- names(s$pipelines)
     s$pipelines <- pipes_new

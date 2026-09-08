@@ -58,6 +58,17 @@
 #' @param sim_dates        Character vector. Historical simulation dates.
 #' @param perturbation_method List or NULL. Built by build_perturbation_method().
 #' @param stored_breaks    Named list or NULL. Pre-computed histogram breaks.
+#' @param payload_mode     "compact" (default) or "legacy" shared-context
+#'   result payload.
+#' @param weather_storage  "memory" (default) or "reference". Reference mode
+#'   stores future member weather in a run-scoped signed RDS store and resolves
+#'   it only at consumer boundaries.
+#' @param weather_collect  "fast" (default) or "bounded" future-weather
+#'   collection strategy passed to `get_weather()`.
+#' @param join_cache       Logical. Use the experimental survey-side join
+#'   cache. Defaults to FALSE until full-scale benchmarks establish a win.
+#' @param direct_rif_predictions Logical. Use direct RIF prediction with
+#'   automatic fallback for unsupported model structures. Defaults to TRUE.
 #' @param notify_fn   Function(msg). Called for user-facing notifications.
 #'   Default is message() to console only.
 #' @param progress_fn      Function(value, detail). Called to update progress.
@@ -103,10 +114,16 @@ fct_run_simulation <- function(sw,
                                 perturbation_method,
                                 stored_breaks,
                                 propagate_all_covariate_uncertainty = FALSE,
-                                fit_multi    = NULL,
-                                taus         = NULL,
-                                weather_cols = NULL,
-                                notify_fn   = function(msg) message(msg),
+                                 fit_multi    = NULL,
+                                 taus         = NULL,
+                                 weather_cols = NULL,
+                                 payload_mode = c("compact", "legacy"),
+                                 weather_storage = c("memory", "reference"),
+                                 weather_store_root = NULL,
+                                 weather_collect = c("fast", "bounded"),
+                                 join_cache = FALSE,
+                                 direct_rif_predictions = TRUE,
+                                 notify_fn   = function(msg) message(msg),
                                 progress_fn = function(value, detail) invisible(NULL),
                                 weather_fn  = get_weather,
                                 pipeline_fn = run_sim_pipeline) {
@@ -115,7 +132,26 @@ fct_run_simulation <- function(sw,
   engine     <- mf$engine
   train_data <- mf$train_data
   weather_terms <- mf$weather_terms
+  payload_mode <- match.arg(payload_mode)
+  weather_storage <- match.arg(weather_storage)
+  weather_collect <- match.arg(weather_collect)
   has_future <- length(fp_list) > 0 && length(ssps) > 0
+  weather_store <- NULL
+  weather_store_published <- FALSE
+  if (identical(weather_storage, "reference")) {
+    run_id <- paste0(format(Sys.time(), "%Y%m%dT%H%M%OS3"), "-",
+                     substr(digest::digest(list(Sys.getpid(), Sys.time())), 1L, 12L))
+    weather_store <- step2_weather_store_create(
+      run_id = run_id,
+      signature = digest::digest(list(ss, fp_list, ssps, sim_dates,
+                                      perturbation_method, weather_terms)),
+      root = weather_store_root
+    )
+    on.exit(
+      if (!weather_store_published) step2_weather_store_cleanup(weather_store),
+      add = TRUE
+    )
+  }
 
   ssp_labels <- c(
     "ssp2_4_5" = "SSP2-4.5",
@@ -139,7 +175,8 @@ fct_run_simulation <- function(sw,
     ssp                 = if (has_future) ssps else NULL,
     future_period       = if (has_future) fp_list else NULL,
     perturbation_method = perturbation_method,
-    stored_breaks       = stored_breaks
+    stored_breaks       = stored_breaks,
+    weather_collect     = weather_collect
   )
 
   t_weather <- proc.time()[["elapsed"]] - t_weather_start
@@ -237,6 +274,8 @@ fct_run_simulation <- function(sw,
             conditionMessage(e))
     NULL
   })
+  shared_id_col <- if (identical(residuals, "original"))
+    resolve_id_col(train_data, svy) else NULL
 
   # ecdf_train: RIF-only analogue of the above - train_data[[outcome]] is
   # identical for every key, so the ecdf used to assign each household's
@@ -249,6 +288,9 @@ fct_run_simulation <- function(sw,
             conditionMessage(e))
     NULL
   }) else NULL
+  direct_rif_metadata <- if (is_rif && isTRUE(direct_rif_predictions)) {
+    tryCatch(build_direct_rif_metadata(fit_multi), error = function(e) NULL)
+  } else NULL
 
   # Survey-side join prep: drop weather/outcome columns and convert year once.
   # Passed to run_sim_pipeline() so prepare_hist_weather() skips this per key.
@@ -256,6 +298,13 @@ fct_run_simulation <- function(sw,
   svy_prepared <- svy |>
     dplyr::mutate(year = as.character(year)) |>
     dplyr::select(-dplyr::any_of(drop_cols))
+  weather_join_cache <- if (isTRUE(join_cache) &&
+                            all(c("code", "year", "survname", "loc_id",
+                                  "int_month") %in% names(svy_prepared))) {
+    build_weather_join_cache(svy_prepared)
+  } else {
+    NULL
+  }
 
   # ---- Run pipelines (one key at a time) ---------------------------------- #
   progress_fn(0.50, "Running simulations...")
@@ -269,10 +318,18 @@ fct_run_simulation <- function(sw,
 
   # Pre-split weather_result per key - each (potential) parallel worker only
   # receives its own key's weather data (~10MB) not the full 228MB
-  weather_per_key <- setNames(
-    lapply(all_keys, function(k) weather_result[[k]]),
-    all_keys
-  )
+  is_hist_key <- function(key) identical(key, "historical")
+  weather_refs <- setNames(vector("list", length(all_keys)), all_keys)
+  weather_per_key <- setNames(lapply(all_keys, function(key) {
+    value <- weather_result[[key]]
+    if (identical(weather_storage, "reference") && !is_hist_key(key)) {
+      weather_refs[[key]] <<- step2_weather_store_put(weather_store, key, value)
+      NULL
+    } else value
+  }), all_keys)
+  if (identical(weather_storage, "reference")) {
+    weather_result <- weather_result["historical"]
+  }
 
   # ---- Key loop ----------------------------------------------------------- #
   # Run each key's pipeline and assemble its result immediately, then free the
@@ -325,9 +382,14 @@ fct_run_simulation <- function(sw,
     )
 
     key_err <- NULL
+    weather_input <- if (identical(weather_storage, "reference") && !is_hist_key(key)) {
+      step2_weather_reference(weather_refs[[key]], weather_store$signature)
+    } else {
+      weather_per_key[[key]]
+    }
     out <- tryCatch(
       pipeline_fn(
-        weather_raw  = weather_per_key[[key]],
+        weather_raw  = weather_input,
         svy          = svy,
         sw           = sw,
         so           = so,
@@ -339,9 +401,12 @@ fct_run_simulation <- function(sw,
         fit_multi    = fit_multi,
         taus         = taus,
         weather_cols = weather_cols,
-        precomputed_train_aug = precomputed_train_aug,
-        svy_prepared = svy_prepared,
-        precomputed_ecdf_train = precomputed_ecdf_train
+         precomputed_train_aug = precomputed_train_aug,
+         svy_prepared = svy_prepared,
+         weather_join_cache = weather_join_cache,
+         precomputed_ecdf_train = precomputed_ecdf_train,
+         direct_rif_predictions = direct_rif_predictions,
+         direct_rif_metadata = direct_rif_metadata
       ),
       error = function(e) {
         key_err <<- conditionMessage(e)
@@ -353,6 +418,7 @@ fct_run_simulation <- function(sw,
 
     # Free this key's weather slice as soon as the pipeline has run.
     weather_per_key[[key]] <- NULL
+    rm(weather_input)
 
     key_weather_raw        <- if (is_hist) weather_result[[key]] else NULL
     weather_result[[key]]  <- NULL
@@ -405,8 +471,11 @@ fct_run_simulation <- function(sw,
     } else if (!is_hist) {
       gk       <- key_group$gk
 
-      if (is.null(group_agg[[gk]]))         group_agg[[gk]]         <- list()
-      if (is.null(group_weather_rep[[gk]])) group_weather_rep[[gk]] <- out$weather_raw
+      if (is.null(group_agg[[gk]])) group_agg[[gk]] <- list()
+      if (is.null(group_weather_rep[[gk]])) {
+        group_weather_rep[[gk]] <- if (identical(weather_storage, "reference"))
+          weather_refs[[key]] else out$weather_raw
+      }
       if (is.null(group_n[[gk]]))           group_n[[gk]]           <- 0L
 
       # NB: per-member `weather_raw` is intentionally retained on each
@@ -420,6 +489,7 @@ fct_run_simulation <- function(sw,
       if (!nchar(member_type) || member_type == key)
         member_type <- paste0("model_", group_n[[gk]] + 1L)
 
+      if (identical(weather_storage, "reference")) out$weather_raw <- weather_refs[[key]]
       group_agg[[gk]][[member_type]] <- out
       group_n[[gk]] <- group_n[[gk]] + 1L
 
@@ -428,7 +498,9 @@ fct_run_simulation <- function(sw,
     if (ki %% 10L == 0L) gc(verbose = FALSE)
   }
 
-  rm(weather_per_key, weather_result, precomputed_train_aug, svy_prepared)
+  compact_train_aug <- precomputed_train_aug
+  rm(weather_per_key, weather_result, weather_refs, precomputed_train_aug,
+     svy_prepared, weather_join_cache, direct_rif_metadata)
   gc(verbose = FALSE)
 
   t_pipeline_done <- proc.time()[["elapsed"]] - t_start_pipeline
@@ -485,6 +557,10 @@ fct_run_simulation <- function(sw,
       n_models_requested = group_requested[[gk]] %||% group_n[[gk]],
       residuals   = residuals
     )
+    if (identical(weather_storage, "reference")) {
+      new_scenarios[[display_key]]$weather_store <- weather_store
+      new_scenarios[[display_key]]$weather_signature <- weather_store$signature
+    }
   }
   rm(group_agg, group_weather_rep, group_meta, group_n)
   gc(verbose = FALSE)
@@ -503,7 +579,7 @@ fct_run_simulation <- function(sw,
     if (n_failed > 0L) sprintf(" | %d key(s) FAILED", n_failed) else ""
   ))
 
-  list(
+  result <- list(
     hist_sim_result = hist_sim_result,
     new_scenarios   = new_scenarios,
     chol_obj        = chol_obj,
@@ -514,4 +590,28 @@ fct_run_simulation <- function(sw,
     failures        = failures,        # <- REACT-12 failure ledger
     n_keys_ok       = n_keys - n_failed
   )
+  if (identical(weather_storage, "reference")) {
+    result$weather_storage <- weather_storage
+    result$weather_store <- weather_store
+  }
+
+  if (identical(payload_mode, "compact")) {
+    result <- compact_step2_result(
+      result = result,
+      train_aug = compact_train_aug,
+      id_col = shared_id_col,
+      residuals = residuals,
+      chol_obj = chol_obj,
+      so = so,
+      train_data = train_data,
+      model_metadata = list(
+        engine = engine,
+        weather_terms = weather_terms,
+        fit_multi = !is.null(fit_multi),
+        taus = taus
+      )
+    )
+  }
+  weather_store_published <- TRUE
+  result
 }

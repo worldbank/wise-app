@@ -570,7 +570,8 @@ get_weather <- function(
   epsilon              = 0.001,
   weather_source       = "era5land",
   proj_source          = "cmip6",
-  stored_breaks        = NULL
+  stored_breaks        = NULL,
+  weather_collect      = c("fast", "bounded")
 ) {
 
   # -- Pin DuckDB to single thread for floating-point determinism ------------
@@ -583,6 +584,7 @@ get_weather <- function(
 
   # -- Validate ---------------------------------------------------------------
   climate_scenario <- !is.null(ssp)
+  weather_collect <- match.arg(weather_collect)
 
   if (climate_scenario) {
     stopifnot(
@@ -663,7 +665,22 @@ get_weather <- function(
     dplyr::filter(dplyr::if_all(dplyr::all_of(weather_vars), ~ !is.na(.x))) |>
     dplyr::filter(timestamp >= date_min, timestamp <= date_max)
 
-  h3_slim <- .wx_cache_load(h3_fnames, connection_params, cols = NULL, tcol = NULL)
+  # Projection-prune the mapping scan. These are the only fields used by the
+  # H3 harmonisation and population-weighted aggregation below; requesting the
+  # full parquet schema made DuckDB read unused microdata columns.
+  h3_cols <- c("h3", "code", "year", "survname", "loc_id", "pop_2020")
+  h3_slim <- tryCatch(
+    .wx_cache_load(h3_fnames, connection_params, cols = h3_cols, tcol = NULL),
+    error = function(e) {
+      # Older mapping files may not carry population weights; preserve their
+      # unit-weight fallback without making the common weighted path read the
+      # full parquet schema.
+      .wx_cache_load(
+        h3_fnames, connection_params,
+        cols = setdiff(h3_cols, "pop_2020"), tcol = NULL
+      )
+    }
+  )
 
   if (!"pop_2020" %in% colnames(h3_slim)) {
     h3_slim <- h3_slim |> dplyr::mutate(pop_2020 = 1L)
@@ -692,6 +709,12 @@ get_weather <- function(
   h3_slim <- h3_slim |>
     dplyr::group_by(code, year, survname, loc_id, h3_weather) |>
     dplyr::summarise(pop_2020 = sum(pop_2020, na.rm = TRUE), .groups = "drop")
+
+  # Materialise the normalized location-to-weather-cell weights once. The same
+  # relation is joined by historical weather and every future model/period.
+  h3_weights_name <- basename(tempfile(pattern = "lw_h3_weights_"))
+  tmp_tables <- c(tmp_tables, h3_weights_name)
+  h3_slim <- dplyr::compute(h3_slim, name = h3_weights_name, temporary = TRUE)
 
   # -- Spatial aggregation: h3 -> loc_id (population-weighted mean) ----------
   .pop_weighted_mean <- function(tbl, vars) {
@@ -973,11 +996,23 @@ get_weather <- function(
         survey_codes, "_", proj_source, "_", ssp_fname, ".parquet"
       )
 
+      # The SSP relation is reused for the baseline overlap and every requested
+      # future period. Slice it once to their union so the cache/remote parquet
+      # scan does not retain unrelated years from the full projection file.
+      ssp_starts <- as.Date(vapply(future_period, function(x) as.character(x[[1L]]), character(1L)))
+      ssp_ends <- as.Date(vapply(future_period, function(x) as.character(x[[2L]]), character(1L)))
+      ssp_tmin <- min(baseline_start, ssp_starts, na.rm = TRUE)
+      ssp_tmax <- max(baseline_end, ssp_ends, na.rm = TRUE)
+
       # PERF-13: the future file is fetched through the disk cache once per
       # SSP and reused for the baseline overlap *and* every future period
       # (previously one remote read per period).
       ssp_raw_lazy <- .wx_cache_load(
-        future_fnames, connection_params, cols = cmip6_cols, tcol = NULL
+        future_fnames,
+        connection_params,
+        cols = cmip6_cols,
+        tmin = ssp_tmin,
+        tmax = ssp_tmax
       )
 
       # SSP baseline overlap - shared across all future periods
@@ -993,7 +1028,23 @@ get_weather <- function(
 
       # -- Loop over future periods ------------------------------------------
       out <- list()
-      tmp_delta_tables <- character(0L) #DRK addition
+      tmp_delta_tables <- character(0L)
+
+      # Once a period has been collected, neither temporary relation is needed
+      # by the returned weather frames. Drop it before constructing the next
+      # period so DuckDB's materialised intermediates do not accumulate across
+      # a future workload.
+      .drop_period_tables <- function(...) {
+        table_names <- unique(unlist(list(...), use.names = FALSE))
+        table_names <- table_names[nzchar(table_names)]
+        for (table_name in table_names) {
+          try(DBI::dbRemoveTable(con, table_name), silent = TRUE)
+        }
+        tmp_tables <<- setdiff(tmp_tables, table_names)
+        tmp_delta_tables <<- setdiff(tmp_delta_tables, table_names)
+        invisible(NULL)
+      }
+
       for (fp in future_period) {
         fp_start <- as.Date(fp[1])
         fp_end   <- as.Date(fp[2])
@@ -1019,21 +1070,8 @@ get_weather <- function(
           .pop_weighted_mean(delta_vars)
 
 
-        # Materialise delta table - lets DuckDB plan a hash join in the
-        # batch query instead of replanning the full lazy delta chain.
-        # Name generated via tempfile() rather than sample() so this does not
-        # consume/advance the caller's RNG stream (see DET-04).
-        tmp_delta_name <- basename(tempfile(pattern = "lw_delta_"))
-        tmp_tables <<- c(tmp_tables, tmp_delta_name)
-        loc_deltas_by_model <- dplyr::compute(
-          loc_deltas_by_model,
-          name      = tmp_delta_name,
-          temporary = TRUE
-        )
-        tmp_delta_tables <- c(tmp_delta_tables, tmp_delta_name)
-
-
-        # Filter incomplete models
+        # Filter incomplete models in DuckDB before materialising the delta
+        # relation. Only the small model-completeness summary crosses into R.
         complete_model_tbl <- loc_deltas_by_model |>
           dplyr::group_by(model) |>
           dplyr::summarise(
@@ -1061,6 +1099,17 @@ get_weather <- function(
         loc_deltas_by_model <- loc_deltas_by_model |>
           dplyr::filter(model %in% complete_models)
 
+        # Materialise the filtered delta table - lets DuckDB plan a hash join in
+        # the batch query without retaining rows for incomplete models.
+        tmp_delta_name <- basename(tempfile(pattern = "lw_delta_"))
+        tmp_tables <<- c(tmp_tables, tmp_delta_name)
+        loc_deltas_by_model <- dplyr::compute(
+          loc_deltas_by_model,
+          name      = tmp_delta_name,
+          temporary = TRUE
+        )
+        tmp_delta_tables <- c(tmp_delta_tables, tmp_delta_name)
+
         # -- Batch query: split into two steps to help DuckDB plan ----------
         # Step 1: join + perturb + select -> materialise before rolling window
         # Name generated via tempfile() rather than sample() so this does not
@@ -1082,29 +1131,83 @@ get_weather <- function(
           ) |>
           dplyr::compute(name = tmp_perturb_name, temporary = TRUE)
 
-        # Step 2: rolling window + transformations + filter -> collect
-        batch <- perturbed |>
+        # Step 2: rolling window + transformations. The fast path keeps this
+        # relation lazy and performs one direct collect; the bounded path
+        # materialises it so model-specific slices can be collected safely.
+        rolled_lazy <- perturbed |>
           dplyr::mutate(!!!roll_exprs_climate) |>
           .apply_transformations(
             selected_weather, loc_weather_base, climate_ref = climate_ref
           ) |>
-          dplyr::filter(timestamp %in% !!dates) |>
-          dplyr::arrange(model, code, year, survname, loc_id, timestamp) |>
-          dplyr::collect()
+          dplyr::filter(timestamp %in% !!dates)
+        tmp_roll_name <- NULL
+        rolled <- rolled_lazy
+        if (identical(weather_collect, "bounded")) {
+          tmp_roll_name <- basename(tempfile(pattern = "lw_roll_"))
+          tmp_tables <<- c(tmp_tables, tmp_roll_name)
+          rolled <- dplyr::compute(rolled_lazy, name = tmp_roll_name, temporary = TRUE)
+        }
 
-        if (nrow(batch) == 0L) next
-
-        # Split into per-model data frames
-        model_list <- split(batch, batch$model)
-        period_out <- stats::setNames(
-          lapply(model_list, function(df) {
-            df$model <- NULL
-            if (has_binning) df <- .apply_binning(df, stored_breaks)
-            df
-          }),
-          paste0(ssp_i, "_", fp_label, "_", make.names(names(model_list)))
-        )
+        period_out <- if (identical(weather_collect, "fast")) {
+          # Production path: one collect after the transformed relation has
+          # been materialised. This avoids a DuckDB query/collect round trip per
+          # model and is materially faster when latency is the primary concern.
+          batch <- rolled_lazy |>
+            dplyr::arrange(model, code, year, survname, loc_id, timestamp) |>
+            dplyr::collect()
+          if (!nrow(batch)) {
+            list()
+          } else {
+            model_list <- split(batch, batch$model)
+            stats::setNames(
+              lapply(model_list, function(model_df) {
+                model_df$model <- NULL
+                if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
+                model_df
+              }),
+              paste0(ssp_i, "_", fp_label, "_", make.names(names(model_list)))
+            )
+          }
+        } else {
+          # Bounded-memory path: collect one model at a time. Keep this option
+          # for deployments with a hard RSS ceiling; it is intentionally not
+          # the production default because each model repeats the collect work.
+          model_names <- DBI::dbGetQuery(
+            con,
+            paste0(
+              "SELECT DISTINCT model FROM (",
+              dbplyr::sql_render(rolled |> dplyr::select(model)),
+              ") models ORDER BY model"
+            )
+          )$model
+          model_out <- list()
+          for (model_name in model_names) {
+            model_df <- rolled |>
+              dplyr::filter(model == !!model_name) |>
+              dplyr::arrange(code, year, survname, loc_id, timestamp) |>
+              dplyr::select(-model) |>
+              dplyr::collect()
+            if (!nrow(model_df)) {
+              rm(model_df)
+              next
+            }
+            if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
+            model_out[[paste0(ssp_i, "_", fp_label, "_", make.names(model_name))]] <- model_df
+            rm(model_df)
+          }
+          model_out
+        }
         out <- c(out, period_out)
+
+        # All returned frames are now detached from the query intermediates.
+        .drop_period_tables(tmp_delta_name, tmp_perturb_name, tmp_roll_name)
+        rm(h3_fut, h3_deltas, loc_deltas_by_model, perturbed, rolled_lazy,
+           rolled, period_out)
+        if (exists("batch", inherits = FALSE)) rm(batch)
+        if (exists("model_list", inherits = FALSE)) rm(model_list)
+        if (exists("model_names", inherits = FALSE)) rm(model_names)
+        if (exists("model_out", inherits = FALSE)) rm(model_out)
+        gc(verbose = FALSE)
       }
 
       # Cleanup all materialised delta temp tables (best-effort, early release;

@@ -349,8 +349,13 @@ aggregate_pipeline_per_year <- function(pipe,
                                          band_q       = c(lo = 0.10, hi = 0.90),
                                          skip_coef    = FALSE,
                                          bandwidth_p0 = 0.05,
-                                         seed          = WISEAPP_DEFAULT_SEED) {
+                                         seed          = WISEAPP_DEFAULT_SEED,
+                                         shared_context = NULL) {
   if (is.null(pipe) || is.null(pipe$y_point)) return(list())
+
+  context <- step2_pipeline_context(pipe, shared_context)
+  train_aug <- context$train_aug
+  id_col <- context$id_col
 
   yrs <- sort(unique(pipe$sim_year))
   F_full <- pipe$F_loading
@@ -362,13 +367,13 @@ aggregate_pipeline_per_year <- function(pipe,
   # train_aug carries .resid for "original"/"resample" residual paths. RIF
   # pipelines set train_aug = NULL by construction; honour that.
   res_mode <- residuals %||% "original"
-  if (is.null(pipe$train_aug) && !identical(res_mode, "none"))
+  if (is.null(train_aug) && !identical(res_mode, "none"))
     res_mode <- "none"
 
   # PERF-34: the ID-to-residual lookup and the residual variance are the
   # same for every year of this pipeline - build them once, not per year.
-  lk  <- .residual_lookup(pipe$train_aug, pipe$id_col)
-  sg2 <- .residual_sigma2(pipe$train_aug)
+  lk  <- .residual_lookup(train_aug, id_col)
+  sg2 <- .residual_sigma2(train_aug)
 
   lapply(yrs, function(yr) {
     idx   <- pipe$sim_year == yr
@@ -384,9 +389,9 @@ aggregate_pipeline_per_year <- function(pipe,
       weights      = w_idx,
       pov_line     = pov_line,
       residuals    = res_mode,
-      train_aug    = pipe$train_aug,
+      train_aug    = train_aug,
       id_vec       = id_idx,
-      id_col       = pipe$id_col,
+      id_col       = id_col,
       is_log       = is_log,
       band_q       = band_q,
       bandwidth_p0 = bandwidth_p0,

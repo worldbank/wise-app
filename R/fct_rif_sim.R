@@ -69,6 +69,79 @@ compute_rif <- function(y, tau, bw = NULL, dens = NULL) {
   rif
 }
 
+# Direct prediction is deliberately limited to ordinary fixed-effect OLS
+# models. Unsupported fixest features return NULL so callers retain the exact
+# fixest::predict() fallback.
+.direct_fixest_metadata_one <- function(fit) {
+  if (!inherits(fit, "fixest") || !identical(fit$method_type, "feols") ||
+      isTRUE(fit$iv) || !is.null(fit$NL.fml) || !is.null(fit$call$offset) ||
+      !is.null(fit$fixef_terms)) return(NULL)
+  beta <- tryCatch(stats::coef(fit), error = function(e) NULL)
+  fixefs <- tryCatch(fixest::fixef(fit, notes = FALSE),
+                     error = function(e) NULL)
+  if (is.null(beta) || is.null(fixefs)) return(NULL)
+  fe_vars <- fit$fixef_vars %||% character()
+  fe_names <- lapply(fe_vars, function(fe_var) {
+    vars <- all.vars(tryCatch(str2lang(fe_var), error = function(e) NULL))
+    if (length(vars) != 1L) return(NULL)
+    vars
+  })
+  if (length(fe_vars) && any(vapply(fe_names, is.null, logical(1L)))) return(NULL)
+  list(beta = beta, fixefs = fixefs, fe_vars = fe_vars, fe_names = fe_names)
+}
+
+build_direct_rif_metadata <- function(fits) {
+  metadata <- lapply(fits, .direct_fixest_metadata_one)
+  if (!length(metadata) || any(vapply(metadata, is.null, logical(1L)))) return(NULL)
+  metadata
+}
+
+.direct_fixest_design <- function(fit, data) {
+  X <- tryCatch(stats::model.matrix(fit, data = data, type = "rhs"),
+                error = function(e) NULL)
+  if (is.null(X) || !is.numeric(X)) return(NULL)
+  list(X = X, data = data)
+}
+
+.direct_rif_prediction_pair <- function(fits, base, scenario,
+                                        metadata = NULL) {
+  if (!length(fits)) return(NULL)
+  metadata <- metadata %||% build_direct_rif_metadata(fits)
+  if (is.null(metadata) || length(metadata) != length(fits)) return(NULL)
+  base_design <- .direct_fixest_design(fits[[1L]], base)
+  scen_design <- .direct_fixest_design(fits[[1L]], scenario)
+  if (is.null(base_design) || is.null(scen_design) ||
+      !identical(colnames(base_design$X), colnames(scen_design$X))) return(NULL)
+
+  add_fixed_effects <- function(design, meta) {
+    fe_values <- numeric(nrow(design$data))
+    if (!length(meta$fe_vars)) return(fe_values)
+    for (i in seq_along(meta$fe_vars)) {
+      var <- meta$fe_names[[i]][[1L]]
+      idx <- match(as.character(design$data[[var]]), names(meta$fixefs[[meta$fe_vars[[i]]]]))
+      if (anyNA(idx)) return(NULL)
+      fe_values <- fe_values + as.numeric(meta$fixefs[[meta$fe_vars[[i]]]][idx])
+    }
+    fe_values
+  }
+
+  direct_one <- function(meta, design) {
+    beta <- meta$beta
+    if (!all(names(beta) %in% colnames(design$X))) return(NULL)
+    fe_values <- add_fixed_effects(design, meta)
+    if (is.null(fe_values)) return(NULL)
+    as.numeric(design$X[, names(beta), drop = FALSE] %*% beta) + fe_values
+  }
+
+  out <- lapply(metadata, function(meta) {
+    base_pred <- direct_one(meta, base_design)
+    scen_pred <- direct_one(meta, scen_design)
+    if (is.null(base_pred) || is.null(scen_pred)) return(NULL)
+    list(base = base_pred, scenario = scen_pred)
+  })
+  if (any(vapply(out, is.null, logical(1L)))) NULL else out
+}
+
 
 # ---------------------------------------------------------------------------- #
 # Grid construction                                                             #
@@ -153,7 +226,9 @@ build_rif_grid <- function(fits_multi, taus, model_id) {
 #' @export
 predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
                         weather_cols, so = NULL, chol_list = NULL,
-                        ecdf_train = NULL) {
+                        ecdf_train = NULL, batch_predictions = FALSE,
+                        direct_predictions = FALSE,
+                        direct_metadata = NULL) {
   stopifnot(
     ".svy_row_id must be present in newdata" = ".svy_row_id" %in% names(newdata),
     "taus must be non-empty" = length(taus) > 0,
@@ -191,6 +266,33 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
   # Store deltas in a matrix: rows = observations, cols = quantiles
   delta_mat <- matrix(NA_real_, nrow = n, ncol = K)
 
+  direct_pairs <- if (isTRUE(direct_predictions)) {
+    .direct_rif_prediction_pair(
+      fit_multi, newdata_base, newdata_scen, metadata = direct_metadata
+    )
+  } else NULL
+
+  predict_pair <- function(fit, base, scenario) {
+    if (isTRUE(batch_predictions)) {
+      combined <- tryCatch(rbind(base, scenario), error = function(e) NULL)
+      if (!is.null(combined)) {
+        pair <- tryCatch(
+          as.numeric(stats::predict(fit, newdata = combined,
+                                    type = "response")),
+          error = function(e) NULL
+        )
+        if (length(pair) == 2L * n) {
+          return(list(base = pair[seq_len(n)],
+                      scenario = pair[n + seq_len(n)]))
+        }
+      }
+    }
+    list(
+      base = as.numeric(stats::predict(fit, newdata = base, type = "response")),
+      scenario = as.numeric(stats::predict(fit, newdata = scenario, type = "response"))
+    )
+  }
+
   # For F_loading: the scenario design matrix X_scenario %*% L_k gives the
   # delta-method gradient of the *predicted welfare level* under the RIF
   # regression at quantile k, consistent with the OLS path's F_loading
@@ -221,12 +323,10 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
   for (k in seq_len(K)) {
     # Baseline weather prediction (needed for the climate-delta point
     # estimate; not used for F_loading any more).
-    pred_base <- as.numeric(stats::predict(fit_multi[[k]], newdata = newdata_base,
-                                           type = "response"))
-
-    # Scenario weather prediction
-    pred_new <- as.numeric(stats::predict(fit_multi[[k]], newdata = newdata_scen,
-                                          type = "response"))
+    pair <- direct_pairs[[k]] %||%
+      predict_pair(fit_multi[[k]], newdata_base, newdata_scen)
+    pred_base <- pair$base
+    pred_new  <- pair$scenario
 
     delta_mat[, k] <- pred_new - pred_base
   }

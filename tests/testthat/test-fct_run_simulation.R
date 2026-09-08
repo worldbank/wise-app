@@ -9,6 +9,28 @@
 
 library(testthat)
 
+test_that("cached weather join preserves inner_join expansion and ordering", {
+  survey <- data.frame(
+    code = c("T", "T", "T"), year = c("2020", "2020", "2021"),
+    survname = "S", loc_id = c("a", "a", "b"), int_month = c(1L, 1L, 2L),
+    hhid = 1:3, stringsAsFactors = FALSE
+  )
+  weather <- data.frame(
+    code = c("T", "T", "T"), year = c(2020L, 2020L, 2020L),
+    survname = "S", loc_id = c("a", "a", "z"), int_month = c(1L, 1L, 2L),
+    timestamp = as.POSIXct(c("2020-01-01", "2020-01-02", "2020-01-03"),
+                           tz = "UTC"), temp = c(1, 2, 3),
+    stringsAsFactors = FALSE
+  )
+  expected <- weather |>
+    .add_sim_timestamp_fields() |>
+    dplyr::select(-timestamp) |>
+    dplyr::inner_join(survey, by = c("code", "year", "survname", "loc_id", "int_month")) |>
+    dplyr::mutate(year = as.factor(year))
+  actual <- join_weather_survey_cached(weather, build_weather_join_cache(survey))
+  expect_identical(actual, expected)
+})
+
 make_ledger_svy <- function(n = 60L) {
   data.frame(
     hhid     = seq_len(n),

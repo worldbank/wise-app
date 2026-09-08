@@ -215,7 +215,7 @@ mod_2_03_diagnostics_server <- function(id,
     scenario_weather_data <- reactive({
       sc <- if (!is.null(saved_scenarios)) saved_scenarios() else list()
       if (length(sc) == 0) return(NULL)
-      out <- lapply(sc, function(e) e$weather_raw)
+      out <- lapply(sc, function(e) step2_resolve_weather(e$weather_raw, e))
       out <- Filter(Negate(is.null), out)
       if (length(out) == 0) NULL else out
     })

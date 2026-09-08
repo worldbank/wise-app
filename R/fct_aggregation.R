@@ -772,7 +772,8 @@ aggregate_pipeline_table <- function(pipelines,
                                      seed         = WISEAPP_DEFAULT_SEED,
                                      model_ids    = NULL,
                                      method_label = method,
-                                     scenario     = NULL) {
+                                     scenario     = NULL,
+                                     shared_context = NULL) {
   if (is.null(pipelines)) return(tibble::tibble())
   if (!is.null(pipelines$y_point)) pipelines <- list(pipelines)
   if (!is.list(pipelines) || length(pipelines) == 0L)
@@ -794,7 +795,8 @@ aggregate_pipeline_table <- function(pipelines,
       band_q       = band_q,
       skip_coef    = skip_coef,
       bandwidth_p0 = bandwidth_p0,
-      seed         = seed
+      seed         = seed,
+      shared_context = shared_context
     )
   })
 
