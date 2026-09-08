@@ -171,6 +171,9 @@ resolve_band_q <- function(band_key) {
 #'   \code{"year_x_scenario"} x-axis ordering.
 #' @param show_coef Logical. Show the thin coefficient-uncertainty line.
 #'   Default TRUE.
+#' @param show_annual Logical. Show the inter-annual interval. The decision-
+#'   first results view leaves this off because annual variation is shown in a
+#'   separate distribution plot.
 #' @return A ggplot object.
 #' @importFrom ggplot2 ggplot aes geom_linerange geom_point geom_hline
 #'   scale_colour_manual scale_x_discrete labs theme_minimal theme
@@ -181,9 +184,10 @@ resolve_band_q <- function(band_key) {
 #' @importFrom rlang .data
 #' @export
 plot_pointrange_climate <- function(bands_tbl,
-                                    x_label     = "",
-                                    group_order = "scenario_x_year",
-                                    show_coef   = TRUE) {
+                                     x_label     = "",
+                                     group_order = "scenario_x_year",
+                                     show_coef   = TRUE,
+                                     show_annual = FALSE) {
 
   if (is.null(bands_tbl) || nrow(bands_tbl) == 0L) {
     return(ggplot2::ggplot() +
@@ -281,15 +285,17 @@ plot_pointrange_climate <- function(bands_tbl,
     ggplot2::aes(x = .data$pt_key, colour = .data$colour_key)
   p <- ggplot2::ggplot(df, aes_base)
 
-  p <- p +
-    ggplot2::geom_linerange(
-      ggplot2::aes(ymin = .data$intermod_lo, ymax = .data$intermod_hi),
-      linewidth = 6.0, alpha = 0.6, na.rm = TRUE, position = pos
-    ) +
-    ggplot2::geom_linerange(
+  p <- p + ggplot2::geom_linerange(
+    ggplot2::aes(ymin = .data$intermod_lo, ymax = .data$intermod_hi),
+    linewidth = 6.0, alpha = 0.6, na.rm = TRUE, position = pos
+  )
+
+  if (isTRUE(show_annual)) {
+    p <- p + ggplot2::geom_linerange(
       ggplot2::aes(ymin = .data$interann_lo, ymax = .data$interann_hi),
       linewidth = 3.5, alpha = 1.0, na.rm = TRUE, position = pos
     )
+  }
 
   if (isTRUE(show_coef)) {
     p <- p + ggplot2::geom_linerange(
@@ -330,6 +336,198 @@ plot_pointrange_climate <- function(bands_tbl,
       axis.text.x        = ggplot2::element_text(size = 10),
       legend.position    = if (has_source) "top" else "none"
     )
+}
+
+# ---------------------------------------------------------------------------- #
+# Decision-first annual and paired summaries                                    #
+# ---------------------------------------------------------------------------- #
+
+# Build paired model-year effects from the two arms' canonical aggregate
+# tables. F_agg is used whenever available so the coefficient interval retains
+# baseline-policy covariance instead of treating the arms as independent.
+paired_model_year_effects <- function(baseline_tbl, policy_tbl) {
+  if (is.null(baseline_tbl) || is.null(policy_tbl) ||
+      !nrow(baseline_tbl) || !nrow(policy_tbl)) return(tibble::tibble())
+
+  rows <- lapply(intersect(baseline_tbl$sim_year, policy_tbl$sim_year), function(yr) {
+    b <- baseline_tbl[baseline_tbl$sim_year == yr, , drop = FALSE][1L, ]
+    p <- policy_tbl[policy_tbl$sim_year == yr, , drop = FALSE][1L, ]
+    b_ids <- as.character(b$model_id[[1L]])
+    p_ids <- as.character(p$model_id[[1L]])
+    ids <- intersect(b_ids, p_ids)
+    if (!length(ids)) return(NULL)
+    b_vals <- stats::setNames(as.numeric(b$value_all[[1L]]), b_ids)
+    p_vals <- stats::setNames(as.numeric(p$value_all[[1L]]), p_ids)
+    b_sd <- stats::setNames(as.numeric(b$value_all_sd[[1L]]), b_ids)
+    p_sd <- stats::setNames(as.numeric(p$value_all_sd[[1L]]), p_ids)
+    b_f <- b$F_agg_all[[1L]]
+    p_f <- p$F_agg_all[[1L]]
+    out <- lapply(ids, function(id) {
+      i_b <- match(id, b_ids); i_p <- match(id, p_ids)
+      f_b <- if (is.matrix(b_f) && nrow(b_f) >= i_b) b_f[i_b, ] else NULL
+      f_p <- if (is.matrix(p_f) && nrow(p_f) >= i_p) p_f[i_p, ] else NULL
+      sd_effect <- if (!is.null(f_b) && !is.null(f_p) &&
+                       length(f_b) == length(f_p)) {
+        sqrt(sum((f_p - f_b)^2, na.rm = TRUE))
+      } else sqrt((b_sd[[id]] %||% 0)^2 + (p_sd[[id]] %||% 0)^2)
+      tibble::tibble(
+        sim_year = yr, model_id = id,
+        baseline = b_vals[[id]], policy = p_vals[[id]],
+        effect = p_vals[[id]] - b_vals[[id]],
+        effect_sd = sd_effect,
+        effect_gradient = list(if (!is.null(f_b) && !is.null(f_p) &&
+                                   length(f_b) == length(f_p)) f_p - f_b else NULL)
+      )
+    })
+    dplyr::bind_rows(out)
+  })
+  dplyr::bind_rows(Filter(Negate(is.null), rows))
+}
+
+paired_effect_summary <- function(effect_tbl,
+                                  band_q = c(lo = 0.10, hi = 0.90),
+                                  scenario = "") {
+  if (is.null(effect_tbl) || !nrow(effect_tbl)) return(NULL)
+  models <- split(effect_tbl, effect_tbl$model_id)
+  model_rows <- lapply(models, function(x) {
+    x <- x[is.finite(x$effect), , drop = FALSE]
+    if (!nrow(x)) return(NULL)
+    q <- stats::quantile(x$effect, probs = band_q, na.rm = TRUE, names = FALSE)
+    gradients <- if ("effect_gradient" %in% names(x)) {
+      x$effect_gradient[
+        vapply(x$effect_gradient,
+               function(g) is.numeric(g) && length(g) > 0L, logical(1L))
+      ]
+    } else list()
+    coef_sd <- if (length(gradients) == nrow(x)) {
+      g <- Reduce(`+`, gradients) / nrow(x)
+      sqrt(sum(g * g, na.rm = TRUE))
+    } else {
+      sqrt(mean(x$effect_sd^2, na.rm = TRUE) / max(nrow(x), 1L))
+    }
+    tibble::tibble(
+      model_id = x$model_id[[1L]],
+      mean_effect = mean(x$effect),
+      annual_lo = q[[1L]], annual_hi = q[[2L]],
+      coef_sd = coef_sd,
+      n_years = nrow(x)
+    )
+  })
+  model_rows <- dplyr::bind_rows(Filter(Negate(is.null), model_rows))
+  if (!nrow(model_rows)) return(NULL)
+  center <- stats::median(model_rows$mean_effect, na.rm = TRUE)
+  intermod <- stats::quantile(model_rows$mean_effect, probs = band_q,
+                              na.rm = TRUE, names = FALSE)
+  interann <- c(
+    lo = mean(model_rows$annual_lo, na.rm = TRUE),
+    hi = mean(model_rows$annual_hi, na.rm = TRUE)
+  )
+  z <- stats::qnorm(band_q)
+  coef_sd <- mean(model_rows$coef_sd, na.rm = TRUE)
+  tibble::tibble(
+    scenario = scenario, value = center,
+    coef_lo = center + z[[1L]] * coef_sd,
+    coef_hi = center + z[[2L]] * coef_sd,
+    interann_lo = interann[[1L]], interann_hi = interann[[2L]],
+    intermod_lo = intermod[[1L]], intermod_hi = intermod[[2L]],
+    n_models = nrow(model_rows), n_years = min(model_rows$n_years)
+  )
+}
+
+# Equal-probability tail contrast: calculate the adverse quantile separately
+# in each arm for each matched model, then subtract policy minus baseline.
+paired_equal_probability_effects <- function(effect_tbl, probs) {
+  if (is.null(effect_tbl) || !nrow(effect_tbl) || !length(probs)) {
+    return(tibble::tibble())
+  }
+  rows <- lapply(split(effect_tbl, effect_tbl$model_id), function(x) {
+    do.call(rbind, lapply(probs, function(prob) {
+      if (sum(is.finite(x$baseline)) < 2L || sum(is.finite(x$policy)) < 2L) {
+        return(NULL)
+      }
+      tibble::tibble(
+        model_id = x$model_id[[1L]], probability = prob,
+        baseline = as.numeric(stats::quantile(x$baseline, prob,
+                                              na.rm = TRUE, names = FALSE)),
+        policy = as.numeric(stats::quantile(x$policy, prob,
+                                            na.rm = TRUE, names = FALSE))
+      ) |>
+        dplyr::mutate(effect = policy - baseline)
+    }))
+  })
+  dplyr::bind_rows(Filter(Negate(is.null), rows))
+}
+
+paired_effect_plot <- function(tbl, x_label = "Policy effect (outcome units)") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "Paired policy effects are unavailable."))
+  }
+  tbl$scenario <- factor(tbl$scenario, levels = rev(unique(tbl$scenario)))
+  ggplot2::ggplot(tbl, ggplot2::aes(x = .data$value, y = .data$scenario)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$intermod_lo,
+                                       xend = .data$intermod_hi,
+                                       y = .data$scenario, yend = .data$scenario),
+                          linewidth = 5, colour = "#0072B2", alpha = 0.35,
+                          na.rm = TRUE) +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$coef_lo,
+                                       xend = .data$coef_hi,
+                                       y = .data$scenario, yend = .data$scenario),
+                          linewidth = 1.2, colour = "#243746", na.rm = TRUE) +
+    ggplot2::geom_point(shape = 21, size = 3.2, fill = "#0072B2",
+                        colour = "#243746", stroke = 0.8, na.rm = TRUE) +
+    ggplot2::labs(x = x_label, y = NULL,
+                  subtitle = "Policy minus baseline, paired by household, climate model, and weather-year draw. Thick interval = ensemble spread; thin interval = coefficient uncertainty.") +
+    theme_wise(base_size = 12)
+}
+
+plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
+                                      title = "Distribution of annual outcome across simulated weather years") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "No annual simulation results available."))
+  }
+  df <- tbl
+  df$scenario <- as.character(df$scenario)
+  df$period <- ifelse(df$scenario == "Historical", "Historical",
+                      vapply(df$scenario, .parse_year, character(1L)))
+  df$ssp <- ifelse(df$scenario == "Historical", "Historical",
+                   vapply(df$scenario, .normalise_ssp, character(1L)))
+  df$ssp <- factor(df$ssp, levels = c("Historical", names(.ssp_colours)))
+  ggplot2::ggplot(df, ggplot2::aes(x = .data$scenario, y = .data$value,
+                                   fill = .data$ssp)) +
+    ggplot2::geom_violin(scale = "width", alpha = 0.25, colour = NA,
+                         na.rm = TRUE) +
+    ggplot2::geom_boxplot(width = 0.14, outlier.shape = NA, na.rm = TRUE,
+                          colour = "#243746", fill = "white") +
+    ggplot2::geom_point(position = ggplot2::position_jitter(width = 0.08),
+                        alpha = 0.35, size = 1.2, na.rm = TRUE) +
+    ggplot2::scale_fill_manual(values = c(Historical = "#8c8c8c", .ssp_colours),
+                               na.value = "#8c8c8c", name = "Climate scenario") +
+    ggplot2::labs(x = NULL, y = x_label, title = title,
+                  subtitle = "One point = one annual aggregate for the fixed population under one model-weather-year draw.") +
+    theme_wise(base_size = 12) +
+    ggplot2::theme(legend.position = "bottom",
+                   axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
+}
+
+plot_adverse_effects <- function(tbl, x_label = "Policy effect (outcome units)") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "Adverse-year results are unavailable."))
+  }
+  tbl$ssp_key <- ifelse(tbl$scenario == "Historical", "Historical",
+                        vapply(tbl$scenario, .normalise_ssp, character(1L)))
+  ggplot2::ggplot(tbl, ggplot2::aes(y = .data$scenario, x = .data$effect,
+                                    colour = .data$ssp_key)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$lo, xend = .data$hi,
+                                       y = .data$scenario, yend = .data$scenario),
+                          linewidth = 1.1, na.rm = TRUE) +
+    ggplot2::geom_point(size = 2.8, na.rm = TRUE) +
+    ggplot2::scale_colour_manual(values = c("Historical" = "#808080", .ssp_colours),
+                                 na.value = "#0072B2", guide = "none") +
+    ggplot2::labs(x = x_label, y = NULL,
+                  subtitle = "Equal-probability tail contrast: policy quantile minus baseline quantile. CMIP6 values are ensemble spread, not probabilities.") +
+    theme_wise(base_size = 12)
 }
 
 # ---------------------------------------------------------------------------- #
@@ -628,7 +826,7 @@ plot_timeseries_spaghetti <- function(ts_tbl,
 # Variance-contribution stacked bar                                            #
 # ---------------------------------------------------------------------------- #
 
-#' Stacked SD-Contribution Bar by Scenario
+#' Aligned SD-Contribution Bars by Scenario
 #'
 #' For each scenario, plots a horizontal bar stacking each uncertainty
 #' source's standard deviation contribution (sqrt of its variance):
@@ -636,18 +834,15 @@ plot_timeseries_spaghetti <- function(ts_tbl,
 #'   - Inter-annual variability (within-model year-to-year)
 #'   - Inter-model spread (across-model disagreement; future only)
 #'
-#' Each segment's length is the source's SD on the outcome scale. Segment
-#' labels show each source's share of the bar's total length (sum of the
-#' three source SDs). Because variances (not SDs) add under independence,
-#' the stacked total is an **upper bound** on the true combined SD;
-#' segments are placed side by side as a visual decomposition of where
-#' uncertainty comes from, not as a literal additive total.
+#' Each bar is one source's SD on the outcome scale. Bars are deliberately
+#' aligned rather than stacked: SD components are not additive and covariance
+#' assumptions must not be hidden in the visual encoding.
 #'
 #' @param var_tbl Tibble with columns: scenario, var_coef, var_within,
 #'   var_across, is_historical.
 #' @return A ggplot object.
-#' @importFrom ggplot2 ggplot aes geom_col geom_text scale_fill_manual
-#'   scale_y_continuous labs theme_minimal theme coord_flip position_stack
+#' @importFrom ggplot2 ggplot aes geom_col scale_fill_manual
+#'   scale_y_continuous labs theme_minimal theme coord_flip
 #' @importFrom tidyr pivot_longer
 #' @importFrom rlang .data
 #' @export
@@ -660,17 +855,12 @@ plot_variance_contribution <- function(var_tbl) {
   df$sd_coef   <- sqrt(pmax(df$var_coef,   0))
   df$sd_within <- sqrt(pmax(df$var_within, 0))
   df$sd_across <- sqrt(pmax(df$var_across, 0))
-  df$sd_sum    <- df$sd_coef + df$sd_within + df$sd_across
-
   long <- tidyr::pivot_longer(
-    df[, c("scenario", "sd_coef", "sd_within", "sd_across", "sd_sum")],
+    df[, c("scenario", "sd_coef", "sd_within", "sd_across")],
     cols      = c("sd_coef", "sd_within", "sd_across"),
     names_to  = "source",
     values_to = "sd"
   )
-  long$share <- ifelse(long$sd_sum > 0, long$sd / long$sd_sum, NA_real_)
-  long$share_lbl <- ifelse(is.finite(long$share),
-                           paste0(round(100 * long$share), "%"), "")
 
   long$source <- factor(long$source,
                         levels = c("sd_across", "sd_within", "sd_coef"),
@@ -688,17 +878,13 @@ plot_variance_contribution <- function(var_tbl) {
   ggplot2::ggplot(long,
     ggplot2::aes(x = .data$scenario, y = .data$sd, fill = .data$source)
   ) +
-    ggplot2::geom_col(width = 0.7) +
-    ggplot2::geom_text(
-      ggplot2::aes(label = .data$share_lbl),
-      position = ggplot2::position_stack(vjust = 0.5),
-      size = 3, colour = "white"
-    ) +
+    ggplot2::geom_col(width = 0.7, position = "dodge") +
     ggplot2::scale_fill_manual(values = fill_map, name = NULL) +
     ggplot2::scale_y_continuous(expand = c(0, 0)) +
     ggplot2::labs(
       x = NULL,
-      y = "Standard deviation (outcome units)"
+      y = "Standard deviation (outcome units)",
+      subtitle = "Aligned components are separate quantities; they are not stacked or added."
     ) +
     theme_wise() +
     ggplot2::theme(

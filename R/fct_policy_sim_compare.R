@@ -212,6 +212,7 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
   tagList(
       shiny::uiOutput(ns("stale_banner_ui")),
       shiny::uiOutput(ns("policy_summary_ui")),
+      shiny::uiOutput(ns("headline_cards_ui")),
       shiny::wellPanel(
         class = "results-controls",
       # Padding matches the Step 2 results controls panel (alignment).
@@ -327,27 +328,19 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     ),
     shiny::wellPanel(
       shiny::h4(
-        "Distribution of outcome across weather conditions, by climate scenario",
+        "Expected paired policy effect by climate scenario",
         info_popover(
           title = "Reading this chart",
           shiny::p(
-            "Each scenario shows two dots: ", shiny::tags$b("baseline (grey)"),
-            " and ", shiny::tags$b("policy-adjusted (red)"),
-            ". All bands are drawn relative to the dot (the ensemble-mean",
-            " annual aggregate) and answer different questions about",
-            " uncertainty. They are not meant to be added together - see",
-            " the Diagnostics tab for how the sources combine."
+            "The default display is policy minus baseline, paired by household,",
+            " climate model, and weather-year draw. The zero line is no policy effect."
           ),
-          shiny::p(shiny::tags$b("Thick coloured band"),
-            " (future scenarios only) - how much do climate models disagree?",
-            " Inter-model spread: quantile across CMIP6 ensemble members of",
-            " each model's time-mean. Can be asymmetric around the dot when",
-            " models lean one way."),
-          shiny::p(shiny::tags$b("Middle band"),
-            " - how much does weather vary year-to-year within a typical",
-            " model? Inter-annual variability: per-model quantile across",
-            " simulation years, then averaged across models. Reflects the",
-            " natural range of outcomes a single climate trajectory produces."),
+          shiny::p(shiny::tags$b("Thick interval"),
+            " = ensemble spread across equally weighted climate-model means.",
+            " It is not a probability that the future lies within the range."),
+          shiny::p(shiny::tags$b("Annual effects"),
+            " are shown in a separate distribution below, using matched model-",
+            "year policy-minus-baseline aggregates."),
           shiny::p(shiny::tags$b("Innermost line"),
             " (shown when coefficient uncertainty is enabled) - how precisely",
             " is each (model, year) aggregate estimated? Analytic per-outcome",
@@ -360,21 +353,35 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
             " coloured bands."),
           shiny::p(
             "Historical = single 'model', so no inter-model band is shown.",
-            "Dashed line = historical mean. A pooled summary SE combining",
-            "coefficient and inter-model uncertainty is available in the",
-            "return-period table on the Diagnostics tab."
+             "The thin interval is coefficient uncertainty for the paired contrast."
           ),
           docs = TRUE
         )
       ),
       wise_plot_output(ns("summary_box_plot"),
-                       "Point plot of baseline versus policy-adjusted outcomes by scenario, with uncertainty bands",
+                        "Zero-centered point plot of paired policy effects by scenario",
                        height = "600px"),
       shiny::tags$p(
         style = "font-size:11px; color:#666; margin-top:6px;",
-        "Grey dot = baseline; red dot = policy-adjusted; bands = uncertainty ranges (not additive) - click ",
+        "Policy minus baseline; thick = ensemble spread, thin = coefficient uncertainty - click ",
         shiny::icon("circle-info"), " above for details."
       )
+    ),
+    shiny::wellPanel(
+      shiny::h4("Distribution of annual policy effects across simulated weather years"),
+      wise_plot_output(ns("paired_annual_distribution_plot"),
+                       "Distribution of annual policy minus baseline effects across simulated weather years",
+                       height = "460px"),
+      shiny::tags$p(class = "text-muted small",
+                    "One point is a paired annual aggregate for one climate model and weather-year draw. Values are policy minus baseline." )
+    ),
+    shiny::wellPanel(
+      shiny::h4("Adverse-year policy effect"),
+      wise_plot_output(ns("paired_adverse_plot"),
+                       "Equal-probability adverse-year policy effects by scenario",
+                       height = "420px"),
+      shiny::tags$p(class = "text-muted small",
+                    "Equal-probability tail contrast: the policy quantile minus the baseline quantile at the same return-period probability. This is not a same-weather-event effect.")
     ),
     shiny::wellPanel(
       shiny::h4(
@@ -484,6 +491,33 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       selected_weather       = bh$sim_summary$weather %||% NULL,
       sp_scenario             = sp_scenario()
     )
+  })
+
+  output$headline_cards_ui <- shiny::renderUI({
+    req(paired_effect_summary_rv())
+    effects <- paired_effect_summary_rv()
+    levels <- as.character(effects$scenario)
+    focus <- effects[!grepl("^Historical", levels), , drop = FALSE]
+    if (!nrow(focus)) focus <- effects[1L, , drop = FALSE]
+    adverse <- paired_adverse_effects_rv()
+    adverse_focus <- if (nrow(adverse)) {
+      adverse[adverse$scenario == focus$scenario[[1L]] &
+                grepl("1-in-10", adverse$tail), , drop = FALSE][1L, ]
+    } else NULL
+    cards <- list(
+      list(label = "Expected paired effect", value = fmt_num(focus$value, 2),
+           note = "Policy minus baseline"),
+      list(label = "Coefficient interval",
+           value = paste(fmt_num(focus$coef_lo, 2), "to", fmt_num(focus$coef_hi, 2)),
+           note = "Paired contrast uncertainty"),
+      list(label = "Adverse 1-in-10 effect",
+           value = if (!is.null(adverse_focus) && nrow(adverse_focus)) fmt_num(adverse_focus$effect, 2) else "Unavailable",
+           note = "Equal-probability tail contrast"),
+      list(label = "Models / weather years",
+           value = paste(focus$n_models, "/", focus$n_years),
+           note = "Equal model weighting")
+    )
+    headline_cards_ui(cards)
   })
 
   # Resolve the residuals choice captured by the Step 2 run. The live control
@@ -775,6 +809,65 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     sel <- selected_scenario_names()
     c(setNames(list(policy_agg_hist()), hist_label()),
       sc[intersect(sel, names(sc))])
+  })
+
+  # Canonical paired policy-minus-baseline summaries. Arms are aligned at the
+  # model/year aggregate level and coefficient gradients are contrasted before
+  # uncertainty is calculated, preserving baseline-policy covariance.
+  paired_effect_data <- reactive({
+    b <- baseline_all_series()
+    p <- policy_all_series()
+    if (!length(b) || !length(p)) return(list())
+    common <- intersect(names(b), names(p))
+    stats::setNames(lapply(common, function(nm) {
+      paired_model_year_effects(b[[nm]]$out, p[[nm]]$out) |>
+        dplyr::mutate(scenario = nm)
+    }), common)
+  })
+
+  paired_effect_summary_rv <- reactive({
+    dat <- paired_effect_data()
+    if (!length(dat)) return(tibble::tibble())
+    bq <- resolve_band_q(input$ensemble_band %||% "minmax")
+    dplyr::bind_rows(lapply(names(dat), function(nm) {
+      paired_effect_summary(dat[[nm]], band_q = bq, scenario = nm)
+    }))
+  })
+
+  paired_annual_effects_rv <- reactive({
+    dat <- paired_effect_data()
+    if (!length(dat)) return(tibble::tibble())
+    dplyr::bind_rows(lapply(names(dat), function(nm) {
+      x <- dat[[nm]]
+      if (is.null(x) || !nrow(x)) return(NULL)
+      x[, c("scenario", "sim_year", "model_id", "effect", "effect_sd")]
+    })) |>
+      dplyr::rename(value = effect)
+  })
+
+  paired_adverse_effects_rv <- reactive({
+    dat <- paired_effect_data()
+    if (!length(dat)) return(tibble::tibble())
+    method <- input$cmp_agg_method %||% "mean"
+    spec <- metric_metadata(method, baseline_hist_sim()$so)
+    probs <- metric_adverse_probabilities()
+    target_probs <- if (identical(spec$adverse_tail, "high")) 1 - probs else probs
+    out <- dplyr::bind_rows(lapply(names(dat), function(nm) {
+      x <- paired_equal_probability_effects(dat[[nm]], target_probs)
+      if (is.null(x) || !nrow(x)) return(NULL)
+      x$scenario <- nm
+      x$tail <- names(probs)[match(x$probability, target_probs)]
+      x
+    }))
+    if (!nrow(out)) return(out)
+    dplyr::bind_rows(lapply(split(out, interaction(out$scenario, out$tail,
+                                                   drop = TRUE)), function(x) {
+      q <- stats::quantile(x$effect, c(lo = 0.10, hi = 0.90), na.rm = TRUE,
+                           names = FALSE)
+      tibble::tibble(scenario = x$scenario[[1L]], tail = x$tail[[1L]],
+                     effect = stats::median(x$effect, na.rm = TRUE),
+                     lo = q[[1L]], hi = q[[2L]])
+    }))
   })
 
   # ---- Shared deviation reference (baseline historical) -------------------
@@ -1159,20 +1252,41 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
   })
 
   output$summary_box_plot <- renderPlot({
-    req(pointrange_bands_rv())
-    bands <- pointrange_bands_rv()
+    req(paired_effect_summary_rv())
+    tbl <- paired_effect_summary_rv()
     if (!isTRUE(input$show_model_spread)) {
-      bands$intermod_lo <- NA_real_
-      bands$intermod_hi <- NA_real_
+      tbl$intermod_lo <- NA_real_
+      tbl$intermod_hi <- NA_real_
     }
-    plot_pointrange_climate(
-      bands_tbl   = bands,
-      x_label     = agg_axis_label(),
-      group_order = input$cmp_group_order %||% "scenario_x_year",
-      show_coef   = isTRUE(input$show_coef_uncertainty) && has_draws()
-    )
+    paired_effect_plot(tbl, metric_axis_label(
+      input$cmp_agg_method %||% "mean", baseline_hist_sim()$so,
+      input$cmp_deviation %||% "none"
+    ))
   }, height = 600)
   outputOptions(output, "summary_box_plot", suspendWhenHidden = TRUE)
+
+  output$paired_annual_distribution_plot <- renderPlot({
+    req(paired_annual_effects_rv())
+    plot_annual_distribution(
+      paired_annual_effects_rv(),
+      x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                  baseline_hist_sim()$so,
+                                  input$cmp_deviation %||% "none"),
+      title = "Distribution of annual policy effects across simulated weather years"
+    )
+  }, height = 460)
+  outputOptions(output, "paired_annual_distribution_plot", suspendWhenHidden = TRUE)
+
+  output$paired_adverse_plot <- renderPlot({
+    req(paired_adverse_effects_rv())
+    plot_adverse_effects(
+      paired_adverse_effects_rv(),
+      x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                  baseline_hist_sim()$so,
+                                  input$cmp_deviation %||% "none")
+    )
+  }, height = 420)
+  outputOptions(output, "paired_adverse_plot", suspendWhenHidden = TRUE)
 
   output$summary_threshold_table <- DT::renderDT({
     req(threshold_table_rv())
@@ -1241,11 +1355,11 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
         bands$intermod_lo <- NA_real_
         bands$intermod_hi <- NA_real_
       }
-      plot_pointrange_climate(
-        bands_tbl   = bands,
-        x_label     = baseline_agg_hist()$x_label,
-        group_order = input$cmp_group_order %||% "scenario_x_year",
-        show_coef   = isTRUE(input$show_coef_uncertainty) && has_draws()
+      paired_effect_plot(
+        paired_effect_summary_rv(),
+        metric_axis_label(input$cmp_agg_method %||% "mean",
+                          baseline_hist_sim()$so,
+                          input$cmp_deviation %||% "none")
       )
     },
     description = paste(

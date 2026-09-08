@@ -218,7 +218,22 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     paste(scenario_count, "future", if (scenario_count == 1L) "scenario" else "scenarios")
   }
 
-  selection_summary_card(
+  context_id <- hist_sim$run_id %||% "session run"
+
+  shiny::tagList(
+    shiny::tags$div(
+      class = "run-context-banner",
+      shiny::tags$div(
+        class = "run-context-kicker",
+        "Stress-test scenario - not a forecast"
+      ),
+      shiny::tags$div(
+        class = "run-context-copy",
+        "The survey population and non-weather characteristics are fixed; projection windows are separate climate regimes."
+      ),
+      shiny::tags$span(class = "run-context-id", paste0("Run ID: ", context_id))
+    ),
+    selection_summary_card(
     title = "Selected Climate Scenario",
     badge = badge,
     rows = list(
@@ -242,7 +257,24 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
         pills = baseline_pills
       )
     ),
-    compact = TRUE
+      compact = TRUE
+    )
+  )
+}
+
+headline_cards_ui <- function(cards) {
+  if (is.null(cards) || !length(cards)) return(NULL)
+  shiny::tags$div(
+    class = "headline-cards",
+    lapply(cards, function(card) {
+      shiny::tags$div(
+        class = "headline-card",
+        shiny::tags$div(class = "headline-card-label", card$label %||% "Result"),
+        shiny::tags$div(class = "headline-card-value", card$value %||% "Unavailable"),
+        if (!is.null(card$note) && nzchar(card$note))
+          shiny::tags$div(class = "headline-card-note", card$note)
+      )
+    })
   )
 }
 
@@ -313,41 +345,51 @@ policy_summary_card <- function(selected_policies = NULL,
   configured_count <- length(policy_pills[policy_pills != "None"])
   climate_scenarios <- names(policy_saved_scenarios)
 
-  selection_summary_card(
-    title = "Selected Policy Scenarios",
-    badge = paste(configured_count,
-                  if (configured_count == 1L) "policy" else "policies"),
-    rows = list(
-      list(
-        name = "Climate scenarios",
-        sub = if (length(historical)) historical else "Historical climate",
-        pills = climate_scenarios
+  shiny::tagList(
+    shiny::tags$div(
+      class = "run-context-banner",
+      shiny::tags$div(class = "run-context-kicker", "Stress-test scenario - not a forecast"),
+      shiny::tags$div(
+        class = "run-context-copy",
+        "The survey population and non-weather characteristics are fixed; projection windows are separate climate regimes."
       ),
-      list(
-        name  = "Policies",
-        sub   = NULL,
-        pills = policy_pills
-      ),
-      list(
-        name = "Model",
-        sub = model$label %||% "Fitted model",
-        pills = c(
-          paste0("Outcome: ", so_label),
-          if (length(weather_labels)) paste0(
-            "Weather: ", paste(weather_labels, collapse = ", ")
-          ),
-          model_bits
-        )
-      ),
-      list(
-        name = "Baseline",
-        sub = baseline,
-        pills = c(
-          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
-        )
+      shiny::tags$span(
+        class = "run-context-id",
+        paste0("Run ID: ", if (!is.null(hs)) hs$run_id %||% "session run" else "session run")
       )
     ),
-    compact = TRUE
+    selection_summary_card(
+      title = "Selected Policy Scenarios",
+      badge = paste(configured_count,
+                    if (configured_count == 1L) "policy" else "policies"),
+      rows = list(
+        list(
+          name = "Climate scenarios",
+          sub = if (length(historical)) historical else "Historical climate",
+          pills = climate_scenarios
+        ),
+        list(name = "Policies", sub = NULL, pills = policy_pills),
+        list(
+          name = "Model",
+          sub = model$label %||% "Fitted model",
+          pills = c(
+            paste0("Outcome: ", so_label),
+            if (length(weather_labels)) paste0(
+              "Weather: ", paste(weather_labels, collapse = ", ")
+            ),
+            model_bits
+          )
+        ),
+        list(
+          name = "Baseline",
+          sub = baseline,
+          pills = c(
+            if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
+          )
+        )
+      ),
+      compact = TRUE
+    )
   )
 }
 

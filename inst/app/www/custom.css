@@ -487,6 +487,84 @@
   color: #333;
 }
 
+.run-context-banner {
+  border: 1px solid #c9d8e6;
+  border-left: 5px solid #0072b2;
+  background: #f5f9fc;
+  padding: 10px 14px;
+  margin: 0 0 10px;
+  border-radius: 4px;
+  position: relative;
+}
+
+.run-context-kicker {
+  color: #003b5c;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.run-context-copy {
+  color: #425466;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding-right: 8rem;
+}
+
+.run-context-id {
+  color: #66788a;
+  font-family: var(--bs-font-monospace);
+  font-size: 0.72rem;
+  position: absolute;
+  right: 12px;
+  top: 11px;
+}
+
+.headline-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.headline-card {
+  background: #ffffff;
+  border: 1px solid #d6e1ea;
+  border-top: 3px solid #009e73;
+  border-radius: 4px;
+  padding: 10px 12px;
+  min-height: 80px;
+}
+
+.headline-card-label {
+  color: #526575;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.headline-card-value {
+  color: #173042;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+
+.headline-card-note {
+  color: #718292;
+  font-size: 0.73rem;
+  line-height: 1.25;
+  margin-top: 3px;
+}
+
+@media (max-width: 640px) {
+  .run-context-copy { padding-right: 0; }
+  .run-context-id { display: block; position: static; margin-top: 4px; }
+}
+
 /* ---- Configure flyout (weather variable settings) ------------------------
    Content stays in the DOM (conditionalPanel), but is presented as a
    floating panel beside the sidebar so options are visible without

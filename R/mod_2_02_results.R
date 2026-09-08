@@ -23,6 +23,7 @@ mod_2_02_results_ui <- function(id) {
     # ---- 0. Stale banner (INT-08) -------------------------------------------
     shiny::uiOutput(ns("stale_banner")),
     shiny::uiOutput(ns("simulation_summary_ui")),
+    shiny::uiOutput(ns("headline_cards_ui")),
 
     # ---- 1. Analysis controls ----------------------------------------------
     shiny::wellPanel(
@@ -154,27 +155,26 @@ mod_2_02_results_ui <- function(id) {
     # ---- 3. Hero point-range chart -----------------------------------------
     shiny::wellPanel(
       shiny::h4(
-        "Distribution of outcome across weather conditions, by climate scenario",
+        "Expected outcome by climate scenario",
         info_popover(
           title = "Reading this chart",
           shiny::p(
-            "All bands are drawn relative to the central dot and answer",
-            "different questions about uncertainty. They are not meant to be",
-            "added together - see the variance-contribution bar on the",
-            "Diagnostics tab for how the sources combine."
+            "Dots show expected annual outcomes; the thick interval shows",
+            "disagreement across climate models. Annual weather variation is",
+            "shown separately below. CMIP6 intervals are ensemble spread, not",
+            "probabilities."
           ),
-          shiny::p(shiny::tags$b("Central dot"),
-            " = mean of the annual aggregate across all simulated (model, year) outcomes."),
+          shiny::p(shiny::tags$b("Dot"),
+            " = expected annual aggregate. Future summaries give each climate",
+            " model equal weight after summarising its weather-year draws."),
           shiny::p(shiny::tags$b("Thick coloured band"),
             " (future scenarios only) - how much do climate models disagree?",
             " Inter-model spread: quantile across CMIP6 ensemble members of",
             " each model's time-mean. Can be asymmetric around the dot when",
             " models lean one way."),
-          shiny::p(shiny::tags$b("Middle band"),
-            " - how much does weather vary year-to-year within a typical model?",
-            " Inter-annual variability: per-model quantile across simulation",
-            " years, then averaged across models. Reflects the natural range",
-            " of outcomes a single climate trajectory produces."),
+          shiny::p(shiny::tags$b("Annual weather variation"),
+            " is shown in the distribution plot below rather than overlaid here.",
+            " Its interval is the mean of model-specific weather-year quantiles."),
           shiny::p(shiny::tags$b("Innermost line"),
             " (shown when coefficient uncertainty is enabled) - how precisely",
             " is each (model, year) aggregate estimated? Analytic per-outcome",
@@ -194,16 +194,28 @@ mod_2_02_results_ui <- function(id) {
         )
       ),
       wise_plot_output(ns("summary_box_plot"),
-                       "Box plot of the simulated outcome by scenario",
+                        "Expected outcome by scenario with climate-model spread",
                        height = "600px"),
       shiny::tags$p(
         style = "font-size:11px; color:#666; margin-top:6px;",
-        "Dot = mean outcome; bands = uncertainty ranges (not additive) - click ",
+        "Dots show expected outcomes; intervals are labeled by uncertainty source - click ",
         shiny::icon("circle-info"), " above for details."
       )
     ),
 
-    # ---- 4. Exceedance curve -----------------------------------------------
+    # ---- 4. Annual aggregate distribution ----------------------------------
+    shiny::wellPanel(
+      shiny::h4("Distribution of annual outcome across simulated weather years"),
+      wise_plot_output(ns("annual_distribution_plot"),
+                       "Distribution of annual aggregates across simulated weather years by climate scenario",
+                       height = "460px"),
+      shiny::tags$p(
+        class = "text-muted small",
+        "One observation is one annual aggregate for the fixed population under one weather-year draw; this is not a household welfare distribution."
+      )
+    ),
+
+    # ---- 5. Exceedance curve -----------------------------------------------
     shiny::wellPanel(
       shiny::h4(
         "Exceedance probability by climate scenario",
@@ -251,7 +263,7 @@ mod_2_02_results_ui <- function(id) {
       shiny::uiOutput(ns("exceedance_caption"))
     ),
 
-    # ---- 5. Threshold table ------------------------------------------------
+    # ---- 6. Threshold table ------------------------------------------------
     shiny::wellPanel(
       shiny::uiOutput(ns("threshold_table_header")),
       DT::DTOutput(ns("summary_threshold_table")),
@@ -311,6 +323,29 @@ mod_2_02_results_server <- function(id,
         selected_hist   = if (!is.null(selected_hist)) selected_hist() else NULL,
         selected_weather = if (is.function(selected_weather)) selected_weather() else selected_weather
       )
+    })
+
+    output$headline_cards_ui <- renderUI({
+      req(pointrange_bands_rv())
+      bands <- pointrange_bands_rv()
+      hist <- bands[bands$is_historical, , drop = FALSE][1L, ]
+      future <- bands[!bands$is_historical, , drop = FALSE][1L, ]
+      focus <- if (nrow(future)) future else hist
+      cards <- list(
+        list(label = "Historical expected", value = fmt_num(hist$value, 2),
+             note = "Fixed population baseline"),
+        list(label = "Scenario expected", value = fmt_num(focus$value, 2),
+             note = if (nrow(future)) focus$scenario else "Historical only"),
+        list(label = "Change from historical", value = fmt_num(focus$value - hist$value, 2),
+             note = "Expected annual aggregate"),
+        list(label = "Climate-model range", value = if (nrow(future)) {
+          paste(fmt_num(focus$intermod_lo, 2), "to", fmt_num(focus$intermod_hi, 2))
+        } else "Not applicable", note = "Ensemble spread, not a probability"),
+        list(label = "Models / weather years",
+             value = paste(focus$n_models, "/", nrow(timeseries_curves_rv()) %/% max(focus$n_models, 1L)),
+             note = "Model count / annual draws")
+      )
+      headline_cards_ui(cards)
     })
 
     # ---- Lazy delta-method aggregation -------------------------------------
@@ -898,7 +933,10 @@ mod_2_02_results_server <- function(id,
         }
 
         # Coefficient uncertainty: per-outcome SE, centred on ensemble mean.
-        ens_mean <- mean(as.numeric(vals), na.rm = TRUE)
+        # Owner-approved convention: summarise each model across its weather
+        # years, then take the median across equally weighted models.
+        ens_mean <- if (is_hist) mean(as.numeric(vals), na.rm = TRUE) else
+          stats::median(model_means, na.rm = TRUE)
         sd_mean  <- mean(as.numeric(sds),  na.rm = TRUE)
         coef     <- c(lo = ens_mean + z_coef_lo * sd_mean,
                       hi = ens_mean + z_coef_hi * sd_mean)
@@ -1257,6 +1295,20 @@ mod_2_02_results_server <- function(id,
         show_coef    = isTRUE(input$show_coef_uncertainty) && has_draws()
       )
     }, height = 600)
+
+    output$annual_distribution_plot <- renderPlot({
+      req(timeseries_curves_rv())
+      curves <- timeseries_curves_rv()
+      plot_annual_distribution(
+        curves,
+        x_label = metric_axis_label(
+          input$cmp_agg_method %||% "mean",
+          hist_sim()$so,
+          input$cmp_deviation %||% "none"
+        ),
+        title = "Distribution of annual outcome across simulated weather years"
+      )
+    }, height = 460)
 
     # UI-48: one builder behind the on-screen table, its CSV button and the
     # export bundle.

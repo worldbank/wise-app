@@ -65,18 +65,15 @@ mod_2_03_diagnostics_ui <- function(id) {
     # ---- 2. Variance contribution panel ------------------------------------
     shiny::wellPanel(
       shiny::h4(
-        "SD contribution by source of uncertainty",
+        "Sources of variation and uncertainty",
         info_popover(
-          title = "SD contribution by source of uncertainty",
-          shiny::p(shiny::tags$b("Each segment"),
-            " is one source's standard deviation (square root of its variance",
-            " contribution), in outcome units. Labels show each source's share",
-            " of the bar's total length."),
-          shiny::p(shiny::tags$b("Note:"),
-            " variances (not SDs) add under independence, so the stacked total",
-            " is an upper bound on the true combined SD - read the bar as a",
-            " side-by-side decomposition of where uncertainty comes from, not",
-            " as a literal additive total."),
+          title = "Sources of variation and uncertainty",
+          shiny::p(shiny::tags$b("Each bar"),
+            " is one source's standard deviation in outcome units."),
+          shiny::p(shiny::tags$b("Important:"),
+            " bars are aligned, not stacked. Inter-annual weather variability,",
+            " inter-model climate spread, and coefficient uncertainty are",
+            " different quantities and are not combined into an unlabeled band."),
           shiny::p(shiny::tags$b("Coefficient uncertainty"),
             " = SD of the regression-fit per-outcome variance, averaged."),
           shiny::p(shiny::tags$b("Inter-annual variability"),
@@ -95,7 +92,7 @@ mod_2_03_diagnostics_ui <- function(id) {
                        height = "320px"),
       shiny::tags$p(
         style = "font-size:11px; color:#666; margin-top:6px;",
-        "Each segment = one source's SD contribution (not strictly additive) - click ",
+        "Aligned bars show separate SD components; they are not additive - click ",
         shiny::icon("circle-info"), " above for details."
       )
     ),
