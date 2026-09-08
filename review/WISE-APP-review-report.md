@@ -5,7 +5,7 @@
 **Target Context:** Wider release beyond core team; primary performance bottleneck is Step 2 simulation.
 **Deployment Model:** Posit Connect (git-backed, 1 session/process, Databricks backend, auto-connect — see §10.1) & Local R package (single user, custom data connection). Synchronous execution, desktop browser.
 
-> **Current remediation status (2026-09-08):** Map optimization is complete with no further map work planned. SEC-03 session-end cleanup, SEC-06 credential-safe exports, REACT-11 aggregation consolidation, and README regeneration are complete. The remaining release gates are fresh-clone Connect deployment, real backend authentication integration, and clean-environment packaging/test verification. RED-06, DUP-03, PERF-02, and PERF-15 remain deferred maintainability/performance work.
+> **Current remediation status (2026-09-08):** Map optimization is complete with no further map work planned. SEC-03 session-end cleanup, SEC-06 credential-safe exports, REACT-11 aggregation consolidation, README regeneration, and PERF-02 weather-reference consolidation are complete. The remaining release gates are fresh-clone Connect deployment, real backend authentication integration, and clean-environment packaging/test verification. RED-06, DUP-03, and PERF-15 remain deferred maintainability/performance work.
 >
 > The detailed remediation paragraph immediately below is historical context from the 2026-09-02 checkpoint.
 
@@ -21,13 +21,13 @@ The codebase has a sound modular architecture (Golem structure, pluggable engine
 
 1. **Result Integrity & State Synchronization:** Upstream changes trigger `renderUI` rebuilds that wipe selections, and completed downstream results remain presented after their inputs change. ✅ Closed 2026-09-01: dynamic inputs restore selections (INT-01), results bind to fit-time snapshots (INT-05), map state clears on reload/failure (INT-06), and run signatures with stale-marking now link Step 1 fits, Step 2 simulations, and Step 3 policy results (INT-08). (Reproducibility ✅ Wave 0 complete.)
 2. **Deployment & Integration Validation:** The repository contains the bundled DuckDB extensions, committed manifest, vendored MapLibre/H3 assets, and credential-safe configuration export, but a fresh-clone Posit Connect deployment and real backend authentication matrix remain to be verified.
-3. **Packaging & Maintainability:** README regeneration and SEC-03 cleanup are complete. Remaining items are environment-dependent TeX/check validation, RED-06 batch-script consolidation, DUP-03 shared result plotting internals, and deferred PERF-02/PERF-15 refactors.
+3. **Packaging & Maintainability:** README regeneration, SEC-03 cleanup, and PERF-02 weather-reference consolidation are complete. Remaining items are environment-dependent TeX/check validation, RED-06 batch-script consolidation, DUP-03 shared result plotting internals, and the deferred PERF-15 refactor.
 
 ---
 
 ## 2. Priority Implementation Roadmap
 
-**Status update (2026-09-08):** The remediation checkpoint in the header predates the current branch. Map optimization is complete with no further work planned; SEC-03 cleanup and README regeneration are complete. The current open release gates are fresh-clone Connect deployment, real backend authentication integration, and environment-dependent `R CMD check` verification. RED-06, DUP-03, PERF-02, and PERF-15 remain deferred maintainability/performance work.
+**Status update (2026-09-08):** The remediation checkpoint in the header predates the current branch. Map optimization is complete with no further work planned; SEC-03 cleanup, README regeneration, and PERF-02 are complete. The current open release gates are fresh-clone Connect deployment, real backend authentication integration, and environment-dependent `R CMD check` verification. RED-06, DUP-03, and PERF-15 remain deferred maintainability/performance work.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -56,7 +56,7 @@ The codebase has a sound modular architecture (Golem structure, pluggable engine
                          │
 ┌────────────────────────▼─────────────────────────────────────────────────────────┐
 │ Wave 5: Validated Numerical & Structural Refactors [PERF-05/09/33 + REACT-11 ✅]  │
-│ (remaining deferred: PERF-02/15)                                                   │
+│ (remaining deferred: PERF-15)                                                      │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -90,8 +90,25 @@ Open: none. All Wave 2 bottlenecks below are done.
 
 | ID | Location | Potential Risk | Actionable Fix |
 |---|---|---|---|
-| **PERF-02** | `R/fct_get_weather.R:138-175, 532-533, 829-831` | Restructures SQL query plan; altered float sum order | Collapse V separate scans/joins into single wide `summarise(across(...))` + single join. |
-| **PERF-15** | `R/fct_simulations.R:664-665` vs `R/fct_predict_outcomes.R:154-157` | Modifies `fixest` row-dropping & offset handling | Reuse design matrix between prediction and uncertainty factor loading. |
+| **PERF-02** | `R/fct_get_weather.R:267-374, 723-745, 1067-1088` | Restructures SQL query plan; altered float sum order | ✅ Closed 2026-09-08 — one wide climate-reference aggregation is materialised once and reused across historical/future queries; legacy parity and real-data benchmark recorded below. |
+| **PERF-15** | `R/fct_simulations.R:664-665` vs `R/fct_predict_outcomes.R:154-157` | Modifies `fixest` row-dropping & offset handling | Deferred. Retain `predict.fixest()` as the prediction oracle; benchmark and characterize RIF-first matrix reuse before any change. |
+
+**Done (2026-09-08), PERF-02:** `.transformation_specs()` and
+`.build_climate_reference()` now construct one wide monthly climate-normal
+relation for all transformed variables. The relation is materialised once
+after `loc_weather_base` and reused by the historical query and every future
+period; the transformation stage therefore uses one left join instead of one
+reference scan/join per variable per query. Duplicate selected weather names
+are rejected, generated reference columns are collision-checked, `AVG` and
+`STDDEV_SAMP` semantics are retained, and the temp relation is covered by the
+existing cleanup ledger. The direct characterization suite compares the old
+per-variable SQL semantics with the new path on missing, constant, skipped,
+unchanged, and out-of-reference-period rows and checks the generated query
+has one left join. On real local LKA household data (42,296 observations,
+695,173 rolled rows, 24 dates, four transformed variables, four repeated
+queries), the old median was 2.453 s and the wide/reused median was 0.901 s
+(2.72x); collected outputs were exactly equal. Targeted weather regression,
+connection, and aggregation-cache tests pass.
 
 **Done (2026-09-02), compressed (collapse throughout; old-vs-new parity harness run on adversarial synthetic data):** PERF-05 (`summarise_weather_by_loc()` and `merge_loc_values_to_cells()` rebuilt as grouped `collapse` passes over one shared `GRP()` — `.summarise_loc_prep()` now returns the grouping instead of split indices; continuous means, weighted/unweighted modal bins with their tie-break orders, `n_hh`/`n_months`/`n_locs` semantics and row order all preserved exactly; 69x on the Step 1 weather-map collapse at 50k rows x 10 vars, 5.9x on cell merge) · PERF-09 (wave-specific `% Missing` for all variables in one grouped pass via a new shared `survey_missingness_long()` helper used by both Step 1 stats tables; exact parity; ~25x) · PERF-33 (`weighted_summary_long()` rebuilt as six grouped `collapse` matrix passes — `fmean`/`fsd`/`fmin`/`fmax`/`fnobs` — with the app's `is.finite(x) & is.finite(w) & w > 0` mask folded in, NA-key rows dropped as `split()` did, and all-masked (countryyear, variable) cells still emitted with N = 0; weighted SD now uses `fsd(w=)` with the $\sum w-1$ denominator, accepted per user decision; 6.5x at 50k x 24, 2.2x at the 200k x 72 production scale). `collapse` 2.1.7 declared in `DESCRIPTION` Imports and `renv.lock` (`Rcpp` already locked). Follow-up collapse wins in the same pass: `.compute_hazard_values()` (`R/fct_policy_decompose.R`) and `summarise_weather_anomaly_by_loc()` (anomaly/percentile historical view — bit-exact parity incl. the old `weighted.mean` NA-weight poisoning semantics) now grouped passes (35x at 400k rows x 40k locations), the Step 3 decomposition channel aggregation (`mod_3_09_decomposition.R`) shares one grouping across channels instead of re-splitting per channel, and the binned-weather DT hoists its per-variable missingness into the shared helper. The Step 1 stats-table `Variable` column change is recorded under §7. **PERF-26 (2026-09-02):** `int_month`/`sim_year` are derived from simulation timestamps in one `as.POSIXlt()` pass via a shared `.add_sim_timestamp_fields()` helper used by both the simulation join and `prepare_hist_weather()` (two duplicated `format()` passes deleted); POSIXlt truncates, so fractional-second timestamps can no longer round across a month/year boundary, while whole-second `Date` output is unchanged. Regression coverage in `test-prepare-hist-weather.R` (12-month equivalence with the old `format()` output, boundary truncation, NA-timestamp drop).
 
