@@ -335,6 +335,132 @@ test_that("applying an empty config is a no-op", {
 })
 
 
+# ---- Import validation & deferred retry (UI-52) ------------------------------
+
+test_that("the import validator rejects non-WISE-APP and newer-format files", {
+  av <- "1.2.3"
+  expect_false(.import_validate(list(inputs = list()), app_version = av)$ok)
+  expect_false(.import_validate(list(app_version = av), app_version = av)$ok)
+  expect_false(.import_validate(
+    list(wiseapp_config_version = 2L, inputs = list(a = 1)),
+    app_version = av)$ok)
+  ok <- .import_validate(list(wiseapp_config_version = 1L, app_version = av,
+                              inputs = list(a = 1)), app_version = av)
+  expect_true(ok$ok)
+  expect_length(ok$notes, 0L)
+  # A different app version warns but does not reject.
+  warn <- .import_validate(list(wiseapp_config_version = 1L,
+                                app_version = "9.9.9", inputs = list(a = 1)),
+                           app_version = av)
+  expect_true(warn$ok)
+  expect_match(warn$notes[1], "9.9.9")
+  # An unknown session version cannot claim a mismatch.
+  expect_length(
+    .import_validate(list(wiseapp_config_version = 1L, app_version = "9.9.9",
+                          inputs = list(a = 1)),
+                     app_version = NA_character_)$notes, 0L)
+})
+
+test_that("already-in-force values are not counted as changes", {
+  expect_true(.import_value_same(50, 50))
+  expect_true(.import_value_same(50L, 50))   # JSON round-trip: int -> double
+  expect_true(.import_value_same(c("tx", "r"), c("tx", "r")))
+  expect_false(.import_value_same(50, 51))
+  expect_false(.import_value_same("a", "b"))
+  expect_false(.import_value_same(NULL, 1))
+  expect_true(.import_value_same(NULL, NULL))
+})
+
+# The deferred-retry mechanism end to end. The proxy session records what the
+# retry pushes without replacing the test session itself.
+.import_e2e_server <- function(sent) {
+  function(input, output, session) {
+    proxy <- new.env(parent = emptyenv())
+    proxy$sendInputMessage <- function(id, msg) {
+      sent[[id]] <- msg$value
+      invisible(NULL)
+    }
+    proxy$userData <- session$userData
+    export_menu_server(input, output, proxy,
+                       provenance = shiny::reactive(list()), seed = 1L)
+  }
+}
+
+.import_file <- function(inputs) {
+  # Plain tempfile: withr::local_tempfile() would delete the file when this
+  # helper returns, before the import handler reads it.
+  f <- tempfile(fileext = ".json")
+  jsonlite::write_json(list(wiseapp_config_version = 1L, inputs = inputs),
+                       f, auto_unbox = TRUE, pretty = TRUE)
+  f
+}
+
+test_that("a deferred setting is applied once its control appears (UI-52)", {
+  sent <- new.env(parent = emptyenv())
+  testServer(.import_e2e_server(sent), {
+    session$setInputs(`dummy_existing` = 1L)  # live before the import
+    f <- .import_file(list(late_ctrl = "restored"))
+    session$setInputs(import_config_file = list(
+      datapath = f, name = "configuration.json", size = 20L,
+      type = "application/json"))
+
+    st <- session$userData$wise_import_status
+    expect_equal(st$class, "alert-success")
+    expect_match(st$text, "1 more will be applied")
+    expect_false("late_ctrl" %in% ls(sent))
+
+    # The control appears in a renderUI() flush. New input keys do not
+    # invalidate the retry observer, but any change to an existing one
+    # re-runs it, and it now finds late_ctrl.
+    session$setInputs(`late_ctrl` = "placeholder")
+    expect_false("late_ctrl" %in% ls(sent))
+    session$setInputs(`dummy_existing` = 2L)
+
+    expect_equal(sent$late_ctrl, "restored")
+    expect_match(session$userData$wise_import_status$text,
+                 "All deferred settings restored")
+  })
+})
+
+test_that("the heartbeat applies deferred settings without any input change", {
+  sent <- new.env(parent = emptyenv())
+  testServer(.import_e2e_server(sent), {
+    skip_if_not(is.function(session$elapse),
+                "MockShinySession$elapse() unavailable")
+    f <- .import_file(list(late_ctrl = "restored"))
+    session$setInputs(import_config_file = list(
+      datapath = f, name = "configuration.json", size = 20L,
+      type = "application/json"))
+    session$setInputs(`late_ctrl` = "placeholder")  # control appears
+    expect_false("late_ctrl" %in% ls(sent))
+    session$elapse(1500)                            # heartbeat fires
+    expect_equal(sent$late_ctrl, "restored")
+  })
+})
+
+test_that("deferred settings that never appear are abandoned audibly", {
+  sent <- new.env(parent = emptyenv())
+  testServer(.import_e2e_server(sent), {
+    session$setInputs(`dummy_existing` = 1L)
+    f <- .import_file(list(never_ctrl = "x"))
+    session$setInputs(import_config_file = list(
+      datapath = f, name = "configuration.json", size = 20L,
+      type = "application/json"))
+    expect_match(session$userData$wise_import_status$text,
+                 "1 more will be applied")
+
+    # Expire the retry window; the next retry pass gives up, audibly.
+    session$userData$wise_import_state$pending$deadline <- Sys.time() - 1
+    session$setInputs(`dummy_existing` = 2L)
+    st <- session$userData$wise_import_status
+    expect_equal(st$class, "alert-warning")
+    expect_match(st$text, "Gave up on 1 setting")
+    expect_false("never_ctrl" %in% ls(sent))
+    expect_null(session$userData$wise_import_state$pending)
+  })
+})
+
+
 test_that("the archive writer falls back when no system zip is present", {
   skip_if_not_installed("zip")
   d <- withr::local_tempdir()

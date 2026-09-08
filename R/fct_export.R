@@ -186,6 +186,10 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
   "secret", "key", "token", "password", "credential", "client_id", "tenant"
 )
 
+# How long the import retry keeps waiting for renderUI() controls to appear
+# before it gives up, audibly (see export_menu_server()).
+.EXPORT_RETRY_SECONDS <- 120
+
 #' Should an input be carried in the exported configuration?
 #'
 #' @param ids Character vector of (namespaced) input ids.
@@ -264,6 +268,57 @@ wise_config_apply <- function(config, session, existing = character(0)) {
     )
   }
   invisible(list(applied = ids[can], pending = ids[!can]))
+}
+
+#' Validate an imported configuration before anything is applied
+#'
+#' Rejects files that are not WISE-APP exports or that a newer configuration
+#' format wrote, and collects warnings (e.g. a different `app_version`) to
+#' show alongside the success message rather than silently continuing.
+#'
+#' @param cfg Parsed configuration list.
+#' @param app_version This session's app version (NA when unknown).
+#' @return A list: `ok` (logical), `text` (rejection reason), `notes`
+#'   (warnings to show with the success status).
+#' @noRd
+.import_validate <- function(cfg, app_version = NA_character_) {
+  reject <- function(text) list(ok = FALSE, text = text, notes = character(0))
+  if (is.null(cfg$inputs)) {
+    return(reject(paste(
+      "That file has no `inputs` section - it does not look like a",
+      "WISE-APP configuration export.")))
+  }
+  v <- cfg$wiseapp_config_version
+  if (is.null(v)) {
+    return(reject(paste(
+      "That file has no `wiseapp_config_version` field - it does not look",
+      "like a WISE-APP configuration export.")))
+  }
+  if (isTRUE(v > 1)) {
+    return(reject(paste0(
+      "That file was written in configuration version ", v, "; this app ",
+      "reads version 1. Update WISE-APP, then re-import.")))
+  }
+  notes <- character(0)
+  if (!is.null(cfg$app_version) && !is.na(app_version) &&
+      !identical(as.character(cfg$app_version), app_version)) {
+    notes <- c(notes, paste0(
+      "Exported from WISE-APP ", cfg$app_version, "; this session runs ",
+      app_version, " - settings may differ."))
+  }
+  list(ok = TRUE, text = character(0), notes = notes)
+}
+
+#' Compare an imported value with the control's current value
+#'
+#' `all.equal()` rather than `identical()`: the JSON round-trip turns integers
+#' into doubles, and a restored setting equal to what the control already
+#' shows is not a restoration - it must not be reported as one.
+#'
+#' @noRd
+.import_value_same <- function(a, b) {
+  if (is.null(a) || is.null(b)) return(is.null(a) && is.null(b))
+  isTRUE(all.equal(a, b))
 }
 
 
@@ -876,10 +931,29 @@ export_menu_server <- function(input, output, session,
     ))
   })
 
-  # Ids that could not be applied yet because their control does not exist.
-  pending <- shiny::reactiveVal(NULL)
-
+  # Deferred-control retry state lives in a plain environment, not a
+  # reactiveVal: the retry observer must not be invalidated by its own
+  # bookkeeping. (A reactiveVal write from its own reader burns the whole
+  # retry budget in one synchronous burst, long before renderUI() can create
+  # a single control - and once exhausted it stopped reading the input set,
+  # so deferred settings were never restored at all.) The state is mirrored
+  # in `session$userData` so tests can seed and inspect it.
+  import_state <- session$userData$wise_import_state
+  if (is.null(import_state)) {
+    import_state <- new.env(parent = emptyenv())
+    session$userData$wise_import_state <- import_state
+  }
   import_status <- shiny::reactiveVal(NULL)
+  set_import_status <- function(st) {
+    import_status(st)
+    session$userData$wise_import_status <- st
+  }
+  # Non-reactive wake-up, bumped only by the import handler: the retry
+  # observer runs once per import, once per heartbeat while work is
+  # outstanding, and once per input change in that window - never in a
+  # self-scheduled loop.
+  import_wake <- shiny::reactiveVal(0L)
+
   output$import_config_status <- shiny::renderUI({
     st <- import_status()
     if (is.null(st)) return(NULL)
@@ -896,51 +970,95 @@ export_menu_server <- function(input, output, session,
       error = function(e) e
     )
     if (inherits(cfg, "error")) {
-      import_status(list(class = "alert-danger",
-                         text = paste("Could not read that file:",
-                                      conditionMessage(cfg))))
+      set_import_status(list(class = "alert-danger",
+                             text = paste("Could not read that file:",
+                                          conditionMessage(cfg))))
       return(invisible(NULL))
     }
-    if (is.null(cfg$inputs)) {
-      import_status(list(
-        class = "alert-danger",
-        text = paste("That file has no `inputs` section - it does not look",
-                     "like a WISE-APP configuration export.")))
+    verdict <- .import_validate(cfg, app_version = as.character(
+      tryCatch(golem::get_golem_version(), error = function(e) NA_character_)))
+    if (!verdict$ok) {
+      set_import_status(list(class = "alert-danger", text = verdict$text))
       return(invisible(NULL))
     }
 
     live <- names(shiny::reactiveValuesToList(input))
     res  <- wise_config_apply(cfg, session, existing = live)
-    pending(list(config = cfg, ids = res$pending, tries = 0L))
+    # Honesty: the server cannot see client-side send failures, and a value
+    # equal to what the control already shows is not a restoration - so the
+    # count reported is settings actually changed, never sends attempted.
+    n_changed <- if (length(res$applied)) sum(vapply(res$applied, function(id) {
+      !.import_value_same(input[[id]], cfg$inputs[[id]])
+    }, logical(1))) else 0L
 
-    import_status(list(
-      class = "alert-success",
-      text = paste0(
-        "Restored ", length(res$applied), " setting(s).",
-        if (length(res$pending))
-          paste0(" ", length(res$pending), " more will be applied as the ",
-                 "matching controls appear.") else "",
-        " Re-run each step to refresh results."
-      )
+    import_state$pending <- if (length(res$pending)) list(
+      config = cfg, ids = res$pending,
+      deadline = Sys.time() + .EXPORT_RETRY_SECONDS
+    ) else NULL
+    import_wake(import_wake() + 1L)
+
+    parts <- c(
+      verdict$notes,
+      if (length(res$applied)) {
+        if (n_changed == length(res$applied))
+          paste0("Applied ", n_changed, " setting(s).")
+        else paste0("Applied ", n_changed, " of ", length(res$applied),
+                    " matching setting(s) (the rest were already in force).")
+      } else if (!length(res$pending)) {
+        "Nothing to apply - the file lists no controls this session has."
+      },
+      if (length(res$pending))
+        paste0(length(res$pending), " more will be applied as the matching ",
+               "controls appear."),
+      "Re-run each step to refresh results."
+    )
+    set_import_status(list(
+      class = if (length(verdict$notes)) "alert-warning" else "alert-success",
+      text = paste(parts, collapse = " ")
     ))
   })
 
   # Controls inside renderUI() do not exist until their upstream data has
-  # loaded, so a single pass would silently drop them. Re-apply whatever is
-  # still outstanding whenever the set of live inputs changes, and give up
-  # after a bounded number of attempts rather than retrying forever.
+  # loaded, so a single pass silently drops them. While anything is
+  # outstanding, re-apply on (a) any input change - the observer reads the
+  # whole live set, so a control that has appeared re-arms it - and (b) a
+  # slow heartbeat for controls that appear without an input change. It gives
+  # up, naming the ids, when the window closes rather than retrying forever.
   shiny::observe({
-    p <- pending()
-    if (is.null(p) || !length(p$ids) || p$tries > 40L) return(invisible(NULL))
+    import_wake()
+    p <- import_state$pending
+    if (is.null(p) || !length(p$ids)) return(invisible(NULL))
     live <- names(shiny::reactiveValuesToList(input))
-    still <- setdiff(p$ids, live)
     ready <- intersect(p$ids, live)
+    still <- setdiff(p$ids, live)
     if (length(ready)) {
       sub <- p$config
       sub$inputs <- sub$inputs[ready]
       wise_config_apply(sub, session, existing = ready)
     }
-    pending(list(config = p$config, ids = still, tries = p$tries + 1L))
+    if (length(still) && Sys.time() < p$deadline) {
+      import_state$pending <- list(config = p$config, ids = still,
+                                   deadline = p$deadline)
+      if (length(ready)) {
+        set_import_status(list(class = "alert-success", text = paste0(
+          "Applied ", length(ready), " more setting(s) as controls ",
+          "appeared; ", length(still), " still pending.")))
+      }
+      shiny::invalidateLater(1000)
+      return(invisible(NULL))
+    }
+    if (length(still)) {
+      set_import_status(list(class = "alert-warning", text = paste0(
+        "Gave up on ", length(still), " setting(s) whose controls never ",
+        "appeared - they may belong to a step this session has not loaded: ",
+        paste(utils::head(vapply(still, function(id) sub("^.*-", "", id),
+                          character(1)), 6L), collapse = ", "), ".")))
+    } else {
+      set_import_status(list(class = "alert-success", text = paste0(
+        "All deferred settings restored as controls appeared. Re-run each ",
+        "step to refresh results.")))
+    }
+    import_state$pending <- NULL
   })
 
   invisible(NULL)
