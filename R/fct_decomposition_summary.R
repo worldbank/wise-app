@@ -19,7 +19,19 @@
 decomposition_summary_data <- function(decomp_df, is_rif = TRUE,
                                         tolerance = 1e-10) {
   if (is.null(decomp_df) || !is.data.frame(decomp_df) || !nrow(decomp_df)) {
-    return(tibble::tibble())
+    # Keep the empty result schema stable. Shiny renders the decomposition
+    # outputs before the first simulation, so callers must be able to inspect
+    # these columns even when there are no rows yet.
+    return(tibble::tibble(
+      channel_id = character(),
+      channel = character(),
+      parent = character(),
+      model_value = numeric(),
+      log_points = numeric(),
+      percent = numeric(),
+      share_of_total = numeric(),
+      is_rif = logical()
+    ))
   }
   w <- .decomp_weights(decomp_df)
   zero <- rep(0, nrow(decomp_df))

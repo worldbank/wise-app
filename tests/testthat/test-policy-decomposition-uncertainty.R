@@ -94,6 +94,15 @@ test_that("headline decomposition reconciles level plus resilience to total", {
   expect_equal(s$channel[s$channel_id == "resilience"], "Resilience")
 })
 
+test_that("empty headline decomposition keeps the render schema", {
+  s <- wiseapp:::decomposition_summary_data(NULL, is_rif = FALSE)
+
+  expect_equal(nrow(s), 0L)
+  expect_true(all(c("channel_id", "channel", "log_points", "percent",
+                    "share_of_total") %in% names(s)))
+  expect_equal(wiseapp:::decomposition_reconciliation(s)$status, "unavailable")
+})
+
 test_that("decomposition explanation distinguishes OLS and RIF", {
   expect_match(wiseapp:::decomposition_explanation(FALSE)$text,
                "no repositioning")
