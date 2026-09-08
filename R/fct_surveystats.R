@@ -253,6 +253,7 @@ welfare_poverty_lines <- function() {
 #'   economy its own colour series and orders colours from older to newer
 #'   survey waves within that economy. Other options are `"okabe_ito"`,
 #'   `"wise"`, and `"blue"`.
+#' @param wave_labels Optional named character vector replacing wave labels.
 #'
 #' @return A `ggplot` object, or `NULL` invisibly when `plot_data` is
 #'   `NULL` or has zero rows.
@@ -1014,35 +1015,34 @@ stats_table_frame <- function(df, vl, flag_col = NULL, vars = NULL, base = NULL)
 #'   Ignored if `vars` is supplied.
 #' @param vars Optional character vector of variable names to summarise. When
 #'   supplied, takes precedence over `flag_col`.
-#' @param base Optional reactive (or list) carrying a precomputed shared
-#'   aggregation over the union of all stats-table variables, with elements
-#'   `vars` (the union, intersected with the data's columns), `summary` (the
-#'   `weighted_summary_long()` result for the union) and `missing` (the
-#'   `survey_missingness_long()` result for the union, or `NULL` when the
-#'   data has no `countryyear`). When the union covers this table's
-#'   variables the rows are filtered out of it instead of re-running the
-#'   grouped passes (PERF-40); otherwise the table aggregates locally, so
-#'   standalone callers are unaffected.
+#' @param base Optional reactive or list containing the shared summary base.
 #'
 #' @return A `shiny.render.function` (from `DT::renderDT`) that renders the
 #'   formatted summary statistics table.
 #' @export
-make_stats_dt <- function(survey_data, variable_list, flag_col = NULL, vars = NULL, base = NULL) {
+make_stats_dt <- function(survey_data, variable_list, flag_col = NULL,
+                          vars = NULL, base = NULL) {
   DT::renderDT({
     shiny::req(survey_data())
-    df <- survey_data()
-    vl <- if (is.function(variable_list)) variable_list() else variable_list
-
-    tab <- stats_table_frame(df, vl, flag_col = flag_col, vars = vars, base = base)
+    tab <- build_stats_table(survey_data, variable_list, flag_col, vars, base)
+    if (is.null(tab)) {
+      tag <- flag_col %||% "specified"
+      return(data.frame(Note = paste("No", tag, "variables found")))
+    }
 
     dt <- DT::datatable(
       tab,
       rownames = FALSE,
       escape = FALSE,
+      extensions = "Buttons",
       options = list(
         autoWidth = TRUE,
         pageLength = 10,
-        columnDefs = list(list(className = "dt-wrap", targets = "_all"))
+        columnDefs = list(list(className = "dt-wrap", targets = "_all")),
+        dom     = wise_csv_dom("lfrtip"),
+        buttons = wise_csv_button(
+          paste0("summary_stats_", flag_col %||% "selected")
+        )
       )
     )
 
@@ -1055,6 +1055,27 @@ make_stats_dt <- function(survey_data, variable_list, flag_col = NULL, vars = NU
 
     dt
   })
+}
+
+#' Build the summary-statistics data frame for export consumers
+#'
+#' Uses the optimization branch's shared aggregation base when supplied.
+#'
+#' @noRd
+build_stats_table <- function(survey_data, variable_list, flag_col = NULL,
+                              vars = NULL, base = NULL) {
+  df <- tryCatch(if (is.function(survey_data)) survey_data() else survey_data,
+                 error = function(e) NULL)
+  if (is.null(df) || !nrow(as.data.frame(df))) return(NULL)
+  vl <- tryCatch(if (is.function(variable_list)) variable_list() else variable_list,
+                 error = function(e) NULL)
+  if (is.null(vl)) return(NULL)
+  base_value <- tryCatch(if (is.function(base)) base() else base,
+                         error = function(e) NULL)
+  tab <- stats_table_frame(df, vl, flag_col = flag_col, vars = vars,
+                           base = base_value)
+  if (identical(names(tab), "Note")) return(NULL)
+  tab
 }
 
 

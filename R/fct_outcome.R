@@ -290,6 +290,7 @@ outcome_missing_summary <- function(df, outcome) {
 #' @param type Outcome type: `"numeric"` or `"logical"`.
 #' @param poverty_lines A data frame with columns `value` and `label`.
 #'   Only used when `outcome == "welfare"`.
+#' @param wave_labels Optional named character vector replacing wave labels.
 #'
 #' @return A `ggplot` object, or `NULL` invisibly.
 #'

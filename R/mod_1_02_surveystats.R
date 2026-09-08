@@ -10,12 +10,10 @@
 #' @importFrom ggplot2 ggplot aes geom_bar theme_minimal labs theme
 mod_1_02_surveystats_ui <- function(id) {
   ns <- NS(id)
-  tags$style(HTML("
-    table.dataTable td.dt-wrap {
-      white-space: normal !important;
-      word-break: break-word;
-    }
-  "))
+  # The `dt-wrap` column style lives in custom.css. It used to be built here
+  # as a bare tags$style() that was evaluated and then thrown away - the
+  # tagList below is what the function returns - so the rule never reached the
+  # page. It now also serves the weather stats tables (fct_weatherstats.R).
   tagList(
     uiOutput(ns("survey_stats_button_ui"))
   )
@@ -318,7 +316,7 @@ mod_1_02_surveystats_server <- function(
         # Interview dates bar chart. Grouped columns keep wave totals directly
         # comparable; plot_interview_dates() also exposes faceted and heatmap
         # variants for static outputs and design comparisons.
-        output$interview_date <- renderPlot({
+        interview_date_fig <- function() {
           unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
           unit_label <- switch(
             unit %||% "hh",
@@ -326,15 +324,31 @@ mod_1_02_surveystats_server <- function(
             firm = "Firms",
             "Households"
           )
-          p <- plot_interview_dates(
+          plot_interview_dates(
             summarise_interview_dates(survey_data()),
             unit_label = unit_label,
             palette = "sequential",
             wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
           )
+        }
+
+        output$interview_date <- renderPlot({
+          p <- interview_date_fig()
           req(!is.null(p))
           p
         })
+
+        wise_export_figure(
+          key   = "interview_dates",
+          label = "Interview dates",
+          step  = 1L,
+          fun   = interview_date_fig,
+          description = paste(
+            "When the selected surveys were fielded, by month - the calendar",
+            "window the weather aggregation is matched against."
+          ),
+          width = 9, height = 5
+        )
 
         # Unit label for legend/tooltip text ("households", "individuals",
         # "firms"), resolved live so an analysis-unit switch re-labels.
@@ -443,6 +457,34 @@ mod_1_02_surveystats_server <- function(
         output$area_stats    <- make_stats_dt(survey_data, variable_list, "area",
                                               base = stats_base)
 
+        # UI-48: register the same builders with the export bundle. Nothing is
+        # computed here - the functions are called only if a bundle is asked
+        # for, and return NULL for a level the survey has no variables at.
+        local({
+          levels <- list(
+            outcome = "Outcome variables",
+            ind     = "Individual-level variables",
+            hh      = "Household-level variables",
+            firm    = "Firm-level variables",
+            area    = "Area-level variables"
+          )
+          for (flag in names(levels)) local({
+            f <- flag
+            wise_export_table(
+              key   = paste0("survey_summary_", f),
+              label = paste("Survey summary -", tolower(levels[[f]])),
+              step  = 1L,
+              fun   = function() build_stats_table(survey_data, variable_list, f,
+                                                   base = stats_base),
+              description = paste0(
+                "Weighted summary statistics (N, mean, SD, percentiles, % ",
+                "missing) for ", tolower(levels[[f]]),
+                ", by country and survey wave."
+              )
+            )
+          })
+        })
+
         # Only show characteristic tables relevant to the selected level of
         # analysis: individual level implies household + area also apply;
         # household level implies area also applies; firm level is separate.
@@ -478,6 +520,46 @@ mod_1_02_surveystats_server <- function(
         # Binds live to selected_surveys()/analysis_unit() so the card follows
         # the sidebar selection, like the DT table it replaces.
 
+        wise_export_table(
+          key   = "survey_summary_policy",
+          label = "Survey summary - policy-relevant variables",
+          step  = 1L,
+          fun   = function() build_stats_table(survey_data, variable_list,
+                                               vars = policy_vars,
+                                               base = stats_base),
+          description = paste(
+            "Weighted summary statistics for the variables that Step 3's",
+            "policy levers act on, by country and survey wave."
+          )
+        )
+
+        selected_surveys_df <- function() {
+          sel <- tryCatch(selected_surveys(), error = function(e) NULL)
+          if (is.null(sel)) return(NULL)
+          sel |> dplyr::select(-dplyr::any_of(c("fname", "fpath")))
+        }
+
+        wise_export_table(
+          key   = "selected_surveys",
+          label = "Selected surveys",
+          step  = 1L,
+          fun   = selected_surveys_df,
+          description = paste(
+            "The survey rounds included in the analysis: country, year,",
+            "survey name and sample metadata."
+          )
+        )
+
+        output$selected_surveys <- DT::renderDT({
+          req(selected_surveys())
+          selected_surveys_df()
+        }, rownames = FALSE,
+          extensions = "Buttons",
+          options = list(dom = wise_csv_dom("t"), paging = FALSE,
+                         searching = FALSE, info = FALSE,
+                         buttons = wise_csv_button("selected_surveys")),
+          class = "compact")
+
         output$selected_surveys_card <- renderUI({
           ss <- selected_surveys()
           req(nrow(ss) > 0)
@@ -493,7 +575,7 @@ mod_1_02_surveystats_server <- function(
               programs <- sort(unique(s$survname))
               selection_card_row(
                 name  = as.character(s$economy[1]),
-                sub   = if (length(programs)) paste(programs, collapse = " · "),
+                sub   = if (length(programs)) paste(programs, collapse = " / "),
                 pills = as.character(sort(unique(s$year)))
               )
             }

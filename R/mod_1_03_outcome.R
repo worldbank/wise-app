@@ -261,6 +261,31 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
           )
         })
 
+        outcome_dist_fig <- function() {
+          spec <- tryCatch(outcome_spec(), error = function(e) NULL)
+          od   <- tryCatch(outcome_data(), error = function(e) NULL)
+          if (is.null(spec) || is.null(od)) return(NULL)
+          inf <- spec$info
+          plot_welfare_dist(
+            od,
+            outcome = as.character(inf$name[1]),
+            label   = as.character(inf$label[1]),
+            type    = as.character(inf$type[1])
+          )
+        }
+
+        wise_export_figure(
+          key   = "outcome_distribution",
+          label = "Outcome distribution",
+          step  = 1L,
+          fun   = outcome_dist_fig,
+          description = paste(
+            "Distribution of the selected welfare outcome over the pooled",
+            "sample."
+          ),
+          width = 9, height = 6
+        )
+
         output$outcome_dist <- renderPlot({
           spec <- outcome_spec()
           req(outcome_data(), spec)
@@ -469,6 +494,28 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
           .format_outcome_summary(s, summary_wave_val())
         }, striped = TRUE, hover = TRUE, bordered = TRUE)
 
+        # UI-45/UI-48: export the same precomputed, wave-selectable summary
+        # shown on screen rather than re-deriving a live pooled table.
+        outcome_summary_df <- function() {
+          spec <- outcome_spec()
+          s <- outcome_summary()
+          req(spec, s)
+          .format_outcome_summary(s, summary_wave_val())
+        }
+        output$outcome_summary_csv <- csv_download_handler(
+          "outcome_summary_stats", outcome_summary_df
+        )
+        wise_export_table(
+          key   = "outcome_summary",
+          label = "Outcome summary statistics",
+          step  = 1L,
+          fun   = outcome_summary_df,
+          description = paste(
+            "Summary statistics for the selected outcome, with the same",
+            "wave selection shown in the Outcome stats table."
+          )
+        )
+
         # Append tab
         tryCatch(
           shiny::appendTab(
@@ -508,7 +555,8 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
                       "Distribution of the selected outcome variable in the selected surveys",
                       height = "400px"
                     )
-                  )
+                  ),
+                  csv_download_link(ns("outcome_summary_csv"))
                 ),
                 # full_screen gives the card bslib's expand control; the map
                 # fills the card body in both states and re-fits itself on resize.
