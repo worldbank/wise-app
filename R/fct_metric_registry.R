@@ -108,3 +108,13 @@ annotate_visualization_export <- function(data, method = "mean", so = NULL,
   for (nm in names(meta)) data[[nm]] <- meta[[nm]][[1L]]
   data
 }
+
+log_effect_to_percent <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  100 * (exp(x) - 1)
+}
+
+percent_to_log_effect <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  log1p(x / 100)
+}

@@ -957,6 +957,68 @@ plot_variance_contribution <- function(var_tbl) {
     ggplot2::coord_flip()
 }
 
+variance_component_data <- function(var_tbl, include_shares = FALSE,
+                                    share_tolerance = 1e-12) {
+  if (is.null(var_tbl) || !nrow(var_tbl)) return(tibble::tibble())
+  df <- var_tbl
+  df$sd_coef <- sqrt(pmax(df$var_coef %||% 0, 0))
+  df$sd_within <- sqrt(pmax(df$var_within %||% 0, 0))
+  df$sd_across <- sqrt(pmax(df$var_across %||% 0, 0))
+  out <- tidyr::pivot_longer(
+    df[, intersect(c("scenario", "sd_coef", "sd_within", "sd_across"), names(df)),
+       drop = FALSE],
+    cols = c("sd_coef", "sd_within", "sd_across"),
+    names_to = "source", values_to = "sd"
+  )
+  out$variance <- out$sd^2
+  if (isTRUE(include_shares)) {
+    totals <- stats::setNames(
+      tapply(out$variance, out$scenario, sum, na.rm = TRUE),
+      unique(out$scenario)
+    )
+    out$share_approx <- out$variance / pmax(totals[as.character(out$scenario)],
+                                            share_tolerance)
+    out$share_warning <- "Approximate zero-covariance share; not a full variance decomposition."
+  } else {
+    out$share_approx <- NA_real_
+    out$share_warning <- NA_character_
+  }
+  out
+}
+
+model_robustness_data <- function(ts_tbl, band_q = c(lo = 0.10, hi = 0.90)) {
+  if (is.null(ts_tbl) || !nrow(ts_tbl) ||
+      !all(c("scenario", "model_id", "sim_year", "value") %in% names(ts_tbl))) {
+    return(tibble::tibble())
+  }
+  x <- dplyr::group_by(ts_tbl, .data$scenario, .data$model_id) |>
+    dplyr::summarise(model_mean = mean(.data$value, na.rm = TRUE),
+                     n_weather_years = sum(is.finite(.data$value)), .groups = "drop")
+  centers <- dplyr::group_by(x, .data$scenario) |>
+    dplyr::summarise(center = stats::median(.data$model_mean, na.rm = TRUE),
+                     ensemble_lo = stats::quantile(.data$model_mean, band_q[[1L]], na.rm = TRUE),
+                     ensemble_hi = stats::quantile(.data$model_mean, band_q[[2L]], na.rm = TRUE),
+                     n_models = dplyr::n_distinct(.data$model_id), .groups = "drop")
+  dplyr::left_join(x, centers, by = "scenario")
+}
+
+plot_model_robustness <- function(tbl, x_label = "Expected annual outcome") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "Climate-model robustness is unavailable."))
+  }
+  ggplot2::ggplot(tbl, ggplot2::aes(x = .data$model_mean, y = .data$scenario)) +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$ensemble_lo, xend = .data$ensemble_hi,
+                                       y = .data$scenario, yend = .data$scenario),
+                          linewidth = 5, colour = "#0072B2", alpha = 0.3) +
+    ggplot2::geom_point(size = 2, colour = "#243746", alpha = 0.7) +
+    ggplot2::geom_point(data = unique(tbl[c("scenario", "center")]),
+                        ggplot2::aes(x = .data$center, y = .data$scenario),
+                        shape = 21, fill = "#009E73", colour = "#243746", size = 3) +
+    ggplot2::labs(x = x_label, y = NULL,
+                  subtitle = "Each point is one climate model's mean across weather-year draws; interval = ensemble spread, not a probability.") +
+    theme_wise(base_size = 12)
+}
+
 # ---------------------------------------------------------------------------- #
 # Enhanced exceedance curve                                                    #
 # ---------------------------------------------------------------------------- #

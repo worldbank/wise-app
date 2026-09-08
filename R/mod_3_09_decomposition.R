@@ -15,6 +15,7 @@ mod_3_09_decomposition_ui <- function(id) {
     shiny::uiOutput(ns("policy_summary_ui")),
     shiny::uiOutput(ns("decomp_header_ui")),
     shiny::uiOutput(ns("decomp_explanation_ui")),
+    shiny::uiOutput(ns("decomp_headline_cards_ui")),
     shiny::wellPanel(
       shiny::h4("Headline decomposition"),
       wise_plot_output(ns("headline_decomp_plot"),
@@ -182,6 +183,23 @@ mod_3_09_decomposition_server <- function(id,
       shiny::tags$div(class = "alert alert-info", role = "note",
                       shiny::tags$strong(e$title), shiny::tags$br(), e$text)
     })
+    output$decomp_headline_cards_ui <- renderUI({
+      tbl <- headline_decomp_data()
+      if (is.null(tbl) || !nrow(tbl)) return(NULL)
+      value_for <- function(id) {
+        x <- tbl$percent[tbl$channel_id == id]
+        if (length(x) && is.finite(x[[1L]])) fmt_num(x[[1L]], 2) else "Unavailable"
+      }
+      sp <- sp_scenario()
+      cost <- if (is.list(sp) && is.finite(sp$budget_fixed %||% NA_real_))
+        paste0("$", format(round(sp$budget_fixed), big.mark = ",")) else "Not specified"
+      headline_cards_ui(list(
+        list(label = "Level effect", value = value_for("level"), note = "Percent change"),
+        list(label = "Resilience effect", value = value_for("resilience"), note = "Percent change"),
+        list(label = "Total policy effect", value = value_for("total"), note = "Reconciled on model scale"),
+        list(label = "Program cost", value = cost, note = "Configured annual budget")
+      ))
+    })
     output$headline_decomp_plot <- renderPlot({
       req(headline_decomp_data())
       plot_decomposition_headline(headline_decomp_data())
@@ -192,7 +210,7 @@ mod_3_09_decomposition_server <- function(id,
       DT::datatable(
         headline_decomp_data()[headline_decomp_data()$channel_id %in%
                                  c("level", "resilience", "total"),
-                               c("channel", "model_value", "percent", "share_of_total")],
+                               c("channel", "log_points", "percent", "share_of_total")],
         rownames = FALSE, class = "compact stripe", options = list(dom = "t")
       )
     })

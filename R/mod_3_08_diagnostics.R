@@ -10,7 +10,17 @@
 #'
 #' @importFrom shiny NS tagList
 mod_3_08_diagnostics_ui <- function(id) {
-  tagList()
+  ns <- shiny::NS(id)
+  shiny::tagList(
+    shiny::h4("Policy construction and realized treatment"),
+    shiny::uiOutput(ns("construction_warning_ui")),
+    DT::DTOutput(ns("construction_table")),
+    shiny::h4("Treatment assignment"),
+    DT::DTOutput(ns("treatment_table")),
+    shiny::h4("Covariate support against Step 1 training data"),
+    shiny::uiOutput(ns("covariate_support_warning_ui")),
+    DT::DTOutput(ns("covariate_support_table"))
+  )
 }
 
 #' 3_08_diagnostics Server Functions
@@ -326,9 +336,17 @@ mod_3_08_diagnostics_server <- function(id,
             title = "Diagnostics",
             value = "diag_tab",
             shiny::uiOutput(ns("policy_summary_ui")),
-            shiny::h4("Total social protection transfer amount"),
-            DT::DTOutput(ns("transfer_summary_ui")),
-            shiny::div(style = "margin: 12px 0;"),
+             shiny::h4("Total social protection transfer amount"),
+             DT::DTOutput(ns("transfer_summary_ui")),
+             shiny::h4("Policy construction and realized treatment"),
+             shiny::uiOutput(ns("construction_warning_ui")),
+             DT::DTOutput(ns("construction_table")),
+             shiny::h4("Treatment assignment"),
+             DT::DTOutput(ns("treatment_table")),
+             shiny::h4("Covariate support against Step 1 training data"),
+             shiny::uiOutput(ns("covariate_support_warning_ui")),
+             DT::DTOutput(ns("covariate_support_table")),
+             shiny::div(style = "margin: 12px 0;"),
             shiny::h4("Summary of manipulated variables"),
             shiny::tags$small(
               class = "text-muted",
@@ -361,6 +379,72 @@ mod_3_08_diagnostics_server <- function(id,
         policy_saved_scenarios = policy_saved_scenarios()
       )
     })
+
+    output$construction_table <- DT::renderDT({
+      d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
+      DT::datatable(
+        policy_construction_summary(d$baseline_svy, d$policy_svy,
+                                    sp_scenario(), analysis_unit()),
+        rownames = FALSE, class = "compact stripe", options = list(dom = "t")
+      )
+    })
+    output$treatment_table <- DT::renderDT({
+      d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
+      DT::datatable(
+        policy_treatment_matrix(d$baseline_svy, d$policy_svy),
+        rownames = FALSE, class = "compact stripe", options = list(dom = "t")
+      )
+    })
+    covariate_support_data <- reactive({
+      d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
+      training <- baseline_hist_sim()$train_data %||% d$baseline_svy
+      policy_covariate_support(training, d$policy_svy)
+    })
+    output$covariate_support_table <- DT::renderDT({
+      req(covariate_support_data())
+      DT::datatable(covariate_support_data(), rownames = FALSE,
+                    class = "compact stripe", options = list(pageLength = 20))
+    })
+    output$covariate_support_warning_ui <- renderUI({
+      tbl <- covariate_support_data()
+      if (is.null(tbl) || !nrow(tbl) || !any(tbl$warning)) return(NULL)
+      shiny::tags$div(class = "alert alert-warning", role = "alert",
+                      "Policy-adjusted covariates leave Step 1 training support or use absent/rare categories. Support overlap does not establish policy realism or causal validity.")
+    })
+    output$construction_warning_ui <- renderUI({
+      if (is.null(diag_data()) || !is.null(diag_data()$status)) return(NULL)
+      shiny::tags$p(class = "text-muted small",
+                    "Input, derived, and realized policy quantities are shown separately where available; randomization uses the run seed.")
+    })
+
+    wise_export_table(
+      key = "policy_construction_summary",
+      label = "Policy construction summary",
+      step = 3L,
+      fun = function() {
+        d <- diag_data(); if (is.null(d)) return(NULL)
+        policy_construction_summary(d$baseline_svy, d$policy_svy,
+                                    sp_scenario(), analysis_unit())
+      },
+      description = "Realized policy changes, changed population share, transfer total, seed, and reconciliation."
+    )
+    wise_export_table(
+      key = "policy_treatment_assignment",
+      label = "Policy treatment assignment",
+      step = 3L,
+      fun = function() {
+        d <- diag_data(); if (is.null(d)) return(NULL)
+        policy_treatment_matrix(d$baseline_svy, d$policy_svy)
+      },
+      description = "Weighted baseline eligible/not-eligible by policy treated/not-treated status."
+    )
+    wise_export_table(
+      key = "policy_covariate_support",
+      label = "Policy covariate support",
+      step = 3L,
+      fun = covariate_support_data,
+      description = "Policy-adjusted covariate ranges and category support against Step 1 training data."
+    )
 
     invisible(NULL)
   })

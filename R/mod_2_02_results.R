@@ -442,7 +442,8 @@ mod_2_02_results_server <- function(id,
           skip_coef    = ws$skip,
           bandwidth_p0 = bandwidth_p0(),
           model_ids    = "Historical",
-          scenario     = "Historical"
+            scenario     = "Historical",
+            shared_context = ws$hs$shared_context
         )
         setNames(list(out), method)
       }
@@ -472,7 +473,8 @@ mod_2_02_results_server <- function(id,
             band_q       = bq,
             skip_coef    = ws$skip,
             bandwidth_p0 = bandwidth_p0(),
-            model_ids    = names(pipes) %||% paste0("m", seq_along(pipes))
+            model_ids    = names(pipes) %||% paste0("m", seq_along(pipes)),
+            shared_context = s$shared_context
           )
           setNames(list(out), method)
         }

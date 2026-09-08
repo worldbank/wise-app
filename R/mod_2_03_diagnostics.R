@@ -31,7 +31,7 @@ mod_2_03_diagnostics_ui <- function(id) {
             " (shown when 'Include regression output' is selected above)."),
           shiny::p(shiny::tags$b("Coloured lines = Future scenarios:"),
             " solid = earliest simulation year, dashed = middle, dotted = latest."),
-          docs = TRUE
+           docs = TRUE
         )
       ),
       shiny::tags$div(
@@ -56,6 +56,7 @@ mod_2_03_diagnostics_ui <- function(id) {
                        "Density plot comparing the selected weather variable in the historical sample against its own climate history",
                        height = "340px"),
       shiny::uiOutput(ns("diag_weather_log_ui")),
+      shiny::uiOutput(ns("weather_support_warning_ui")),
       shiny::tags$p(
         style = "font-size:11px; color:#666; margin-top:4px;",
         "Grey fill = historical; black dashed = regression input; coloured lines = future scenarios."
@@ -90,6 +91,11 @@ mod_2_03_diagnostics_ui <- function(id) {
       wise_plot_output(ns("variance_contribution_plot"),
                        "Bar plot of each weather variable's contribution to simulated outcome variance",
                        height = "320px"),
+      shiny::checkboxInput(ns("show_variance_shares"),
+                           "Show approximate variance shares (advanced)",
+                           value = FALSE),
+      shiny::uiOutput(ns("variance_share_warning")),
+      DT::DTOutput(ns("variance_share_table")),
       shiny::tags$p(
         style = "font-size:11px; color:#666; margin-top:6px;",
         "Aligned bars show separate SD components; they are not additive - click ",
@@ -99,30 +105,24 @@ mod_2_03_diagnostics_ui <- function(id) {
 
     # ---- 3. Per-model trajectories (moved from Simulation Results) ----------
     shiny::wellPanel(
-      shiny::h4(
-        "Per-model trajectories across simulation years",
-        info_popover(
-          title = "Reading this chart",
-          shiny::p(shiny::tags$b("Thin coloured lines"),
-            " = one CMIP6 ensemble member each (a 'spaghetti' trace of model trajectories)."),
-          shiny::p(shiny::tags$b("Bold line"),
-            " = across-model median curve for each scenario."),
-          shiny::p(shiny::tags$b("Translucent ribbon"),
-            " (future scenarios only) = inter-model spread at the selected band quantiles."),
-          shiny::p(
-            "Each scenario \u00D7 projection period gets its own colour (SSP",
-            "family) and linetype (period), shown as one entry in the legend."
-          ),
-          docs = TRUE
-        )
-      ),
+      shiny::h4("Per-model trajectories across simulation years",
+                info_popover(title = "Reading this chart",
+                  shiny::p("Thin coloured lines = one CMIP6 ensemble member."),
+                  shiny::p("Bold line = across-model median curve."),
+                  docs = TRUE)),
       wise_plot_output(ns("timeseries_plot"),
                        "Time series of the outcome across survey years",
                        height = "380px"),
-      shiny::tags$p(
-        style = "font-size:11px; color:#666; margin-top:6px;",
-        "Thin lines = ensemble members; bold = median; ribbon = inter-model spread."
-      )
+      shiny::tags$p(class = "text-muted small",
+                    "Thin lines = ensemble members; bold = median; ribbon = inter-model spread.")
+    ),
+    shiny::wellPanel(
+      shiny::h4("Climate-model robustness"),
+      wise_plot_output(ns("model_robustness_plot"),
+                       "Climate-model mean outcome by scenario and period",
+                       height = "420px"),
+      shiny::tags$p(class = "text-muted small",
+                    "Historical appears once. Future points are model means across weather-year draws; intervals are ensemble spread, not probabilities.")
     )
   )
 }
@@ -327,6 +327,23 @@ mod_2_03_diagnostics_server <- function(id,
     }) |> shiny::bindEvent(input$diag_update_weather, hist_sim(),
                            ignoreNULL = TRUE, ignoreInit = FALSE)
 
+    weather_support_data <- reactive({
+      req(hist_sim(), survey_weather())
+      vars <- input$diag_weather_vars
+      req(length(vars) > 0L, !is.null(hist_sim()$weather_raw))
+      ref <- .filter_hist_weather(hist_sim()$weather_raw, survey_weather())
+      weather_support_summary(ref, scenario_weather_data(), vars)
+    })
+    output$weather_support_warning_ui <- renderUI({
+      tbl <- weather_support_data()
+      if (is.null(tbl) || !nrow(tbl) || !any(tbl$warning)) return(NULL)
+      bad <- unique(tbl$weather_variable[tbl$warning])
+      shiny::tags$div(class = "alert alert-warning", role = "alert",
+                      shiny::tags$strong("Weather support warning: "),
+                      paste(bad, collapse = ", "),
+                      " has more than 5% of scenario values outside the robust Step 1 1%-99% support interval. Extrapolation may be required.")
+    })
+
     # UI-48: Step 2 diagnostic figures for the export bundle.
     wise_export_figure(
       key   = "simulation_variance_contribution",
@@ -356,8 +373,9 @@ mod_2_03_diagnostics_server <- function(id,
       fun = function() {
         vb <- variance_breakdown()
         if (is.null(vb) || !nrow(vb)) return(NULL)
+        out <- variance_component_data(vb, isTRUE(input$show_variance_shares))
         annotate_visualization_export(
-          vb, hist_sim()$so$method %||% "mean", hist_sim()$so,
+          out, hist_sim()$so$method %||% "mean", hist_sim()$so,
           observation_unit = "scenario-level annual aggregate summary",
           aggregation_order = "weighted aggregate by model and weather-year; components retained separately",
           uncertainty = "coefficient, inter-annual, and inter-model components"
@@ -405,6 +423,38 @@ mod_2_03_diagnostics_server <- function(id,
       },
       description = "Underlying tidy weather values used by the support comparison."
     )
+    wise_export_table(
+      key = "simulation_weather_support_summary",
+      label = "Weather support summary",
+      step = 2L,
+      fun = weather_support_data,
+      description = "Sample sizes, robust Step 1 support intervals, outside-support shares, and warnings."
+    )
+    wise_export_figure(
+      key = "simulation_model_robustness",
+      label = "Climate-model robustness",
+      step = 2L,
+      fun = function() {
+        tc <- timeseries_curves(); req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+        plot_model_robustness(model_robustness_data(tc$tbl), tc$x_label)
+      },
+      description = "One point per climate model's mean across weather-year draws with ensemble spread.",
+      width = 10, height = 6
+    )
+    wise_export_table(
+      key = "simulation_model_robustness_data",
+      label = "Climate-model robustness data",
+      step = 2L,
+      fun = function() {
+        tc <- timeseries_curves(); req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+        annotate_visualization_export(model_robustness_data(tc$tbl),
+          hist_sim()$so$method %||% "mean", hist_sim()$so,
+          observation_unit = "climate-model mean across weather-year draws",
+          aggregation_order = "annual aggregate by model and weather year, then model mean",
+          uncertainty = "ensemble spread")
+      },
+      description = "Tidy climate-model robustness summaries."
+    )
     wise_export_figure(
       key = "simulation_model_trajectories",
       label = "Climate-model annual trajectories",
@@ -449,6 +499,22 @@ mod_2_03_diagnostics_server <- function(id,
       }
       plot_variance_contribution(vb)
     })
+    output$variance_share_warning <- renderUI({
+      if (!isTRUE(input$show_variance_shares)) return(NULL)
+      shiny::tags$p(class = "text-warning small",
+                    "Approximate shares assume zero covariance between components and may not sum to the uncertainty of the combined estimand.")
+    })
+    output$variance_share_table <- DT::renderDT({
+      req(variance_breakdown())
+      if (!isTRUE(input$show_variance_shares)) {
+        return(DT::datatable(data.frame(Message = "Approximate shares are hidden by default."),
+                            rownames = FALSE, options = list(dom = "t")))
+      }
+      DT::datatable(variance_component_data(variance_breakdown(), TRUE),
+                    rownames = FALSE, class = "compact stripe",
+                    options = list(pageLength = 20))
+    })
+    outputOptions(output, "variance_share_table", suspendWhenHidden = FALSE)
 
     output$timeseries_plot <- renderPlot({
       req(timeseries_curves)
@@ -467,6 +533,14 @@ mod_2_03_diagnostics_server <- function(id,
         ensemble_band_q = tc$ens_q
       )
     })
+
+    output$model_robustness_plot <- renderPlot({
+      req(timeseries_curves)
+      tc <- timeseries_curves()
+      req(!is.null(tc$tbl) && nrow(tc$tbl) > 0L)
+      plot_model_robustness(model_robustness_data(tc$tbl), tc$x_label)
+    }, height = 420)
+    outputOptions(output, "model_robustness_plot", suspendWhenHidden = TRUE)
 
 
 
@@ -533,6 +607,7 @@ mod_2_03_diagnostics_server <- function(id,
     outputOptions(output, "diag_weather_density",    suspendWhenHidden = TRUE)
     outputOptions(output, "variance_contribution_plot", suspendWhenHidden = TRUE)
     outputOptions(output, "timeseries_plot",         suspendWhenHidden = TRUE)
+    outputOptions(output, "variance_share_warning",  suspendWhenHidden = FALSE)
     outputOptions(output, "weight_status_diag_ui",   suspendWhenHidden = TRUE)
 
     # ---- Return API --------------------------------------------------------

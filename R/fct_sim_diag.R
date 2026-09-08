@@ -498,6 +498,40 @@ weather_density_data <- function(survey_weather, weather_raw, weather_vars,
     dplyr::filter(is.finite(.data$value))
 }
 
+weather_support_summary <- function(regression_weather, scenario_weather,
+                                    weather_vars, lower = 0.01, upper = 0.99,
+                                    warn_share = 0.05) {
+  if (is.null(regression_weather) || !is.data.frame(regression_weather)) {
+    return(data.frame())
+  }
+  scenarios <- scenario_weather %||% list()
+  rows <- lapply(intersect(weather_vars, names(regression_weather)), function(v) {
+    ref <- suppressWarnings(as.numeric(regression_weather[[v]]))
+    ref <- ref[is.finite(ref)]
+    if (!length(ref)) return(NULL)
+    robust <- as.numeric(stats::quantile(ref, c(lower, upper), names = FALSE,
+                                         na.rm = TRUE, type = 8))
+    out <- lapply(names(scenarios), function(nm) {
+      x <- suppressWarnings(as.numeric(scenarios[[nm]][[v]]))
+      x <- x[is.finite(x)]
+      if (!length(x)) return(NULL)
+      outside <- x < robust[[1L]] | x > robust[[2L]]
+      data.frame(
+        weather_variable = v, scenario = nm,
+        n_reference = length(ref), n_scenario = length(x),
+        robust_lo = robust[[1L]], robust_hi = robust[[2L]],
+        outside_n = sum(outside), outside_share = mean(outside),
+        warning = mean(outside) > warn_share,
+        warning_rule = paste0("Robust ", lower * 100, "%-", upper * 100,
+                              "% reference interval; warn above ", warn_share * 100, "% outside"),
+        stringsAsFactors = FALSE
+      )
+    })
+    dplyr::bind_rows(out)
+  })
+  dplyr::bind_rows(Filter(Negate(is.null), rows))
+}
+
 # ---------------------------------------------------------------------------- #
 # Year-anchored welfare ridge plot                                             #
 # ---------------------------------------------------------------------------- #

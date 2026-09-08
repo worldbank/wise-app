@@ -112,3 +112,56 @@ test_that("unsupported adverse return periods are omitted", {
   out <- wiseapp:::paired_adverse_effect_table(x, "mean")
   expect_false("Adverse 1-in-20" %in% out$period)
 })
+
+test_that("variance shares are opt-in and explicitly approximate", {
+  x <- data.frame(scenario = "SSP2 / 2030", var_coef = 1,
+                  var_within = 4, var_across = 9)
+  hidden <- wiseapp:::variance_component_data(x, FALSE)
+  shown <- wiseapp:::variance_component_data(x, TRUE)
+  expect_true(all(is.na(hidden$share_approx)))
+  expect_true(all(is.finite(shown$share_approx)))
+  expect_true(all(grepl("zero-covariance", shown$share_warning)))
+})
+
+test_that("weather support uses robust interval and warning share", {
+  ref <- data.frame(temp = 1:100)
+  sc <- list(`SSP2 / 2030` = data.frame(temp = c(rep(1, 90), rep(1000, 10))))
+  out <- wiseapp:::weather_support_summary(ref, sc, "temp")
+  expect_equal(out$n_reference, 100)
+  expect_true(out$warning)
+  expect_equal(out$warning_rule, "Robust 1%-99% reference interval; warn above 5% outside")
+})
+
+test_that("policy covariate support flags range and rare categories", {
+  train <- data.frame(x = 1:10, sector = rep(c("a", "b"), 5))
+  policy <- data.frame(x = c(1, 20), sector = c("a", "new"))
+  out <- wiseapp:::policy_covariate_support(train, policy)
+  expect_true(out$warning[out$variable == "x"])
+  expect_true(out$warning[out$variable == "sector"])
+})
+
+test_that("log effects convert to percent without losing model-scale additivity", {
+  level <- 0.10
+  resilience <- -0.04
+  total <- level + resilience
+  expect_equal(wiseapp:::log_effect_to_percent(total),
+               100 * (exp(total) - 1))
+  expect_equal(wiseapp:::percent_to_log_effect(
+    wiseapp:::log_effect_to_percent(total)), total)
+  expect_false(isTRUE(all.equal(
+    wiseapp:::log_effect_to_percent(level) +
+      wiseapp:::log_effect_to_percent(resilience),
+    wiseapp:::log_effect_to_percent(total)
+  )))
+})
+
+test_that("model robustness summarizes one point per model", {
+  x <- data.frame(
+    scenario = rep("SSP2 / 2030", 6), model_id = rep(c("a", "b"), each = 3),
+    sim_year = rep(1:3, 2), value = c(1, 2, 3, 2, 3, 4)
+  )
+  out <- wiseapp:::model_robustness_data(x)
+  expect_equal(nrow(out), 2L)
+  expect_equal(unique(out$center), 2.5)
+  expect_true(all(out$n_weather_years == 3L))
+})

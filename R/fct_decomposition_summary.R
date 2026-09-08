@@ -52,7 +52,8 @@ decomposition_summary_data <- function(decomp_df, is_rif = TRUE,
   resilience_value <- rows$model_value[[5L]]
   reconciled_total <- level_value + resilience_value
   residual <- total - reconciled_total
-  rows$percent <- (exp(rows$model_value) - 1) * 100
+  rows$log_points <- rows$model_value
+  rows$percent <- log_effect_to_percent(rows$model_value)
   rows$share_of_total <- if (is.finite(total) && abs(total) > tolerance &&
                              abs(total) >= 0.01 * sum(abs(c(level_value, resilience_value)))) {
     rows$model_value / total

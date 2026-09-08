@@ -213,6 +213,7 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       shiny::uiOutput(ns("stale_banner_ui")),
       shiny::uiOutput(ns("policy_summary_ui")),
       shiny::uiOutput(ns("headline_cards_ui")),
+      shiny::uiOutput(ns("outcome_level_mode_ui")),
       shiny::wellPanel(
         class = "results-controls",
       # Padding matches the Step 2 results controls panel (alignment).
@@ -526,6 +527,22 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     headline_cards_ui(cards)
   })
 
+  output$outcome_level_context_ui <- shiny::renderUI({
+    if (!identical(input$display_mode, "levels")) return(NULL)
+    shiny::tags$p(class = "text-muted small",
+                  "Baseline is shown with an open neutral marker and policy with a filled marker. This alternate view shows outcome levels; the default remains paired policy minus baseline.")
+  })
+
+  output$outcome_level_mode_ui <- shiny::renderUI({
+    shiny::wellPanel(
+      shiny::radioButtons(ns("display_mode"), "Display mode",
+                          choices = c("Paired policy effect" = "effect",
+                                      "Outcome levels" = "levels"),
+                          selected = "effect", inline = TRUE),
+      shiny::uiOutput(ns("outcome_level_context_ui"))
+    )
+  })
+
   # Resolve the residuals choice captured by the Step 2 run. The live control
   # is only a fallback for older in-memory result objects.
   active_residuals <- function(hs) {
@@ -703,7 +720,8 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       is_log    = isTRUE(hs$so$transform == "log"),
       band_q    = c(lo = 0.10, hi = 0.90),
       model_ids = "Historical",
-      scenario  = "Historical"
+      scenario  = "Historical",
+      shared_context = hs$shared_context
     )
     res <- list(out = agg)
     assign(.agg_cache_key(tag, method, pov_line_val()), res, envir = ws)
@@ -768,7 +786,8 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
           residuals = active_residuals(hs_for_dev),
           is_log    = isTRUE(s$so$transform == "log"),
           band_q    = c(lo = 0.10, hi = 0.90),
-          model_ids = names(pipes)
+          model_ids = names(pipes),
+          shared_context = s$shared_context
         )
         if (nrow(combined) == 0L) return(NULL)
         list(out = combined)
@@ -1255,6 +1274,19 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
   })
 
   output$summary_box_plot <- renderPlot({
+    if (identical(input$display_mode, "levels")) {
+      req(baseline_agg_scenarios(), policy_agg_scenarios())
+      return(plot_pointrange_climate(
+        dplyr::bind_rows(
+          dplyr::mutate(baseline_agg_scenarios(), source = "Baseline"),
+          dplyr::mutate(policy_agg_scenarios(), source = "Policy")
+        ),
+        x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
+                                    baseline_hist_sim()$so,
+                                    input$cmp_deviation %||% "none"),
+        show_coef = FALSE
+      ))
+    }
     req(paired_effect_summary_rv())
     tbl <- paired_effect_summary_rv()
     if (!isTRUE(input$show_model_spread)) {
