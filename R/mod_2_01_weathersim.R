@@ -37,57 +37,59 @@ mod_2_01_weathersim_ui <- function(id) {
     # ---- Settings summary banner (always visible) --------------------------
     shiny::uiOutput(ns("settings_summary")),
 
-    # ---- Main simulation choices --------------------------------------------
-    shiny::tags$div(
-      class = "step2-section-label",
-      "Baseline survey",
-    ),
-    shiny::uiOutput(ns("baseline_survey_ui")),
-    shiny::uiOutput(ns("baseline_warning_ui")),
-    shiny::tags$hr(style = "margin: 6px 0;"),
-
-    shiny::tags$div(
-      class = "step2-section-label",
-      "Climate scenarios",
-    ),
-    shiny::checkboxGroupInput(
-      inputId  = ns("climate"),
-      label    = shiny::tags$span(class = "visually-hidden", "Climate scenarios"),
-      choices  = c(
-        "SSP2" = "ssp2_4_5",
-        "SSP3" = "ssp3_7_0",
-        "SSP5" = "ssp5_8_5"
-      ),
-      selected = "ssp3_7_0",
-      inline = TRUE
-    ),
-    shiny::tags$hr(style = "margin: 6px 0;"),
-
-    shiny::tags$div(
-      class = "step2-section-label",
-      "Projection period",
-    ),
-    shiny::tags$div(
-      class = "step2-projection-period",
-      step2_with_grid_num(
-        shiny::sliderInput(
-          ns("fut_period_1"),
-          label = shiny::tags$span(class = "visually-hidden", "Projection period 1"),
-          min = 2010, max = 2100, value = c(2025, 2035), step = 1, sep = ""
-        ),
-        9
-      )
-    ),
-    shiny::uiOutput(ns("fut_years_warning")),
-    shiny::tags$hr(style = "margin: 6px 0;"),
-
     # ---- Simulation settings flyout (same pattern as Step 1 'Configure') ---
     # UI-02: shared flyout block - anchored to its toggle, one-open state,
     # aria-expanded, focus management, Escape to close (see custom.js).
     config_flyout_block(
       ns("settings_toggle"),
-      "More simulation settings",
-      toggle_label = "More simulation settings",
+      "Simulation settings",
+      toggle_label = "Simulation settings",
+
+      # -- Baseline survey ----------------------------------------------------
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Baseline survey"
+      ),
+      shiny::uiOutput(ns("baseline_survey_ui")),
+      shiny::uiOutput(ns("baseline_warning_ui")),
+      shiny::tags$hr(style = "margin: 6px 0;"),
+
+      # -- Climate scenarios --------------------------------------------------
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Climate scenarios"
+      ),
+      shiny::checkboxGroupInput(
+        inputId  = ns("climate"),
+        label    = shiny::tags$span(class = "visually-hidden", "Climate scenarios"),
+        choices  = c(
+          "SSP2" = "ssp2_4_5",
+          "SSP3" = "ssp3_7_0",
+          "SSP5" = "ssp5_8_5"
+        ),
+        selected = "ssp3_7_0",
+        inline = TRUE
+      ),
+      shiny::tags$hr(style = "margin: 6px 0;"),
+
+      # -- Projection period -------------------------------------------------
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Projection period"
+      ),
+      shiny::tags$div(
+        class = "step2-projection-period",
+        step2_with_grid_num(
+          shiny::sliderInput(
+            ns("fut_period_1"),
+            label = shiny::tags$span(class = "visually-hidden", "Projection period 1"),
+            min = 2010, max = 2100, value = c(2025, 2035), step = 1, sep = ""
+          ),
+          9
+        )
+      ),
+      shiny::uiOutput(ns("fut_years_warning")),
+      shiny::tags$hr(style = "margin: 6px 0;"),
 
       # -- Historical period --------------------------------------------------
       shiny::tags$h6(
