@@ -125,6 +125,11 @@ mod_2_simulation_server <- function(id,
 
     # ---- Clear scenarios button --------------------------------------------
     observeEvent(input$clear_scenarios, {
+      invisible(lapply(
+        Filter(Negate(is.null), lapply(s1$saved_scenarios(), function(s)
+          s$weather_store %||% NULL)),
+        step2_weather_store_cleanup
+      ))
       s1$saved_scenarios(list())
       s1$hist_sim(NULL)
       shiny::showNotification(

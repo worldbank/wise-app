@@ -13,17 +13,16 @@
 mod_3_01_sp_ui <- function(id) {
   ns <- NS(id)
   tagList(
+    # UI-32: live reach/cost summary, matching the Step 1 weather/model cards.
+    uiOutput(ns("sp_reach_ui")),
+
     # ---- Program type - always visible -------------------------------
     uiOutput(ns("sp_type_ui")),
 
     # ---- Collapsible configuration panel -------------------------------
     uiOutput(ns("sp_budget_amount_ui")),
     uiOutput(ns("sp_targeting_ui")),
-    uiOutput(ns("sp_timing_ui")),
-
-    # UI-32: live reach/cost of the configured scenario, so the targeting and
-    # transfer controls give feedback before a simulation is run.
-    uiOutput(ns("sp_reach_ui"))
+    uiOutput(ns("sp_timing_ui"))
   )
 }
 
@@ -86,7 +85,7 @@ mod_3_01_sp_server <- function(id,
       } else word
     }
 
-    # ---- PMT variable candidates (numeric, non-missing for welfare rows) ----
+    # ---- Proxy variable candidates (numeric, non-missing for welfare rows) ----
     pmt_candidates <- reactive({
       svy <- survey_weather()
       vl  <- variable_list()
@@ -121,20 +120,37 @@ mod_3_01_sp_server <- function(id,
 
     output$sp_type_ui <- renderUI({
       tagList(
-        tags$label(
-          class = "control-label",
-          tags$i(class = "fa fa-hand-holding-dollar me-1"),
-          "Program type"
+        tags$div(
+          class = "sp-program-label",
+          tags$span(
+            class = "sp-inline-label",
+            tags$i(class = "fa fa-hand-holding-dollar me-1"),
+            "Program"
+          )
         ),
-        radioButtons(
-          inputId  = ns("sp_type"),
-          label    = shiny::tags$span(class = "visually-hidden",
-                                      "Program type"),
-          choices  = c(
-            # "Shock-responsive cash transfer" = "shock",
-            "Regular cash transfer"          = "regular"
+        tags$div(
+          class = "sp-program-choice",
+          pill_toggle(
+            inputId = ns("sp_type"),
+            label = NULL,
+            choices = c(
+              "Regular"          = "regular",
+              "Shock-responsive" = "shock"
+            ),
+            selected = "regular"
           ),
-          selected = "regular"
+          tags$span(class = "sp-program-suffix", "cash transfer")
+        ),
+        conditionalPanel(
+          condition = paste0("input['", ns("sp_type"), "'] == 'shock'"),
+          tags$div(
+            class = "alert alert-warning py-1 px-2 mb-2",
+            tags$small(
+              tags$i(class = "fa fa-circle-info me-1"),
+              "Shock-responsive cash transfers are not yet implemented. This",
+              " selection is for display only and will not change the simulation."
+            )
+          )
         ),
         tags$hr(style = "margin: 8px 0;")
       )
@@ -178,26 +194,32 @@ mod_3_01_sp_server <- function(id,
     # ---- 3. Targeting --------------------------------------------------
 
     output$sp_targeting_ui <- renderUI({
-      tagList(
-        tags$label(
-          class = "control-label",
-          tags$i(class = "fa fa-crosshairs me-1"),
-          "Targeting"
+      tags$div(
+        class = "sp-targeting",
+        tags$div(
+          class = "sp-targeting-label",
+          tags$span(
+            class = "sp-inline-label",
+            tags$i(class = "fa fa-crosshairs me-1"),
+            "Targeting"
+          )
         ),
-        selectInput(
-          inputId  = ns("targeting"),
-          label    = shiny::tags$span(class = "visually-hidden",
-                                      "Targeting"),
-          choices  = stats::setNames(
-            c("universal", "exante_poor", "pmt"),
-            c(
-              "Universal",
-              "Welfare below threshold (ex-ante poor)",
-              paste(unit_word(plural = FALSE, capitalize = TRUE),
-                    "characteristics (PMT)")
-            )
-          ),
-          selected = "universal"
+        tags$div(
+          class = "sp-targeting-select",
+          selectInput(
+            inputId  = ns("targeting"),
+            label    = NULL,
+            choices  = stats::setNames(
+              c("universal", "exante_poor", "pmt"),
+              c(
+                "Universal",
+                "Welfare below threshold (ex-ante poor)",
+                paste(unit_word(plural = FALSE, capitalize = TRUE),
+                      "characteristics (Proxy)")
+              )
+            ),
+            selected = "universal"
+          )
         ),
 
         # Threshold for ex-ante poor targeting
@@ -215,7 +237,7 @@ mod_3_01_sp_server <- function(id,
             with_grid_num(11)
         ),
 
-        # PMT variable and cutoff (only for PMT targeting)
+        # Proxy variable and cutoff (only for Proxy targeting)
         conditionalPanel(
           condition = paste0("input['", ns("targeting"), "'] == 'pmt'"),
           uiOutput(ns("pmt_variable_ui")),
@@ -225,49 +247,50 @@ mod_3_01_sp_server <- function(id,
         # Inclusion/exclusion errors (only for non-universal targeting)
         conditionalPanel(
           condition = paste0("input['", ns("targeting"), "'] != 'universal'"),
-          sliderInput(
-            inputId = ns("inclusion_error_pct"),
-            label   = tags$div(
-              tags$span(
-                tags$i(class = "fa fa-user-plus me-1"),
-                "Inclusion error (%)"
+          tags$details(
+            tags$summary("Errors"),
+            sliderInput(
+              inputId = ns("inclusion_error_pct"),
+              label   = tags$div(
+                tags$span(
+                  tags$i(class = "fa fa-user-plus me-1"),
+                  "Inclusion error (%)"
+                ),
+                tags$div(
+                  class = "text-muted",
+                  style = "font-size: 0.8em; font-weight: normal;",
+                  paste0("Non-eligible ", unit_word(plural = TRUE), " included")
+                )
               ),
-              tags$div(
-                class = "text-muted",
-                style = "font-size: 0.8em; font-weight: normal;",
-                paste0("Share of non-eligible ", unit_word(plural = TRUE),
-                       " incorrectly included.")
-              )
+              min = 0, max = 30, value = 10, step = 5, post = "%"
             ),
-            min = 0, max = 30, value = 10, step = 5, post = "%"
-          ),
-          sliderInput(
-            inputId = ns("exclusion_error_pct"),
-            label   = tags$div(
-              tags$span(
-                tags$i(class = "fa fa-user-minus me-1"),
-                "Exclusion error (%)"
+            sliderInput(
+              inputId = ns("exclusion_error_pct"),
+              label   = tags$div(
+                tags$span(
+                  tags$i(class = "fa fa-user-minus me-1"),
+                  "Exclusion error (%)"
+                ),
+                tags$div(
+                  class = "text-muted",
+                  style = "font-size: 0.8em; font-weight: normal;",
+                  paste0("Eligible ", unit_word(plural = TRUE), " excluded")
+                )
               ),
-              tags$div(
-                class = "text-muted",
-                style = "font-size: 0.8em; font-weight: normal;",
-                paste0("Share of eligible ", unit_word(plural = TRUE),
-                       " incorrectly excluded.")
-              )
-            ),
-            min = 0, max = 30, value = 10, step = 5, post = "%"
+              min = 0, max = 30, value = 10, step = 5, post = "%"
+            )
           )
         ),
         tags$hr(style = "margin: 8px 0;")
       )
     })
 
-    # ---- PMT variable selector ----
+    # ---- Proxy variable selector ----
     output$pmt_variable_ui <- renderUI({
       cands <- pmt_candidates()
       if (length(cands) == 0) {
         return(no_data_warning(
-          "No suitable PMT variable found. No covariates with",
+          "No suitable Proxy variable found. No covariates with",
           "non-missing values found (for selected outcome)."
         ))
       }
@@ -275,14 +298,14 @@ mod_3_01_sp_server <- function(id,
         ns("pmt_variable"),
         label = tags$span(
           tags$i(class = "fa fa-list me-1"),
-          "PMT variable"
+          "Proxy variable"
         ),
         choices = cands,
         selected = cands[[1]]
       )
     })
 
-    # ---- PMT cutoff selector (type depends on variable) ----
+    # ---- Proxy cutoff selector (type depends on variable) ----
     output$pmt_cutoff_ui <- renderUI({
       v <- input$pmt_variable
       req(v)
@@ -327,138 +350,90 @@ mod_3_01_sp_server <- function(id,
     # Admin cost reduces the amount available for direct transfers in both modes.
 
     output$sp_budget_amount_ui <- renderUI({
+      currency <- tryCatch({
+        so <- selected_outcome()
+        if (is.null(so) || nrow(so) == 0 || !"units" %in% names(so)) {
+          "PPP"
+        } else {
+          as.character(so$units[[1]])
+        }
+      }, error = function(e) "PPP")
+      if (is.na(currency) || !nzchar(currency)) currency <- "PPP"
+
       tagList(
 
-        # -- Budget mode toggle ------------------------------------------
-        tags$label(
-          class = "control-label",
-          tags$i(class = "fa fa-link me-1"),
-          "Budget"
-        ),
-        radioButtons(
-          inputId  = ns("budget_mode"),
-          label    = shiny::tags$span(class = "visually-hidden",
-                                      "Budget mode"),
-          choices  = stats::setNames(
-            c("transfer_first", "budget_first"),
-            c(
-              paste("Set transfer per", unit_word(plural = FALSE, capitalize = TRUE), "\u2192 derive total budget"),
-              paste("Set total budget \u2192 derive transfer per", unit_word(plural = TRUE))
-            )
-          ),
-          selected = "transfer_first"
-        ),
-
-        tags$hr(style = "margin: 4px 0;"),
-
-        # -- Total budget (budget_first only) ----------------------------
-        conditionalPanel(
-          condition = paste0("input['", ns("budget_mode"), "'] == 'budget_first'"),
-          tags$label(
-            class = "control-label",
-            tags$i(class = "fa fa-coins me-1"),
-            "Total budget"
-          ),
-          # selectInput(
-          #   inputId  = ns("budget_type"),
-          #   label    = NULL,
-          #   choices  = c(
-          #     "Fixed amount"                                 = "fixed",
-          #     "Share of modelled welfare loss (at trigger)"  = "welfare_share",
-          #     "Proportional to modelled increase in poverty" = "poverty_prop",
-          #     "Based on annual expected welfare loss"        = "annual_expected"
-          #   ),
-          #   selected = "fixed"
-          # ),
-          # conditionalPanel(
-          #   condition = paste0("input['", ns("budget_type"), "'] == 'fixed'"),
-            numericInput(
-              inputId = ns("budget_fixed"),
-              label   = tags$span(
-                tags$i(class = "fa fa-dollar-sign me-1"),
-                "Fixed budget (USD)"
-              ),
-              value = 0, min = 0, step = 100000
-            ),
-          # ),
-          # conditionalPanel(
-          #   condition = paste0(
-          #     "input['", ns("budget_type"), "'] == 'welfare_share' || ",
-          #     "input['", ns("budget_type"), "'] == 'poverty_prop'"
-          #   ),
-          #   sliderInput(
-          #     inputId = ns("budget_share_pct"),
-          #     label   = tags$span(
-          #       tags$i(class = "fa fa-percent me-1"),
-          #       "Share / proportion (%)"
-          #     ),
-          #     min = 1, max = 100, value = 50, step = 1, post = "%"
-          #   )
-          # )
-        ),
-
-        # -- Transfer amount ---------------------------------------------
+        # -- Amount and budget mode --------------------------------------
         tags$label(
           class = "control-label",
           tags$i(class = "fa fa-money-bill-transfer me-1"),
-          "Transfer amount"
+          "Amount",
+          info_popover(
+            title = "Amount and budget mode",
+            tags$p(
+              tags$b(paste("$ per", unit_word(plural = FALSE))),
+              "sets the transfer paid to each recipient", unit_word(plural = FALSE),
+              "per payment. The annual cost then depends on the number of recipients",
+              "and payments per year."
+            ),
+            tags$p(
+              tags$b("Total budget"),
+              "sets the total annual amount available. The transfer per recipient is",
+              "derived from the configured budget and recipient population."
+            )
+          )
         ),
-        # selectInput(
-        #   inputId  = ns("amount_type"),
-        #   label    = NULL,
-        #   choices  = c(
-        #     "Equal across beneficiaries"             = "equal",
-        #     "Varies by ex-ante welfare"              = "exante_welfare",
-        #     "Varies by predicted welfare at trigger" = "predicted_welfare",
-        #     "Varies by household characteristic"    = "hh_characteristic"
-        #   ),
-        #   selected = "equal"
-        # ),
+        tags$div(
+          class = "sp-budget-mode",
+          pill_toggle(
+            inputId = ns("budget_mode"),
+            label = NULL,
+            choices = stats::setNames(
+              c("transfer_first", "budget_first"),
+              c(paste("$ per", unit_word(plural = FALSE)), "Total budget")
+            ),
+            selected = "transfer_first"
+          )
+        ),
+
+        # -- Amount entry -------------------------------------------------
+        conditionalPanel(
+          condition = paste0("input['", ns("budget_mode"), "'] == 'budget_first'"),
+          tags$div(
+            class = "sp-inline-control",
+            tags$label(
+              class = "sp-inline-label",
+              `for` = ns("budget_fixed"),
+              tags$i(class = "fa fa-dollar-sign me-1"),
+              paste0("Amount (", currency, ")")
+            ),
+            numericInput(
+              inputId = ns("budget_fixed"),
+              label = NULL,
+              value = 0, min = 0, step = 100000
+            )
+          )
+        ),
+
         conditionalPanel(
           condition = paste0(
             "input['", ns("budget_mode"), "'] == 'transfer_first'"
           ),
-          numericInput(
-            inputId = ns("transfer_amount_usd"),
-            label   = tags$span(
-              tags$i(class = "fa fa-dollar-sign me-1"),
-              paste("Transfer per", unit_word(plural = FALSE, capitalize = TRUE), "($)")
-            ),
-            value = 0, min = 0, step = 10
-          )
-        ),
-        conditionalPanel(
-          condition = paste0(
-            "input['", ns("budget_mode"), "'] == 'budget_first'"
-          ),
           tags$div(
-            class = "alert alert-light p-2 mb-2",
-            tags$small(
-              tags$i(class = "fa fa-calculator me-1"),
-              tags$strong("Derived: "),
-              paste("Transfer per", unit_word(plural = FALSE), "= total budget \u00f7 # of eligible beneficiaries")
+            class = "sp-inline-control",
+            tags$label(
+              class = "sp-inline-label",
+              `for` = ns("transfer_amount_usd"),
+              tags$i(class = "fa fa-dollar-sign me-1"),
+              paste0("Amount (", currency, ")")
+            ),
+            numericInput(
+              inputId = ns("transfer_amount_usd"),
+              label = NULL,
+              value = 0, min = 0, step = 10
             )
           )
         ),
-
-        tags$hr(style = "margin: 4px 0;"),
-
-        # -- Administration costs (reduces amount available) -------------
-        # sliderInput(
-        #   inputId = ns("admin_cost_pct"),
-        #   label   = tags$span(
-        #     tags$i(class = "fa fa-building me-1"),
-        #     "Administration cost (% of total budget)"
-        #   ),
-        #   min = 0, max = 40, value = 10, step = 1, post = "%"
-        # ),
-        # tags$small(
-        #   class = "text-muted d-block mb-2",
-        #   tags$i(class = "fa fa-circle-info me-1"),
-        #   "Admin cost is deducted from the total budget before computing transfer amounts."
-        # ),
-
-        # tags$hr(style = "margin: 8px 0;")
+        tags$hr(style = "margin: 8px 0;")
       )
     })
 
@@ -480,7 +455,17 @@ mod_3_01_sp_server <- function(id,
           tags$label(
             class = "control-label",
             tags$i(class = "fa fa-clock me-1"),
-            "Frequency and timing"
+            "Frequency and timing",
+            info_popover(
+              title = "Transfers per year",
+              tags$p(
+                "The transfer amount above is per payment. Annual support =",
+                "payment amount \u00d7 transfers per year, which the simulation",
+                "converts to a daily equivalent added to daily welfare.",
+                "More transfers per year means a larger annual transfer for the",
+                "same per-payment amount."
+              )
+            )
           ),
 
         # One-off vs regular - hidden for regular programs
@@ -503,26 +488,20 @@ mod_3_01_sp_server <- function(id,
         #     "input['", ns("sp_type"), "'] == 'regular' || ",
         #     "input['", ns("transfer_frequency"), "'] == 'regular'"
         #   ),
-          sliderInput(
-            inputId = ns("transfer_n_payments"),
-            label   = tags$span(
+          tags$div(
+            class = "sp-inline-slider",
+            tags$span(
+              class = "sp-inline-label",
               tags$i(class = "fa fa-hashtag me-1"),
-              "Number of payments per year"
+              "Transfers per year"
             ),
-            min = 2, max = 24, value = 6, step = 1
-          ) |>
-            # 11 intervals -> majors at 2, 4, ..., 24 (whole numbers);
-            # step = 1 keeps every whole number selectable.
-            with_grid_num(11),
-          tags$small(
-            class = "text-muted d-block mb-2",
-            tags$i(class = "fa fa-circle-info me-1"),
-            paste(
-              "The transfer amount above is per payment. Annual support =",
-              "payment amount \u00d7 payments per year, which the simulation",
-              "converts to a daily equivalent added to daily welfare \u2014 more",
-              "payments per year means a larger annual transfer for the same",
-              "per-payment amount."
+            with_grid_num(
+              sliderInput(
+                inputId = ns("transfer_n_payments"),
+                label = NULL,
+                min = 2, max = 24, value = 6, step = 1
+              ),
+              11
             )
           )
         )
@@ -634,10 +613,12 @@ mod_3_01_sp_server <- function(id,
     # One definition of the scenario, read by both the reach preview below and
     # the module's return API - the preview cannot drift from what is run.
     sp_scenario_spec <- reactive({
-      # "regular" is the only program type offered; treat an unreported
-      # input as that rather than as the retired "shock" branch.
-      sp_type_val <- input$sp_type %||% "regular"
-      is_regular  <- identical(sp_type_val, "regular")
+      # Shock-responsive transfers are displayed in the selector but are not
+      # implemented yet. Keep the returned scenario on the regular path until
+      # trigger and timing logic is wired through the policy simulation.
+      sp_type_val <- if (identical(input$sp_type, "shock")) "regular" else
+        input$sp_type %||% "regular"
+      is_regular  <- TRUE
       list(
         # program type
         sp_type               = sp_type_val,
@@ -706,67 +687,93 @@ mod_3_01_sp_server <- function(id,
 
     output$sp_reach_ui <- renderUI({
       r <- sp_reach()
+      unit_pl <- unit_word(plural = TRUE)
+      unit_sg <- unit_word(plural = FALSE)
+      program_label <- if (identical(input$sp_type, "shock")) {
+        "Shock-responsive"
+      } else {
+        "Regular"
+      }
+      program_title <- tags$span(
+        class = "sp-summary-program",
+        tags$span(class = "selection-card-badge", program_label),
+        tags$span(class = "sp-summary-program-suffix", "cash transfer")
+      )
+
       if (is.null(r)) {
-        return(tags$div(
-          class = "sp-reach text-muted",
-          tags$i(class = "fa fa-circle-info me-1"),
-          "Load survey data in Step 1 to preview how many ",
-          unit_word(plural = TRUE), " this scenario reaches."
+        return(selection_summary_card(
+          title = program_title,
+          rows  = list(list(
+            name = paste("Population in recipient", unit_pl),
+            pills = "Not available"
+          )),
+          compact = TRUE
         ))
       }
 
-      unit_pl <- unit_word(plural = TRUE)
-      row <- function(label, value, hint = NULL) {
-        tags$div(
-          class = "sp-reach-row",
-          tags$span(class = "sp-reach-label", label),
-          tags$span(class = "sp-reach-value", value),
-          if (!is.null(hint))
-            tags$span(class = "sp-reach-hint", hint)
-        )
-      }
-
-      # Population counts only mean something when the survey carries weights;
-      # say which is being shown rather than passing a sample count off as a
-      # population figure.
+      # The headline count is a population-weighted count; the sample count is
+      # explained in the info popover rather than taking up a visible row.
       count_hint <- if (isTRUE(r$weighted)) {
-        paste0("weighted to population; ", fmt_count(r$n_rows), " of ",
-               fmt_count(r$n_total), " sampled")
+        paste0("Survey-weighted; ", fmt_count(r$n_rows), " of ",
+               fmt_count(r$n_total), " sampled ", unit_pl)
       } else {
-        "unweighted sample count (survey carries no weights)"
+        paste0("Unweighted sample count; ", fmt_count(r$n_rows), " of ",
+               fmt_count(r$n_total), " sampled ", unit_pl)
       }
 
       cost_label <- if (isTRUE(r$budget_first))
-        "Total budget (annual)" else "Estimated cost (annual)"
-      per_label  <- paste0("Transfer per ",
-                           unit_word(plural = FALSE), " (annual)")
+        "Configured annual budget" else "Estimated annual cost"
 
-      tags$div(
-        class = "sp-reach",
-        tags$div(
-          class = "sp-reach-title",
-          tags$i(class = "fa fa-bullseye me-1"),
-          "Scenario reach"
+      targeting <- sp_scenario_spec()$targeting
+      targeting_info <- switch(
+        targeting,
+        exante_poor = paste(
+          "The bottom", sp_scenario_spec()$targeting_threshold,
+          "% is selected by sampled", unit_pl, "before inclusion and exclusion",
+          "errors. The reached share is survey-weighted, so it can differ from",
+          "the cutoff when sampled", unit_pl, "represent different population",
+          "sizes. Household size affects transfer cost, not this percentage."
         ),
-        row(paste("Eligible", unit_pl),
-            fmt_count(r$n_pop), count_hint),
-        row("Share of population",
-            fmt_num(r$share_pct, suffix = "%")),
-        row(per_label, fmt_num(r$transfer_per_unit, prefix = "$")),
-        row(cost_label, fmt_num(r$transfer_total, prefix = "$")),
-        if (isTRUE(r$transfer_total <= 0)) tags$div(
-          class = "sp-reach-note",
-          tags$i(class = "fa fa-triangle-exclamation me-1"),
-          "No transfer is configured yet, so this scenario would leave ",
-          "welfare unchanged."
+        pmt = paste(
+          "Eligibility follows the selected Proxy variable and cutoff. The reached",
+          "share is survey-weighted; inclusion and exclusion errors are applied",
+          "after the Proxy rule."
         ),
-        if (!isTRUE(r$on_baseline)) tags$div(
-          class = "sp-reach-note",
-          tags$i(class = "fa fa-circle-info me-1"),
-          "Covers every survey round. Once the Step 2 simulation has run, ",
-          "these figures narrow to its baseline round \u2014 the population ",
-          "the policy simulation actually costs."
+        `default` = paste(
+          "Universal targeting reaches all sampled units; survey weights determine",
+          "the population count and share."
         )
+      )
+
+      selection_summary_card(
+        title = program_title,
+        rows = list(
+          selection_card_row(
+            name  = paste("Population in recipient", unit_pl),
+            pills = fmt_count(r$n_pop)
+          ),
+          selection_card_row(
+            name  = "Share of total population",
+            pills = fmt_num(r$share_pct, suffix = "%")
+          ),
+          selection_card_row(
+            name  = paste("Annual transfer per", unit_sg),
+            pills = fmt_num(r$transfer_per_unit, digits = 0, prefix = "$")
+          ),
+          selection_card_row(
+            name  = cost_label,
+            pills = fmt_num(r$transfer_total, digits = 0, prefix = "$")
+          )
+        ),
+        info = paste(
+          count_hint,
+          targeting_info,
+          if (isTRUE(r$transfer_total <= 0))
+            "No transfer is configured yet, so welfare would remain unchanged." else "",
+          if (!isTRUE(r$on_baseline))
+            "Before Step 2 runs, this preview covers every survey round; after the run it uses the baseline round used by the simulation." else ""
+        ),
+        compact = TRUE
       )
     })
 

@@ -1136,61 +1136,6 @@ table.dataTable td.dt-wrap {
   opacity: 0.3;
 }
 
-/* ---- Step 3 social-protection reach preview (UI-32) ----------------------
-   Live "who does this reach, what does it cost" feedback under the targeting
-   controls, so a cutoff can be chosen without running a full simulation. */
-
-.sp-reach {
-  margin-top: 0.5rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--bs-border-color, #dee2e6);
-  border-left: 3px solid var(--bs-primary);
-  border-radius: 0.25rem;
-  background: var(--bs-tertiary-bg, #f8f9fa);
-  font-size: 0.82rem;
-}
-
-.sp-reach-title {
-  font-weight: 600;
-  margin-bottom: 0.35rem;
-}
-
-.sp-reach-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0 0.5rem;
-  padding: 0.12rem 0;
-  align-items: baseline;
-}
-
-.sp-reach-label {
-  color: var(--bs-secondary-color, #6c757d);
-}
-
-.sp-reach-value {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  text-align: right;
-  white-space: nowrap;
-}
-
-/* The qualifier sits under the pair it explains, spanning both columns. */
-.sp-reach-hint {
-  grid-column: 1 / -1;
-  color: var(--bs-secondary-color, #6c757d);
-  font-size: 0.75rem;
-  line-height: 1.25;
-}
-
-.sp-reach-note {
-  margin-top: 0.4rem;
-  padding-top: 0.35rem;
-  border-top: 1px dashed var(--bs-border-color, #dee2e6);
-  color: var(--bs-secondary-color, #6c757d);
-  font-size: 0.75rem;
-  line-height: 1.3;
-}
-
 /* ---- Table CSV export (UI-45) -------------------------------------------
    One affordance for every table in the app: a small, quiet "Download CSV".
    `.wise-csv-btn` covers both the DataTables Buttons control and the
@@ -1482,4 +1427,228 @@ button.wise-csv-btn .fa {
 .pill-toggle-vertical .form-check-inline span {
   justify-content: flex-start;
   width: 100%;
+}
+
+/* Compact social-protection controls: keep the label and selector on one row. */
+.sp-program-label {
+  margin-bottom: 0.2rem;
+}
+
+.sp-program-choice {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  white-space: nowrap;
+}
+
+.sp-program-suffix {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.sp-summary-program {
+  align-items: center;
+  color: var(--bs-primary, #0071bc);
+  display: inline-flex;
+  gap: 0.35rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.sp-summary-program-suffix {
+  color: var(--bs-primary, #0071bc);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sp-inline-control {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  min-width: 0;
+}
+
+.sp-inline-control > .sp-inline-label {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.sp-inline-control > .shiny-input-container {
+  flex: 1 1 auto;
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+
+.sp-inline-control > .sp-inline-label {
+  line-height: 1.25;
+}
+
+.sp-inline-control > .sp-inline-label + .shiny-input-container {
+  max-width: 10rem;
+}
+
+.sp-inline-control > .sp-inline-label + .shiny-input-container input.form-control {
+  min-height: 31px;
+  padding-bottom: 0.25rem;
+  padding-top: 0.25rem;
+}
+
+.sp-inline-control .selectize-control {
+  min-width: 0;
+}
+
+.sp-inline-control .selectize-input {
+  min-height: 31px;
+  padding-bottom: 0.25rem;
+  padding-top: 0.25rem;
+}
+
+.sp-inline-slider {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  min-width: 0;
+}
+
+.sp-inline-slider > .sp-inline-label {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.sp-inline-slider > .shiny-input-container {
+  flex: 1 1 auto;
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+
+.sp-budget-mode {
+  margin-bottom: 0.55rem;
+}
+
+.sp-budget-mode .toggle-slider {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+}
+
+.sp-budget-mode .toggle-slider .shiny-options-group {
+  max-width: none;
+  overflow: visible;
+  width: max-content;
+}
+
+/* The targeting rule is a full-width choice below its section label. */
+.sp-targeting-select .shiny-input-container {
+  margin-bottom: 0.45rem !important;
+}
+
+/* Targeting errors are secondary controls, so keep the collapsed disclosure
+   quieter than the main section labels. */
+.sp-targeting details {
+  border-color: rgba(108, 117, 125, 0.35);
+  border-radius: 0.2rem;
+  margin-bottom: 0.45rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.sp-targeting details summary {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.sp-targeting details[open] summary {
+  color: var(--bs-body-color);
+  margin-bottom: 0.45rem;
+}
+
+.sp-targeting details .shiny-input-container {
+  margin-bottom: 0.6rem;
+}
+
+.step2-projection-period {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+  margin-bottom: 0.35rem;
+}
+
+.step2-projection-label {
+  flex: 0 0 3.8rem;
+  font-weight: 500;
+}
+
+.step2-projection-period > .shiny-input-container {
+  flex: 1 1 auto;
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+
+/* Step 2 keeps the same compact sidebar rhythm as Step 1. */
+.step2-sidebar > .shiny-input-container,
+.step2-sidebar > .form-group,
+.step2-sidebar .step2-projection-period + .shiny-input-container {
+  margin-bottom: 0.35rem !important;
+}
+
+.step2-sidebar .shiny-input-container,
+.step2-sidebar .form-group {
+  margin-bottom: 0.25rem !important;
+}
+
+.step2-section-label {
+  color: var(--bs-body-color);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0;
+}
+
+/* The sidebar layout adds a gap between each direct child. Pull the first
+   control up to its heading for the three primary Step 2 sections. */
+.step2-sidebar > .step2-section-label + .shiny-html-output,
+.step2-sidebar > .step2-section-label + .shiny-input-container,
+.step2-sidebar > .step2-section-label + .step2-projection-period {
+  margin-top: -0.3rem;
+}
+
+.step2-sidebar > hr {
+  margin: 0.25rem 0 !important;
+}
+
+.step2-sidebar .checkbox-group,
+.step2-sidebar .checkbox-group .shiny-options-group {
+  margin-bottom: 0.25rem;
+}
+
+.step2-sidebar .checkbox-group .checkbox {
+  margin-bottom: 0.05rem;
+}
+
+.step2-sidebar .checkbox-inline,
+.step2-sidebar .checkbox-inline + .checkbox-inline {
+  margin-left: 0.5rem;
+  margin-right: 0;
+}
+
+.step2-sidebar .checkbox-group .shiny-options-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.step2-sidebar .checkbox-group .checkbox {
+  margin-right: 0;
+}
+
+.step2-sidebar .selection-card.compact {
+  margin-bottom: 0.3rem;
 }
