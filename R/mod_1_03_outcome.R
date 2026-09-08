@@ -555,8 +555,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
                       "Distribution of the selected outcome variable in the selected surveys",
                       height = "400px"
                     )
-                  ),
-                  csv_download_link(ns("outcome_summary_csv"))
+                  )
                 ),
                 # full_screen gives the card bslib's expand control; the map
                 # fills the card body in both states and re-fits itself on resize.
@@ -612,7 +611,11 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
                       class = paste("d-flex align-items-center",
                                     "justify-content-between flex-wrap gap-2 mb-2"),
                       shiny::uiOutput(ns("summary_heading_ui"), inline = TRUE),
-                      shiny::uiOutput(ns("summary_wave_ui"), inline = TRUE)
+                      shiny::div(
+                        class = "d-flex align-items-center gap-2",
+                        csv_download_link(ns("outcome_summary_csv")),
+                        shiny::uiOutput(ns("summary_wave_ui"), inline = TRUE)
+                      )
                     ),
                     shiny::tableOutput(ns("outcome_summary_stats"))
                   )
