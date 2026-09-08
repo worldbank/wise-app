@@ -141,6 +141,208 @@ selection_summary_card <- function(title, rows, badge = NULL, info = NULL,
   )
 }
 
+#' Compact summary of the Step 2 simulation run
+#'
+#' Shared by the Results and Diagnostics tabs so both surfaces describe the
+#' same historical baseline, weather inputs, and saved future scenarios.
+#'
+#' @noRd
+simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
+                                    selected_hist = NULL,
+                                    selected_weather = NULL) {
+  if (is.null(hist_sim) || is.null(hist_sim$so)) return(NULL)
+
+  run <- hist_sim$sim_summary %||% list()
+  so <- hist_sim$so
+  so_label <- if ("label" %in% names(so)) as.character(so$label[1]) else "Selected outcome"
+  if (is.na(so_label) || !nzchar(so_label)) so_label <- "Selected outcome"
+
+  sw <- run$weather %||% if (is.data.frame(selected_weather)) selected_weather else NULL
+  weather_labels <- if (!is.null(sw) && "label" %in% names(sw))
+    as.character(sw$label) else character(0)
+  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
+  weather_labels <- weather_labels[nzchar(weather_labels)]
+  if (length(weather_labels) == 0L) weather_labels <- "Selected weather"
+
+  hist_years <- run$historical_years %||% tryCatch({
+    if (!is.null(selected_hist) && "year_range" %in% names(selected_hist))
+      unlist(selected_hist$year_range[[1]], use.names = FALSE)
+    else numeric(0)
+  }, error = function(e) numeric(0))
+  hist_period <- if (length(hist_years) >= 2L) {
+    paste0(hist_years[1], "-", hist_years[2])
+  } else {
+    as.character(hist_sim$hist_label %||% "Historical baseline")
+  }
+
+  residuals <- as.character(hist_sim$residuals %||% "original")
+  residual_label <- switch(residuals,
+    original = "Original residuals",
+    resample = "Resampled residuals",
+    none     = "No residuals",
+    normal   = "Normal residuals",
+    residuals
+  )
+
+  scenarios <- if (is.list(saved_scenarios)) names(saved_scenarios) else character(0)
+  scenario_count <- length(scenarios)
+  scenario_pills <- if (scenario_count > 0L) {
+    vapply(scenarios, function(key) {
+      n <- saved_scenarios[[key]]$n_models %||% NA_integer_
+      n_txt <- if (is.finite(n)) paste0(" (", n, " models)") else ""
+      paste0(key, n_txt)
+    }, character(1))
+  } else "None"
+
+  model <- run$model %||% list()
+  model_label <- model$label %||% "Fitted model"
+  model_bits <- c(
+    if (is.finite(model$weather_terms %||% NA_integer_))
+      paste0(model$weather_terms, " weather terms"),
+    if (is.finite(model$fixed_effects %||% NA_integer_))
+      paste0(model$fixed_effects, " FE"),
+    if (is.finite(model$covariates %||% NA_integer_))
+      paste0(model$covariates, " covariates")
+  )
+
+  baseline <- run$baseline_survey %||% "Selected baseline survey"
+  baseline_n <- run$baseline_n %||% NA_integer_
+  baseline_pills <- c(
+    if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ",")),
+    residual_label
+  )
+  total_runs <- run$total_runs %||% NA_integer_
+  badge <- if (is.finite(total_runs)) {
+    paste(format(total_runs, big.mark = ","), "simulation years")
+  } else if (scenario_count == 0L) {
+    "Historical only"
+  } else {
+    paste(scenario_count, "future", if (scenario_count == 1L) "scenario" else "scenarios")
+  }
+
+  selection_summary_card(
+    title = "Selected Climate Scenario",
+    badge = badge,
+    rows = list(
+      list(name = "Climate scenarios", sub = paste0(
+        "Historical ", hist_period, "; ", scenario_count, " future selected"
+      ), pills = scenario_pills),
+      list(name = "Outcome", sub = so_label),
+      list(name = "Weather", sub = paste(weather_labels, collapse = ", ")),
+      list(name = "Model", sub = model_label, pills = model_bits),
+      list(name = "Baseline survey", sub = baseline, pills = baseline_pills)
+    ),
+    compact = TRUE
+  )
+}
+
+#' Compact summary of the selected Step 3 policy scenarios
+#'
+#' @noRd
+policy_summary_card <- function(selected_policies = NULL,
+                                baseline_hist_sim = NULL,
+                                policy_saved_scenarios = list(),
+                                selected_weather = NULL,
+                                sp_scenario = NULL) {
+  policies <- selected_policies %||% character(0)
+  policies <- policies[!is.na(policies) & nzchar(policies)]
+  labels <- vapply(policies, function(key) {
+    def <- POLICY_DEFINITIONS[[key]]
+    if (!is.null(def) && !is.null(def$label) && nzchar(def$label)) {
+      as.character(def$label)
+    } else {
+      key
+    }
+  }, character(1))
+
+  hs <- baseline_hist_sim
+  run <- if (!is.null(hs)) hs$sim_summary %||% list() else list()
+  so_label <- if (!is.null(hs) && "label" %in% names(hs$so)) {
+    as.character(hs$so$label[1])
+  } else "Selected outcome"
+  sw <- run$weather %||% selected_weather
+  weather_labels <- if (!is.null(sw) && "label" %in% names(sw)) {
+    as.character(sw$label)
+  } else character(0)
+  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
+  baseline <- run$baseline_survey %||% "Selected baseline survey"
+  baseline_n <- run$baseline_n %||% NA_integer_
+  model <- run$model %||% list()
+  model_bits <- c(
+    if (is.finite(model$weather_terms %||% NA_integer_))
+      paste0(model$weather_terms, " weather terms"),
+    if (is.finite(model$fixed_effects %||% NA_integer_))
+      paste0(model$fixed_effects, " FE"),
+    if (is.finite(model$covariates %||% NA_integer_))
+      paste0(model$covariates, " covariates")
+  )
+  historical_years <- run$historical_years %||% integer(0)
+  historical <- if (length(historical_years) >= 2L) {
+    paste0("Historical ", historical_years[1], "-", historical_years[2])
+  } else NULL
+  policy_pills <- if (length(labels)) {
+    paste0(policies, " \u00B7 ", labels)
+  } else "None"
+  sp <- sp_scenario %||% list()
+  if (is.function(sp)) sp <- sp()
+  sp_active <- is.list(sp) && (
+    isTRUE(sp$transfer_amount_usd > 0) || isTRUE(sp$budget_fixed > 0)
+  )
+  sp_label <- if (sp_active) {
+    amount <- if (isTRUE(sp$transfer_amount_usd > 0)) {
+      paste0("$", format(sp$transfer_amount_usd, trim = TRUE, big.mark = ","), "/payment")
+    } else {
+      paste0("$", format(sp$budget_fixed, trim = TRUE, big.mark = ","), " budget")
+    }
+    payments <- if (is.finite(sp$transfer_n_payments %||% NA_integer_)) {
+      paste0(" x ", sp$transfer_n_payments, "/year")
+    } else ""
+    targeting <- sp$targeting %||% "universal"
+    paste("SP", amount, payments, "-", targeting)
+  } else NULL
+  policy_pills <- c(sp_label, policy_pills[policy_pills != "None"])
+  if (!length(policy_pills)) policy_pills <- "None"
+  configured_count <- length(policy_pills[policy_pills != "None"])
+  climate_scenarios <- names(policy_saved_scenarios)
+
+  selection_summary_card(
+    title = "Selected Policy Scenarios",
+    badge = paste(configured_count,
+                  if (configured_count == 1L) "policy" else "policies"),
+    rows = list(
+      list(
+        name = "Climate scenarios",
+        sub = if (length(historical)) {
+          paste0(historical, "; ", length(climate_scenarios), " future selected")
+        } else {
+          paste(length(climate_scenarios), "future selected")
+        },
+        pills = climate_scenarios
+      ),
+      list(
+        name  = "Policies",
+        sub   = if (length(policy_pills) && !identical(policy_pills, "None")) {
+          paste(policy_pills, collapse = ", ")
+        } else "None",
+        pills = policy_pills
+      ),
+      list(name = "Outcome", sub = so_label),
+      list(name = "Weather", sub = if (length(weather_labels))
+        paste(weather_labels, collapse = ", ") else "Selected weather"),
+      list(name = "Model", sub = model$label %||% "Fitted model", pills = model_bits),
+      list(
+        name = "Baseline",
+        sub = baseline,
+        pills = c(
+          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ",")),
+          historical
+        )
+      )
+    ),
+    compact = TRUE
+  )
+}
+
 #' Human label for an analysis unit code
 #'
 #' @param unit One of `"ind"`, `"hh"`, `"firm"` (or `NULL`).

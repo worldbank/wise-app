@@ -123,20 +123,23 @@ mod_1_06_model_server <- function(id,
         rows = list(
           list(
             name  = "Outcome",
-            sub   = so$label,
-            pills = so$name
+            sub   = so$label
           ),
           list(
             name = "Weather",
             sub  = paste(sw$label, collapse = ", ")
           ),
           list(
-            name  = "Terms",
-            sub   = paste0("Interaction: ", ixn_txt),
-            pills = c(
-              paste0("Covariates: ", cov_txt),
-              paste0("Fixed effects: ", fe_txt)
-            )
+            name = "Interaction:",
+            sub  = ixn_txt
+          ),
+          list(
+            name = "FE:",
+            sub  = fe_txt
+          ),
+          list(
+            name = "Covariates:",
+            sub  = cov_txt
           )
         ),
         compact = TRUE

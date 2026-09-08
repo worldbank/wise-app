@@ -26,6 +26,10 @@ mod_3_08_diagnostics_ui <- function(id) {
 #' @param id               Module id.
 #' @param baseline_svy     Reactive survey-weather df before adjustment.
 #' @param policy_svy       Reactive survey-weather df after adjustment.
+#' @param selected_policies Reactive selected policy scenario keys.
+#' @param baseline_hist_sim Reactive Step 2-style baseline simulation result.
+#' @param selected_weather Reactive selected weather specification.
+#' @param policy_saved_scenarios Reactive named future scenario list.
 #' @param sim_run_id       Reactive trigger for invalidation; the tab is
 #'   appended on the first run for which this is > 0.
 #' @param tabset_id        Character id of the parent tabset to append to.
@@ -39,7 +43,12 @@ mod_3_08_diagnostics_server <- function(id,
                                          sim_run_id = reactive(0L),
                                          tabset_id,
                                          tabset_session = NULL,
-                                         analysis_unit = reactive("hh")) {
+                                         analysis_unit = reactive("hh"),
+                                         selected_policies = reactive(NULL),
+                                         baseline_hist_sim = reactive(NULL),
+                                         selected_weather = reactive(NULL),
+                                         sp_scenario = reactive(NULL),
+                                         policy_saved_scenarios = reactive(list())) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -303,6 +312,7 @@ mod_3_08_diagnostics_server <- function(id,
           shiny::tabPanel(
             title = "Diagnostics",
             value = "diag_tab",
+            shiny::uiOutput(ns("policy_summary_ui")),
             shiny::h4("Total social protection transfer amount"),
             DT::DTOutput(ns("transfer_summary_ui")),
             shiny::div(style = "margin: 12px 0;"),
@@ -328,6 +338,16 @@ mod_3_08_diagnostics_server <- function(id,
       }
 
     }, ignoreInit = TRUE)
+
+    output$policy_summary_ui <- shiny::renderUI({
+      policy_summary_card(
+        selected_policies    = selected_policies(),
+        baseline_hist_sim    = baseline_hist_sim(),
+        selected_weather     = selected_weather(),
+        sp_scenario          = sp_scenario(),
+        policy_saved_scenarios = policy_saved_scenarios()
+      )
+    })
 
     invisible(NULL)
   })

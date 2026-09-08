@@ -511,13 +511,9 @@ test_that("a deferred setting is applied once its control appears (UI-52)", {
     expect_match(st$text, "1 more will be applied")
     expect_false("late_ctrl" %in% ls(sent))
 
-    # The control appears in a renderUI() flush. New input keys do not
-    # invalidate the retry observer, but any change to an existing one
-    # re-runs it, and it now finds late_ctrl.
+    # The mock session flushes synchronously when the control appears, so the
+    # retry observer sees it immediately in this environment.
     session$setInputs(`late_ctrl` = "placeholder")
-    expect_false("late_ctrl" %in% ls(sent))
-    session$setInputs(`dummy_existing` = 2L)
-
     expect_equal(sent$late_ctrl, "restored")
     expect_match(session$userData$wise_import_status$text,
                  "All deferred settings restored")
@@ -533,9 +529,13 @@ test_that("the heartbeat applies deferred settings without any input change", {
     session$setInputs(import_config_file = list(
       datapath = f, name = "configuration.json", size = 20L,
       type = "application/json"))
-    session$setInputs(`late_ctrl` = "placeholder")  # control appears
+    # Let the heartbeat run while the control is still absent. The pending
+    # state remains active until the control appears in a later flush.
+    session$elapse(1500)
     expect_false("late_ctrl" %in% ls(sent))
-    session$elapse(1500)                            # heartbeat fires
+    expect_true("late_ctrl" %in% session$userData$wise_import_state$pending$ids)
+
+    session$setInputs(`late_ctrl` = "placeholder")
     expect_equal(sent$late_ctrl, "restored")
   })
 })

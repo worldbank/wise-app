@@ -14,6 +14,7 @@ mod_2_03_diagnostics_ui <- function(id) {
   tagList(
     # ---- 0. Stale banner (INT-08) -------------------------------------------
     shiny::uiOutput(ns("stale_banner")),
+    shiny::uiOutput(ns("simulation_summary_ui")),
 
     # ---- 0. Scenario filters -----------------------------------------------
     shiny::uiOutput(ns("scenario_filter_panel")),
@@ -161,6 +162,15 @@ mod_2_03_diagnostics_server <- function(id,
     # INT-08: stale banner above the diagnostics pane.
     output$stale_banner <- shiny::renderUI({
       if (isTRUE(stale())) .stale_banner("Step 2 diagnostics") else NULL
+    })
+
+    output$simulation_summary_ui <- shiny::renderUI({
+      simulation_summary_card(
+        hist_sim        = hist_sim(),
+        saved_scenarios = if (!is.null(saved_scenarios)) saved_scenarios() else list(),
+        selected_hist   = NULL,
+        selected_weather = if (!is.null(selected_weather)) selected_weather() else NULL
+      )
     })
 
     if (is.null(tabset_session)) tabset_session <- session$parent %||% session

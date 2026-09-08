@@ -62,27 +62,14 @@ mod_3_scenario_ui <- function(id) {
         title = "Overview",
         value = "overview",
         div(
-          class = "empty-state",
+          class = "empty-state overview-empty-state",
           icon("scale-balanced"),
           h5("No policy simulations yet"),
           p(paste(
-            "Configure one or more policy levers in the sidebar, then click",
-            "'Run simulation' to compare baseline and policy outcomes.",
-            "Outputs: baseline-vs-policy outcome comparisons, exceedance",
-            "probabilities, diagnostics, and a decomposition of policy effects",
-            "will appear here as new tabs."
-          )),
-          p(
-            class = "text-muted small mb-0",
-            paste(
-              "Simulations for large surveys (tens of thousands of households)",
-              "can take several minutes to run; charts take a few seconds to",
-              "update after changing filters."
-            )
-          )
-        ),
-        welfare_equation_ui(predicted = TRUE),
-        mod_3_06_policy_sim_ui(ns("policy_sim"))
+            "Configure policy scenarios in the sidebar, then click",
+            "'Run simulation'. Results will appear here as new tabs."
+          ))
+        )
       )
     )
   )
@@ -256,8 +243,10 @@ mod_3_scenario_server <- function(id,
       selected_hist            = selected_hist,
       sim_run_id               = s6$sim_run_id,
       tabset_id                = "step3_output_tabs",
-      tabset_session           = session,
-      residuals                = residuals,
+       tabset_session           = session,
+       selected_policies        = selected_policies,
+       sp_scenario              = s6$sp_scenario,
+       residuals                = residuals,
       stale                    = s6$stale
     )
 
@@ -269,7 +258,12 @@ mod_3_scenario_server <- function(id,
       sim_run_id     = s6$sim_run_id,
       tabset_id      = "step3_output_tabs",
       tabset_session = session,
-      analysis_unit  = analysis_unit
+      analysis_unit  = analysis_unit,
+      selected_policies = selected_policies,
+      baseline_hist_sim = s6$baseline_hist_sim,
+      selected_weather = selected_weather,
+      sp_scenario = s6$sp_scenario,
+      policy_saved_scenarios = s6$policy_saved_scenarios
     )
 
     # ---- Decomposition tab: effect channels -----------------------------
@@ -279,7 +273,12 @@ mod_3_scenario_server <- function(id,
       decomp_scenarios = s6$decomp_scenarios,
       model_fit        = model_fit,
       variable_list    = variable_list,
-      so            = reactive({
+      selected_policies = selected_policies,
+      baseline_hist_sim = s6$baseline_hist_sim,
+      selected_weather = selected_weather,
+      sp_scenario = s6$sp_scenario,
+      policy_saved_scenarios = s6$policy_saved_scenarios,
+      so               = reactive({
         hs <- hist_sim()
         if (!is.null(hs)) hs$so else NULL
       }),

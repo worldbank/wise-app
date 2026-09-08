@@ -211,7 +211,7 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
 .results_pane_ui <- function(ns, so) {
   tagList(
       shiny::uiOutput(ns("stale_banner_ui")),
-      shiny::uiOutput(ns("results_header_ui")),
+      shiny::uiOutput(ns("policy_summary_ui")),
       shiny::wellPanel(
         class = "results-controls",
       # Padding matches the Step 2 results controls panel (alignment).
@@ -459,6 +459,8 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
                                policy_hist_sim,
                                policy_saved_scenarios,
                                selected_hist,
+                               selected_policies = reactive(NULL),
+                               sp_scenario = reactive(NULL),
                                residuals = reactive("original"),
                                stale = reactive(FALSE)) {
   ns <- session$ns
@@ -470,6 +472,18 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       "Step 3 policy results",
       note = "Interpretation and exports are disabled until then."
     ) else NULL
+  })
+
+  output$policy_summary_ui <- shiny::renderUI({
+    bh <- baseline_hist_sim()
+    req(bh)
+    policy_summary_card(
+      selected_policies      = selected_policies(),
+      baseline_hist_sim      = bh,
+      policy_saved_scenarios = policy_saved_scenarios(),
+      selected_weather       = bh$sim_summary$weather %||% NULL,
+      sp_scenario             = sp_scenario()
+    )
   })
 
   # Resolve the residuals choice captured by the Step 2 run. The live control
@@ -1059,30 +1073,6 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       agg_axis_label(), " - ",
       label_agg_method(input$cmp_agg_method), " | ",
       label_deviation(input$cmp_deviation)
-    )
-  })
-
-  output$results_header_ui <- renderUI({
-    req(baseline_hist_sim(), input$cmp_agg_method, input$cmp_deviation)
-    so <- baseline_hist_sim()$so
-    agg_label <- label_agg_method(input$cmp_agg_method)
-    dev_label <- label_deviation(input$cmp_deviation)
-    pov_txt   <- if (!is.null(pov_line_val()))
-      paste0(" | Poverty line: $", pov_line_val(), "/day") else ""
-    notes_txt <- paste0(
-      "Showing ", agg_label, " of ", so$label %||% so$name,
-      " expressed as ", dev_label, pov_txt,
-      ". Baseline (grey) and policy (red) shown side-by-side."
-    )
-    shiny::div(
-      style = paste0(
-        "border-left: 4px solid #2166ac; background: #f4f8fd; ",
-        "padding: 10px 14px; margin-bottom: 12px; border-radius: 3px;"
-      ),
-      shiny::tags$strong(style = "font-size:15px;",
-                         paste0("Results: ", so$label %||% so$name)),
-      shiny::tags$br(),
-      shiny::tags$span(style = "color:#555; font-size:12px;", notes_txt)
     )
   })
 

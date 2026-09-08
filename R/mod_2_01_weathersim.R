@@ -713,6 +713,25 @@ mod_2_01_weathersim_server <- function(id,
         # INT-05: bind the historical scenario label into the result so the
         # Step 3 pane describes the simulated run, not the live selection.
         result$hist_sim_result$hist_label <- sh$scenario_name
+        model_spec <- mf$.snap$model %||% list()
+        result$hist_sim_result$sim_summary <- list(
+          weather = sw,
+          historical_years = unlist(sh$year_range[[1]], use.names = FALSE),
+          baseline_survey = {
+            ch <- baseline_survey_choices()
+            sel <- input$baseline_survey %||% baseline_default()
+            nms <- names(ch)[ch %in% sel]
+            if (length(nms)) paste(nms, collapse = ", ") else "Selected baseline survey"
+          },
+          baseline_n = nrow(svy),
+          model = list(
+            label = if (length(model_spec)) model_badge(model_spec) else "Fitted model",
+            weather_terms = length(mf$weather_terms %||% character(0)),
+            fixed_effects = length(model_spec$fixedeffects %||% mf$fe_terms %||% character(0)),
+            covariates = if (length(model_spec)) model_covariate_total(model_spec) else NA_integer_
+          ),
+          total_runs = result$total_runs
+        )
         # INT-08: the immutable run signature travels with the result so
         # Step 3 can detect that it is consuming a superseded simulation.
         result$hist_sim_result$.sig <- .sim_sig_from_live(mf$.sig %||% NULL)

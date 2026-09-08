@@ -83,6 +83,7 @@ mod_3_06_policy_sim_server <- function(id,
     baseline_saved_scenarios_rv <- reactiveVal(list())
     policy_hist_sim_rv          <- reactiveVal(NULL)
     policy_saved_scenarios_rv   <- reactiveVal(list())
+    sp_scenario_rv              <- reactiveVal(NULL)
 
     output$sim_status_ui <- shiny::renderUI({
       err <- sim_error()
@@ -174,6 +175,7 @@ mod_3_06_policy_sim_server <- function(id,
       # FULL survey_weather() would pull in extra households from non-baseline
       # rounds and produce a systematically different aggregate.
       svy <- hs$svy %||% .safe(survey_weather())
+      sp_cfg <- .safe(sp_scenario())
 
       .fail <- function(msg) {
         sim_error(simpleError(msg))
@@ -402,8 +404,9 @@ mod_3_06_policy_sim_server <- function(id,
           policy_svy_rv(svy_mod)
           baseline_hist_sim_rv(baseline_out)
           baseline_saved_scenarios_rv(baseline_scenarios_out)
-          policy_hist_sim_rv(pol_out$hist_sim)
-          policy_saved_scenarios_rv(pol_out$saved_scenarios)
+           policy_hist_sim_rv(pol_out$hist_sim)
+           policy_saved_scenarios_rv(pol_out$saved_scenarios)
+           sp_scenario_rv(sp_cfg)
           decomp_rv(decomp)
           decomp_scenarios_rv(decomp_sc)
           policy_stale(FALSE)
@@ -462,6 +465,7 @@ mod_3_06_policy_sim_server <- function(id,
       baseline_saved_scenarios = baseline_saved_scenarios_rv,
       policy_hist_sim          = policy_hist_sim_rv,
       policy_saved_scenarios   = policy_saved_scenarios_rv,
+      sp_scenario              = sp_scenario_rv,
       stale                    = policy_stale
     )
   })

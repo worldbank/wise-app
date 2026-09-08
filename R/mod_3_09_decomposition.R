@@ -12,6 +12,7 @@
 mod_3_09_decomposition_ui <- function(id) {
   ns <- NS(id)
   tagList(
+    shiny::uiOutput(ns("policy_summary_ui")),
     shiny::uiOutput(ns("decomp_header_ui")),
     shiny::wellPanel(
       shiny::h4(
@@ -76,6 +77,10 @@ mod_3_09_decomposition_ui <- function(id) {
 #' @param decomp_scenarios Reactive data frame: per-scenario decompositions.
 #' @param model_fit Reactive model fit list (for rif_grid / engine detection).
 #' @param so Reactive selected outcome metadata.
+#' @param selected_policies Reactive selected policy scenario keys.
+#' @param baseline_hist_sim Reactive Step 2-style baseline simulation result.
+#' @param selected_weather Reactive selected weather specification.
+#' @param policy_saved_scenarios Reactive named future scenario list.
 #'
 #' @noRd
 mod_3_09_decomposition_server <- function(id,
@@ -84,13 +89,28 @@ mod_3_09_decomposition_server <- function(id,
                                            model_fit         = reactive(NULL),
                                            variable_list     = reactive(NULL),
                                            so                = reactive(NULL),
-                                           show_coef_uncertainty = reactive(TRUE)) {
+                                           show_coef_uncertainty = reactive(TRUE),
+                                           selected_policies = reactive(NULL),
+                                           baseline_hist_sim = reactive(NULL),
+                                           selected_weather = reactive(NULL),
+                                           sp_scenario = reactive(NULL),
+                                           policy_saved_scenarios = reactive(list())) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
     is_rif <- reactive({
       mf <- model_fit()
       !is.null(mf) && identical(mf$engine, "rif")
+    })
+
+    output$policy_summary_ui <- shiny::renderUI({
+      policy_summary_card(
+        selected_policies = selected_policies(),
+        baseline_hist_sim = baseline_hist_sim(),
+        selected_weather = selected_weather(),
+        sp_scenario = sp_scenario(),
+        policy_saved_scenarios = policy_saved_scenarios()
+      )
     })
 
     get_label <- function(var_name) {

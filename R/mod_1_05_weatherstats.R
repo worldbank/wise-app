@@ -716,15 +716,11 @@ mod_1_05_weatherstats_server <- function(
                     "and the colour is exactly that regressor."
                   )),
                   p(paste(
-                    "Locations surveyed across several interview months hold",
-                    "several different values, so their colour is the",
-                    "household-weighted mean (continuous) or the most common",
-                    "bin (binned) across that location's own household-month",
-                    "observations. They are drawn with a dotted outline: the",
-                    "colour there summarises the households rather than",
-                    "reproducing any one household's regressor. Click a",
-                    "location for its value, household count and number of",
-                    "interview months."
+                    "Locations surveyed across several interview months can",
+                    "show a different value in each month. Use the interview",
+                    "month picker above the map to inspect those values without",
+                    "averaging them together. Click a location for its value and",
+                    "household count."
                   )),
                   p(shiny::tags$b("Views.")),
                   shiny::tags$ul(
@@ -815,10 +811,8 @@ mod_1_05_weatherstats_server <- function(
     # ---- Weather by location maps -------------------------------------------
 
   # -- Weather by location, one map per wave ----------------------------
-  # The merged frame holds one value per location *and interview month*,
-  # so `summarise_weather_by_loc()` collapses to one value per location
-  # (mean, or modal bin) before mapping. The palette is built once per
-  # variable across all waves so the maps stay comparable.
+  # A location can appear in several interview months. The month picker below
+  # keeps those values separate instead of averaging them into one map value.
 
   # The view chosen above the maps. "value" is cross-sectional - how the
   # locations compare with each other in this wave. "anomaly" and "pctile" are
@@ -892,12 +886,19 @@ mod_1_05_weatherstats_server <- function(
 
   weather_loc_vals <- reactive({
     req(survey_weather(), wx_spec_sw())
-    sw   <- wx_spec_sw()
-    view <- wxmap_view()
+    sw    <- wx_spec_sw()
+    view  <- wxmap_view()
+    month <- wxmap_month()
+    swd   <- survey_weather()
+    if (!is.null(month) && !identical(month, "all") &&
+        "timestamp" %in% names(swd)) {
+      int_month <- as.integer(format(as.Date(swd$timestamp), "%m"))
+      swd <- swd[!is.na(int_month) & int_month == as.integer(month), , drop = FALSE]
+    }
 
     if (view == "value") {
       # Grouping is identical for every variable - build it once (PERF-25).
-      prep <- .summarise_loc_prep(survey_weather())
+      prep <- .summarise_loc_prep(swd)
       return(lapply(seq_len(nrow(sw)), function(i) {
         to_cells(summarise_weather_by_loc(prep$df, sw$name[i], prep = prep))
       }))
@@ -906,6 +907,10 @@ mod_1_05_weatherstats_server <- function(
     cells <- hist_cells()
     yrs   <- hist_cells_years()
     if (is.null(cells) || is.null(yrs)) return(NULL)
+    if (!is.null(month) && !identical(month, "all") &&
+        "int_month" %in% names(cells)) {
+      cells <- cells[cells$int_month == as.integer(month), , drop = FALSE]
+    }
     lapply(seq_len(nrow(sw)), function(i) {
       to_cells(summarise_weather_anomaly_by_loc(
         cells_df  = cells,
@@ -952,11 +957,12 @@ mod_1_05_weatherstats_server <- function(
   }
 
   wave_list <- reactive({
-    lv <- weather_loc_vals()
-    if (is.null(lv)) return(NULL)
-    lv <- Filter(Negate(is.null), lv)
-    if (length(lv) == 0) return(NULL)
-    w <- unique(lv[[1]][, c("code", "year", "survname", "economy")])
+    swd <- survey_weather()
+    if (is.null(swd) || !all(c("code", "year", "survname") %in% names(swd))) {
+      return(NULL)
+    }
+    if (!"economy" %in% names(swd)) swd$economy <- swd$code
+    w <- unique(swd[, c("code", "year", "survname", "economy")])
     w$key   <- paste(w$code, as.character(w$year), w$survname, sep = "|")
     w$label <- paste0(w$economy, ", ", w$year)
     w[order(w$label), , drop = FALSE]
@@ -980,6 +986,44 @@ mod_1_05_weatherstats_server <- function(
     sel <- wxmap_wave_val()
     if (is.null(sel) || !(sel %in% w$key)) w$key[1] else sel
   })
+
+  wxmap_month_val <- reactiveVal(NULL)
+
+  wxmap_month_choices <- reactive({
+    swd <- survey_weather()
+    key <- wxmap_wave()
+    if (is.null(swd) || is.null(key) || !"timestamp" %in% names(swd)) {
+      return(stats::setNames(integer(0), character(0)))
+    }
+    wave_key <- paste(swd$code, as.character(swd$year), swd$survname, sep = "|")
+    months <- sort(unique(as.integer(format(as.Date(
+      swd$timestamp[wave_key == key]
+    ), "%m"))))
+    months <- months[!is.na(months)]
+    c(
+      stats::setNames("all", "All"),
+      stats::setNames(
+        as.character(months),
+        format(as.Date(sprintf("2000-%02d-01", months)), "%B")
+      )
+    )
+  })
+
+  wxmap_month <- reactive({
+    choices <- wxmap_month_choices()
+    selected <- wxmap_month_val()
+    if (length(choices) == 0L) return(NULL)
+    if (length(selected) == 1L && selected %in% unname(choices)) {
+      selected
+    } else {
+      "all"
+    }
+  })
+
+  observeEvent(input$wxmap_month, {
+    value <- as.character(input$wxmap_month)
+    if (length(value) == 1L && nzchar(value)) wxmap_month_val(value)
+  }, ignoreInit = TRUE, ignoreNULL = TRUE)
 
   observeEvent(input$wxmap_wave, {
     v <- input$wxmap_wave
@@ -1157,7 +1201,18 @@ mod_1_05_weatherstats_server <- function(
       shiny::tagList(
         shiny::div(
           class = "d-flex align-items-center gap-3 flex-wrap",
-          wxmap_view_picker("wxmap_view")
+          wxmap_view_picker("wxmap_view"),
+          {
+            choices <- wxmap_month_choices()
+            if (length(choices) > 0L) {
+              wave_toggle_slider(
+                ns("wxmap_month"),
+                choices  = choices,
+                selected = wxmap_month(),
+                label    = "Interview month"
+              )
+            }
+          }
         ),
       if (!has_hist) shiny::helpText(
         paste("The two within-location views compare each location with its",
@@ -1194,6 +1249,8 @@ mod_1_05_weatherstats_server <- function(
     # is named in the card header as well as in the picker, so a screenshot of
     # a single card still says which wave it is.
     wave_label <- waves$label[match(wxmap_wave(), waves$key)]
+    month_choices <- wxmap_month_choices()
+    month_label <- names(month_choices)[match(wxmap_month(), month_choices)]
     idx   <- Filter(function(i) !is.null(lv_list[[i]]), seq_len(nrow(sw)))
     if (length(idx) == 0) {
       return(shiny::helpText("No locations to map.",
@@ -1207,9 +1264,12 @@ mod_1_05_weatherstats_server <- function(
         full_screen = TRUE,
         height      = "430px",
         bslib::card_header(
-          if (is.na(wave_label)) sw$label[i] else
-            paste0(sw$label[i], " - ", wave_label)
-        ),
+            if (is.na(wave_label)) sw$label[i] else
+            paste0(sw$label[i], " - ", wave_label,
+                   if (length(month_label) && !is.na(month_label)) {
+                     paste0(" - ", month_label)
+                   } else "")
+          ),
         # The MapLibre hex map (surface renderUI per variable above).
         shiny::uiOutput(ns(paste0(wxmap_id(i), "_surface"))) |>
           bslib::as_fill_carrier()

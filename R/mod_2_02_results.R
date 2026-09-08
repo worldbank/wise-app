@@ -22,11 +22,9 @@ mod_2_02_results_ui <- function(id) {
   tagList(
     # ---- 0. Stale banner (INT-08) -------------------------------------------
     shiny::uiOutput(ns("stale_banner")),
+    shiny::uiOutput(ns("simulation_summary_ui")),
 
-    # ---- 1. Results header -------------------------------------------------
-    shiny::uiOutput(ns("results_header_ui")),
-
-    # ---- 2. Analysis controls ----------------------------------------------
+    # ---- 1. Analysis controls ----------------------------------------------
     shiny::wellPanel(
       class = "results-controls",
       style = "padding: 8px 12px 4px 12px;",
@@ -277,6 +275,7 @@ mod_2_02_results_ui <- function(id) {
 #'   \code{$train_data}, \code{$n_pre_join}.
 #' @param saved_scenarios ReactiveVal holding named scenario entries.
 #' @param selected_hist   Reactive one-row data frame from weathersim.
+#' @param selected_weather Reactive data frame of selected weather variables.
 #' @param tabset_id       Character id of the parent tabset panel.
 #' @param tabset_session  Shiny session for the tabset.
 #'
@@ -285,6 +284,7 @@ mod_2_02_results_server <- function(id,
                                      hist_sim,
                                      saved_scenarios,
                                      selected_hist,
+                                     selected_weather = NULL,
                                      tabset_id,
                                      tabset_session = NULL,
                                      residuals = reactive("original"),
@@ -302,6 +302,15 @@ mod_2_02_results_server <- function(id,
         "Step 2 simulation results",
         note = "Interpretation and exports are disabled until then."
       ) else NULL
+    })
+
+    output$simulation_summary_ui <- renderUI({
+      simulation_summary_card(
+        hist_sim        = hist_sim(),
+        saved_scenarios = saved_scenarios(),
+        selected_hist   = if (!is.null(selected_hist)) selected_hist() else NULL,
+        selected_weather = if (is.function(selected_weather)) selected_weather() else selected_weather
+      )
     })
 
     # ---- Lazy delta-method aggregation -------------------------------------
@@ -753,32 +762,6 @@ mod_2_02_results_server <- function(id,
     })
 
     # ---- renderUI / render* outputs ----------------------------------------
-
-    output$results_header_ui <- renderUI({
-      req(hist_sim(), input$cmp_agg_method, input$cmp_deviation)
-      so <- hist_sim()$so
-
-      agg_label    <- label_agg_method(input$cmp_agg_method)
-      dev_label    <- label_deviation(input$cmp_deviation)
-      pov_txt      <- if (!is.null(pov_line_val()))
-        paste0(" | Poverty line: $", pov_line_val(), "/day") else ""
-
-      notes_txt <- paste0(
-        "Showing ", agg_label, " of ", so$label %||% so$name,
-        " expressed as ", dev_label, pov_txt, "."
-      )
-
-      shiny::div(
-        style = paste0(
-          "border-left: 4px solid #2166ac; background: #f4f8fd; ",
-          "padding: 10px 14px; margin-bottom: 12px; border-radius: 3px;"
-        ),
-        shiny::tags$strong(style = "font-size:15px;",
-                           paste0("Results: ", so$label %||% so$name)),
-        shiny::tags$br(),
-        shiny::tags$span(style = "color:#555; font-size:12px;", notes_txt)
-      )
-    })
 
     output$scenario_filter_ui <- renderUI({
       sc <- saved_scenarios()
@@ -1521,7 +1504,6 @@ mod_2_02_results_server <- function(id,
     outputOptions(output, "summary_box_plot",        suspendWhenHidden = TRUE)
     outputOptions(output, "summary_threshold_table", suspendWhenHidden = TRUE)
     outputOptions(output, "exceedance_plot",         suspendWhenHidden = TRUE)
-    outputOptions(output, "results_header_ui",       suspendWhenHidden = TRUE)
     outputOptions(output, "scenario_filter_ui",      suspendWhenHidden = TRUE)
     outputOptions(output, "threshold_table_header",  suspendWhenHidden = TRUE)
     outputOptions(output, "threshold_table_footer",  suspendWhenHidden = TRUE)

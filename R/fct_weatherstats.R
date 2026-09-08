@@ -1346,23 +1346,19 @@ isTRUE_vec <- function(x) !is.na(x) & x
 #' Columnar hex-map payload for one weather variable and wave
 #'
 #' The MapLibre twin of `plot_weather_loc_map()`'s cell path: same merged
-#' per-cell values, same palette, same grey `na.color` for cells the weather
-#' series did not reach. Cells whose colour summarises several interview
-#' months are flagged (`dash`) and outlined with a dashed line layer in the
-#' browser - the dotted-outline marker the location maps used, restated for
-#' cells.
+#' per-cell values, same palette, and same grey `na.color` for cells the
+#' weather series did not reach.
 #'
 #' @param cell_geo Per-cell geometry frame (`cell_data()$geom`).
 #' @param cmap     Wave-filtered location-to-cell map (`cell_data()$map`).
 #' @param sub      One variable's wave rows from `merge_loc_values_to_cells()`
 #'   (i.e. `weather_loc_vals()[[i]]` filtered to the wave): `loc_id` carries
-#'   the H3 index, `value` the colour value, `n_months` the interview-month
-#'   count behind each cell.
+#'   the H3 index and `value` the colour value.
 #' @param pal_info A shared palette from `.weather_map_palette()`, built
 #'   across all waves so the colour scale does not shift between waves.
 #'
 #' @return A list with `payload` (for `hexmap_update()`) and `legend` (for
-#'   `.compact_legend_html()` plus the averaged/missing note lines); `NULL`
+#'   `.compact_legend_html()` plus the missing note line); `NULL`
 #'   when there is nothing to draw.
 #'
 #' @noRd
@@ -1382,18 +1378,6 @@ isTRUE_vec <- function(x) !is.na(x) & x
 
   by_h3 <- stats::setNames(sub$value, as.character(sub$loc_id))
   v <- unname(by_h3[cells$h3])
-
-  # A cell averaging several interview months gets the dashed outline.
-  n_mn <- if ("n_months" %in% names(sub)) sub$n_months else rep(1L, nrow(sub))
-  avg_by_h3 <- stats::setNames(!is.na(n_mn) & n_mn > 1L,
-                               as.character(sub$loc_id))
-  dash <- unname(avg_by_h3[cells$h3] %||% rep(FALSE, nrow(cells)))
-
-  # Tooltip line for averaged cells: the value summarises several months.
-  nm_by_h3 <- stats::setNames(as.integer(n_mn), as.character(sub$loc_id))
-  n_mn_cell <- unname(nm_by_h3[cells$h3])
-  tip <- ifelse(is.na(n_mn_cell) | n_mn_cell <= 1L, NA_character_,
-                paste0(n_mn_cell, " interview months averaged"))
 
   bounds <- NULL
   if (all(c("xmin", "ymin", "xmax", "ymax") %in% names(cells))) {
@@ -1415,13 +1399,11 @@ isTRUE_vec <- function(x) !is.na(x) & x
     v_kind = if (binned) "binned" else "continuous",
     stops  = stops,
     bounds = bounds,
-    info   = tip,
-    dash   = dash
+    info   = NULL
   )
 
   n_missing <- sum(is.na(v))
-  n_avg <- sum(dash %||% FALSE, na.rm = TRUE)
-  notes <- if (n_missing > 0 || n_avg > 0) {
+  notes <- if (n_missing > 0) {
     # Same compact styling as .compact_legend_html()'s box: the notes render
     # as a second small pill directly under it (they are appended outside the
     # legend box, so they must carry their own styling or they inherit the
@@ -1433,17 +1415,11 @@ isTRUE_vec <- function(x) !is.na(x) & x
         'max-width: 160px; margin-top: 2px;">', ..., '</div>'
       )
     }
-    paste0(
-      if (n_missing > 0) row(
-        '<span style="display: inline-block; width: 10px; height: 10px; ',
-        'background: #cccccc; border: 1px solid #aaa; ',
-        'vertical-align: -1px;"></span> ',
-        n_missing, " of ", nrow(cells), " areas without weather"
-      ),
-      if (n_avg > 0) row(
-        n_avg, " of ", nrow(cells), " areas averaged across interview",
-        " months (dashed outline)"
-      )
+    row(
+      '<span style="display: inline-block; width: 10px; height: 10px; ',
+      'background: #cccccc; border: 1px solid #aaa; ',
+      'vertical-align: -1px;"></span> ',
+      n_missing, " of ", nrow(cells), " areas without weather"
     )
   } else ""
 

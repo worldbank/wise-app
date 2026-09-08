@@ -43,25 +43,14 @@ mod_2_simulation_ui <- function(id) {
         title = "Overview",
         value = "overview",
         div(
-          class = "empty-state",
+          class = "empty-state overview-empty-state",
           icon("cloud-sun-rain"),
           h5("No simulations yet"),
           p(paste(
-            "Configure historical and future weather scenarios in the sidebar,",
-            "then click 'Run simulation'.",
-            "Outputs: outcome distributions by climate scenario, exceedance",
-            "probabilities, and simulation diagnostics will appear here as new tabs."
-          )),
-          p(
-            class = "text-muted small mb-0",
-            paste(
-              "Simulations for large surveys (tens of thousands of households)",
-              "can take several minutes to run; charts take a few seconds to",
-              "update after changing filters."
-            )
-          )
-        ),
-        welfare_equation_ui(predicted = TRUE)
+            "Configure climate scenarios in the sidebar, then click",
+            "'Run simulation'. Results will appear here as new tabs."
+          ))
+        )
       )
     )
   )
@@ -111,6 +100,7 @@ mod_2_simulation_server <- function(id,
       hist_sim        = s1$hist_sim,
       saved_scenarios = s1$saved_scenarios,
       selected_hist   = s1$selected_hist,
+      selected_weather = selected_weather,
       tabset_id       = "step2_output_tabs",
       tabset_session  = session,
       residuals       = s1$residuals,
