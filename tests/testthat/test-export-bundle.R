@@ -156,7 +156,32 @@ test_that("an artefact that errors is skipped with a warning, not fatal", {
 
   expect_warning(mf <- wise_export_bundle(zf, items, config = NULL), "kaboom")
   expect_equal(mf$file, "01_step1_ok.csv")
+  # The skip rides the manifest as an attribute so callers can report counts.
+  expect_length(attr(mf, "skipped"), 1L)
+  expect_match(attr(mf, "skipped")[[1]]$note, "kaboom")
   expect_true(file.exists(zf))
+})
+
+test_that("the bundle reports per-item progress (UI-59)", {
+  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
+  seen <- list(); n <- 0L
+  wise_export_bundle(
+    withr::local_tempfile(fileext = ".zip"),
+    list(item("a"), item("b"), item("never", fun = function() NULL)),
+    config = NULL,
+    progress = function(i, total, label) {
+      n <<- n + 1L
+      seen[[n]] <<- list(i = i, total = total, label = label)
+    }
+  )
+  # The callback fires per registered surface, ready or not, so the progress
+  # bar reaches 100% even when a surface contributes nothing.
+  expect_length(seen, 3L)
+  expect_equal(seen[[1]]$i, 1L)
+  expect_equal(seen[[1]]$total, 3L)
+  expect_equal(seen[[1]]$label, "a")
+  expect_equal(seen[[3]]$i, 3L)
+  expect_equal(seen[[3]]$label, "never")
 })
 
 test_that("a req() throw means not-ready: skipped quietly, not named (UI-53)", {
@@ -544,7 +569,8 @@ test_that("the archive writer falls back when no system zip is present", {
   writeLines("a,b\n1,2", file.path(d, "x.csv"))
   zf <- withr::local_tempfile(fileext = ".zip")
 
-  # Force the fallback path by hiding the system binary.
+  # The zip package is the primary writer (PERF-38): hiding the system
+  # binary must not matter to it.
   withr::local_envvar(PATH = "")
   .export_zip(zf, d, "x.csv")
 

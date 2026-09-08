@@ -405,12 +405,15 @@ wise_config_apply <- function(config, session, existing = character(0)) {
     }, error = function(e) fail(conditionMessage(e))))
   }
 
-  # Figures: ggplot objects render through ggsave at the registered
-  # dimensions. Anything else is skipped rather than guessed at.
+  # Figures: ggplot objects render through ggsave with the ragg AGG device -
+  # the same renderer the on-screen plots use (shiny.useragg), so fonts and
+  # antialiasing in the PNG match what the user saw, and ragg is faster than
+  # the grDevices cairo path. Anything else is skipped rather than guessed at.
   tryCatch({
     if (inherits(value, "ggplot")) {
       ggplot2::ggsave(path, plot = value, width = item$width,
-                      height = item$height, dpi = 150, bg = "white")
+                      height = item$height, dpi = 150, bg = "white",
+                      device = ragg::agg_png)
     } else {
       return(NULL)
     }
@@ -658,8 +661,22 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
     ""
   )
 
-  L(hdr, contents, naming, files, omitted, prov, repro)
-}
+    notes <- c(
+      "## Notes", "",
+      paste(
+        "- Figures are PNG renders at fixed per-figure dimensions, not the",
+        "on-screen plot size; text rendering matches what the app shows."
+      ),
+      paste(
+        "- Data CSVs carry the raw values behind the display at full double",
+        "precision; the Download CSV buttons on the on-screen tables carry",
+        "the displayed formatting instead."
+      ),
+      ""
+    )
+
+    L(hdr, contents, naming, files, notes, omitted, prov, repro)
+  }
 
 
 # ---------------------------------------------------------------------------- #
@@ -678,7 +695,8 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
 #' @noRd
 wise_export_bundle <- function(zipfile, items, config = NULL,
                                provenance = list(),
-                               include = c("config", "tables", "figures")) {
+                               include = c("config", "tables", "figures"),
+                               progress = NULL) {
   stage <- tempfile("wise-export-")
   dir.create(stage, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
@@ -698,6 +716,7 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
   for (i in seq_along(wanted)) {
     it   <- wanted[[i]]
     file <- .export_filename(i, it$step, it$key, it$kind)
+    if (is.function(progress)) progress(i, length(wanted), it$label)
     res  <- .export_write_item(it, stage, file)
     if (is.null(res)) next
     if (identical(res$status, "error")) {
@@ -736,16 +755,18 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
   files <- list.files(stage)
   .export_zip(zipfile, stage, files)
 
-  invisible(manifest)
+  # The skipped list rides the return value as an attribute, so a caller can
+  # report counts without a second pass over the stage.
+  invisible(structure(manifest, skipped = skipped))
 }
 
 #' Write a flat zip archive of `files` inside `dir`
 #'
-#' `utils::zip()` shells out to a system `zip` binary, which is not guaranteed
-#' on a deployment host. Falls back to the `zip` package when it is installed
-#' (it usually is, as an rsconnect dependency) and fails with an actionable
-#' message when neither is available - rather than silently producing an
-#' unreadable file.
+#' The `zip` package is a declared dependency, so it is the primary writer: no
+#' system-binary hunt, no process-global `setwd()`, C-level speed. The system
+#' `zip` binary is only a fallback for environments where the package is
+#' somehow absent, and failure is loud and actionable rather than silently
+#' producing an unreadable file.
 #'
 #' @param zipfile Destination archive path.
 #' @param dir     Staging directory holding the files.
@@ -753,20 +774,20 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
 #' @return Invisibly TRUE.
 #' @noRd
 .export_zip <- function(zipfile, dir, files) {
-  if (nzchar(Sys.which("zip"))) {
-    old <- setwd(dir)
-    on.exit(setwd(old), add = TRUE, after = FALSE)
-    status <- utils::zip(zipfile = zipfile, files = files, flags = "-r9Xq")
-    if (identical(as.integer(status), 0L)) return(invisible(TRUE))
-  }
   if (requireNamespace("zip", quietly = TRUE)) {
     zip::zip(zipfile = zipfile, files = files, root = dir,
              mode = "cherry-pick")
     return(invisible(TRUE))
   }
+  if (nzchar(Sys.which("zip"))) {
+    old <- setwd(dir)
+    on.exit(setwd(old), add = TRUE, after = FALSE)
+    status <- utils::zip(zipfile = zipfile, files = files, flags = "-rXq")
+    if (identical(as.integer(status), 0L)) return(invisible(TRUE))
+  }
   stop(
-    "Cannot create the export archive: no `zip` system utility was found and ",
-    "the `zip` R package is not installed. Install one of them, or use ",
+    "Cannot create the export archive: the `zip` R package is not installed ",
+    "and no `zip` system utility was found. Install one of them, or use ",
     "\"Configuration only (.json)\", which needs neither.",
     call. = FALSE
   )
@@ -886,15 +907,36 @@ export_menu_server <- function(input, output, session,
       content = function(file) {
         shiny::withProgress(message = "Preparing export...", value = 0.2, {
           items <- wise_export_items(session)
-          shiny::setProgress(0.4, detail = "Writing files")
-          wise_export_bundle(
+          shiny::setProgress(0.3, detail = "Writing files")
+          mf <- wise_export_bundle(
             zipfile    = file,
             items      = items,
             config     = if ("config" %in% include) snapshot() else NULL,
             provenance = tryCatch(provenance(), error = function(e) list()),
-            include    = include
+            include    = include,
+            # Per-item detail instead of two jumps: a 20-figure bundle takes
+            # seconds, and a frozen bar reads as a hang.
+            progress   = function(i, total, label) {
+              shiny::setProgress(0.3 + 0.6 * i / max(total, 1L),
+                                 detail = label %||% "")
+            }
           )
           shiny::setProgress(1, detail = "Done")
+          n_tbl  <- sum(mf$kind == "table")
+          n_fig  <- sum(mf$kind == "figure")
+          n_skip <- length(attr(mf, "skipped"))
+          shiny::showNotification(
+            shiny::span(
+              sprintf("Exported %d table(s) and %d figure(s)", n_tbl, n_fig),
+              if (n_skip > 0L)
+                paste0("; ", n_skip, " artefact(s) could not be written - ",
+                       "see the bundle README for why")
+              else NULL,
+              "."
+            ),
+            type = if (n_skip > 0L) "warning" else "message",
+            duration = 10
+          )
         })
       },
       contentType = "application/zip"
@@ -931,6 +973,12 @@ export_menu_server <- function(input, output, session,
         class = "text-muted small",
         "Connect to the data source first. Controls that only appear once ",
         "data has loaded are restored as the interface fills in."
+      ),
+      # UI-03: a label = NULL control still needs an accessible name; the
+      # visually-hidden label keeps the modal compact for sighted users.
+      shiny::tags$label(
+        class = "visually-hidden", `for` = "import_config_file",
+        "Configuration file (JSON) to import"
       ),
       shiny::fileInput("import_config_file", NULL, accept = c(".json"),
                        width = "100%"),
