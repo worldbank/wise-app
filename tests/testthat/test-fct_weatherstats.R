@@ -211,3 +211,61 @@ test_that("plot_binscatter samples large tibbles with integer row indices", {
   p <- plot_binscatter(df, "tx", "Max temp", "welfare", "Welfare")
   expect_s3_class(p, "ggplot")
 })
+
+# ============================================================================ #
+# binned weather summary table                                                   #
+# ============================================================================ #
+
+test_that("binned weather summary aggregates all variables in shared groups", {
+  df <- data.frame(
+    code = c("A", "A", "A", "A", "B", "B"),
+    year = c(2018L, 2018L, 2018L, 2018L, 2019L, 2019L),
+    survname = "SRV",
+    loc_id = seq_len(6),
+    timestamp = as.Date(c("2018-01-01", "2018-02-01", "2018-03-01",
+                          "2018-04-01", "2019-01-01", "2019-02-01")),
+    economy = c(rep("Alpha", 4), rep("Beta", 2)),
+    countryyear = c(rep("Alpha, 2018", 4), rep("Beta, 2019", 2)),
+    temp_bin = factor(c("Low", "High", "Low", NA, "High", "Low"),
+                      levels = c("Low", "High", "Unused")),
+    rain_bin = c("Dry", "Dry", "Wet", "Wet", "Dry", NA),
+    stringsAsFactors = FALSE
+  )
+  selected <- data.frame(
+    name = c("temp_bin", "rain_bin"),
+    label = c("Temperature", "Rainfall"),
+    stringsAsFactors = FALSE
+  )
+
+  out <- build_weather_binned_table(
+    survey_weather = function() df,
+    selected_weather = function() selected
+  )
+
+  expect_named(out, c("Variable", "Country, Year", "Level", "N",
+                      "Share (%)", "% Missing"))
+  expect_equal(
+    out[, c("Variable", "Country, Year", "Level", "N")],
+    data.frame(
+      Variable = c("Rainfall", "Rainfall", "Rainfall", "Temperature",
+                   "Temperature", "Temperature", "Temperature"),
+      `Country, Year` = c("Alpha, 2018", "Alpha, 2018", "Beta, 2019",
+                          "Alpha, 2018", "Alpha, 2018", "Beta, 2019",
+                          "Beta, 2019"),
+      Level = c("Dry", "Wet", "Dry", "Low", "High", "Low", "High"),
+      N = c(2L, 2L, 1L, 2L, 1L, 1L, 1L),
+      stringsAsFactors = FALSE
+    ),
+    ignore_attr = TRUE
+  )
+  expect_equal(
+    out$`Share (%)`,
+    c(50, 50, 100, 66.6666667, 33.3333333, 50, 50),
+    tolerance = 1e-7
+  )
+  expect_equal(
+    out$`% Missing`,
+    c(0, 0, 50, 25, 25, 0, 0),
+    tolerance = 1e-10
+  )
+})

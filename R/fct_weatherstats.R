@@ -1642,56 +1642,81 @@ build_weather_binned_table <- function(survey_weather, selected_weather,
     for (v in setdiff(binned_vars, names(miss_source))) miss_source[[v]] <- NA
     miss_all <- survey_missingness_long(miss_source, binned_vars)
 
-    rows_list <- lapply(binned_vars, function(v) {
-      level_values <- if (is.factor(df[[v]])) levels(df[[v]]) else NULL
-      counts <- df |>
-        dplyr::filter(!is.na(.data[[v]])) |>
-        dplyr::group_by(.data$countryyear, .data[[v]]) |>
-        dplyr::summarise(N = dplyr::n(), .groups = "drop") |>
-        dplyr::group_by(.data$countryyear) |>
-        dplyr::mutate(share = 100 * .data$N / sum(.data$N, na.rm = TRUE)) |>
-        dplyr::ungroup() |>
-        dplyr::mutate(
-           variable = v,
-           level    = as.character(.data[[v]]),
-           level_order = if (is.null(level_values)) {
-             match(as.character(.data[[v]]), unique(as.character(df[[v]])))
-           } else {
-             match(as.character(.data[[v]]), level_values)
-           }
-        ) |>
-        dplyr::select(.data$variable, .data$countryyear, .data$level,
-                      .data$N, .data$share, .data$level_order)
+    # PERF-42: reshape the selected binned columns once, build one
+    # country-year / variable / level grouping, and aggregate every bin in a
+    # single collapse pass. The old implementation rebuilt a dplyr grouping
+    # and share denominator once per variable, which made the binned table's
+    # cost grow with the number of weather variables.
+    long <- do.call(rbind, lapply(binned_vars, function(v) {
+      vals <- df[[v]]
+      level_values <- if (is.factor(vals)) levels(vals) else
+        unique(as.character(vals[!is.na(vals)]))
+      data.frame(
+        variable = v,
+        countryyear = as.character(df$countryyear),
+        level = as.character(vals),
+        level_order = match(as.character(vals), level_values),
+        stringsAsFactors = FALSE
+      )
+    }))
+    long <- long[!is.na(long$level), , drop = FALSE]
+    if (nrow(long)) {
+      g <- collapse::GRP(long, by = c("countryyear", "variable", "level"),
+                         group.sizes = TRUE)
+      count <- as.numeric(g$group.sizes)
+      level_key <- g$groups
+      level_key$N <- count
+      denom_g <- collapse::GRP(level_key, by = c("countryyear", "variable"))
+      denom <- as.numeric(collapse::fsum(level_key$N, g = denom_g))
+      level_key$share <- 100 * count /
+        denom[match(
+          paste(level_key$countryyear, level_key$variable),
+          paste(denom_g$groups$countryyear, denom_g$groups$variable)
+        )]
+      level_key$level_order <- match(
+        paste(level_key$variable, level_key$level),
+        paste(long$variable, long$level)
+      )
+      tab <- as.data.frame(level_key, stringsAsFactors = FALSE)
+      tab <- tab[, c("variable", "countryyear", "level", "N", "share",
+                     "level_order"), drop = FALSE]
+    } else {
+      tab <- data.frame(
+        variable = character(), countryyear = character(), level = character(),
+        N = integer(), share = numeric(), level_order = integer(),
+        stringsAsFactors = FALSE
+      )
+    }
 
-      miss_df <- miss_all[miss_all$variable == v,
-                          c("countryyear", "% Missing"), drop = FALSE]
-
-      counts |> dplyr::left_join(miss_df, by = "countryyear")
-    })
-
-    tab <- dplyr::bind_rows(rows_list)
+    if (nrow(tab)) {
+      tab <- dplyr::left_join(
+        tab,
+        miss_all,
+        by = c("countryyear", "variable")
+      )
+    }
     if (nrow(tab) == 0) return(NULL)
 
     # Show only the readable variable label, falling back to the raw name
     if ("variable" %in% names(tab) &&
         all(c("name", "label") %in% names(sw))) {
       lab_map <- sw |>
-        dplyr::select(.data$name, .data$label) |>
+        dplyr::select(name, label) |>
         dplyr::distinct()
       tab <- tab |>
         dplyr::left_join(lab_map, by = c("variable" = "name")) |>
         dplyr::mutate(
           variable = dplyr::coalesce(.data$label, .data$variable)
         ) |>
-      dplyr::select(.data$variable, .data$countryyear, .data$level,
-                    .data$N, .data$share, .data$`% Missing`,
-                    .data$level_order)
+        dplyr::select(dplyr::all_of(c("variable", "countryyear", "level",
+                                      "N", "share", "% Missing",
+                                      "level_order")))
     }
 
     # Sort bins by their factor/creation order rather than interval text.
     tab <- tab |>
       dplyr::arrange(.data$variable, .data$countryyear, .data$level_order) |>
-      dplyr::select(-.data$level_order)
+      dplyr::select(-dplyr::all_of("level_order"))
 
     if ("variable" %in% names(tab))
       names(tab)[names(tab) == "variable"] <- "Variable"

@@ -9,6 +9,11 @@
     "content_category": null,
     "has_parameters": false
   },
+  "environment": {
+    "r": {
+      "requires": ">= 4.1.0"
+    }
+  },
   "packages": {
     "DBI": {
       "Source": "CRAN",
@@ -706,7 +711,7 @@
         "Depends": "R (>= 2.10)",
         "Imports": "base64enc, cachem, fastmap (>= 1.1.1), grDevices, htmltools\n(>= 0.5.8), jquerylib (>= 0.1.3), jsonlite, lifecycle, memoise\n(>= 2.0.1), mime, rlang, sass (>= 0.4.9)",
         "Suggests": "brand.yml, bsicons, curl, fontawesome, future, ggplot2,\nknitr, lattice, magrittr, rappdirs, rmarkdown (>= 2.7), shiny\n(>= 1.11.1), testthat, thematic, tools, utils, withr, yaml",
-      "Config/Needs/deploy": "BH, chiflights22, colourpicker, commonmark, cpp11,\ncpsievert/chiflights22, cpsievert/histoslider, dplyr, DT,\nggplot2, gt, hexbin, histoslider, htmlwidgets,\nlattice, leaflet, lubridate, markdown, modelr, plotly,\nreactable, reshape2, rprojroot, rsconnect, rstudio/shiny,\nscales, styler, tibble",
+        "Config/Needs/deploy": "BH, chiflights22, colourpicker, commonmark, cpp11,\ncpsievert/chiflights22, cpsievert/histoslider, dplyr, DT,\nggplot2, ggridges, gt, hexbin, histoslider, htmlwidgets,\nlattice, leaflet, lubridate, markdown, modelr, plotly,\nreactable, reshape2, rprojroot, rsconnect, rstudio/shiny,\nscales, styler, tibble",
         "Config/Needs/routine": "chromote, desc, renv",
         "Config/Needs/website": "brio, crosstalk, dplyr, DT, ggplot2, glue,\nhtmlwidgets, leaflet, lorem, palmerpenguins, plotly, purrr,\nrprojroot, rstudio/htmltools, scales, stringr, tidyr, webshot2",
         "Config/testthat/edition": "3",
@@ -3536,7 +3541,7 @@
         "Suggests": "covr, graphics, grid, testthat (>= 3.0.0)",
         "LinkingTo": "systemfonts, textshaping",
         "Config/build/compilation-database": "true",
-        "Config/Needs/website": "ggplot2, devoid, magick, bench, tidyr,\nhexbin, sessioninfo, pkgdown, tidyverse/tidytemplate",
+        "Config/Needs/website": "ggplot2, devoid, magick, bench, tidyr, ggridges,\nhexbin, sessioninfo, pkgdown, tidyverse/tidytemplate",
         "Config/testthat/edition": "3",
         "Config/usethis/last-upkeep": "2025-04-25",
         "Encoding": "UTF-8",
@@ -4741,6 +4746,33 @@
         "Archs": "yaml.so.dSYM"
       }
     },
+    "zip": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": {
+        "Package": "zip",
+        "Title": "Cross-Platform 'zip' Compression",
+        "Version": "2.3.3",
+        "Authors@R": "c(\n    person(\"Gábor\", \"Csárdi\", , \"csardi.gabor@gmail.com\", role = c(\"aut\", \"cre\")),\n    person(\"Kuba\", \"Podgórski\", role = \"ctb\"),\n    person(\"Rich\", \"Geldreich\", role = \"ctb\"),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"),\n           comment = c(ROR = \"03wc8by49\"))\n  )",
+        "Description": "Cross-Platform 'zip' Compression Library. A replacement for\n    the 'zip' function, that does not require any additional external\n    tools on any platform.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://github.com/r-lib/zip, https://r-lib.github.io/zip/",
+        "BugReports": "https://github.com/r-lib/zip/issues",
+        "Suggests": "covr, pillar, processx, R6, testthat, withr",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "Config/testthat/edition": "3",
+        "Config/usethis/last-upkeep": "2025-05-07",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.2.9000",
+        "NeedsCompilation": "yes",
+        "Packaged": "2025-05-13 13:31:44 UTC; gaborcsardi",
+        "Author": "Gábor Csárdi [aut, cre],\n  Kuba Podgórski [ctb],\n  Rich Geldreich [ctb],\n  Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)",
+        "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2025-05-13 14:10:02 UTC",
+        "Built": "R 4.5.0; aarch64-apple-darwin20; 2025-05-13 15:17:31 UTC; unix"
+      }
+    },
     "zoo": {
       "Source": "CRAN",
       "Repository": "https://cran.rstudio.com",
@@ -4775,7 +4807,7 @@
       "checksum": "b544c98e7d55c33a6c62b5c905878c65"
     },
     "DESCRIPTION": {
-      "checksum": "e55f7ec8b21ed36e30dd397078e9b156"
+      "checksum": "8715392ea174ebeca4b4d4f891246c66"
     },
     "inst/.DS_Store": {
       "checksum": "e9b26c8c8980ffa8cad932aba5807a5f"
@@ -4790,16 +4822,16 @@
       "checksum": "194577a7e20bdcc7afbb718f502c134c"
     },
     "inst/app/www/custom.css": {
-      "checksum": "c936cb71b927f5df8991cbba67588aa3"
+      "checksum": "66495ac8ce069d8919ed2c8c28fa0a45"
     },
     "inst/app/www/custom.js": {
-      "checksum": "3d7c259ee9ed14025925a83284097511"
+      "checksum": "1832eb7c0b5e9dac2fd6d8fdf9482ea6"
     },
     "inst/app/www/favicon.png": {
       "checksum": "7375aa747c52ad9545b733a059fab9db"
     },
     "inst/app/www/hexmap.js": {
-      "checksum": "dc39bb8c30ce711f07cb3fcf4122df79"
+      "checksum": "07e9d7f1cb0f6555cf7b7ea48109e499"
     },
     "inst/app/www/katex/fonts/KaTeX_AMS-Regular.woff2": {
       "checksum": "66c678209ce93b6e2b583f02ce41529e"
@@ -5035,6 +5067,15 @@
     "man/dot-fixest_vcov.Rd": {
       "checksum": "f63a52ff08a49a83e6cb7440f4d698e7"
     },
+    "man/dot-scenario_has_effect.Rd": {
+      "checksum": "e1b1c385fbf78b1871a5e9a0cf34fe2e"
+    },
+    "man/dot-sp_scenario_reach.Rd": {
+      "checksum": "f6507515c1ad7bd05524d2f5bbb57970"
+    },
+    "man/dot-sp_transfer_totals.Rd": {
+      "checksum": "7ad577876c1a971e7e4b3e48e99f3925"
+    },
     "man/enhance_exceedance.Rd": {
       "checksum": "d1357824e1e3f627fb019333263036b2"
     },
@@ -5138,16 +5179,16 @@
       "checksum": "ae99d7d3fff3fe4cf233b954228141e4"
     },
     "man/make_stats_dt.Rd": {
-      "checksum": "66e21e4613b018898a39894337947a83"
+      "checksum": "bb004824398d3ca9a07fdbd9c2c90934"
     },
     "man/make_weather_binned_stats_dt.Rd": {
-      "checksum": "f785962212412eab26dee2b16a6113a4"
+      "checksum": "24dedd2d1ea17dc46797d6c67a81da86"
     },
     "man/make_weather_effect_plot.Rd": {
       "checksum": "1fd83a059d34dea74946267e185de263"
     },
     "man/make_weather_stats_dt.Rd": {
-      "checksum": "8802095a124665277f42002924464040"
+      "checksum": "4cb54a50c73cace229e016069614f2ae"
     },
     "man/merge_loc_values_to_cells.Rd": {
       "checksum": "127f8490f86db208f9eb1cb3a7218b9c"
@@ -5155,17 +5196,29 @@
     "man/merge_survey_weather.Rd": {
       "checksum": "18e97a8e792d2e34784b07031d62794e"
     },
+    "man/model_badge.Rd": {
+      "checksum": "686fddcceb5682c00917f065c7ebff86"
+    },
+    "man/model_card_rows.Rd": {
+      "checksum": "c4f53281d0d3db42fa06d71522477226"
+    },
+    "man/model_cluster_phrase.Rd": {
+      "checksum": "138d747c079bcd1fee638dab12be4f0e"
+    },
+    "man/model_covariate_counts.Rd": {
+      "checksum": "be471b1aae64e48e2dc1e277d134b542"
+    },
     "man/model_type_choices.Rd": {
       "checksum": "c53188a3f1c8d1c52d2ce6dd94d511e8"
     },
     "man/normalise_local_path.Rd": {
       "checksum": "c906bd3a97b4abfaf19ea3551baea899"
     },
+    "man/outcome_direction_note.Rd": {
+      "checksum": "62f683a47488bc74c57013f44f17f264"
+    },
     "man/outcome_direction.Rd": {
       "checksum": "522b04d8e475c1405b7fb1710c487970"
-    },
-    "man/outcome_info_message.Rd": {
-      "checksum": "3b67d4f86b17366f098bd01ca0a7124a"
     },
     "man/outcome_missing_summary.Rd": {
       "checksum": "8315fa11a912f2cbffa2dab177f452ac"
@@ -5183,7 +5236,7 @@
       "checksum": "4c7be1bc3517fd806b1a33ae8d739070"
     },
     "man/plot_interview_dates.Rd": {
-      "checksum": "ff075250c1929e6314d933de5fdb04db"
+      "checksum": "cdfae6b734a9811835cc99b8d272385d"
     },
     "man/plot_pointrange_climate.Rd": {
       "checksum": "9f855d0cf181b0ed36e24bc21df04440"
@@ -5204,19 +5257,19 @@
       "checksum": "d57426ddd301f4255be54b229b4c7091"
     },
     "man/plot_weather_bins_compare.Rd": {
-      "checksum": "4bef8731f9e6a6cf26d00bcee77dbb9f"
+      "checksum": "d500619f674b09de589b164ccaf12cd7"
     },
     "man/plot_weather_density_panel.Rd": {
       "checksum": "194220726c85ec2987f0c4653cb31a29"
     },
     "man/plot_weather_dist.Rd": {
-      "checksum": "90c6958749d5b454db23e5ef26cb767c"
+      "checksum": "507782a7b495cef9b4a52dec6331f356"
     },
     "man/plot_weather_ridges_compare.Rd": {
-      "checksum": "ea558a52fdfbdd7a4a87dd04806d4bb0"
+      "checksum": "c33292d7ec074242d008c7ad7f4c6cce"
     },
     "man/plot_welfare_dist.Rd": {
-      "checksum": "a18df12c0b769a174d68c90cc2717a83"
+      "checksum": "8f209a639018353082669630c25b57ef"
     },
     "man/plot_year_anchored_ridge.Rd": {
       "checksum": "4e5548cb2a74ac2f0cb65fe4b94a0916"
@@ -5285,7 +5338,7 @@
       "checksum": "bad838c0eec6c9006bb22a1ab947b3d5"
     },
     "man/summarise_interview_dates.Rd": {
-      "checksum": "88a25d3acc8a4f0682a28eeac787c764"
+      "checksum": "1d9ae8d2f5e521cb7b2ed42239622edf"
     },
     "man/summarise_weather_anomaly_by_loc.Rd": {
       "checksum": "44c5b669b383db9190d442799157e8ac"
@@ -5311,6 +5364,24 @@
     "man/validate_connection_params.Rd": {
       "checksum": "7c63c2c625f5c48110894644caf347d1"
     },
+    "man/weather_agg_symbol.Rd": {
+      "checksum": "e2c5b8a8d12abb9f6ae4dfc140af98f9"
+    },
+    "man/weather_form_label.Rd": {
+      "checksum": "f4694ba69e0512ce81232a157f43e4eb"
+    },
+    "man/weather_pipeline_row.Rd": {
+      "checksum": "03246af660f8d1746640d919ca5aabe7"
+    },
+    "man/weather_pipeline_rows.Rd": {
+      "checksum": "fe73c71f6d059f37aceedb8f0036806c"
+    },
+    "man/weather_pipeline_stages.Rd": {
+      "checksum": "011a9df5318c8fd507693ed949aa5622"
+    },
+    "man/weather_ref_label.Rd": {
+      "checksum": "2bed91200126327c3a61f5162a3f87a2"
+    },
     "man/weather_spec_defaults.Rd": {
       "checksum": "c916e27c1dfa4d56d0a690d7d66e53b6"
     },
@@ -5321,7 +5392,7 @@
       "checksum": "6acbc5ac7fc9a86ed74524fd235beab3"
     },
     "NAMESPACE": {
-      "checksum": "8d8be7229d7f4fc942548a6a70fe5d2e"
+      "checksum": "b5840605fe0bba67c9f2953221ec1f68"
     },
     "R/_disable_autoload.R": {
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
@@ -5330,10 +5401,10 @@
       "checksum": "5c279a695e6b90f1ddece82189def667"
     },
     "R/app_server.R": {
-      "checksum": "db05910e697f73e50cff2a22f3726095"
+      "checksum": "d1bb9dae6f6f125d3653aa67f0386649"
     },
     "R/app_ui.R": {
-      "checksum": "2251f3fffab32beb32ced45fc2e3e300"
+      "checksum": "0b49f97e36eefbc056e653f909382dca"
     },
     "R/fct_aggregation_delta.R": {
       "checksum": "61d5f95d5733a5ae8d0e5f1bfeb0f868"
@@ -5344,6 +5415,9 @@
     "R/fct_connection.R": {
       "checksum": "348690ad3b7629f708aacc37741a0826"
     },
+    "R/fct_export.R": {
+      "checksum": "890d59cff05d38648bd3fb0d7234c0d5"
+    },
     "R/fct_fit_model.R": {
       "checksum": "beb9eafae252b68314fa424b31cca56a"
     },
@@ -5351,34 +5425,43 @@
       "checksum": "12dcafdbc788b56062bb05bddea2ba86"
     },
     "R/fct_hexmap.R": {
-      "checksum": "da70784630087028602993f368ac78b2"
+      "checksum": "9d3e00f4ed46b74146d02086daa1b4a2"
     },
     "R/fct_load_data.R": {
-      "checksum": "f44bc1d5e80c4e3506a716f180065a52"
+      "checksum": "d8bc2aea9ba67d565467ccebf99b9cba"
     },
     "R/fct_loc_panel.R": {
       "checksum": "e0eb468a4360d4159d1529b52cd0a6bc"
+    },
+    "R/fct_model_card.R": {
+      "checksum": "2bfd61a712cd02f9d9b1109fa3faab1b"
     },
     "R/fct_model_select.R": {
       "checksum": "87969feb3d30728bf3aecf3a67962d8d"
     },
     "R/fct_outcome.R": {
-      "checksum": "77c3818d80f75119c0414a23cda14796"
+      "checksum": "fb65adb685f3f2915e8e1b8a0aa78a2d"
+    },
+    "R/fct_overview_metadata.R": {
+      "checksum": "1ff72acaf5a9b93a88b7ab89ecfbb729"
     },
     "R/fct_policy_decompose.R": {
       "checksum": "5ac20633a8c84cbae3eb167af72b3b2b"
     },
     "R/fct_policy_sim_compare.R": {
-      "checksum": "c5cf62756db77d8b4378a18711b2d585"
+      "checksum": "77e913161bcbb96836fabc0a44181bb8"
     },
     "R/fct_policy_sim.R": {
-      "checksum": "bc0345968689b7532036058f1bd3d528"
+      "checksum": "429bc37800fedb3775803a9c694f790c"
     },
     "R/fct_predict_outcomes.R": {
       "checksum": "d72e37aeb2719316263337160d263cfe"
     },
+    "R/fct_provenance.R": {
+      "checksum": "b000bc737c50ebf098884898726ab34b"
+    },
     "R/fct_results.R": {
-      "checksum": "081cb151b27882030330722482d06583"
+      "checksum": "4a03bb03246ebaf0949f59871b944fc6"
     },
     "R/fct_rif_sim.R": {
       "checksum": "f1f7f93d0f2507c78ea1732b271c47db"
@@ -5393,97 +5476,100 @@
       "checksum": "8481751cb7a9f42784b5324356141f71"
     },
     "R/fct_sim_diag.R": {
-      "checksum": "b2fbae71224c4f9eb1dd14898dbdd887"
+      "checksum": "63f2170484389df65027838068f52a01"
     },
     "R/fct_simulations.R": {
-      "checksum": "2aaea7303b49c8787be292f56d2ca460"
+      "checksum": "bf5bb99476e58deac289b50c25511c99"
     },
     "R/fct_surveystats.R": {
-      "checksum": "64ae2a1196bca6123ece268cbe97a7c9"
+      "checksum": "d3cbe030e347c97269b3682551dee558"
     },
     "R/fct_uncertainty_helpers.R": {
       "checksum": "d64c46429e54cf1768d6e6cffa415d27"
+    },
+    "R/fct_weather_pipeline.R": {
+      "checksum": "bcc66dc737a37fa6c8e9d05ae944e905"
     },
     "R/fct_weather_select.R": {
       "checksum": "30de0bd40333d11a8dd82d324588004e"
     },
     "R/fct_weatherstats.R": {
-      "checksum": "3ebbb9337553dafcfc0a029ff94e25db"
+      "checksum": "0356923fc647d9b3a5e2211a13eb3be8"
     },
     "R/globals.R": {
       "checksum": "ae27923680ee31f2d3664e6f3d15577f"
     },
     "R/mod_0_overview.R": {
-      "checksum": "4fb2b2c731af9a54ecac97924e804de1"
+      "checksum": "af11a694da8afb8e958a85dd1aabf4e1"
     },
     "R/mod_1_01_sample.R": {
-      "checksum": "cb09bcf726d307e58bb58c8dab04c0ab"
+      "checksum": "9ec46979cb883a92c25f40b4bec3b078"
     },
     "R/mod_1_02_surveystats.R": {
-      "checksum": "a16bed40659378ebe6fea0a7bd2b1081"
+      "checksum": "d226605862d84d9eae14199383e4c893"
     },
     "R/mod_1_03_outcome.R": {
-      "checksum": "a15c40a10451a329bc151509891f238b"
+      "checksum": "aa5fd9ff92a9d6e468cbd473a1f39799"
     },
     "R/mod_1_04_weather.R": {
-      "checksum": "c9dcc8e955716a52986454b06dd7847c"
+      "checksum": "da0c2ce5b96c212a58004f4b2599fd86"
     },
     "R/mod_1_05_weatherstats.R": {
-      "checksum": "f928092162e707fc54086ab74d4ccea9"
+      "checksum": "47a503fe98f2b061cd21909ce7c92705"
     },
     "R/mod_1_06_model.R": {
-      "checksum": "afb3dc8049d5777d8f56b7ef4e217703"
+      "checksum": "643b58749811ee1132d1d217eb68182c"
     },
     "R/mod_1_07_results.R": {
-      "checksum": "aeb6072187e755e9ba012d9dba663fea"
+      "checksum": "4a29d64d4fe0d91a4ee9d7c6dad6bbc4"
     },
     "R/mod_1_08_modelfit.R": {
-      "checksum": "d2dc2db8e86a843da996f0f1869fe860"
+      "checksum": "898882ce435abe63cc5017e5f24063e1"
     },
     "R/mod_1_modelling.R": {
-      "checksum": "ba9c2de87b849a42e5fdd13fc03194d4"
+      "checksum": "d73be262d4432f2e353f942e1fdc7eb2"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "4bc1c4b8fda3dde5cd086d8554a2cc68"
+      "checksum": "4d786f9ac910ecc0354a9c86565a2faf"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "fadc1f0d50134e3c5f8f46b06b3c14b9"
+      "checksum": "36fd0acda686b4de2d0edab7d620ab19"
     },
     "R/mod_2_03_diagnostics.R": {
-      "checksum": "141631320bf1edfb21d1a106542bbf89"
+      "checksum": "4a9731de1600d6df0b56ec96a9a6dfce"
     },
     "R/mod_2_simulation.R": {
       "checksum": "3f729eed232f491f085b86edd101222f"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "3c61a0b822cf22ebd4ca1d9624e4462a"
+      "checksum": "daf98b2cdaf16eb8c0ed3f4b6d8850df"
     },
     "R/mod_3_02_infra.R": {
-      "checksum": "f75813bb503c9ead254d227c2670140d"
+      "checksum": "0c5a7cc34b42403a59acd3d0fd18cb78"
     },
     "R/mod_3_03_digital.R": {
-      "checksum": "35e885561f311470986200f3d194da42"
+      "checksum": "087fe6e781ed216fbc710b0da7daf16c"
     },
     "R/mod_3_04_labor.R": {
-      "checksum": "570b81583622f605b1d3af06a035fcd7"
+      "checksum": "355ab98edccb16d27fa08c1a87a80464"
     },
     "R/mod_3_05_education.R": {
-      "checksum": "f2b65dec98420c2ae6218cf1c8956262"
+      "checksum": "c7264c3139670a39e0b48d3c3e78de80"
     },
     "R/mod_3_06_policy_sim.R": {
-      "checksum": "5db9ea7f359b15fe5773a9c1ce0a2080"
+      "checksum": "569bbb643feba257302f24e04555f905"
     },
     "R/mod_3_07_results.R": {
       "checksum": "545de35fc78f73b44ede5b3acfdcc1d7"
     },
     "R/mod_3_08_diagnostics.R": {
-      "checksum": "8741b0a85d9a37e01406fde52fd5354a"
+      "checksum": "25284e763a296a419411ccd921145808"
     },
     "R/mod_3_09_decomposition.R": {
-      "checksum": "607c1c251a800414c6dad6d78c444af5"
+      "checksum": "8924343aef14177e11107fef48a4b90a"
     },
     "R/mod_3_scenario.R": {
-      "checksum": "719397162b0d5788cfdda37afda01598"
+      "checksum": "5a0725a0602d0e76cad6b8b9bfd48022"
     },
     "R/run_app.R": {
       "checksum": "b777c627eee3300538deaf9b45a5635b"
@@ -5492,13 +5578,13 @@
       "checksum": "c935ad087463b6b54d4a011b143cf298"
     },
     "R/utils_mod_1_helpers.R": {
-      "checksum": "0777493cf77f403eb5e8f335a1a2be61"
+      "checksum": "6e78cba0aab6cddf243d549590ca3518"
     },
     "R/utils_plot_theme.R": {
       "checksum": "848ff60c394aae499e70facced556cc0"
     },
     "R/utils_ui.R": {
-      "checksum": "a66564349b3cbad80b942b400a18e712"
+      "checksum": "3c32ceb66c04c83df1bf56ad19296234"
     }
   },
   "users": null
