@@ -106,7 +106,50 @@ test_that(".register_db_secret quotes bearer tokens safely in secret SQL", {
       "(TYPE http, BEARER_TOKEN 'O''Brien''; CREATE SECRET pwn; --');"
     )
   )
+  expect_identical(.duck$db_secrets$h1,
+                   digest::digest("O'Brien'; CREATE SECRET pwn; --"))
   expect_length(captured, 2)
+})
+
+test_that("shared DuckDB state is released after the last root session ends", {
+  skip_if_not_installed("duckdb")
+  restore_duck <- .duck_state_restore()
+  withr::defer(restore_duck())
+
+  callbacks <- list()
+  make_session <- function() {
+    session <- new.env(parent = emptyenv())
+    session$userData <- new.env(parent = emptyenv())
+    session$onSessionEnded <- function(callback) {
+      callbacks[[length(callbacks) + 1L]] <<- callback
+    }
+    session
+  }
+
+  first <- make_session()
+  second <- make_session()
+  expect_true(.duck_register_session(first))
+  expect_false(.duck_register_session(first))
+  expect_true(.duck_register_session(second))
+
+  con <- .duck_con()
+  DBI::dbExecute(con, "CREATE TEMP TABLE sec03_probe (value INTEGER)")
+  .duck$db_tokens <- list(token = list(token = "transient-token"))
+  .duck$db_secrets <- list(secret = digest::digest("transient-token"))
+
+  callbacks[[1L]]()
+  expect_true(DBI::dbIsValid(con))
+  expect_equal(.duck$active_sessions, 1L)
+
+  callbacks[[2L]]()
+  expect_false(DBI::dbIsValid(con))
+  expect_null(.duck$con)
+  expect_identical(.duck$extensions, character(0))
+  expect_identical(.duck$db_tokens, list())
+  expect_identical(.duck$db_secrets, list())
+
+  callbacks[[2L]]()
+  expect_equal(.duck$active_sessions, 0L)
 })
 
 test_that("load_data s3 secret SQL escapes quote-bearing credentials", {

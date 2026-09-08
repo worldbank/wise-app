@@ -22,8 +22,52 @@
 # .duck$con          - the live DuckDB connection (set by .duck_con())
 # .duck$extensions   - character vector of already-loaded extensions
 # .duck$db_tokens    - named list: params_hash -> list(token, expires_at)
-# .duck$db_secrets   - named list: params_hash / secret name -> credential
-#                      digest currently registered with the connection
+# .duck$db_secrets   - named list: params_hash / secret name -> credential digest
+# .duck$active_sessions - number of root Shiny sessions using this process
+
+
+#' Register the root Shiny session that owns this process's shared data state.
+#'
+#' The DuckDB connection is process-wide, so it must not be closed when one of
+#' several concurrent sessions ends. Cleanup is deferred until the last root
+#' session has ended; this also handles repeated local `run_app()` sessions.
+#'
+#' @param session A Shiny session object.
+#' @noRd
+.duck_register_session <- function(session) {
+  if (is.null(session) || isTRUE(session$userData$wise_duck_registered))
+    return(invisible(FALSE))
+
+  .duck$active_sessions <- as.integer(.duck$active_sessions %||% 0L) + 1L
+  session$userData$wise_duck_registered <- TRUE
+  session$userData$wise_duck_released <- FALSE
+  session$onSessionEnded(function() {
+    if (isTRUE(session$userData$wise_duck_released)) return(invisible(FALSE))
+    session$userData$wise_duck_released <- TRUE
+    .duck_release_session()
+  })
+  invisible(TRUE)
+}
+
+
+#' Release one root Shiny session and clean up when the process is idle.
+#'
+#' @noRd
+.duck_release_session <- function() {
+  active <- max(0L, as.integer(.duck$active_sessions %||% 1L) - 1L)
+  .duck$active_sessions <- active
+  if (active > 0L) return(invisible(FALSE))
+
+  con <- .duck$con
+  .duck$con <- NULL
+  .duck$extensions <- character(0)
+  .duck$db_tokens <- list()
+  .duck$db_secrets <- list()
+  if (!is.null(con)) {
+    try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE)
+  }
+  invisible(TRUE)
+}
 
 
 # Canonical identity columns used before the all-column tie-break. The fallback
@@ -289,12 +333,13 @@ collect_deterministic <- function(data, keys = NULL) {
 #' @noRd
 .register_db_secret <- function(con, db_token, params_hash) {
   secret_name <- paste0("db_http_", params_hash)
-  if (!identical(.duck$db_secrets[[params_hash]], db_token)) {
+  token_hash <- digest::digest(db_token)
+  if (!identical(.duck$db_secrets[[params_hash]], token_hash)) {
     DBI::dbExecute(con, sprintf(
       "CREATE OR REPLACE SECRET %s (TYPE http, BEARER_TOKEN %s);",
       secret_name, .sql_literal(db_token)
     ))
-    .duck$db_secrets[[params_hash]] <- db_token
+    .duck$db_secrets[[params_hash]] <- token_hash
   }
   invisible(NULL)
 }

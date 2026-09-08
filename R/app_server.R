@@ -6,6 +6,10 @@
 #' @noRd
 app_server <- function(input, output, session) {
 
+  # SEC-03: data connections and credential caches are process-wide. Register
+  # the root session so the final session in this process releases them.
+  .duck_register_session(session)
+
   # ---- Step 0: data connection, config, and metadata loading ---------------
 
   overview_api <- mod_0_overview_server(id = "overview")

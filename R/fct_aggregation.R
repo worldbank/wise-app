@@ -733,6 +733,132 @@ aggregate_sim_preds <- function(preds, so, agg_method, deviation, loss_frame,
   )
 }
 
+# ---------------------------------------------------------------------------- #
+# Shared pipeline aggregation table                                             #
+# ---------------------------------------------------------------------------- #
+
+#' Build the canonical per-year aggregation table for one or more pipelines
+#'
+#' Step 2 and Step 3 both aggregate a historical pipeline or a set of ensemble
+#' pipelines into the same list-column schema. Keeping that schema construction
+#' here prevents the two result panes from drifting in their model IDs,
+#' uncertainty fields, or variance decomposition.
+#'
+#' @param pipelines A pipeline-like list, or a named list of such pipelines.
+#' @param method Aggregation method.
+#' @param weighted Logical. Use each pipeline's survey weights when available.
+#' @param pov_line Numeric poverty line, when required by the method.
+#' @param residuals Residual draw mode.
+#' @param is_log Logical. Whether pipeline predictions are on the log scale.
+#' @param band_q Named numeric vector of coefficient-band quantiles.
+#' @param skip_coef Logical. Drop coefficient loadings when TRUE.
+#' @param bandwidth_p0 Numeric bandwidth for the headcount-ratio kernel.
+#' @param seed Integer base seed for deterministic residual streams.
+#' @param model_ids Optional character vector naming the pipelines.
+#' @param method_label Optional method value stored in output metadata.
+#' @param scenario Optional scenario label stored in output metadata.
+#' @return A tibble with one row per simulation year and list-columns for the
+#'   per-model values, standard errors, and coefficient gradients.
+#' @noRd
+aggregate_pipeline_table <- function(pipelines,
+                                     method,
+                                     weighted     = TRUE,
+                                     pov_line     = NULL,
+                                     residuals    = "original",
+                                     is_log       = TRUE,
+                                     band_q       = c(lo = 0.10, hi = 0.90),
+                                     skip_coef    = FALSE,
+                                     bandwidth_p0 = 0.05,
+                                     seed         = WISEAPP_DEFAULT_SEED,
+                                     model_ids    = NULL,
+                                     method_label = method,
+                                     scenario     = NULL) {
+  if (is.null(pipelines)) return(tibble::tibble())
+  if (!is.null(pipelines$y_point)) pipelines <- list(pipelines)
+  if (!is.list(pipelines) || length(pipelines) == 0L)
+    return(tibble::tibble())
+
+  if (is.null(model_ids)) model_ids <- names(pipelines)
+  if (is.null(model_ids)) model_ids <- character(0)
+  if (length(model_ids) != length(pipelines) || any(!nzchar(model_ids)))
+    model_ids <- paste0("model_", seq_along(pipelines))
+
+  per_model <- lapply(pipelines, function(pipe) {
+    aggregate_pipeline_per_year(
+      pipe         = pipe,
+      method       = method,
+      weighted     = weighted,
+      pov_line     = pov_line,
+      residuals    = residuals,
+      is_log       = is_log,
+      band_q       = band_q,
+      skip_coef    = skip_coef,
+      bandwidth_p0 = bandwidth_p0,
+      seed         = seed
+    )
+  })
+
+  # The first pipeline defines the simulation-year grid, matching the
+  # simulation contract used by both result panes.
+  years <- sort(unique(pipelines[[1L]]$sim_year))
+  if (length(years) == 0L) return(tibble::tibble())
+
+  rows <- lapply(years, function(year) {
+    per_year <- lapply(per_model, function(results) {
+      hit <- vapply(results, function(x) identical(x$sim_year, year), logical(1L))
+      if (any(hit)) results[[which(hit)[1L]]] else NULL
+    })
+    keep <- !vapply(per_year, is.null, logical(1L))
+    per_year <- per_year[keep]
+    ids <- model_ids[keep]
+    if (length(per_year) == 0L) return(NULL)
+
+    values <- vapply(per_year, `[[`, numeric(1L), "value")
+    sds <- sqrt(pmax(vapply(
+      per_year,
+      function(x) (x$var_coef %||% 0) + (x$var_resid %||% 0),
+      numeric(1L)
+    ), 0))
+
+    gradients <- lapply(per_year, `[[`, "F_agg")
+    F_mat <- if (all(vapply(gradients, is.null, logical(1L)))) {
+      NULL
+    } else {
+      first_gradient <- which(!vapply(gradients, is.null, logical(1L)))[1L]
+      n_factors <- length(gradients[[first_gradient]])
+      do.call(rbind, lapply(gradients, function(value) {
+        if (is.null(value)) rep(NA_real_, n_factors) else as.numeric(value)
+      }))
+    }
+
+    if (length(per_year) == 1L) {
+      var_within <- sds[[1L]]^2
+      var_across <- 0
+    } else {
+      combined <- combine_ensemble_results(per_year, band_q = band_q)
+      var_within <- combined$var_within %||% mean(sds^2, na.rm = TRUE)
+      var_across <- combined$var_across %||% stats::var(values, na.rm = TRUE)
+    }
+
+    row <- tibble::tibble(
+      sim_year     = year,
+      value        = mean(values, na.rm = TRUE),
+      model_id     = list(ids),
+      value_all    = list(values),
+      value_all_sd = list(sds),
+      F_agg_all    = list(F_mat),
+      var_within   = var_within,
+      var_across   = var_across,
+      agg_method   = method_label,
+      weighted     = weighted
+    )
+    if (!is.null(scenario)) row$scenario <- scenario
+    row
+  })
+
+  dplyr::bind_rows(Filter(Negate(is.null), rows))
+}
+
 #' Apply Deviation from Historical Reference Value
 #'
 #' Subtracts a historical reference value from a data frame's \code{value}

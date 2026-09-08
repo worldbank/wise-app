@@ -337,51 +337,6 @@ mod_2_02_results_server <- function(id,
     .POV_LINE_METHODS   <- c("headcount_ratio", "gap", "fgt2")
     .BANDWIDTH_METHODS  <- "headcount_ratio"
 
-    .one_member_delta <- function(pipe, idx, method, weighted, pov_line,
-                                  band_q, is_log, seed, res_mode,
-                                  resid_lookup = NULL, resid_sigma2 = NULL) {
-      # Some upstream paths can hand us F_loading as a length-K numeric
-      # vector instead of a 1*K matrix (single-row residual / dropped dim).
-      # Promote to matrix before any row-subset so the indexing below never
-      # triggers "incorrect number of dimensions".
-      F_full <- pipe$F_loading
-      if (!is.null(F_full) && is.null(dim(F_full))) {
-        F_full <- matrix(F_full, nrow = 1L)
-      }
-
-      # Filter to non-NA y_point rows only (NA rows cause non-finite h,
-      # which silently zeros out F_agg and var_coef)
-      valid  <- idx & !is.na(pipe$y_point)
-
-      F_idx <- if (!is.null(F_full) && !isTRUE(skip_coef_draws()))
-                 F_full[valid, , drop = FALSE] else NULL
-      w_idx <- if (weighted && !is.null(pipe$weight)) pipe$weight[valid] else NULL
-      id_idx <- if (!is.null(pipe$id_vec)) pipe$id_vec[valid] else NULL
-      # RIF pipelines set train_aug = NULL by construction (fct_simulations.R).
-      # If the residuals selector still says "original" or "resample", honour
-      # the pipeline by falling back to "none" so draw_residuals_vec doesn't
-      # blow up on a missing .resid column.
-      if (is.null(pipe$train_aug) && !identical(res_mode, "none"))
-        res_mode <- "none"
-      aggregate_with_uncertainty_delta(
-        y_point      = pipe$y_point[valid],
-        F_loading    = F_idx,
-        method       = method,
-        weights      = w_idx,
-        pov_line     = pov_line,
-        residuals    = res_mode,
-        train_aug    = pipe$train_aug,
-        id_vec       = id_idx,
-        id_col       = pipe$id_col,
-        is_log       = is_log,
-        band_q       = band_q,
-        bandwidth_p0 = bandwidth_p0(),
-        seed          = seed,
-        resid_lookup  = resid_lookup,
-        resid_sigma2  = resid_sigma2
-      )
-    }
-
     # ---- Aggregation workspace + per-method cache --------------------------
     # Captures the heavy dependencies that invalidate every cached method
     # (hist_sim, saved scenarios, residuals, coef-draw skipping) into a
@@ -420,37 +375,22 @@ mod_2_02_results_server <- function(id,
 
     .build_hist_for_method <- function(ws, method, pl_v) {
       pl   <- ws$hs$pipeline
-      yrs  <- sort(unique(pl$sim_year))
       bq   <- AGG_BAND_Q
       is_log <- isTRUE(ws$hs$so$transform == "log")
-      # PERF-34: residual lookup/variance are per-pipeline constants.
-      lk   <- .residual_lookup(pl$train_aug, pl$id_col)
-      sg2  <- .residual_sigma2(pl$train_aug)
       build_for <- function(weighted) {
-        rows <- lapply(yrs, function(yr) {
-          idx <- pl$sim_year == yr
-          m   <- .one_member_delta(
-            pl, idx, method, weighted, pl_v, bq, is_log,
-            seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", yr),
-            res_mode = ws$res, resid_lookup = lk, resid_sigma2 = sg2
-          )
-          sd_yr <- sqrt((m$var_coef %||% 0) + (m$var_resid %||% 0))
-          F_yr  <- m$F_agg
-          tibble::tibble(
-            sim_year     = yr,
-            value        = m$value,
-            model_id     = list("Historical"),
-            value_all    = list(m$value),
-            value_all_sd = list(sd_yr),
-            F_agg_all    = list(if (is.null(F_yr)) NULL else matrix(F_yr, nrow = 1L)),
-            var_within   = sd_yr^2,
-            var_across   = 0,
-            agg_method   = method,
-            weighted     = weighted,
-            scenario     = "Historical"
-          )
-        })
-        out <- dplyr::bind_rows(rows)
+        out <- aggregate_pipeline_table(
+          pipelines    = pl,
+          method       = method,
+          weighted     = weighted,
+          pov_line     = pl_v,
+          residuals    = ws$res,
+          is_log       = is_log,
+          band_q       = bq,
+          skip_coef    = ws$skip,
+          bandwidth_p0 = bandwidth_p0(),
+          model_ids    = "Historical",
+          scenario     = "Historical"
+        )
         setNames(list(out), method)
       }
       has_w <- !is.null(pl$weight)
@@ -467,60 +407,20 @@ mod_2_02_results_server <- function(id,
       setNames(lapply(sc, function(s) {
         pipes  <- s$pipelines
         is_log <- isTRUE(s$so$transform == "log")
-        yrs    <- sort(unique(pipes[[1L]]$sim_year))
         has_w  <- !is.null(pipes[[1L]]$weight)
-        # PERF-34: per-member lookup/variance, built once per member.
-        lk_s   <- lapply(pipes, function(pp) .residual_lookup(pp$train_aug, pp$id_col))
-        sg2_s  <- lapply(pipes, function(pp) .residual_sigma2(pp$train_aug))
         build_for <- function(weighted) {
-          rows <- lapply(yrs, function(yr) {
-            mod_ids <- names(pipes) %||% paste0("m", seq_along(pipes))
-            per_member_named <- lapply(seq_along(pipes), function(i) {
-              idx <- pipes[[i]]$sim_year == yr
-              m   <- .one_member_delta(
-                pipes[[i]], idx, method, weighted, pl_v, bq, is_log,
-                seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", yr),
-                res_mode = ws$res, resid_lookup = lk_s[[i]],
-                resid_sigma2 = sg2_s[[i]]
-              )
-              if (is.null(m)) return(NULL)
-              list(id = mod_ids[[i]], m = m)
-            })
-            per_member_named <- Filter(Negate(is.null), per_member_named)
-            if (length(per_member_named) == 0L) return(NULL)
-            comb <- combine_ensemble_results(
-              lapply(per_member_named, `[[`, "m"), band_q = bq)
-            if (is.null(comb)) return(NULL)
-            vals_m <- vapply(per_member_named,
-                             function(x) x$m$value, numeric(1L))
-            sd_m   <- sqrt(pmax(vapply(per_member_named,
-                                       function(x) (x$m$var_coef  %||% 0)
-                                                 + (x$m$var_resid %||% 0),
-                                       numeric(1L)), 0))
-            ids_m  <- vapply(per_member_named,
-                             function(x) x$id, character(1L))
-            F_list <- lapply(per_member_named, function(x) x$m$F_agg)
-            F_mat  <- if (all(vapply(F_list, is.null, logical(1L)))) NULL
-                      else do.call(rbind, lapply(F_list, function(v) {
-                        if (is.null(v)) rep(NA_real_, length(F_list[[which(!vapply(F_list, is.null, logical(1L)))[1]]]))
-                        else as.numeric(v)
-                      }))
-            tibble::tibble(
-              sim_year     = yr,
-              value        = mean(vals_m, na.rm = TRUE),
-              model_id     = list(ids_m),
-              value_all    = list(vals_m),
-              value_all_sd = list(sd_m),
-              F_agg_all    = list(F_mat),
-              var_within   = comb$var_within %||% mean(sd_m^2, na.rm = TRUE),
-              var_across   = comb$var_across %||%
-                               (if (length(vals_m) > 1L)
-                                  stats::var(vals_m, na.rm = TRUE) else 0),
-              agg_method   = method,
-              weighted     = weighted
-            )
-          })
-          out <- dplyr::bind_rows(Filter(Negate(is.null), rows))
+          out <- aggregate_pipeline_table(
+            pipelines    = pipes,
+            method       = method,
+            weighted     = weighted,
+            pov_line     = pl_v,
+            residuals    = ws$res,
+            is_log       = is_log,
+            band_q       = bq,
+            skip_coef    = ws$skip,
+            bandwidth_p0 = bandwidth_p0(),
+            model_ids    = names(pipes) %||% paste0("m", seq_along(pipes))
+          )
           setNames(list(out), method)
         }
         list(

@@ -640,32 +640,17 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     hit <- get0(.agg_cache_key(tag, method, pov_line_val()), envir = ws)
     if (!is.null(hit)) return(hit)
 
-    is_log <- isTRUE(hs$so$transform == "log")
-    bq     <- c(lo = 0.10, hi = 0.90)
-
-    per_yr <- aggregate_pipeline_per_year(
-      pipe      = pl,
+    agg <- aggregate_pipeline_table(
+      pipelines = pl,
       method    = method,
       weighted  = TRUE,
       pov_line  = pov_line_val(),
       residuals = active_residuals(hs),
-      is_log    = is_log,
-      band_q    = bq
+      is_log    = isTRUE(hs$so$transform == "log"),
+      band_q    = c(lo = 0.10, hi = 0.90),
+      model_ids = "Historical",
+      scenario  = "Historical"
     )
-    rows <- lapply(per_yr, function(m) {
-      sd_yr <- sqrt((m$var_coef %||% 0) + (m$var_resid %||% 0))
-      tibble::tibble(
-        sim_year     = m$sim_year,
-        value        = m$value,
-        model_id     = list("Historical"),
-        value_all    = list(m$value),
-        value_all_sd = list(sd_yr),
-        var_within   = sd_yr^2,
-        var_across   = 0,
-        scenario     = "Historical"
-      )
-    })
-    agg <- dplyr::bind_rows(rows)
     res <- list(out = agg)
     assign(.agg_cache_key(tag, method, pov_line_val()), res, envir = ws)
     res
@@ -721,55 +706,16 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
       tryCatch({
         pipes <- s$pipelines
         if (is.null(pipes) || length(pipes) == 0L) return(NULL)
-        is_log <- isTRUE(s$so$transform == "log")
-        bq     <- c(lo = 0.10, hi = 0.90)
-        yrs    <- sort(unique(pipes[[1L]]$sim_year))
-        model_ids_all <- names(pipes) %||% paste0("model_", seq_along(pipes))
-
-        # Aggregate each ensemble member across years once via the shared
-        # helper, then pivot to a per-year x per-member structure for the
-        # ensemble combination step below.
-        res_mode <- active_residuals(hs_for_dev)
-        per_member_per_yr <- lapply(pipes, function(pipe) {
-          aggregate_pipeline_per_year(
-            pipe      = pipe,
-            method    = method,
-            weighted  = use_w,
-            pov_line  = pov_line_val(),
-            residuals = res_mode,
-            is_log    = is_log,
-            band_q    = bq
-          )
-        })
-
-        per_year_rows <- lapply(yrs, function(yr) {
-          per_member <- lapply(per_member_per_yr, function(yr_list) {
-            for (m in yr_list) if (identical(m$sim_year, yr)) return(m)
-            NULL
-          })
-          keep <- !vapply(per_member, is.null, logical(1L))
-          per_member <- per_member[keep]
-          ids_yr     <- model_ids_all[keep]
-          if (length(per_member) == 0L) return(NULL)
-          comb <- combine_ensemble_results(per_member, band_q = bq)
-          vals_m <- vapply(per_member, function(x) x$value, numeric(1L))
-          sd_m   <- sqrt(pmax(
-            vapply(per_member,
-                   function(x) (x$var_coef %||% 0) + (x$var_resid %||% 0),
-                   numeric(1L)), 0))
-          tibble::tibble(
-            sim_year     = yr,
-            value        = mean(vals_m, na.rm = TRUE),
-            model_id     = list(ids_yr),
-            value_all    = list(vals_m),
-            value_all_sd = list(sd_m),
-            var_within   = comb$var_within %||% mean(sd_m^2, na.rm = TRUE),
-            var_across   = comb$var_across %||%
-                             (if (length(vals_m) > 1L)
-                                stats::var(vals_m, na.rm = TRUE) else 0)
-          )
-        })
-        combined <- dplyr::bind_rows(Filter(Negate(is.null), per_year_rows))
+        combined <- aggregate_pipeline_table(
+          pipelines = pipes,
+          method    = method,
+          weighted  = use_w,
+          pov_line  = pov_line_val(),
+          residuals = active_residuals(hs_for_dev),
+          is_log    = isTRUE(s$so$transform == "log"),
+          band_q    = c(lo = 0.10, hi = 0.90),
+          model_ids = names(pipes)
+        )
         if (nrow(combined) == 0L) return(NULL)
         list(out = combined)
       }, error = function(e) {
