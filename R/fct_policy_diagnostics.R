@@ -48,7 +48,10 @@ policy_covariate_support <- function(training, policy, vars = NULL,
       trc <- as.character(tr); poc <- as.character(po)
       freq <- prop.table(table(trc, useNA = "no"))
       absent <- !(poc %in% names(freq))
-      rare <- !absent & as.numeric(freq[poc]) < rare_share
+      rare <- !absent & vapply(poc, function(x) {
+        if (!x %in% names(freq)) return(FALSE)
+        as.numeric(freq[[x]]) < rare_share
+      }, logical(1L))
       data.frame(variable = v, type = "categorical", training_lo = NA,
                  training_hi = NA, policy_outside_n = 0,
                  policy_outside_share = 0,

@@ -165,3 +165,10 @@ test_that("model robustness summarizes one point per model", {
   expect_equal(unique(out$center), 2.5)
   expect_true(all(out$n_weather_years == 3L))
 })
+
+test_that("decision return periods follow metric adverse direction", {
+  high <- wiseapp:::metric_decision_return_periods("mean")
+  low <- wiseapp:::metric_decision_return_periods("headcount_ratio")
+  expect_identical(unname(high[["Adverse 1-in-10"]]), "9:10")
+  expect_identical(unname(low[["Adverse 1-in-10"]]), "1:10")
+})

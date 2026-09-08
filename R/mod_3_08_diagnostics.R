@@ -391,13 +391,22 @@ mod_3_08_diagnostics_server <- function(id,
     output$treatment_table <- DT::renderDT({
       d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
       DT::datatable(
-        policy_treatment_matrix(d$baseline_svy, d$policy_svy),
+        policy_treatment_matrix(
+          d$baseline_svy, d$policy_svy,
+          eligibility = tryCatch(
+            if (!is.null(sp_scenario())) .determine_sp_eligibility(
+              d$baseline_svy, sp_scenario()
+            ) else NULL,
+            error = function(e) NULL
+          )
+        ),
         rownames = FALSE, class = "compact stripe", options = list(dom = "t")
       )
     })
     covariate_support_data <- reactive({
       d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
-      training <- baseline_hist_sim()$train_data %||% d$baseline_svy
+      bh <- baseline_hist_sim()
+      training <- if (!is.null(bh)) bh$train_data %||% d$baseline_svy else d$baseline_svy
       policy_covariate_support(training, d$policy_svy)
     })
     output$covariate_support_table <- DT::renderDT({
@@ -434,7 +443,15 @@ mod_3_08_diagnostics_server <- function(id,
       step = 3L,
       fun = function() {
         d <- diag_data(); if (is.null(d)) return(NULL)
-        policy_treatment_matrix(d$baseline_svy, d$policy_svy)
+        policy_treatment_matrix(
+          d$baseline_svy, d$policy_svy,
+          eligibility = tryCatch(
+            if (!is.null(sp_scenario())) .determine_sp_eligibility(
+              d$baseline_svy, sp_scenario()
+            ) else NULL,
+            error = function(e) NULL
+          )
+        )
       },
       description = "Weighted baseline eligible/not-eligible by policy treated/not-treated status."
     )

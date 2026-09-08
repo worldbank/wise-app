@@ -36,7 +36,7 @@ mod_3_09_decomposition_ui <- function(id) {
         )
       ),
       wise_plot_output(ns("decomp_bar_plot"),
-                       "Bar plot of the average policy effect by channel and baseline welfare decile",
+                       "Level and resilience policy effects by baseline welfare decile",
                        height = "450px"),
       shiny::tags$p(
         style = "font-size:11px; color:#666; margin-top:6px;",
@@ -101,6 +101,7 @@ mod_3_09_decomposition_ui <- function(id) {
 #' @param selected_policies Reactive selected policy scenario keys.
 #' @param baseline_hist_sim Reactive Step 2-style baseline simulation result.
 #' @param baseline_svy      Reactive baseline survey used for fixed deciles.
+#' @param policy_svy        Reactive realized policy survey.
 #' @param selected_weather Reactive selected weather specification.
 #' @param policy_saved_scenarios Reactive named future scenario list.
 #'
@@ -115,6 +116,7 @@ mod_3_09_decomposition_server <- function(id,
                                            selected_policies = reactive(NULL),
                                            baseline_hist_sim = reactive(NULL),
                                            baseline_svy = reactive(NULL),
+                                           policy_svy = reactive(NULL),
                                            selected_weather = reactive(NULL),
                                            sp_scenario = reactive(NULL),
                                            policy_saved_scenarios = reactive(list())) {
@@ -193,11 +195,18 @@ mod_3_09_decomposition_server <- function(id,
       sp <- sp_scenario()
       cost <- if (is.list(sp) && is.finite(sp$budget_fixed %||% NA_real_))
         paste0("$", format(round(sp$budget_fixed), big.mark = ",")) else "Not specified"
+      realized <- tryCatch(.sp_transfer_totals(policy_svy(), "hh"),
+                           error = function(e) NULL)
+      recipients <- if (!is.null(realized)) {
+        format(round(realized$n_recipients_weighted), big.mark = ",")
+      } else "Unavailable"
       headline_cards_ui(list(
         list(label = "Level effect", value = value_for("level"), note = "Percent change"),
         list(label = "Resilience effect", value = value_for("resilience"), note = "Percent change"),
         list(label = "Total policy effect", value = value_for("total"), note = "Reconciled on model scale"),
-        list(label = "Program cost", value = cost, note = "Configured annual budget")
+        list(label = "Program cost", value = cost, note = "Configured annual budget"),
+        list(label = "Beneficiaries", value = recipients,
+             note = "Realized weighted recipient count")
       ))
     })
     output$headline_decomp_plot <- renderPlot({
@@ -258,14 +267,24 @@ mod_3_09_decomposition_server <- function(id,
       fun   = function() {
         res <- decomp_result()
         if (is.null(res) || !is.data.frame(res) || nrow(res) == 0) return(NULL)
-        .plot_decomp_bars(res, is_rif(),
-                          show_coef = isTRUE(show_coef_uncertainty()))
+        plot_decomposition_channels_by_decile(
+          decomposition_channels_by_decile(res, baseline_svy(), so()$name %||% "welfare")
+        )
       },
       description = paste(
         "The policy effect split into its main effect and resilience",
         "channels (repositioning and weather interaction)."
       ),
       width = 9, height = 6
+    )
+    wise_export_table(
+      key = "policy_decomposition_channels_by_decile",
+      label = "Decomposition channels by baseline decile",
+      step = 3L,
+      fun = function() decomposition_channels_by_decile(
+        decomp_result(), baseline_svy(), so()$name %||% "welfare"
+      ),
+      description = "Level, resilience, total, and counts by fixed weighted baseline welfare decile."
     )
 
     wise_export_figure(
@@ -283,11 +302,19 @@ mod_3_09_decomposition_server <- function(id,
       ),
       width = 9, height = 6
     )
+    wise_export_table(
+      key = "policy_decomposition_scenario_data",
+      label = "Decomposition by climate scenario",
+      step = 3L,
+      fun = decomp_scenarios,
+      description = "Scenario-period decomposition with annual weather variation retained by channel."
+    )
 
     output$decomp_bar_plot <- shiny::renderPlot({
       req(decomp_result())
-      .plot_decomp_bars(decomp_result(), is_rif(),
-                        show_coef = isTRUE(show_coef_uncertainty()))
+      plot_decomposition_channels_by_decile(
+        decomposition_channels_by_decile(decomp_result(), baseline_svy(), so()$name %||% "welfare")
+      )
     })
 
     incidence_data <- reactive({
@@ -413,9 +440,10 @@ mod_3_09_decomposition_server <- function(id,
           "in the model coefficients.",
           "The dashed reference line (0) is the historical baseline mean."
         ),
-        wise_plot_output(ns("scenario_range_plot"),
-                         "Dot-and-line plot of the policy effect for each climate scenario and period against the historical baseline",
-                         height = "420px")
+         wise_plot_output(ns("scenario_range_plot"),
+                          "Dot-and-line plot of the policy effect for each climate scenario and period against the historical baseline",
+                          height = "420px"),
+         DT::DTOutput(ns("scenario_range_table"))
       )
     })
 
@@ -424,6 +452,13 @@ mod_3_09_decomposition_server <- function(id,
       req(!is.null(sc), is.data.frame(sc), nrow(sc) > 0)
       .plot_decomp_scenario_range(sc, is_rif())
     })
+    output$scenario_range_table <- DT::renderDT({
+      sc <- decomp_scenarios()
+      req(!is.null(sc), is.data.frame(sc), nrow(sc) > 0)
+      DT::datatable(sc, rownames = FALSE, class = "compact stripe",
+                    options = list(pageLength = 20))
+    })
+    outputOptions(output, "scenario_range_table", suspendWhenHidden = FALSE)
 
     # --- Summary table ---
     output$decomp_summary_table <- DT::renderDT({

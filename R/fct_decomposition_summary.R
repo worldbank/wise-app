@@ -116,3 +116,60 @@ decomposition_explanation <- function(is_rif) {
     )
   }
 }
+
+decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
+                                              outcome = "welfare") {
+  if (is.null(decomp_df) || !nrow(decomp_df)) return(tibble::tibble())
+  if (!is.null(svy)) {
+    dec <- weighted_baseline_deciles(svy, outcome, baseline_weight_column(svy))
+    ids <- suppressWarnings(as.integer(decomp_df$id))
+    decomp_df$decile <- dec[ids]
+  }
+  w <- .decomp_weights(decomp_df)
+  main <- decomp_df$delta_main %||% rep(0, nrow(decomp_df))
+  res <- (decomp_df$delta_res1 %||% rep(0, nrow(decomp_df))) +
+    (decomp_df$delta_res2 %||% rep(0, nrow(decomp_df)))
+  total <- decomp_df$delta_total %||% (main + res)
+  out <- dplyr::bind_rows(lapply(sort(unique(decomp_df$decile)), function(d) {
+    ok <- decomp_df$decile == d
+    tibble::tibble(
+      decile = d,
+      level_log = .weighted_mean_safe(main[ok], w[ok]),
+      resilience_log = .weighted_mean_safe(res[ok], w[ok]),
+      total_log = .weighted_mean_safe(total[ok], w[ok]),
+      level_percent = log_effect_to_percent(level_log),
+      resilience_percent = log_effect_to_percent(resilience_log),
+      total_percent = log_effect_to_percent(total_log),
+      n_households = sum(ok, na.rm = TRUE),
+      weighted_population = sum(w[ok], na.rm = TRUE)
+    )
+  }))
+  out
+}
+
+plot_decomposition_channels_by_decile <- function(tbl) {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(ggplot2::ggplot() + ggplot2::labs(title = "Decile decomposition is unavailable."))
+  }
+  long <- tidyr::pivot_longer(
+    tbl[, c("decile", "level_percent", "resilience_percent")],
+    cols = c("level_percent", "resilience_percent"),
+    names_to = "channel", values_to = "effect"
+  )
+  long$channel <- dplyr::recode(long$channel,
+    level_percent = "Level", resilience_percent = "Resilience"
+  )
+  ggplot2::ggplot(long, ggplot2::aes(x = factor(.data$decile), y = .data$effect,
+                                     fill = .data$channel)) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_col(position = "dodge", width = 0.62) +
+    ggplot2::geom_point(data = tbl,
+                        ggplot2::aes(x = factor(.data$decile), y = .data$total_percent),
+                        inherit.aes = FALSE, shape = 21, fill = "#009E73",
+                        colour = "#243746", size = 2.8) +
+    ggplot2::scale_fill_manual(values = c(Level = "#0072B2", Resilience = "#D55E00")) +
+    ggplot2::labs(x = "Fixed observed baseline welfare decile (1 = poorest)",
+                  y = "Policy effect (percent change)", fill = "Channel",
+                  subtitle = "Bars show level and resilience; points show the reconciled total. Deciles use weighted observed baseline welfare.") +
+    theme_wise(base_size = 12) + ggplot2::theme(legend.position = "bottom")
+}

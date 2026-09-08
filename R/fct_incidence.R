@@ -49,6 +49,14 @@ baseline_weight_column <- function(svy) {
   )
 }
 
+.select_pipeline_draws <- function(pipe, sim_year = NULL) {
+  if (is.null(pipe) || is.null(sim_year) || is.null(pipe$sim_year)) return(pipe)
+  keep <- pipe$sim_year %in% sim_year
+  pipe[vapply(pipe, function(x) length(x) == length(keep), logical(1L))] <-
+    lapply(pipe[vapply(pipe, function(x) length(x) == length(keep), logical(1L))], `[`, keep)
+  pipe
+}
+
 #' Step 2 household effect by fixed baseline welfare decile.
 #'
 #' Each model/year is first reduced to a household value, then equally weighted
@@ -56,16 +64,20 @@ baseline_weight_column <- function(svy) {
 #' welfare using survey weights and never re-ranked after simulation.
 step2_incidence_by_decile <- function(svy, outcome, hist_pipeline,
                                       scenario_pipelines, is_log = FALSE,
-                                      scenario = NULL) {
+                                      scenario = NULL, sim_year = NULL) {
   if (is.null(svy) || is.null(scenario_pipelines)) return(data.frame())
   if (!is.list(scenario_pipelines)) scenario_pipelines <- list(scenario_pipelines)
   weight_col <- baseline_weight_column(svy)
   decile <- weighted_baseline_deciles(svy, outcome, weight_col)
-  hist <- .mean_by_household(.pipeline_household_values(hist_pipeline, is_log))
+  hist <- .mean_by_household(.pipeline_household_values(
+    .select_pipeline_draws(hist_pipeline, sim_year), is_log
+  ))
   if (!nrow(hist)) return(data.frame())
   model_effects <- lapply(seq_along(scenario_pipelines), function(j) {
     pipe <- scenario_pipelines[[j]]
-    future <- .mean_by_household(.pipeline_household_values(pipe, is_log))
+    future <- .mean_by_household(.pipeline_household_values(
+      .select_pipeline_draws(pipe, sim_year), is_log
+    ))
     if (!nrow(future)) return(NULL)
     names(future)[names(future) == "value"] <- "future"
     hist_one <- hist
@@ -89,6 +101,7 @@ step2_incidence_by_decile <- function(svy, outcome, hist_pipeline,
       effect = stats::weighted.mean(.data$effect, .data$weight),
       n_models = dplyr::n_distinct(.data$model_id),
       n_households = dplyr::n_distinct(.data$id),
+      n_draws = dplyr::n(),
       weighted_population = sum(.data$weight),
       .groups = "drop"
     )

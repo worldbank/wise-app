@@ -275,6 +275,8 @@ mod_2_02_results_ui <- function(id) {
     # ---- 6. Threshold table ------------------------------------------------
     shiny::wellPanel(
       shiny::uiOutput(ns("threshold_table_header")),
+      shiny::h4("Decision summary"),
+      DT::DTOutput(ns("decision_threshold_table")),
       DT::DTOutput(ns("summary_threshold_table")),
       shiny::uiOutput(ns("threshold_table_footer"))
     )
@@ -1435,6 +1437,41 @@ mod_2_02_results_server <- function(id,
         show_coef     = isTRUE(input$show_coef_uncertainty) && has_draws()
       )
     }
+
+    decision_threshold_df <- reactive({
+      tbl <- threshold_table_rv()
+      if (is.null(tbl) || !nrow(tbl)) return(NULL)
+      tbl <- tbl[tbl$Estimate == "Central (P50)", , drop = FALSE]
+      if (!nrow(tbl)) return(NULL)
+      rp_map <- metric_decision_return_periods(
+        input$cmp_agg_method %||% "mean", hist_sim()$so
+      )
+      keep <- tbl$rp_name %in% unname(rp_map)
+      out <- tbl[keep, c("scenario", "rp_name", "value", "n_obs"), drop = FALSE]
+      if (!nrow(out)) return(NULL)
+      out$rp_label <- names(rp_map)[match(out$rp_name, unname(rp_map))]
+      out <- out[order(out$scenario, match(out$rp_label,
+        c("Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20"))), ]
+      tidyr::pivot_wider(out, names_from = rp_label, values_from = value)
+    })
+    wise_export_table(
+      key = "climate_decision_thresholds",
+      label = "Decision return-period summary",
+      step = 2L,
+      fun = function() annotate_visualization_export(
+        decision_threshold_df(), input$cmp_agg_method %||% "mean", hist_sim()$so,
+        observation_unit = "scenario-period annual aggregate at supported return period",
+        aggregation_order = "per-model return-period interpolation, then median across equally weighted models",
+        uncertainty = "central estimate; technical uncertainty rows exported separately"
+      ),
+      description = "Decision-first expected and adverse return-period summary."
+    )
+    output$decision_threshold_table <- DT::renderDT({
+      req(decision_threshold_df())
+      DT::datatable(decision_threshold_df(), rownames = FALSE,
+                    class = "compact stripe", options = list(pageLength = 20))
+    })
+    outputOptions(output, "decision_threshold_table", suspendWhenHidden = FALSE)
 
     wise_export_table(
       key   = "climate_outcome_thresholds",

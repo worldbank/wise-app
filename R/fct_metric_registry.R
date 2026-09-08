@@ -3,15 +3,15 @@
 # ============================================================================ #
 
 .WISE_METRIC_REGISTRY <- list(
-  mean = list(label = "Mean", unit = "outcome units", format = "number"),
-  median = list(label = "Median", unit = "outcome units", format = "number"),
-  total = list(label = "Total", unit = "outcome units", format = "number"),
-  headcount_ratio = list(label = "Poverty rate", unit = "share", format = "percent", direction = "lower_is_better"),
-  gap = list(label = "Poverty gap", unit = "share", format = "percent", direction = "lower_is_better"),
-  fgt2 = list(label = "Poverty severity", unit = "share", format = "percent", direction = "lower_is_better"),
-  gini = list(label = "Gini coefficient", unit = "index", format = "number", direction = "lower_is_better"),
-  prosperity_gap = list(label = "Prosperity gap", unit = "ratio", format = "number", direction = "lower_is_better"),
-  avg_poverty = list(label = "Average poverty", unit = "days per dollar", format = "number", direction = "lower_is_better")
+  mean = list(label = "Mean", unit = "outcome units", format = "number", direction = "higher_is_better", percent_change = TRUE, poverty_line = FALSE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Weighted annual aggregate for the fixed survey population."),
+  median = list(label = "Median", unit = "outcome units", format = "number", direction = "higher_is_better", percent_change = TRUE, poverty_line = FALSE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Weighted median aggregate; not a household distribution."),
+  total = list(label = "Total", unit = "outcome units", format = "number", direction = "higher_is_better", percent_change = TRUE, poverty_line = FALSE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Population aggregate; survey population is fixed."),
+  headcount_ratio = list(label = "Poverty rate", unit = "percent", format = "percent", direction = "lower_is_better", percent_change = FALSE, poverty_line = TRUE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Share below the selected poverty line; changes are percentage points."),
+  gap = list(label = "Poverty gap", unit = "percent", format = "percent", direction = "lower_is_better", percent_change = FALSE, poverty_line = TRUE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Average normalized shortfall below the selected poverty line."),
+  fgt2 = list(label = "Poverty severity", unit = "percent", format = "percent", direction = "lower_is_better", percent_change = FALSE, poverty_line = TRUE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Squared normalized poverty shortfall."),
+  gini = list(label = "Gini coefficient", unit = "index", format = "number", direction = "lower_is_better", percent_change = FALSE, poverty_line = FALSE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Relative inequality index."),
+  prosperity_gap = list(label = "Prosperity gap", unit = "ratio", format = "number", direction = "lower_is_better", percent_change = FALSE, poverty_line = TRUE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Gap relative to the prosperity threshold."),
+  avg_poverty = list(label = "Average poverty", unit = "days per dollar", format = "number", direction = "lower_is_better", percent_change = FALSE, poverty_line = TRUE, engines = c("ols", "rif"), uncertainty = c("coefficient", "weather", "ensemble"), caveat = "Average poverty burden across the fixed population.")
 )
 
 #' Return the metadata contract for a displayed metric.
@@ -54,6 +54,11 @@ metric_metadata <- function(method = "mean", so = NULL) {
   } else {
     "Lower values are adverse"
   }
+  out$valid_transform <- if (isTRUE(out$percent_change)) "percent change for log effects" else "percentage points or native units"
+  out$poverty_line <- isTRUE(out$poverty_line)
+  out$engines <- out$engines %||% c("ols", "rif")
+  out$uncertainty <- out$uncertainty %||% c("coefficient", "weather", "ensemble")
+  out$caveat <- out$caveat %||% "Metric definition supplied by the selected outcome metadata."
   out
 }
 
@@ -76,6 +81,18 @@ metric_adverse_probabilities <- function() {
     "Adverse 1-in-20" = 0.05)
 }
 
+metric_decision_return_periods <- function(method = "mean", so = NULL) {
+  spec <- metric_metadata(method, so)
+  tail_names <- if (identical(spec$adverse_tail, "high")) {
+    c("Adverse 1-in-5" = "1:5", "Adverse 1-in-10" = "1:10",
+      "Adverse 1-in-20" = "1:20")
+  } else {
+    c("Adverse 1-in-5" = "4:5", "Adverse 1-in-10" = "9:10",
+      "Adverse 1-in-20" = "19:20")
+  }
+  c("Expected" = "1:1", tail_names)
+}
+
 # Add the definitions needed to interpret a chart-data export. Keeping these
 # fields beside the values makes a CSV useful outside the live Shiny session.
 visualization_export_metadata <- function(method = "mean", so = NULL,
@@ -90,6 +107,11 @@ visualization_export_metadata <- function(method = "mean", so = NULL,
     number_format = spec$format,
     direction = spec$direction,
     adverse_tail = spec$adverse_tail,
+    valid_transform = spec$valid_transform,
+    poverty_line = isTRUE(spec$poverty_line),
+    supported_engines = paste(spec$engines, collapse = ", "),
+    supported_uncertainty = paste(spec$uncertainty, collapse = ", "),
+    caveat = spec$caveat,
     observation_unit = observation_unit,
     aggregation_order = aggregation_order,
     uncertainty_type = uncertainty,
