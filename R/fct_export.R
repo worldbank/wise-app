@@ -169,15 +169,21 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
 
 # Inputs that describe transient UI state rather than analysis configuration.
 # Restoring them would replay clicks (re-running models on import) or fight the
-# user's current layout, so they are dropped from the exported config.
+# user's current layout, so they are dropped from the exported config. Buttons
+# that trigger work (`apply_connection` connects) and the import control's own
+# state are replayable clicks too. Credential-shaped ids are dropped outright:
+# the bundle is meant to be shared, and `.provenance_source()` redacts the
+# same shapes on the provenance side - the snapshot must agree with it.
 .EXPORT_INPUT_DROP <- c(
   "^run_model$", "^run_sim$", "^run_policy_sim$", "^load_", "^refresh",
+  "^apply_", "^import_config",
   "_toggle$", "_open$", "^show_", "^hide_",
   "_rows_current$", "_rows_all$", "_rows_selected$", "_columns_selected$",
   "_cells_selected$", "_search$", "_state$", "_cell_clicked$",
   "^plotly_", "_click$", "_hover$", "_brush$", "_dblclick$",
   "^\\.clientdata", "^sidebar", "^accordion$", "_bounds$", "_center$",
-  "_zoom$", "_shape_", "_marker_", "_groups$"
+  "_zoom$", "_shape_", "_marker_", "_groups$",
+  "secret", "key", "token", "password", "credential", "client_id", "tenant"
 )
 
 #' Should an input be carried in the exported configuration?

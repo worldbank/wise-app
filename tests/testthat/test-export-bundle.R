@@ -220,15 +220,83 @@ test_that("the config snapshot captures every namespaced input in one pass", {
 
 test_that("transient UI state is excluded from the exported configuration", {
   # Run counters would re-fire models on import; panel toggles and DT state
-  # describe the browser, not the analysis.
+  # describe the browser, not the analysis. apply_connection is a replayable
+  # click too: importing it would re-fire the Connect attempt (SEC-06).
   drop <- c("step1-model-run_model", "step2-sim-run_sim",
             "step1-model-model_settings_toggle", "step1-model-show_lasso_force",
             "stats_rows_current", "tbl_search", "map_zoom",
-            "step3-run_policy_sim")
+            "step3-run_policy_sim", "overview-apply_connection",
+            "import_config_file")
   keep <- c("step1-model-model_type", "step3-sp-targeting",
             "step1-model-fixedeffects")
   expect_false(any(.export_keep_input(drop)))
   expect_true(all(.export_keep_input(keep)))
+})
+
+test_that("credential-shaped inputs are never exported (SEC-06)", {
+  # Every secret/key field the Overview connection form asks for. The bundle
+  # is meant to be shared, so none of these may ride the snapshot - and the
+  # README's "never its credentials" claim must hold.
+  secretish <- c(
+    "overview-s3_key_id", "overview-s3_secret",
+    "overview-gcs_key_id", "overview-gcs_secret",
+    "overview-azure_key", "overview-azure_client_id",
+    "overview-azure_client_secret", "overview-azure_tenant_id",
+    "overview-db_client_id", "overview-db_client_secret"
+  )
+  expect_false(any(.export_keep_input(secretish)))
+  # Source identity (never the means of reading it) survives.
+  expect_true(all(.export_keep_input(c(
+    "overview-connection_type", "overview-db_workspace",
+    "overview-db_volume_path", "overview-s3_bucket", "overview-s3_prefix",
+    "overview-s3_region", "overview-gcs_bucket", "overview-hf_repo",
+    "overview-hf_subdir", "overview-local_path"))))
+})
+
+test_that("a snapshot of a filled connection form carries no secrets", {
+  testServer(function(input, output, session) {
+    session$userData$snap <- NULL
+  }, {
+    session$setInputs(
+      `overview-connection_type` = "s3",
+      `overview-s3_bucket`       = "my-bucket",
+      `overview-s3_key_id`       = "AKIAEXAMPLE",
+      `overview-s3_secret`       = "TOP-SECRET-VALUE"
+    )
+    cfg <- wise_config_snapshot(input, seed = 99L)
+    js  <- jsonlite::toJSON(cfg, auto_unbox = TRUE, null = "null", digits = NA)
+    expect_false(grepl("TOP-SECRET-VALUE", js, fixed = TRUE))
+    expect_false(grepl("AKIAEXAMPLE", js, fixed = TRUE))
+    expect_equal(cfg$inputs$`overview-s3_bucket`, "my-bucket")
+    expect_false("overview-s3_secret" %in% names(cfg$inputs))
+  })
+})
+
+test_that("importing an exported snapshot never pushes credentials or counters", {
+  testServer(function(input, output, session) {}, {
+    session$setInputs(
+      `overview-s3_bucket` = "b", `overview-s3_key_id` = "AKIAEXAMPLE",
+      `overview-s3_secret` = "TOP-SECRET-VALUE",
+      `overview-apply_connection` = 3L
+    )
+    f <- withr::local_tempfile(fileext = ".json")
+    jsonlite::write_json(wise_config_snapshot(input, seed = 1L), f,
+                         auto_unbox = TRUE, pretty = TRUE, digits = NA)
+    back <- jsonlite::read_json(f, simplifyVector = TRUE)
+
+    sent <- list()
+    fake <- list(sendInputMessage = function(id, msg) {
+      sent[[id]] <<- msg$value
+      invisible(NULL)
+    })
+    res <- wise_config_apply(back, fake, existing = c(
+      "overview-s3_bucket", "overview-s3_key_id", "overview-s3_secret",
+      "overview-apply_connection"))
+    expect_equal(res$applied, "overview-s3_bucket")
+    expect_equal(sent$`overview-s3_bucket`, "b")
+    expect_false("overview-apply_connection" %in% names(sent))
+    expect_false("overview-s3_key_id" %in% names(sent))
+  })
 })
 
 test_that("a config round-trips through JSON", {
