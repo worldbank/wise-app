@@ -14,6 +14,15 @@ mod_3_09_decomposition_ui <- function(id) {
   tagList(
     shiny::uiOutput(ns("policy_summary_ui")),
     shiny::uiOutput(ns("decomp_header_ui")),
+    shiny::uiOutput(ns("decomp_explanation_ui")),
+    shiny::wellPanel(
+      shiny::h4("Headline decomposition"),
+      wise_plot_output(ns("headline_decomp_plot"),
+                       "Level, resilience, and total policy effect decomposition",
+                       height = "360px"),
+      shiny::uiOutput(ns("reconciliation_status_ui")),
+      DT::DTOutput(ns("headline_decomp_table"))
+    ),
     shiny::wellPanel(
       shiny::h4(
         "Policy effect decomposition by welfare decile",
@@ -69,6 +78,8 @@ mod_3_09_decomposition_ui <- function(id) {
         )
       ),
       DT::DTOutput(ns("decomp_summary_table")),
+      shiny::h5("Hierarchical channel details"),
+      DT::DTOutput(ns("decomp_channel_table")),
       shiny::uiOutput(ns("interaction_warning_ui")),
       shiny::tags$p(
         style = "font-size:11px; color:#666; margin-top:6px;",
@@ -162,6 +173,63 @@ mod_3_09_decomposition_server <- function(id,
         )
       )
     })
+
+    headline_decomp_data <- reactive({
+      decomposition_summary_data(decomp_result(), is_rif())
+    })
+    output$decomp_explanation_ui <- renderUI({
+      e <- decomposition_explanation(is_rif())
+      shiny::tags$div(class = "alert alert-info", role = "note",
+                      shiny::tags$strong(e$title), shiny::tags$br(), e$text)
+    })
+    output$headline_decomp_plot <- renderPlot({
+      req(headline_decomp_data())
+      plot_decomposition_headline(headline_decomp_data())
+    }, height = 360)
+    outputOptions(output, "headline_decomp_plot", suspendWhenHidden = TRUE)
+    output$headline_decomp_table <- DT::renderDT({
+      req(headline_decomp_data())
+      DT::datatable(
+        headline_decomp_data()[headline_decomp_data()$channel_id %in%
+                                 c("level", "resilience", "total"),
+                               c("channel", "model_value", "percent", "share_of_total")],
+        rownames = FALSE, class = "compact stripe", options = list(dom = "t")
+      )
+    })
+    outputOptions(output, "headline_decomp_table", suspendWhenHidden = FALSE)
+    output$reconciliation_status_ui <- renderUI({
+      rec <- decomposition_reconciliation(headline_decomp_data())
+      if (identical(rec$status, "reconciled")) {
+        shiny::tags$div(class = "alert alert-success", role = "status",
+                        shiny::icon("check"),
+                        " Reconciled: level plus resilience equals total on the model scale.")
+      } else {
+        shiny::tags$div(class = "alert alert-warning", role = "alert",
+                        shiny::icon("triangle-exclamation"),
+                        " Decomposition reconciliation is unavailable or outside tolerance.")
+      }
+    })
+    wise_export_figure(
+      key = "policy_decomposition_headline",
+      label = "Headline level and resilience decomposition",
+      step = 3L,
+      fun = function() plot_decomposition_headline(headline_decomp_data()),
+      description = "Headline decomposition into level, resilience, and total effects with reconciliation on the model scale.",
+      width = 9, height = 5
+    )
+    wise_export_table(
+      key = "policy_decomposition_headline_data",
+      label = "Headline decomposition data",
+      step = 3L,
+      fun = function() {
+        out <- headline_decomp_data()
+        rec <- decomposition_reconciliation(out)
+        out$reconciliation_status <- rec$status
+        out$reconciliation_residual <- rec$residual
+        out
+      },
+      description = "Level, resilience, total, and technical channel values with reconciliation metadata."
+    )
 
     # --- Stacked bar chart by decile ---
     # UI-48: register Step 3's decomposition figures for the export bundle.
@@ -344,6 +412,17 @@ mod_3_09_decomposition_server <- function(id,
       req(decomp_result())
       .build_decomp_table(decomp_result(), is_rif())
     })
+
+    output$decomp_channel_table <- DT::renderDT({
+      req(headline_decomp_data())
+      DT::datatable(
+        headline_decomp_data(), rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("tp"), pageLength = 20,
+                       buttons = wise_csv_button("policy_decomposition_headline_data"))
+      )
+    })
+    outputOptions(output, "decomp_channel_table", suspendWhenHidden = FALSE)
 
     # UI-48: the decomposition summary, as tidy numbers rather than the
     # rendered table's formatted strings.

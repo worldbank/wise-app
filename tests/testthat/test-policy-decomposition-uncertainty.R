@@ -82,3 +82,21 @@ test_that("aggregated total SE remains consistent under household weighting", {
   v_total      <- agg_var("sd_total")
   expect_lt(abs(v_total - v_components) / pmax(v_total, 1e-12), 1e-10)
 })
+
+test_that("headline decomposition reconciles level plus resilience to total", {
+  fx <- make_ols_fixture()
+  r <- wiseapp::decompose_policy_effect(fx$svy_base, fx$svy_policy,
+                                         fx$model_fit, fx$so)
+  s <- wiseapp:::decomposition_summary_data(r, is_rif = FALSE)
+  rec <- wiseapp:::decomposition_reconciliation(s)
+  expect_identical(rec$status, "reconciled")
+  expect_lt(abs(rec$residual), 1e-10)
+  expect_equal(s$channel[s$channel_id == "resilience"], "Resilience")
+})
+
+test_that("decomposition explanation distinguishes OLS and RIF", {
+  expect_match(wiseapp:::decomposition_explanation(FALSE)$text,
+               "no repositioning")
+  expect_match(wiseapp:::decomposition_explanation(TRUE)$text,
+               "repositioning")
+})
