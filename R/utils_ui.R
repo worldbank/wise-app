@@ -153,16 +153,6 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
   if (is.null(hist_sim) || is.null(hist_sim$so)) return(NULL)
 
   run <- hist_sim$sim_summary %||% list()
-  so <- hist_sim$so
-  so_label <- if ("label" %in% names(so)) as.character(so$label[1]) else "Selected outcome"
-  if (is.na(so_label) || !nzchar(so_label)) so_label <- "Selected outcome"
-
-  sw <- run$weather %||% if (is.data.frame(selected_weather)) selected_weather else NULL
-  weather_labels <- if (!is.null(sw) && "label" %in% names(sw))
-    as.character(sw$label) else character(0)
-  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
-  weather_labels <- weather_labels[nzchar(weather_labels)]
-  if (length(weather_labels) == 0L) weather_labels <- "Selected weather"
 
   hist_years <- run$historical_years %||% tryCatch({
     if (!is.null(selected_hist) && "year_range" %in% names(selected_hist))
@@ -175,40 +165,10 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     as.character(hist_sim$hist_label %||% "Historical baseline")
   }
 
-  residuals <- as.character(hist_sim$residuals %||% "original")
-  residual_label <- switch(residuals,
-    original = "Original residuals",
-    resample = "Resampled residuals",
-    none     = "No residuals",
-    normal   = "Normal residuals",
-    residuals
-  )
-
   scenarios <- if (is.list(saved_scenarios)) names(saved_scenarios) else character(0)
   scenario_count <- length(scenarios)
-  scenario_pills <- if (scenario_count > 0L) {
-    vapply(scenarios, function(key) {
-      n <- saved_scenarios[[key]]$n_models %||% NA_integer_
-      n_txt <- if (is.finite(n)) paste0(" (", n, " models)") else ""
-      paste0(key, n_txt)
-    }, character(1))
-  } else "None"
-
-  model <- run$model %||% list()
-  model_label <- model$label %||% "Fitted model"
-  model_bits <- c(
-    if (is.finite(model$fixed_effects %||% NA_integer_))
-      paste0(model$fixed_effects, " FE"),
-    if (is.finite(model$covariates %||% NA_integer_))
-      paste0(model$covariates, " covariates")
-  )
 
   baseline <- run$baseline_survey %||% "Selected baseline survey"
-  baseline_n <- run$baseline_n %||% NA_integer_
-  baseline_pills <- c(
-    if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ",")),
-    residual_label
-  )
   total_runs <- run$total_runs %||% NA_integer_
   badge <- if (is.finite(total_runs)) {
     paste(format(total_runs, big.mark = ","), "simulation years")
@@ -218,31 +178,59 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     paste(scenario_count, "future", if (scenario_count == 1L) "scenario" else "scenarios")
   }
 
-  selection_summary_card(
-    title = "Selected Climate Scenario",
-    badge = badge,
-    rows = list(
-      list(
-        name = "Climate scenarios",
-        sub = paste0("Historical ", hist_period),
-        pills = scenario_pills
+  scenario_items <- lapply(scenarios, function(key) {
+    parts <- strsplit(key, " / ", fixed = TRUE)[[1]]
+    ssp <- parts[1] %||% key
+    period <- if (length(parts) >= 2L) parts[2] else ""
+    n <- suppressWarnings(as.numeric(saved_scenarios[[key]]$n_models %||% NA_real_))[1]
+    n_label <- if (is.finite(n)) paste(n, "models") else "model count unavailable"
+    shiny::tags$span(
+      class = "step2-summary-item",
+      shiny::tags$span(
+        class = "step2-summary-label step2-summary-scenario-label",
+        ssp
       ),
-      list(
-        name = "Weather",
-        sub = paste(weather_labels, collapse = ", ")
-      ),
-      list(
-        name = "Model",
-        sub = model_label,
-        pills = c(paste0("Outcome: ", so_label), model_bits)
-      ),
-      list(
-        name = "Baseline",
-        sub = baseline,
-        pills = baseline_pills
+      if (nzchar(period))
+        shiny::tags$span(class = "step2-summary-value", period),
+      shiny::tags$span(class = "selection-card-pill", n_label)
+    )
+  })
+  if (!length(scenario_items)) {
+    scenario_items <- list(
+      shiny::tags$span(
+        class = "step2-summary-item",
+        shiny::tags$span(class = "step2-summary-value", "Historical only")
+      )
+    )
+  }
+  separator <- shiny::tags$span(class = "step2-summary-separator", "·")
+  summary_row <- c(
+    scenario_items,
+    list(separator),
+    list(
+      shiny::tags$span(
+        class = "step2-summary-item",
+        shiny::tags$span(class = "step2-summary-label", "Reference climate"),
+        shiny::tags$span(class = "selection-card-pill", hist_period)
       )
     ),
-    compact = TRUE
+    list(separator),
+    list(
+      shiny::tags$span(
+        class = "step2-summary-item",
+        shiny::tags$span(class = "step2-summary-label", "Baseline survey"),
+        shiny::tags$span(class = "selection-card-pill", baseline)
+      )
+    )
+  )
+
+  selection_summary_card(
+    title = "Selected climate scenarios",
+    badge = badge,
+    rows = list(shiny::tags$div(
+      class = "selection-card-row step2-summary-row",
+      summary_row
+    ))
   )
 }
 
@@ -283,6 +271,9 @@ policy_summary_card <- function(selected_policies = NULL,
 
   hs <- baseline_hist_sim
   run <- if (!is.null(hs)) hs$sim_summary %||% list() else list()
+  baseline <- run$baseline_survey %||% "Selected baseline survey"
+  baseline_n <- run$baseline_n %||% NA_integer_
+  model <- run$model %||% list()
   so_label <- if (!is.null(hs) && "label" %in% names(hs$so)) {
     as.character(hs$so$label[1])
   } else "Selected outcome"
@@ -291,9 +282,6 @@ policy_summary_card <- function(selected_policies = NULL,
     as.character(sw$label)
   } else character(0)
   weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
-  baseline <- run$baseline_survey %||% "Selected baseline survey"
-  baseline_n <- run$baseline_n %||% NA_integer_
-  model <- run$model %||% list()
   model_bits <- c(
     if (is.finite(model$fixed_effects %||% NA_integer_))
       paste0(model$fixed_effects, " FE"),
@@ -330,36 +318,35 @@ policy_summary_card <- function(selected_policies = NULL,
   climate_scenarios <- names(policy_saved_scenarios)
 
   selection_summary_card(
-      title = "Selected Policy Scenarios",
-      badge = paste(configured_count,
-                    if (configured_count == 1L) "policy" else "policies"),
-      rows = list(
-        list(
-          name = "Climate scenarios",
-          sub = if (length(historical)) historical else "Historical climate",
-          pills = climate_scenarios
-        ),
-        list(name = "Policies", sub = NULL, pills = policy_pills),
-        list(
-          name = "Model",
-          sub = model$label %||% "Fitted model",
-          pills = c(
-            paste0("Outcome: ", so_label),
-            if (length(weather_labels)) paste0(
-              "Weather: ", paste(weather_labels, collapse = ", ")
-            ),
-            model_bits
-          )
-        ),
-        list(
-          name = "Baseline",
-          sub = baseline,
-          pills = c(
-            if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
-          )
+    title = "Selected policy scenarios",
+    badge = paste(configured_count,
+                  if (configured_count == 1L) "policy" else "policies"),
+    rows = list(
+      list(
+        name = "Climate scenarios",
+        sub = if (length(historical)) historical else "Historical climate",
+        pills = climate_scenarios
+      ),
+      list(name = "Policies", sub = NULL, pills = policy_pills),
+      list(
+        name = "Model",
+        sub = model$label %||% "Fitted model",
+        pills = c(
+          paste0("Outcome: ", so_label),
+          if (length(weather_labels)) paste0(
+            "Weather: ", paste(weather_labels, collapse = ", ")
+          ),
+          model_bits
         )
       ),
-    compact = TRUE
+      list(
+        name = "Baseline",
+        sub = baseline,
+        pills = c(
+          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
+        )
+      )
+    )
   )
 }
 

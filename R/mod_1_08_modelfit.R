@@ -42,7 +42,7 @@ mod_1_08_modelfit_server <- function(id,
       req(!is.null(snap), !is.null(snap$model))
       selection_summary_card(
         title = "Selected model",
-        badge = model_badge(snap$model),
+        badge = model_covariate_badge(snap$model),
         rows  = model_card_rows(
           snap$model,
           label_fun      = .label_lookup(snap$variable_list),
@@ -50,9 +50,8 @@ mod_1_08_modelfit_server <- function(id,
           weather_labels = as.character(snap$weather$label)
         ),
         info  = paste(
-          "The fitted specification written as a formula: outcome ~",
-          "weather terms (crossed with interaction moderators when",
-          "selected) + covariates | fixed effects | clustering.",
+          "The fitted specification is shown as selected outcome, weather,",
+          "interaction, and fixed-effect variables.",
           "Diagnostics reflect this run until you press Run model again."
         )
       )

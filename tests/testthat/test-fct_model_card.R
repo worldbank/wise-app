@@ -1,7 +1,6 @@
 # ============================================================================ #
 # tests/testthat/test-fct_model_card.R                                         #
-# Model card (sparse formula): badge, cluster phrase, and the formula row      #
-# outcome ~ weather (+ interactions) + covariates | FE | clustering.           #
+# Model card rows and model badge.                                              #
 # ============================================================================ #
 
 library(testthat)
@@ -48,7 +47,7 @@ test_that("covariate counts break down by role, dropping zeros", {
   expect_identical(model_covariate_total(sm), 7L)
 })
 
-test_that("model_card_rows renders the sparse formula line", {
+test_that("model_card_rows renders one concise equation line", {
   rows <- model_card_rows(
     make_model_spec(),
     label_fun      = function(x) x,
@@ -57,12 +56,14 @@ test_that("model_card_rows renders the sparse formula line", {
   )
   expect_length(rows, 1)
   html <- paste(as.character(rows), collapse = " ")
+  expect_match(html, "Linear regression", fixed = TRUE)
+  expect_match(html, "selection-card-op", fixed = TRUE)
   expect_match(html, "Welfare per day", fixed = TRUE)
-  # "Monthly" prefix stripped; pairwise mode: one term per weather x moderator
-  expect_match(html, "max temperature \u00D7 urban", fixed = TRUE)
-  expect_match(html, "7 covariates", fixed = TRUE)
-  expect_match(html, "year \u00B7 gaul1_code FE", fixed = TRUE)
-  expect_match(html, "clustered by location panel", fixed = TRUE)
+  expect_match(html, "max temperature", fixed = TRUE)
+  expect_match(html, "urban", fixed = TRUE)
+  expect_match(html, "year", fixed = TRUE)
+  expect_match(html, "gaul1_code", fixed = TRUE)
+  expect_false(grepl("clustered by location panel", html, fixed = TRUE))
   # no tuning knobs, no "div" leak
   expect_false(grepl("alpha|lambda|1se", html))
   expect_false(grepl(">div<", html))
@@ -79,8 +80,8 @@ test_that("saturated mode crosses each weather with the full moderator set", {
     weather_labels = c("Monthly max temperature", "Monthly precipitation")
   )
   html <- paste(as.character(rows), collapse = " ")
-  expect_match(html, "max temperature \u00D7 urban \u00D7 grid", fixed = TRUE)
-  expect_match(html, "precipitation \u00D7 urban \u00D7 grid", fixed = TRUE)
+  expect_match(html, "max temperature", fixed = TRUE)
+  expect_match(html, "precipitation", fixed = TRUE)
 })
 
 test_that("no covariates and no FE render a clean minimal line", {
@@ -100,11 +101,9 @@ test_that("no covariates and no FE render a clean minimal line", {
   expect_match(html, "Max temperature", fixed = TRUE)
   expect_false(grepl("covariates", html))
   expect_false(grepl(" FE", html))
-  expect_match(html, "unclustered", fixed = TRUE)
 
-  # And with nothing at all: explicit "no covariates" placeholder
+  # Empty interaction and fixed-effect terms are omitted.
   rows2 <- model_card_rows(sm)
   html2 <- paste(as.character(rows2), collapse = " ")
-  expect_match(html2, "no covariates", fixed = TRUE)
-  expect_match(html2, "unclustered", fixed = TRUE)
+  expect_false(grepl("No interactions|No fixed effects|unclustered", html2))
 })

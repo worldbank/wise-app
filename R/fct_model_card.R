@@ -1,7 +1,6 @@
 # ============================================================================ #
-# Pure functions translating a `build_selected_model()` spec into the sparse   #
-# formula line of the "Selected model" card (Results / Model fit tabs):        #
-#   outcome ~ weather (+ interactions) + covariates | FE | clustering          #
+# Pure functions translating a `build_selected_model()` spec into a concise     #
+# model-card equation for the sidebar, Results, and Model fit tabs.              #
 # Stateless and testable without Shiny.                                        #
 # ============================================================================ #
 
@@ -74,16 +73,26 @@ model_covariate_total <- function(selected_model) {
   sum(model_covariate_counts(selected_model))
 }
 
+#' Compact covariate metadata for the model-card badge
+#'
+#' @param selected_model Named list from `build_selected_model()`.
+#' @return e.g. `"7 covariates · Lasso"`.
+#' @export
+model_covariate_badge <- function(selected_model) {
+  n <- model_covariate_total(selected_model)
+  method <- as.character(selected_model$covariate_selection[1] %||% "User-defined")
+  paste(n, if (n == 1L) "covariate" else "covariates", "·", method)
+}
+
 
 # ---------------------------------------------------------------------------- #
 # Card assembly                                                                 #
 # ---------------------------------------------------------------------------- #
 
-#' Assemble the "Selected model" card rows (sparse formula line)
+#' Assemble the concise "Selected model" card equation
 #'
-#' One row echoing a regression formula: outcome ~ weather terms (crossed
-#' with interaction moderators when present) + covariates | fixed effects |
-#' clustering. Model type and engine live in the card badge.
+#' The equation uses blue pills for selected values. The model type is shown at
+#' the start of the equation and covariate metadata lives in the card header.
 #'
 #' @param selected_model Named list from `build_selected_model()`.
 #' @param label_fun Optional function mapping variable names to display
@@ -92,7 +101,7 @@ model_covariate_total <- function(selected_model) {
 #' @param weather_labels Optional character vector of weather variable labels
 #'   ("Monthly ..." prefixes are stripped).
 #'
-#' @return A list with one pre-built row tag for `selection_summary_card()`.
+#' @return A list containing one pre-built row tag for `selection_summary_card()`.
 #'
 #' @export
 model_card_rows <- function(selected_model, label_fun = NULL,
@@ -113,68 +122,43 @@ model_card_rows <- function(selected_model, label_fun = NULL,
   wx  <- sub("^Monthly\\s+", "", as.character(weather_labels))
   wx  <- wx[!is.na(wx) & nzchar(wx)]
   mods <- to_lab(sm$interactions)
-  mode <- as.character(sm$interaction_mode[1] %||% "pairwise")
   fe   <- to_lab(sm$fixedeffects)
-  n_cov <- model_covariate_total(sm)
-
-  # Weather terms: crossed with the moderators when interactions are set.
-  # Saturated mode crosses each weather with the full moderator set; pairwise
-  # mode generates one term per weather x moderator pair.
-  wx_terms <- if (length(mods) && length(wx)) {
-    if (identical(mode, "saturated")) {
-      vapply(wx, function(w) paste0(w, " \u00D7 ", paste(mods, collapse = " \u00D7 ")),
-             character(1))
-    } else {
-      as.vector(outer(wx, mods, function(a, b) paste0(a, " \u00D7 ", b)))
+  pill <- function(value) shiny::tags$span(class = "selection-card-pill", value)
+  op <- function(value) shiny::tags$span(class = "selection-card-op", value)
+  append_values <- function(kids, values, separator = "+") {
+    for (i in seq_along(values)) {
+      if (i > 1L) kids <- c(kids, list(op(separator)))
+      kids <- c(kids, list(pill(values[[i]])))
     }
-  } else {
-    wx
+    kids
   }
 
-  rhs <- as.character(wx_terms)
-  if (n_cov > 0) rhs <- c(rhs, paste0(n_cov, " covariates"))
-  if (!length(rhs)) rhs <- "no covariates"
+  outcome <- if (is.null(outcome_label) || !nzchar(outcome_label)) {
+    "Selected outcome"
+  } else outcome_label
+  if (!length(wx)) wx <- "Selected weather"
 
-  # Token list: (op, text, muted); op tokens render as light-blue symbols.
-  toks <- list(
-    list(op = NA, text = if (is.null(outcome_label) || !nzchar(outcome_label)) {
-      "Outcome"
-    } else outcome_label, muted = FALSE),
-    list(op = "~", text = NA, muted = FALSE)
+  equation <- list(
+    shiny::tags$span(
+      class = "model-summary-equation-type",
+      as.character(sm$type[1] %||% "Selected model")
+    ),
+    op(":"),
+    pill(outcome),
+    op("~")
   )
-  for (i in seq_along(rhs)) {
-    if (i > 1) toks[[length(toks) + 1L]] <- list(op = "+", text = NA, muted = FALSE)
-    toks[[length(toks) + 1L]] <- list(op = NA, text = rhs[i], muted = FALSE)
+  equation <- append_values(equation, wx)
+  if (length(mods)) {
+    equation <- c(equation, list(op("+")))
+    equation <- append_values(equation, mods)
   }
-  toks[[length(toks) + 1L]] <- list(op = "|", text = NA, muted = FALSE)
   if (length(fe)) {
-    toks[[length(toks) + 1L]] <- list(
-      op = NA, text = paste0(paste(fe, collapse = " \u00B7 "), " FE"), muted = TRUE
-    )
-    toks[[length(toks) + 1L]] <- list(op = "|", text = NA, muted = FALSE)
+    equation <- c(equation, list(op("|")))
+    equation <- append_values(equation, fe, separator = "/")
   }
-  toks[[length(toks) + 1L]] <- list(
-    op = NA, text = model_cluster_phrase(sm$cluster), muted = TRUE
-  )
 
-  kids <- lapply(toks, function(t) {
-    if (!is.na(t$op)) {
-      shiny::tags$span(class = "selection-card-op", t$op)
-    } else {
-      shiny::tags$span(
-        class = if (isTRUE(t$muted)) "selection-card-muted" else "selection-card-formula",
-        t$text
-      )
-    }
-  })
-
-  list(
-    shiny::tags$div(
-      class = "selection-card-row",
-      shiny::tags$span(
-        class = "selection-card-formula",
-        do.call(htmltools::tagList, kids)
-      )
-    )
-  )
+  list(shiny::tags$div(
+    class = "selection-card-row model-summary-row model-summary-equation",
+    do.call(htmltools::tagList, equation)
+  ))
 }

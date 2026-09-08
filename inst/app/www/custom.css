@@ -299,9 +299,31 @@
   padding: 0.06rem 0.5rem;
 }
 
+/* The weather variable moves into the header beside its history badge. */
+.weather-sidebar-title {
+  color: var(--bs-dark);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .selection-card-pills {
   display: inline-flex;
   gap: 0.3rem;
+}
+
+.model-summary-title {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.model-summary-equation-type {
+  font-weight: 600;
+}
+
+.model-summary-row .selection-card-name {
+  font-weight: 400;
 }
 
 .selection-card-pill {
@@ -1651,4 +1673,57 @@ button.wise-csv-btn .fa {
 
 .step2-sidebar .selection-card.compact {
   margin-bottom: 0.3rem;
+}
+
+.step2-summary-row {
+  align-items: center;
+  column-gap: 0.35rem;
+  flex-wrap: wrap;
+  line-height: 1.4;
+}
+
+.step2-summary-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.step2-summary-label {
+  font-size: 0.88rem;
+  font-weight: 400;
+}
+
+.step2-summary-scenario-label {
+  font-weight: 600;
+}
+
+.step2-summary-value {
+  color: var(--bs-secondary-color, #5c6770);
+  font-size: 0.78rem;
+}
+
+.step2-summary-separator {
+  color: #9fb0be;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-row {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  padding: 0.05rem 0;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-label {
+  font-size: 0.78rem;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-value,
+.step2-sidebar .selection-card.compact .step2-summary-separator {
+  font-size: 0.72rem;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-row .selection-card-pill {
+  font-size: 0.68rem;
 }

@@ -124,41 +124,29 @@ mod_3_scenario_server <- function(id,
     output$policy_info_ui <- renderUI({
       pols <- selected_policies()
       if (is.null(pols) || length(pols) == 0) {
-        return(div(
-          class = "alert alert-warning",
-          style = "padding: 8px; margin-bottom: 10px; font-size: 13px;",
-          tags$strong("No policy scenarios selected."),
-          " Go to Step 1 \u2192 Policy scenarios to select one (if desired)."
+        return(selection_summary_card(
+          title = "Selected policy scenarios",
+          rows = list(list(
+            name = "No policy scenarios selected",
+            sub  = "Select a policy scenario in Step 1 to configure it here."
+          )),
+          compact = TRUE
         ))
       }
 
-      vl <- variable_list()
-      items <- lapply(pols, function(k) {
+      labels <- vapply(pols, function(k) {
         def <- POLICY_DEFINITIONS[[k]]
-        if (is.null(def)) return(NULL)
-        var_labels <- vapply(def$vars, function(v) {
-          lbl <- if (!is.null(vl) && v %in% vl$name) vl$label[vl$name == v][1] else v
-          paste0(lbl, " (", v, ")")
-        }, character(1))
-        tags$li(
-          tags$strong(def$label),
-          tags$br(),
-          tags$small(class = "text-muted", paste(var_labels, collapse = ", "))
-        )
-      })
+        if (is.null(def)) k else def$label
+      }, character(1))
 
-      div(
-        class = "alert alert-info",
-        style = "padding: 8px; margin-bottom: 10px; font-size: 13px;",
-        tags$strong("Active policy levers:"),
-        do.call(tags$ul, Filter(Negate(is.null), items)),
-        tags$small(
-          class = "text-muted",
-          paste(
-            "Adjust these inputs (and any others) in the sections below -",
-            "results update when you re-run the simulation."
-          )
-        )
+      selection_summary_card(
+        title = "Selected policy scenarios",
+        badge = paste(length(labels), if (length(labels) == 1) "scenario" else "scenarios"),
+        rows = list(selection_card_row(
+          name  = "Policy scenarios",
+          pills = labels
+        )),
+        compact = TRUE
       )
     })
 

@@ -360,25 +360,12 @@ mod_2_01_weathersim_server <- function(id,
 
     output$settings_summary <- shiny::renderUI({
       hist_yr <- input$hist_years %||% c(1991, 2020)
-      period_parts <- character(0)
-      for (i in 1:3) {
-        period <- input[[paste0("fut_period_", i)]]
-        if (length(period) >= 2 && all(is.finite(period)) && period[2] > period[1]) {
-          period_parts <- c(period_parts, paste0(period[1], "\u2013", period[2]))
-        }
-      }
       ssp_map <- c(
         "ssp2_4_5" = "SSP2-4.5",
         "ssp3_7_0" = "SSP3-7.0",
         "ssp5_8_5" = "SSP5-8.5"
       )
       ssp_sel <- input$climate %||% character(0)
-      ssp_txt <- if (length(ssp_sel) > 0) {
-        paste(unname(ssp_map[ssp_sel]), collapse = ", ")
-      } else "None"
-      res_labels <- c(original = "Original", resample = "Resample")
-      res_txt <- unname(res_labels[input$residuals %||% "original"] %||%
-                          input$residuals %||% "Original")
       sel <- input$baseline_survey %||% baseline_default()
       ch  <- baseline_survey_choices()
       survey_txt <- {
@@ -386,16 +373,61 @@ mod_2_01_weathersim_server <- function(id,
         if (length(nms) == 0) "None" else paste(nms, collapse = ", ")
       }
 
+      period_values <- lapply(seq_len(3), function(i) {
+        period <- input[[paste0("fut_period_", i)]]
+        if (length(period) >= 2 && all(is.finite(period)) && period[2] > period[1]) {
+          as.integer(period[1:2])
+        } else NULL
+      })
+      period_values <- Filter(Negate(is.null), period_values)
+
+      item <- function(label, value, pill = TRUE) {
+        shiny::tags$span(
+          class = "step2-summary-item",
+          shiny::tags$span(class = "step2-summary-label", label),
+          if (isTRUE(pill)) {
+            shiny::tags$span(class = "selection-card-pill", value)
+          } else {
+            shiny::tags$span(class = "step2-summary-value", value)
+          }
+        )
+      }
+      separator <- shiny::tags$span(class = "step2-summary-separator", "·")
+      scenario_items <- unlist(lapply(ssp_sel, function(ssp) {
+        lapply(period_values, function(period) {
+          shiny::tags$span(
+            class = "step2-summary-item",
+            shiny::tags$span(class = "step2-summary-label step2-summary-scenario-label",
+                             unname(ssp_map[[ssp]])),
+            shiny::tags$span(class = "step2-summary-value",
+                             paste0(period[1], "\u2013", period[2]))
+          )
+        })
+      }), recursive = FALSE)
+      climate_items <- if (length(scenario_items)) {
+        do.call(c, lapply(seq_along(scenario_items), function(i) {
+          c(if (i > 1L) list(separator) else list(),
+            list(scenario_items[[i]]))
+        }))
+      } else {
+        list(item("Climate scenarios", "None", pill = FALSE))
+      }
+
+      summary_row <- c(
+        climate_items,
+        list(separator),
+        list(item("Reference climate", paste0(hist_yr[1], "\u2013", hist_yr[2]))),
+        list(separator),
+        list(item("Baseline survey", survey_txt))
+      )
+
       selection_summary_card(
-        title = "Simulation settings",
-        badge = paste0("History ", hist_yr[1], "-", hist_yr[2]),
-        rows = list(
-          list(name = "Baseline survey", sub = survey_txt),
-          list(name = "Projection periods", sub = if (length(period_parts))
-            paste(period_parts, collapse = ", ") else "None"),
-          list(name = "Climate scenarios", sub = ssp_txt),
-          list(name = "Simulation residuals", sub = res_txt)
-        ),
+        title = NULL,
+        badge = NULL,
+        rows = list(shiny::tags$div(
+          class = "selection-card-row step2-summary-row",
+          summary_row
+        )),
         compact = TRUE
       )
     })
