@@ -59,10 +59,13 @@ test_that("model_card_rows renders one concise equation line", {
   expect_match(html, "Linear regression", fixed = TRUE)
   expect_match(html, "selection-card-op", fixed = TRUE)
   expect_match(html, "Welfare per day", fixed = TRUE)
-  expect_match(html, "max temperature", fixed = TRUE)
+  expect_match(html, "Max temperature", fixed = TRUE)
   expect_match(html, "urban", fixed = TRUE)
-  expect_match(html, "year", fixed = TRUE)
-  expect_match(html, "gaul1_code", fixed = TRUE)
+  expect_match(html, "\u00D7", fixed = TRUE)
+  expect_match(html, "7 covariates", fixed = TRUE)
+  expect_match(html, "2 FEs", fixed = TRUE)
+  expect_false(grepl("year|gaul1_code", html))
+  expect_false(grepl("selection-card-op\">:</span>", html, fixed = TRUE))
   expect_false(grepl("clustered by location panel", html, fixed = TRUE))
   # no tuning knobs, no "div" leak
   expect_false(grepl("alpha|lambda|1se", html))
@@ -80,8 +83,8 @@ test_that("saturated mode crosses each weather with the full moderator set", {
     weather_labels = c("Monthly max temperature", "Monthly precipitation")
   )
   html <- paste(as.character(rows), collapse = " ")
-  expect_match(html, "max temperature", fixed = TRUE)
-  expect_match(html, "precipitation", fixed = TRUE)
+  expect_match(html, "Max temperature", fixed = TRUE)
+  expect_match(html, "Precipitation", fixed = TRUE)
 })
 
 test_that("no covariates and no FE render a clean minimal line", {
@@ -99,8 +102,8 @@ test_that("no covariates and no FE render a clean minimal line", {
   html <- paste(as.character(rows), collapse = " ")
   expect_match(html, "Welfare per day", fixed = TRUE)
   expect_match(html, "Max temperature", fixed = TRUE)
-  expect_false(grepl("covariates", html))
-  expect_false(grepl(" FE", html))
+  expect_false(grepl("0 covariates", html, fixed = TRUE))
+  expect_false(grepl(" FEs", html, fixed = TRUE))
 
   # Empty interaction and fixed-effect terms are omitted.
   rows2 <- model_card_rows(sm)

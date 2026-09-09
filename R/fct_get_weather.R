@@ -467,6 +467,11 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
     if (!is.null(cutoffs) && length(cutoffs) > 1) {
       breaks_ext         <- c(-Inf, cutoffs[-c(1, length(cutoffs))], Inf)
       stored_breaks[[v]] <- breaks_ext
+      # The extended breaks are what cut() needs, but the outer sentinel
+      # edges hide the observed weather range from every downstream label.
+      # Carry the observed cutoffs alongside (attr ignored by consumers that
+      # use the vector numerically).
+      attr(stored_breaks[[v]], "observed") <- cutoffs
       message(binning_method, " cutoffs for ", v, ": ", paste(round(cutoffs, 3), collapse = ", "))
     } else {
       message("Insufficient variation in ", v, ". Keeping continuous.")

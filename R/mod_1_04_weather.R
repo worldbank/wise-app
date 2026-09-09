@@ -75,7 +75,7 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
         v        <- input$weather_variable_selector[i]
         var_info <- wl[wl$name == v, ]
         units    <- as.character(var_info$units[1])
-        display_label <- sub("^Monthly\\s+", "", as.character(var_info$label[1]))
+        display_label <- wise_label_short(as.character(var_info$label[1]))
         prefix   <- paste0(v, "_")
 
         tagList(
@@ -291,7 +291,7 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
       hy <- hist_years()
       single_weather <- nrow(sw) == 1L
       weather_title <- if (single_weather) {
-        label <- sub("^Monthly\\s+", "", as.character(sw$label[1]))
+        label <- wise_label_short(as.character(sw$label[1]))
         tags$span(
           class = "weather-sidebar-title",
           paste0(toupper(substr(label, 1, 1)), substr(label, 2, nchar(label)))

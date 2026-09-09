@@ -177,6 +177,7 @@ mod_1_modelling_server <- function(id,
       selected_model   = s6$selected_model,
       run_model        = s6$run_model,
       fit_guard        = s6$fit_guard,
+      stored_breaks    = s5$stored_breaks,
       survey_version   = s2$survey_version,
       tabset_id        = "step1_output_tabs",
       tabset_session   = session

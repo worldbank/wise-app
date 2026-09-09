@@ -282,3 +282,57 @@ build_selected_weather <- function(selected_vars, var_info, spec_inputs = list()
     dplyr::filter(.data$name %in% selected_vars) |>
     dplyr::left_join(dplyr::bind_rows(specs), by = "name")
 }
+
+# ---------------------------------------------------------------------------- #
+# Bin-level relabelling                                                         #
+# ---------------------------------------------------------------------------- #
+
+#' Replace sentinel +/-Inf edges in binned weather factor levels
+#'
+#' Equal-frequency/equal-width binning cuts with +/-Inf outer edges so that
+#' unseen weather values still fall in the outer bins. Those sentinels leak
+#' into every downstream label (bin `"(36.3, Inf]"`, reference
+#' `"[-Inf, 30.5]"`) and contradict the observed weather range shown
+#' elsewhere on the same screen. This substitutes the observed outer edges,
+#' keeping the bracket characters, so labels read `"(36.3, 40.1]"` and
+#' `"[26.2, 30.5]"`.
+#'
+#' @param df     Data frame with binned weather factor columns.
+#' @param breaks Named list of break vectors as stored by the weather
+#'   pipeline (extended edges, optionally carrying the observed cutoffs in
+#'   the `"observed"` attribute).
+#'
+#' @return `df` with relabelled factor levels; unchanged when breaks are
+#'   missing or incompatible with a column's level count.
+#'
+#' @export
+relabel_bin_levels <- function(df, breaks) {
+  if (is.null(df) || is.null(breaks) || !length(breaks)) return(df)
+  for (v in intersect(names(breaks), names(df))) {
+    col <- df[[v]]
+    if (!is.factor(col)) next
+    obs <- attr(breaks[[v]], "observed")
+    lb  <- if (!is.null(obs)) suppressWarnings(as.numeric(obs)) else
+      suppressWarnings(as.numeric(breaks[[v]]))
+    lb  <- lb[is.finite(lb)]
+    lv  <- levels(col)
+    if (length(lb) != length(lv) + 1L) next
+    fmt <- function(x) formatC(x, format = "f", digits = 1)
+    new_lv <- vapply(seq_along(lv), function(j) {
+      l0 <- substr(lv[j], 1, 1)
+      r0 <- substr(lv[j], nchar(lv[j]), nchar(lv[j]))
+      inner <- substr(lv[j], 2, nchar(lv[j]) - 1)
+      parts <- trimws(strsplit(inner, ",", fixed = TRUE)[[1]])
+      if (length(parts) != 2L) return(lv[j])
+      lo <- if (identical(parts[1], "-Inf")) lb[j] else
+        suppressWarnings(as.numeric(parts[1]))
+      hi <- if (identical(parts[2], "Inf")) lb[j + 1L] else
+        suppressWarnings(as.numeric(parts[2]))
+      if (!is.finite(lo) || !is.finite(hi)) return(lv[j])
+      paste0(l0, fmt(lo), ", ", fmt(hi), r0)
+    }, character(1))
+    if (!anyDuplicated(new_lv)) levels(col) <- new_lv
+    df[[v]] <- col
+  }
+  df
+}

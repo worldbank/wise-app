@@ -76,12 +76,11 @@ model_covariate_total <- function(selected_model) {
 #' Compact covariate metadata for the model-card badge
 #'
 #' @param selected_model Named list from `build_selected_model()`.
-#' @return e.g. `"7 covariates · Lasso"`.
+#' @return The covariate selection method, e.g. `"Lasso"`.
 #' @export
 model_covariate_badge <- function(selected_model) {
-  n <- model_covariate_total(selected_model)
   method <- as.character(selected_model$covariate_selection[1] %||% "User-defined")
-  paste(n, if (n == 1L) "covariate" else "covariates", "·", method)
+  method
 }
 
 
@@ -100,13 +99,16 @@ model_covariate_badge <- function(selected_model) {
 #' @param outcome_label Optional outcome label (left-hand side).
 #' @param weather_labels Optional character vector of weather variable labels
 #'   ("Monthly ..." prefixes are stripped).
+#' @param include_model_type Logical; include the model type at the start of the
+#'   equation. Set to `FALSE` when it is already used as the card title.
 #'
 #' @return A list containing one pre-built row tag for `selection_summary_card()`.
 #'
 #' @export
 model_card_rows <- function(selected_model, label_fun = NULL,
                             outcome_label = NULL,
-                            weather_labels = character(0)) {
+                            weather_labels = character(0),
+                            include_model_type = TRUE) {
   sm <- selected_model
 
   to_lab <- function(nms) {
@@ -119,10 +121,11 @@ model_card_rows <- function(selected_model, label_fun = NULL,
     }, character(1), USE.NAMES = FALSE)
   }
 
-  wx  <- sub("^Monthly\\s+", "", as.character(weather_labels))
+  wx  <- wise_label_short(weather_labels)
   wx  <- wx[!is.na(wx) & nzchar(wx)]
   mods <- to_lab(sm$interactions)
-  fe   <- to_lab(sm$fixedeffects)
+  n_cov <- model_covariate_total(sm)
+  n_fe  <- length(unlist(sm$fixedeffects))
   pill <- function(value) shiny::tags$span(class = "selection-card-pill", value)
   op <- function(value) shiny::tags$span(class = "selection-card-op", value)
   append_values <- function(kids, values, separator = "+") {
@@ -138,23 +141,26 @@ model_card_rows <- function(selected_model, label_fun = NULL,
   } else outcome_label
   if (!length(wx)) wx <- "Selected weather"
 
-  equation <- list(
-    shiny::tags$span(
-      class = "model-summary-equation-type",
+  equation <- list()
+  if (isTRUE(include_model_type)) {
+    equation <- c(equation, list(shiny::tags$span(
+      class = "model-summary-equation-type selection-card-name",
       as.character(sm$type[1] %||% "Selected model")
-    ),
-    op(":"),
-    pill(outcome),
-    op("~")
-  )
+    )))
+  }
+  equation <- c(equation, list(pill(outcome), op("~")))
   equation <- append_values(equation, wx)
   if (length(mods)) {
-    equation <- c(equation, list(op("+")))
-    equation <- append_values(equation, mods)
+    equation <- c(equation, list(op("\u00D7")))
+    equation <- append_values(equation, mods, separator = "\u00D7")
   }
-  if (length(fe)) {
-    equation <- c(equation, list(op("|")))
-    equation <- append_values(equation, fe, separator = "/")
+  if (n_cov > 0L) {
+    equation <- c(equation, list(op("+"), pill(
+      paste(n_cov, if (n_cov == 1L) "covariate" else "covariates")
+    )))
+  }
+  if (n_fe > 0L) {
+    equation <- c(equation, list(op("+"), pill(paste(n_fe, "FEs"))))
   }
 
   list(shiny::tags$div(

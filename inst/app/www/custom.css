@@ -319,11 +319,16 @@
 }
 
 .model-summary-equation-type {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.88rem;
 }
 
 .model-summary-row .selection-card-name {
   font-weight: 400;
+}
+
+.model-summary-row .model-summary-equation-type {
+  font-weight: 700;
 }
 
 .selection-card-pill {
@@ -519,10 +524,39 @@
 .headline-card {
   background: #ffffff;
   border: 1px solid #d6e1ea;
-  border-top: 3px solid #009e73;
+  border-top: 3px solid #173042;
   border-radius: 4px;
   padding: 10px 12px;
   min-height: 80px;
+}
+
+/* Muted variant for cards that carry context rather than a headline finding
+   (robustness, sample/fit, uniform-effect notices). */
+.headline-card.neutral {
+  border-top-color: #9aa9b5;
+}
+
+/* Step 1 "At a glance": one labelled row of cards per weather variable. */
+.step1-headline-var {
+  color: #526575;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 14px 0 2px;
+}
+
+.step1-headline-note {
+  color: #718292;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin: 8px 0 4px;
+}
+
+.step1-outcome-def {
+  color: #526575;
+  font-size: 0.82rem;
+  margin: 2px 0 12px;
 }
 
 .headline-card-label {
@@ -1727,3 +1761,15 @@ button.wise-csv-btn .fa {
 .step2-sidebar .selection-card.compact .step2-summary-row .selection-card-pill {
   font-size: 0.68rem;
 }
+
+/* ---- Step 1 focused estimates table (T2) ---- */
+.wise-subheader { color: #526575; font-size: 0.85rem; margin: 2px 0 8px; }
+.wise-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; background: #fff; }
+.wise-table th, .wise-table td { border: none; border-bottom: 1px solid #edf2f6; padding: 6px 10px; text-align: right; }
+.wise-table thead th { border-bottom: 2px solid #173042; color: #526575; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; text-align: right; }
+.wise-table thead th:first-child, .wise-table td:first-child { text-align: left; }
+.wise-table td.num, .wise-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.wise-table .group td { background: #eef3f8; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #526575; text-align: left; }
+.wise-table tr.hi td { background: #eef7f2; }
+.wise-table .se { color: #718292; font-size: 0.8rem; }
+.wise-table .t2-note { color: #718292; font-size: 0.75rem; text-align: left; border-bottom: none; }

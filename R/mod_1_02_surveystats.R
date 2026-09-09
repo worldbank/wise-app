@@ -563,10 +563,14 @@ mod_1_02_surveystats_server <- function(
         output$selected_surveys_card <- renderUI({
           ss <- selected_surveys()
           req(nrow(ss) > 0)
+          sd <- survey_data()
+          req(!is.null(sd))
 
           unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
           badge <- analysis_unit_label(unit) %||%
             analysis_unit_label(unique(ss$level)[1])
+          sample_n <- paste0("N = ", format(nrow(sd), big.mark = ",", scientific = FALSE))
+          badge <- paste(c(badge, sample_n), collapse = " | ")
 
           econ_rows <- lapply(
             sort(unique(ss$code)),

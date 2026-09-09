@@ -1379,6 +1379,14 @@ isTRUE_vec <- function(x) !is.na(x) & x
   by_h3 <- stats::setNames(sub$value, as.character(sub$loc_id))
   v <- unname(by_h3[cells$h3])
 
+  # Cells that average several interview months are drawn with a dashed
+  # border and say so in their tooltip ("2 interview months averaged").
+  n_m_by <- stats::setNames(sub$n_months, as.character(sub$loc_id))
+  n_m    <- unname(n_m_by[cells$h3])
+  dashed <- !is.na(n_m) & n_m > 1
+  info   <- ifelse(dashed, paste0(n_m, " interview months averaged"),
+                   NA_character_)
+
   bounds <- NULL
   if (all(c("xmin", "ymin", "xmax", "ymax") %in% names(cells))) {
     bounds <- c(
@@ -1399,10 +1407,12 @@ isTRUE_vec <- function(x) !is.na(x) & x
     v_kind = if (binned) "binned" else "continuous",
     stops  = stops,
     bounds = bounds,
-    info   = NULL
+    info   = info,
+    dash   = dashed
   )
 
   n_missing <- sum(is.na(v))
+  n_avg <- sum(dashed, na.rm = TRUE)
   notes <- if (n_missing > 0) {
     # Same compact styling as .compact_legend_html()'s box: the notes render
     # as a second small pill directly under it (they are appended outside the
@@ -1422,6 +1432,14 @@ isTRUE_vec <- function(x) !is.na(x) & x
       n_missing, " of ", nrow(cells), " areas without weather"
     )
   } else ""
+
+  if (n_avg > 0) {
+    notes <- paste(notes, row(
+      '<span style="display: inline-block; width: 10px; height: 10px; ',
+      'border-top: 2px dashed #666; vertical-align: -1px;"></span> ',
+      n_avg, " of ", nrow(cells), " areas averaged"
+    ))
+  }
 
   list(
     payload = payload,

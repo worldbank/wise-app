@@ -295,6 +295,15 @@ compute_factor_loading <- function(X_nonFE, chol_obj) {
   stopifnot(
     "X_nonFE must be a numeric matrix"        = is.matrix(X_nonFE) && is.numeric(X_nonFE),
     "chol_obj must contain L and beta"        = all(c("L", "beta") %in% names(chol_obj)),
+    "chol_obj$beta must be a named numeric vector" =
+      is.numeric(chol_obj$beta) && !is.null(names(chol_obj$beta)),
+    "X_nonFE columns must match chol_obj$beta names" =
+      length(intersect(colnames(X_nonFE), names(chol_obj$beta))) > 0L
+  )
+
+  X_nonFE <- align_factor_loading_matrix(X_nonFE, names(chol_obj$beta))
+
+  stopifnot(
     "X_nonFE columns must match chol_obj$beta names" =
       identical(colnames(X_nonFE), names(chol_obj$beta))
   )
@@ -312,6 +321,42 @@ compute_factor_loading <- function(X_nonFE, chol_obj) {
 
   # Legacy: F = X %*% L (N * K).
   X_nonFE %*% chol_obj$L
+}
+
+
+# `model.matrix()` can omit valid coefficient columns when a prediction slice
+# has no observations for a factor level, and some model classes return the
+# same columns in a different order. Align by coefficient name before applying
+# the VCV factor so coefficient uncertainty remains attached to the right term.
+align_factor_loading_matrix <- function(X_nonFE, beta_names) {
+  stopifnot(
+    "X_nonFE must be a numeric matrix" = is.matrix(X_nonFE) && is.numeric(X_nonFE),
+    "beta_names must be non-empty and unique" =
+      length(beta_names) > 0L && !anyDuplicated(beta_names)
+  )
+
+  x_names <- colnames(X_nonFE)
+  if (is.null(x_names) || anyDuplicated(x_names)) {
+    stop("Prediction design matrix must have unique column names.", call. = FALSE)
+  }
+
+  if (!length(intersect(x_names, beta_names))) {
+    stop("Prediction design matrix has no columns matching fitted coefficients.",
+         call. = FALSE)
+  }
+
+  common <- intersect(beta_names, x_names)
+  aligned <- X_nonFE[, common, drop = FALSE]
+  missing <- setdiff(beta_names, common)
+  if (length(missing)) {
+    aligned <- cbind(
+      aligned,
+      matrix(0, nrow = nrow(X_nonFE), ncol = length(missing),
+             dimnames = list(NULL, missing))
+    )
+  }
+
+  aligned[, beta_names, drop = FALSE]
 }
 
 
@@ -705,10 +750,6 @@ run_sim_pipeline <- function(weather_raw,
       if (!is.null(X_nonFE)) {
         if (is.list(chol_obj) && "L" %in% names(chol_obj)) {
           # Our named list format - use compute_factor_loading()
-          stopifnot(
-            "X_nonFE columns must match chol_obj$beta names" =
-              identical(colnames(X_nonFE), names(chol_obj$beta))
-          )
           F_loading <- compute_factor_loading(X_nonFE, chol_obj)
         } else if (is.matrix(chol_obj)) {
           # Golem matrix format - inline multiply

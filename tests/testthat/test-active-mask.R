@@ -110,6 +110,29 @@ test_that("compute_factor_loading subsets columns when active_mask is supplied",
   expect_equal(F_active, X[, mask, drop = FALSE] %*% L_active)
 })
 
+test_that("compute_factor_loading aligns reordered and absent design columns", {
+  beta_names <- c("tx", "urban", "age")
+  X <- matrix(c(1, 10, 100, 2, 20, 200), nrow = 2, byrow = TRUE,
+              dimnames = list(NULL, c("age", "tx", "urban")))
+  chol_obj <- list(L = diag(3), K = 3L,
+                   beta = setNames(c(1, 1, 1), beta_names))
+
+  expect_equal(
+    compute_factor_loading(X, chol_obj),
+    unname(X[, beta_names, drop = FALSE])
+  )
+
+  X_missing <- X[, c("age", "tx"), drop = FALSE]
+  expected <- cbind(X_missing[, "tx", drop = FALSE],
+                    matrix(0, nrow = nrow(X_missing), ncol = 1L,
+                           dimnames = list(NULL, "urban")),
+                    X_missing[, "age", drop = FALSE])
+  expect_equal(
+    compute_factor_loading(X_missing, chol_obj),
+    unname(expected)
+  )
+})
+
 test_that("active mask gives correct (block-Cholesky) additive-decomposition variance", {
   # Regression test for the column-subset bug: when Sigma has off-diagonal
   # terms between active and inactive coefficients, naively subsetting

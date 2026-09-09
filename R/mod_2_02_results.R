@@ -373,6 +373,12 @@ mod_2_02_results_server <- function(id,
     output$headline_cards_ui <- renderUI({
       req(pointrange_bands_rv())
       bands <- pointrange_bands_rv()
+      # Mid-flush the bands may still be an intermediate frame without the
+      # card columns; render nothing until the reactive settles.
+      if (!nrow(bands) ||
+          !all(c("is_historical", "scenario") %in% names(bands))) {
+        return(NULL)
+      }
       hist <- bands[bands$is_historical, , drop = FALSE][1L, ]
       future <- bands[!bands$is_historical, , drop = FALSE][1L, ]
       focus <- if (nrow(future)) future else hist
@@ -380,7 +386,8 @@ mod_2_02_results_server <- function(id,
       # Adverse 1-in-10 outcome for the focus scenario
       adverse_10_str <- "Unavailable"
       tbl <- tryCatch(threshold_table_rv(), error = function(e) NULL)
-      if (!is.null(tbl) && nrow(tbl)) {
+      if (!is.null(tbl) && nrow(tbl) &&
+          all(c("scenario", "rp_name", "Estimate") %in% names(tbl))) {
         rp_map <- metric_decision_return_periods(
           input$cmp_agg_method %||% "mean", hist_sim()$so
         )
@@ -1483,7 +1490,9 @@ mod_2_02_results_server <- function(id,
     # export bundle.
     threshold_table_df <- function() {
       tbl <- threshold_table_rv()
-      if (is.null(tbl)) return(NULL)
+      if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
+        return(NULL)
+      }
       if (!isTRUE(input$show_model_spread)) {
         tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
       }
@@ -1496,7 +1505,9 @@ mod_2_02_results_server <- function(id,
 
     decision_threshold_df <- reactive({
       tbl <- threshold_table_rv()
-      if (is.null(tbl) || !nrow(tbl)) return(NULL)
+      if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
+        return(NULL)
+      }
       tbl <- tbl[tbl$Estimate == "Central (P50)", , drop = FALSE]
       if (!nrow(tbl)) return(NULL)
       rp_map <- metric_decision_return_periods(
@@ -1586,6 +1597,11 @@ mod_2_02_results_server <- function(id,
     output$summary_threshold_table <- DT::renderDT({
       req(threshold_table_rv())
       tbl <- threshold_table_rv()
+      if (!nrow(tbl) || !"Estimate" %in% names(tbl)) {
+        return(DT::datatable(data.frame(Message = "Insufficient data"),
+                             rownames = FALSE, class = "compact stripe",
+                             options  = list(dom = "t")))
+      }
       if (!isTRUE(input$show_model_spread)) {
         tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
       }

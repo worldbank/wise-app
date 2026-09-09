@@ -128,7 +128,8 @@ mod_1_06_model_server <- function(id,
           model_row_spec,
           label_fun = function(v) to_labels(v)[1],
           outcome_label = so$label,
-          weather_labels = as.character(sw$label)
+          weather_labels = as.character(sw$label),
+          include_model_type = FALSE
         ),
         compact = TRUE
       )

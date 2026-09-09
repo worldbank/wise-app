@@ -89,7 +89,7 @@ test_that("fit snapshot captures fit-time labels; headings follow re-fit engine"
       expect_identical(.label_lookup(snap$variable_list)("tx"), "Max temp")
 
       # Headings describe the fitted engine (fixest wording)
-      expect_match(html_of("heading_effect"), "Predicted outcome vs weather",
+      expect_match(html_of("heading_effect"), "How does weather relate to outcome a?",
                    fixed = TRUE)
 
       # Change the live selections WITHOUT refitting: the snapshot must not
@@ -120,9 +120,10 @@ test_that("fit snapshot captures fit-time labels; headings follow re-fit engine"
       expect_identical(snap$outcome$label, "Outcome B")
       expect_identical(snap$weather$name, "pr")
       expect_match(html_of("heading_effect"),
-                   "Weather sensitivity across the distribution", fixed = TRUE)
-      expect_match(html_of("heading_coef"),
-                   "UQR coefficients by model specification", fixed = TRUE)
+                   "across the welfare distribution", fixed = TRUE)
+      # The RIF coefficient-stability section is suppressed (the quantile
+      # curve in "Who is most affected?" carries that content).
+      expect_identical(nchar(html_of("heading_coef")), 0L)
       expect_true(model_fit_val()$.snap$outcome$label == "Outcome B")
     }
   )
@@ -188,6 +189,90 @@ test_that("REACT-14: specification fallbacks render the provenance banner", {
       expect_match(html, "differs from the requested specification",
                    fixed = TRUE)
       expect_match(html, "requested logistic, fitted linear", fixed = TRUE)
+    }
+  )
+})
+
+test_that("redesigned sections render: who-panel, focused table, RIF suppression", {
+  skip_if_not_installed("shiny")
+
+  local_mocked_bindings(
+    prepare_outcome_df = function(df, so) df,
+    fit_model = function(df, selected_outcome, selected_weather, selected_model) {
+      list(
+        engine            = selected_model$engine,
+        y_var             = selected_outcome$name,
+        weather_terms     = selected_weather$name,
+        interaction_terms = if (identical(selected_model$engine, "fixest")) "tx:urban" else character(0),
+        fit1 = NULL, fit2 = NULL, fit3 = NULL,
+        rif_grid = NULL
+      )
+    },
+    make_coefplot            = function(...) ggplot2::ggplot(),
+    make_weather_effect_plot = function(...) ggplot2::ggplot(),
+    make_regtable            = function(...) shiny::tags$p("table"),
+    make_regtable_focused    = function(...) shiny::tags$p("focused-table"),
+    make_regtable_specs      = function(...) shiny::tags$p("specs-table"),
+    make_regtable_focused_df = function(...) data.frame(Variable = character(0)),
+    step1_scenarios          = function(...) NULL,
+    is_logistic_fit          = function(mf) FALSE
+  )
+
+  sel_outcome <- shiny::reactiveVal(make_outcome())
+  sel_weather <- shiny::reactiveVal(make_weather_sel())
+  sel_model   <- shiny::reactiveVal(list(engine = "fixest", cluster = "loc_id_panel"))
+  run_model   <- shiny::reactiveVal(0L)
+
+  shiny::testServer(
+    mod_1_07_results_server,
+    args = list(
+      id               = "res",
+      variable_list    = shiny::reactiveVal(make_vl()),
+      selected_surveys = shiny::reactiveVal(data.frame()),
+      selected_outcome = sel_outcome,
+      selected_weather = sel_weather,
+      survey_weather   = shiny::reactiveVal(
+        data.frame(tx = 1:4, welfare = 1:4, weight = 1)
+      ),
+      selected_model   = sel_model,
+      model_type       = shiny::reactiveVal("linear"),
+      run_model        = run_model,
+      tabset_id        = "step1_tabs"
+    ),
+    {
+      settle <- function() { session$elapse(500); session$flushReact() }
+      html_of <- function(output_id) {
+        paste(as.character(session$output[[output_id]]), collapse = " ")
+      }
+
+      # Quirk: prime the fit counter (see the note in the first test)
+      # before the real first fit.
+      run_model(1L); settle()
+      run_model(2L); settle()
+
+      # Question-led headings
+      expect_match(html_of("heading_effect"),
+                   "How does weather relate to outcome a?", fixed = TRUE)
+      expect_match(html_of("heading_who"), "Who is most affected?", fixed = TRUE)
+      expect_match(html_of("heading_table"), "Full model estimates", fixed = TRUE)
+
+      # Who panel: moderated plot layout + methodological note (interactions)
+      expect_match(html_of("who_note_ui"), "moderator level", fixed = TRUE)
+
+      # Focused table + spec comparison render; AER table inside details
+      expect_match(html_of("focused_table"), "focused-table", fixed = TRUE)
+      expect_match(html_of("specs_table"), "specs-table", fixed = TRUE)
+
+      # Refit as RIF: coefficient-stability section suppressed, who note
+      # switches to the quantile wording, specs comparison hidden.
+      sel_model(list(engine = "rif"))
+      session$elapse(500); session$flushReact()
+      run_model(3L); settle()
+      run_model(4L); settle()
+      expect_identical(nchar(html_of("heading_coef")), 0L)
+      expect_match(html_of("who_note_ui"),
+                   "welfare distribution", fixed = TRUE)
+      expect_identical(nchar(html_of("specs_table")), 0L)
     }
   )
 })

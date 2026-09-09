@@ -168,6 +168,16 @@ test_that("weather references round-trip and reject stale signatures", {
   expect_false(dir.exists(store$dir))
 })
 
+test_that("plain weather data frames pass through without schema warnings", {
+  weather <- phase4_weather()$historical
+
+  expect_warning(
+    resolved <- step2_weather_reference(weather),
+    NA
+  )
+  expect_identical(resolved, weather)
+})
+
 test_that("reference weather storage preserves member-specific payloads", {
   root <- withr::local_tempdir()
   input <- phase4_input()

@@ -240,11 +240,19 @@ headline_cards_ui <- function(cards) {
     class = "headline-cards",
     lapply(cards, function(card) {
       shiny::tags$div(
-        class = "headline-card",
-        shiny::tags$div(class = "headline-card-label", card$label %||% "Result"),
+        class = paste("headline-card", card$class %||% ""),
+        shiny::tags$div(
+          class = "headline-card-label",
+          card$label %||% "Result",
+          if (!is.null(card$info) && nzchar(card$info))
+            info_popover(shiny::p(card$info))
+        ),
         shiny::tags$div(class = "headline-card-value", card$value %||% "Unavailable"),
-        if (!is.null(card$note) && nzchar(card$note))
+        if (!is.null(card$note_html)) {
+          shiny::tags$div(class = "headline-card-note", card$note_html)
+        } else if (!is.null(card$note) && nzchar(card$note)) {
           shiny::tags$div(class = "headline-card-note", card$note)
+        }
       )
     })
   )
@@ -348,6 +356,21 @@ policy_summary_card <- function(selected_policies = NULL,
       )
     )
   )
+}
+
+# ---- Variable label shortening -----------------------------------------------
+
+#' Drop the "Monthly " prefix from a variable label and capitalise the first
+#' letter, so "Monthly daily maximum temperature" reads
+#' "Daily maximum temperature" in cards, plots and equations.
+#'
+#' @param lab Character label (or vector of labels).
+#' @return Character, same length.
+#' @noRd
+wise_label_short <- function(lab) {
+  lab <- sub("^Monthly\\s+", "", as.character(lab))
+  first <- toupper(substring(lab, 1, 1))
+  ifelse(nzchar(lab), paste0(first, substring(lab, 2)), lab)
 }
 
 #' Human label for an analysis unit code
@@ -740,10 +763,22 @@ csv_download_handler <- function(filename_base, data_fun) {
 #' @noRd
 .label_lookup <- function(vl) {
   force(vl)
-  function(var_name) {
+  lookup <- function(var_name) {
     if (is.null(vl)) return(var_name)
     idx <- match(var_name, vl$name)
     if (is.na(idx)) var_name else as.character(vl$label[idx])
+  }
+  function(var_name) {
+    # Polynomial terms arrive as fixest's double-wrapped "I(I(x^2))" (or the
+    # plain "I(x^2)") - render as "<label of x>²/³" instead of raw syntax.
+    m <- regmatches(var_name,
+                    regexec("^I\\((?:I\\()?([^\\^]+)\\^([23])\\)\\)?$",
+                            var_name))[[1]]
+    if (length(m) == 3) {
+      base <- lookup(m[2])
+      return(paste0(base, if (m[3] == "2") "\u00b2" else "\u00b3"))
+    }
+    lookup(var_name)
   }
 }
 

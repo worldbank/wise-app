@@ -57,7 +57,8 @@ step2_weather_store_cleanup <- function(store) {
 }
 
 step2_weather_reference <- function(value, expected_signature = NULL) {
-  if (is.list(value) && identical(value$schema, 1L) && !is.null(value$file)) {
+  if (is.list(value) && !is.data.frame(value) &&
+      identical(value$schema, 1L) && !is.null(value$file)) {
     return(step2_weather_store_get(value, expected_signature))
   }
   value

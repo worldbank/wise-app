@@ -25,7 +25,9 @@ test_that("cached weather join preserves inner_join expansion and ordering", {
   expected <- weather |>
     .add_sim_timestamp_fields() |>
     dplyr::select(-timestamp) |>
-    dplyr::inner_join(survey, by = c("code", "year", "survname", "loc_id", "int_month")) |>
+    dplyr::inner_join(survey,
+                      by = c("code", "year", "survname", "loc_id", "int_month"),
+                      relationship = "many-to-many") |>
     dplyr::mutate(year = as.factor(year))
   actual <- join_weather_survey_cached(weather, build_weather_join_cache(survey))
   expect_identical(actual, expected)

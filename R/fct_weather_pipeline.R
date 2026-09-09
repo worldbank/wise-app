@@ -309,8 +309,7 @@ weather_pipeline_row <- function(spec_row) {
     }
   }
 
-  label <- sub("^Monthly\\s+", "", as.character(r$label[1]))
-  label <- paste0(toupper(substr(label, 1, 1)), substr(label, 2, nchar(label)))
+  label <- wise_label_short(as.character(r$label[1]))
   units <- as.character(r$units[1])
 
   shiny::tags$div(
