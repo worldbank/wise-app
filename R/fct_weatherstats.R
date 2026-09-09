@@ -1401,6 +1401,14 @@ isTRUE_vec <- function(x) !is.na(x) & x
     list(domain = pal_info$domain, colors = pal_info$colors)
   }
 
+  note_row <- function(...) {
+    paste0(
+      '<div style="background: rgba(255,255,255,0.88); padding: 3px 5px; ',
+      'border-radius: 4px; font-size: 10px; line-height: 1.3; color: #333; ',
+      'max-width: 160px; margin-top: 2px;">', ..., '</div>'
+    )
+  }
+
   payload <- hexmap_payload(
     h3     = cells$h3,
     v      = v,
@@ -1418,14 +1426,7 @@ isTRUE_vec <- function(x) !is.na(x) & x
     # as a second small pill directly under it (they are appended outside the
     # legend box, so they must carry their own styling or they inherit the
     # card's font and spill across the map).
-    row <- function(...) {
-      paste0(
-        '<div style="background: rgba(255,255,255,0.88); padding: 3px 5px; ',
-        'border-radius: 4px; font-size: 10px; line-height: 1.3; color: #333; ',
-        'max-width: 160px; margin-top: 2px;">', ..., '</div>'
-      )
-    }
-    row(
+    note_row(
       '<span style="display: inline-block; width: 10px; height: 10px; ',
       'background: #cccccc; border: 1px solid #aaa; ',
       'vertical-align: -1px;"></span> ',
@@ -1434,7 +1435,7 @@ isTRUE_vec <- function(x) !is.na(x) & x
   } else ""
 
   if (n_avg > 0) {
-    notes <- paste(notes, row(
+    notes <- paste0(notes, note_row(
       '<span style="display: inline-block; width: 10px; height: 10px; ',
       'border-top: 2px dashed #666; vertical-align: -1px;"></span> ',
       n_avg, " of ", nrow(cells), " areas averaged"

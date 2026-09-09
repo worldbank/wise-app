@@ -226,3 +226,197 @@ test_that("unchecking the final scenario re-selects the held scenarios", {
     }
   )
 })
+
+# ---- Step 2 Headline Cards -------------------------------------------------
+
+test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
+  bands <- tibble::tibble(
+    scenario      = c("Historical", "SSP3-7.0 / 2025-2035"),
+    value         = c(4.50, 4.52),
+    coef_lo       = c(4.45, 4.47),
+    coef_hi       = c(4.55, 4.57),
+    interann_lo   = c(4.20, 4.25),
+    interann_hi   = c(4.80, 4.85),
+    intermod_lo   = c(4.50, 4.48),
+    intermod_hi   = c(4.50, 4.56),
+    total_lo      = c(NA_real_, 4.40),
+    total_hi      = c(NA_real_, 4.64),
+    is_historical = c(TRUE, FALSE),
+    n_models      = c(1L, 22L)
+  )
+
+  thresh_tbl <- tibble::tibble(
+    scenario = rep("SSP3-7.0 / 2025-2035", 4L),
+    Estimate = rep("Central (P50)", 4L),
+    rp_name  = c("1:1", "4:5", "9:10", "19:20"),
+    value    = c(4.52, 4.38, 4.25, 4.10)
+  )
+
+  hist_sim <- list(
+    so = list(type = "numeric", name = "welfare", label = "Consumption", units = "$/day"),
+    sim_summary = list(
+      total_runs = 690L,
+      historical_years = c(1991L, 2020L)
+    )
+  )
+
+  saved <- list("SSP3-7.0 / 2025-2035" = list(n_models = 22L))
+
+  cards <- step2_headline_cards(
+    bands            = bands,
+    threshold_tbl    = thresh_tbl,
+    hist_sim         = hist_sim,
+    saved_scenarios  = saved,
+    method           = "mean",
+    deviation        = "none",
+    ensemble_band    = "minmax",
+    uncertainty_band = "p10_p90"
+  )
+
+  expect_length(cards, 5L)
+
+  # Check labels
+  labels <- vapply(cards, function(c) c$label, character(1L))
+  expect_identical(
+    labels,
+    c("Typical outcome", "Adverse weather years", "Weather-year range",
+      "Climate-model spread", "Simulation years")
+  )
+
+  # Every card has non-empty fields
+  for (card in cards) {
+    expect_true(nzchar(card$label))
+    expect_true(nzchar(card$value))
+    expect_true(nzchar(card$note))
+    expect_s3_class(card$note_html, "shiny.tag.list")
+    expect_true(nzchar(card$info))
+  }
+
+  # Card 1: Typical outcome
+  expect_identical(cards[[1]]$value, "4.52")
+  expect_match(cards[[1]]$note, "Hist: 4.50", fixed = TRUE)
+  expect_match(cards[[1]]$note, "\u0394 +0.02", fixed = TRUE)
+  expect_match(cards[[1]]$note, "SSP3-7.0 / 2025-2035", fixed = TRUE)
+
+  # Card 2: Adverse weather years
+  expect_identical(cards[[2]]$value, "4.25 vs 4.10")
+  expect_match(cards[[2]]$note, "1-in-10 yr vs 1-in-20 yr", fixed = TRUE)
+
+  # Card 3: Weather-year range
+  expect_identical(cards[[3]]$value, "4.25 to 4.85")
+  expect_match(cards[[3]]$note, "min\u2013max", fixed = TRUE)
+
+  # Card 4: Climate-model spread
+  expect_identical(cards[[4]]$value, "4.48 to 4.56")
+  expect_match(cards[[4]]$note, "22 models", fixed = TRUE)
+  expect_match(cards[[4]]$note, "Coef 80% CI: \u00b10.05", fixed = TRUE)
+
+  # Card 5: Simulation years
+  expect_identical(cards[[5]]$value, "690")
+  expect_match(cards[[5]]$note, "1 scenario \u00d7 22 models \u00d7 30 yrs", fixed = TRUE)
+  expect_identical(cards[[5]]$class, "neutral")
+
+  # Table conversion
+  df <- step2_headline_df(cards)
+  expect_equal(nrow(df), 5L)
+  expect_identical(names(df), c("Metric", "Value", "Note"))
+  expect_identical(df$Metric, labels)
+})
+
+test_that("step2_headline_cards handles historical-only simulation gracefully", {
+  bands <- tibble::tibble(
+    scenario      = "Historical",
+    value         = 4.50,
+    coef_lo       = 4.45,
+    coef_hi       = 4.55,
+    interann_lo   = 4.20,
+    interann_hi   = 4.80,
+    intermod_lo   = 4.50,
+    intermod_hi   = 4.50,
+    total_lo      = NA_real_,
+    total_hi      = NA_real_,
+    is_historical = TRUE,
+    n_models      = 1L
+  )
+
+  hist_sim <- list(
+    so = list(type = "numeric", name = "welfare", label = "Consumption"),
+    sim_summary = list(
+      total_runs = 30L,
+      historical_years = c(1991L, 2020L)
+    )
+  )
+
+  cards <- step2_headline_cards(
+    bands           = bands,
+    threshold_tbl   = NULL,
+    hist_sim        = hist_sim,
+    saved_scenarios = list()
+  )
+
+  expect_length(cards, 5L)
+  expect_identical(cards[[1]]$value, "4.50")
+  expect_identical(cards[[4]]$value, "Not applicable")
+  expect_match(cards[[5]]$note, "Historical \u00d7 30 weather yrs", fixed = TRUE)
+})
+
+test_that("results content UI produces clear aggregation panel with question and pill selector", {
+  so <- list(
+    name    = "welfare",
+    type    = "numeric",
+    label   = "Consumption",
+    level   = "hh",
+    units   = "$/day, 2021 PPP",
+    povline = 3.00
+  )
+  ui <- wiseapp:::.results_content_ui(shiny::NS("results"), so)
+  html <- as.character(htmltools::renderTags(ui)$html)
+
+  expect_match(html, "results-aggregation-panel", fixed = TRUE)
+  expect_match(html, "How to summarise consumption across households?", fixed = TRUE)
+  expect_match(html, "results-cmp_agg_method", fixed = TRUE)
+  expect_match(html, "results-pov_line", fixed = TRUE)
+  expect_match(html, "Poverty line ($/day, 2021 PPP):", fixed = TRUE)
+  expect_match(html, "toggle-slider pill-toggle", fixed = TRUE)
+
+  # Verify removed controls are NOT in the aggregation panel
+  agg_panel_html <- as.character(htmltools::renderTags(ui[[4]])$html)
+  expect_match(agg_panel_html, "results-aggregation-panel", fixed = TRUE)
+  expect_false(grepl("results-controls", agg_panel_html, fixed = TRUE))
+  expect_false(grepl("results-cmp_deviation", agg_panel_html, fixed = TRUE))
+  expect_false(grepl("results-uncertainty_band", agg_panel_html, fixed = TRUE))
+  expect_false(grepl("results-ensemble_band", agg_panel_html, fixed = TRUE))
+  expect_false(grepl("results-show_coef_uncertainty", agg_panel_html, fixed = TRUE))
+  expect_false(grepl("results-show_model_spread", agg_panel_html, fixed = TRUE))
+  expect_false(grepl("results-bandwidth_p0", agg_panel_html, fixed = TRUE))
+  expect_false(grepl("results-cmp_group_order", agg_panel_html, fixed = TRUE))
+
+  # Verify the 5 sections in the overall page
+  expect_match(html, "How is consumption predicted to vary across climate scenarios and weather years?", fixed = TRUE)
+  expect_match(html, "What outcomes are predicted in adverse weather years?", fixed = TRUE)
+  expect_match(html, "What is the probability of severe outcomes occurring?", fixed = TRUE)
+  expect_match(html, "What drives the uncertainty in these predictions?", fixed = TRUE)
+  expect_match(html, "Detailed return-period outcomes and uncertainty", fixed = TRUE)
+
+  # Verify distributional incidence is removed from this page
+  expect_false(grepl("results-incidence_plot", html, fixed = TRUE))
+  expect_false(grepl("results-incidence_table", html, fixed = TRUE))
+})
+
+test_that("make_decision_table_html produces clean .wise-table HTML", {
+  df <- data.frame(
+    scenario = c("Historical", "SSP3-7.0 / 2030"),
+    Expected = c(4.5, 4.6),
+    `Change from historical` = c(NA, 0.1),
+    check.names = FALSE
+  )
+  tag <- make_decision_table_html(df, subheader = "Welfare outcomes", footnotes = "Footnote 1")
+  html <- as.character(htmltools::renderTags(tag)$html)
+
+  expect_match(html, "wise-table", fixed = TRUE)
+  expect_match(html, "wise-subheader", fixed = TRUE)
+  expect_match(html, "Welfare outcomes", fixed = TRUE)
+  expect_match(html, "historical-row", fixed = TRUE)
+  expect_match(html, "+0.10", fixed = TRUE)
+  expect_match(html, "Footnote 1", fixed = TRUE)
+})

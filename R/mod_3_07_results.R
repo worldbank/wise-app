@@ -101,10 +101,11 @@ mod_3_07_results_server <- function(id,
           select  = TRUE,
           session = tabset_session
         )
+        w_var <- bs$weather_var %||% bs$sim_summary$weather %||% NULL
         shiny::insertUI(
           selector = paste0("#", ns("results_section")),
           where = "afterBegin",
-          ui = .results_pane_ui(ns, bs$so),
+          ui = .results_pane_ui(ns, bs$so, weather_var = w_var),
           session = session
         )
         tabs_added(TRUE)

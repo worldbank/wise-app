@@ -76,19 +76,19 @@ metric_axis_label <- function(method = "mean", so = NULL, deviation = "none") {
 
 metric_adverse_probabilities <- function() {
   # Exceedance probabilities use the app's return-period convention: a
-  # 1-in-N adverse event has probability 1/N (0.20, 0.10, 0.05).
+  # 1-in-N adverse event has probability 1/N (0.20, 0.10, 0.05, 0.02).
   c("Adverse 1-in-5" = 0.20, "Adverse 1-in-10" = 0.10,
-    "Adverse 1-in-20" = 0.05)
+    "Adverse 1-in-20" = 0.05, "Adverse 1-in-50" = 0.02)
 }
 
 metric_decision_return_periods <- function(method = "mean", so = NULL) {
   spec <- metric_metadata(method, so)
   tail_names <- if (identical(spec$adverse_tail, "high")) {
     c("Adverse 1-in-5" = "1:5", "Adverse 1-in-10" = "1:10",
-      "Adverse 1-in-20" = "1:20")
+      "Adverse 1-in-20" = "1:20", "Adverse 1-in-50" = "1:50")
   } else {
     c("Adverse 1-in-5" = "4:5", "Adverse 1-in-10" = "9:10",
-      "Adverse 1-in-20" = "19:20")
+      "Adverse 1-in-20" = "19:20", "Adverse 1-in-50" = "49:50")
   }
   c("Expected" = "1:1", tail_names)
 }

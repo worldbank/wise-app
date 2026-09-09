@@ -1292,6 +1292,57 @@ button.wise-csv-btn .fa {
   margin: 0.5rem 0 0.75rem;
 }
 
+/* ---- Results aggregation panel (Step 2) ---------------------------------- */
+.results-aggregation-panel {
+  background: #ffffff;
+  border: 1px solid #d6e1ea;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.results-aggregation-panel .shiny-input-container {
+  margin-bottom: 0 !important;
+}
+
+.results-aggregation-panel .form-control {
+  min-height: 31px;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+}
+
+.results-section-card {
+  background: #ffffff;
+  border: 1px solid #d6e1ea;
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+
+.results-section-card .table {
+  margin-bottom: 0;
+}
+
+.results-section-card tr.historical-row td {
+  background-color: #f8fafc;
+  font-weight: 600;
+}
+
+.results-section-card tr.policy-row td {
+  background-color: #f0f7fb;
+  font-weight: 600;
+}
+
+.policy-effect-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background-color: #e1f0fa;
+  color: #0d47a1;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
 /* ---- Compact results controls (Steps 2/3 Results tab) -------------------- */
 
 .results-controls .form-group,
