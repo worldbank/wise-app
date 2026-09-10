@@ -75,12 +75,11 @@ mod_2_03_diagnostics_ui <- function(id) {
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      shiny::h5("Expected outcome across climate models"),
       wise_plot_output(ns("model_robustness_plot"),
                        "Climate-model mean outcome by scenario and period",
                        height = "420px"),
       shiny::tags$p(class = "diagnostic-note",
-                    "Each point is one climate model's mean across simulated weather-year draws; intervals show ensemble disagreement, not probabilities.")
+                    "Each dark point is one climate model's mean across simulated weather-year draws. The blue interval spans the middle 80% of those model means (10th to 90th percentile), so it intentionally does not cover every model. The green point is the median model mean.")
     ),
 
     # ---- 3. Weather-year trajectories (Figure D2-3B advanced) ---------------
@@ -99,31 +98,15 @@ mod_2_03_diagnostics_ui <- function(id) {
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      shiny::tags$details(
-        shiny::tags$summary(
-          "Advanced detail: Weather-year trajectories by climate model"
-        ),
-        shiny::p(
-          class = "diagnostic-note",
-          "Thin lines show model-specific simulation draws; the bold line is the across-model median. Projection windows are separate regimes, not a continuous forecast."
-        ),
-        wise_plot_output(ns("timeseries_plot"),
-                         "Outcome across simulated weather-year draws",
-                         height = "380px"),
-        shiny::tags$p(class = "diagnostic-note",
-                      "These are simulation draws within each climate projection window, not annual socioeconomic forecasts.")
-      )
-    ),
-
-    # ---- 4. Technical definitions ------------------------------------------
-    shiny::tags$details(
-      shiny::tags$summary("Technical definitions and interpretation"),
-      shiny::tags$ul(
-        shiny::tags$li("Regression input: weather observations entering the Step 1 estimation sample."),
-        shiny::tags$li("Annual aggregate: the selected outcome summarized for one weather-year draw."),
-        shiny::tags$li("Climate-model mean: the average annual aggregate within one model and scenario period."),
-        shiny::tags$li("Model agreement and weather-year spread describe different dimensions of variation and should not be combined by adding standard deviations.")
-      )
+      shiny::p(
+        class = "diagnostic-note",
+        "Each line shows a climate model's simulated annual outcome across weather-year draws. The bold line summarizes the across-model median. Projection windows are separate regimes, not a continuous forecast."
+      ),
+      wise_plot_output(ns("timeseries_plot"),
+                       "Outcome across simulated weather-year draws",
+                       height = "380px"),
+      shiny::tags$p(class = "diagnostic-note",
+                    "These are simulation draws within each climate projection window, not annual socioeconomic forecasts. Weather-year variation and climate-model spread are different sources of uncertainty.")
     )
   )
 }
@@ -296,43 +279,12 @@ mod_2_03_diagnostics_server <- function(id,
                       " has more than 5% of scenario values outside the robust Step 1 1%-99% support interval. Extrapolation may be required.")
     })
 
-    # UI-48: Step 2 diagnostic figures for the export bundle.
+    # The uncertainty-source outputs remain available to the legacy server
+    # path, but are not mounted in the current Diagnostics UI and therefore are
+    # intentionally not registered as bundle artefacts.
     wise_export_figure(
-      key   = "simulation_variance_contribution",
-      label = "Variance contribution by source",
-      step  = 2L,
-      fun   = function() {
-        vb <- variance_breakdown()
-        if (is.null(vb) || !nrow(vb)) return(NULL)
-        plot_variance_contribution(vb)
-      },
-      description = paste(
-        "How much of the simulated welfare variance comes from each source",
-        "(weather, coefficients, residuals, inter-model spread)."
-      ),
-      width = 9, height = 6
-    )
-
-    wise_export_table(
-      key = "simulation_variance_data",
-      label = "Simulation uncertainty components",
-      step = 2L,
-      fun = function() {
-        vb <- variance_breakdown()
-        if (is.null(vb) || !nrow(vb)) return(NULL)
-        out <- variance_component_data(vb, isTRUE(input$show_variance_shares))
-        annotate_visualization_export(
-          out, hist_sim()$agg_method %||% hist_sim()$method %||% "mean", hist_sim()$so,
-          observation_unit = "scenario-level annual aggregate summary",
-          aggregation_order = "weighted aggregate by model and weather-year; components retained separately",
-          uncertainty = "coefficient, inter-annual, and inter-model components"
-        )
-      },
-      description = "Tidy uncertainty components behind the aligned standard-deviation chart."
-    )
-    wise_export_figure(
-      key = "simulation_weather_support",
-      label = "Weather inputs and Step 1 model support",
+      key = "simulation_weather_distribution",
+      label = "Simulated weather input distribution",
       step = 2L,
       fun = function() {
         req(hist_sim(), survey_weather())
@@ -345,12 +297,12 @@ mod_2_03_diagnostics_server <- function(id,
           show_regression = TRUE
         )
       },
-      description = "Weather input distributions compared with the Step 1 regression support.",
+      description = "Weather input distributions for the selected plot variables across historical and simulated sources.",
       width = 10, height = 6.5
     )
     wise_export_table(
-      key = "simulation_weather_support_data",
-      label = "Weather support data",
+      key = "simulation_weather_distribution_data",
+      label = "Simulated weather input data",
       step = 2L,
       fun = function() {
         req(hist_sim(), survey_weather())
@@ -364,10 +316,10 @@ mod_2_03_diagnostics_server <- function(id,
           hist_sim()$so$method %||% "mean", hist_sim()$so,
           observation_unit = "weather input value entering the simulation",
           aggregation_order = "raw weather inputs retained by source and scenario",
-          uncertainty = "distributional support comparison"
+          uncertainty = "distributional comparison"
         )
       },
-      description = "Underlying tidy weather values used by the support comparison."
+      description = "Underlying tidy weather values used by the selected weather distribution plot."
     )
     wise_export_table(
       key = "simulation_weather_support_summary",
@@ -478,6 +430,7 @@ mod_2_03_diagnostics_server <- function(id,
       plot_model_robustness(model_robustness_data(tc$tbl), tc$x_label)
     }, height = 420)
     outputOptions(output, "model_robustness_plot", suspendWhenHidden = TRUE)
+
 
 
 

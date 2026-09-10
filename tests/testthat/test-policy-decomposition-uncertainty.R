@@ -109,3 +109,148 @@ test_that("decomposition explanation distinguishes OLS and RIF", {
   expect_match(wiseapp:::decomposition_explanation(TRUE)$text,
                "repositioning")
 })
+
+test_that("decile decomposition plot uses engine-specific channels", {
+  fx <- make_ols_fixture()
+  r <- wiseapp::decompose_policy_effect(fx$svy_base, fx$svy_policy,
+                                         fx$model_fit, fx$so)
+  tbl <- wiseapp:::decomposition_channels_by_decile(
+    r, fx$svy_base, "welfare", is_rif = FALSE
+  )
+  expect_true(all(c("cash_transfer_percent", "covariate_shift_percent",
+                    "interaction_percent",
+                    "repositioning_percent") %in% names(tbl)))
+  p <- wiseapp:::plot_decomposition_channels_by_decile(tbl, is_rif = FALSE)
+  expect_s3_class(p, "ggplot")
+  expect_false("Resilience - Repositioning effect" %in% as.character(p$data$channel))
+  expect_true(all(c("Main effect (covariate shift)",
+                    "Resilience - Interaction effect") %in% as.character(p$data$channel)))
+})
+
+test_that("decomposition module renders core plots for OLS and RIF schemas", {
+  fx <- make_ols_fixture(N = 180)
+  ols <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so
+  )
+
+  check_module <- function(result, engine) {
+    model <- fx$model_fit
+    model$engine <- engine
+    if (identical(engine, "rif")) {
+      model$rif_grid <- data.frame(
+        model = 3L, term = "temp", tau = c(0.25, 0.5, 0.75),
+        estimate = c(-0.02, -0.01, 0), std.error = 0.01,
+        conf.low = c(-0.04, -0.03, -0.02),
+        conf.high = c(0, 0.01, 0.02)
+      )
+    }
+    scenarios <- dplyr::bind_rows(lapply(2030:2032, function(year) {
+      transform(
+        result,
+        scenario = "SSP2-4.5 / 2030-2040",
+        sim_year = year,
+        year_start = 2030L,
+        year_end = 2040L
+      )
+    }))
+    shiny::testServer(
+      wiseapp:::mod_3_09_decomposition_server,
+      args = list(
+        id = "decomposition",
+        decomp_result = shiny::reactiveVal(result),
+        decomp_scenarios = shiny::reactiveVal(scenarios),
+        model_fit = shiny::reactiveVal(model),
+        so = shiny::reactiveVal(fx$so),
+        baseline_svy = shiny::reactiveVal(fx$svy_base),
+        policy_svy = shiny::reactiveVal(fx$svy_policy)
+      ),
+      {
+        session$flushReact()
+        expect_false(is.null(session$output$headline_decomp_plot))
+        expect_false(is.null(session$output$decomp_bar_plot))
+        expect_false(is.null(session$output$scenario_range_plot))
+        expect_false(is.null(session$output$scenario_range_ui))
+        if (identical(engine, "rif")) {
+          expect_false(is.null(session$output$beta_curve_ui))
+          expect_false(is.null(session$output$beta_curve_plot1))
+        }
+      }
+    )
+  }
+
+  check_module(ols, "fixest")
+
+  rif <- ols
+  rif$delta_res1 <- rep(0.002, nrow(rif))
+  rif$delta_total <- rif$delta_main + rif$delta_res1 + rif$delta_res2
+  check_module(rif, "rif")
+})
+
+test_that("Module 3 diagnostics formatters are callable", {
+  inputs <- data.frame(
+    variable = "income", baseline_mean = 1, policy_mean = 2,
+    mean_change = 1, baseline_sd = 0.5, policy_sd = 0.6
+  )
+  treatment <- data.frame(
+    status = "Treated", n = 10, weighted_n = 100, weighted_share = 0.5
+  )
+
+  expect_s3_class(wiseapp:::.format_policy_input_table(inputs), "data.frame")
+  expect_s3_class(wiseapp:::.format_policy_treatment_table(treatment), "data.frame")
+})
+
+test_that("Module 3 diagnostics tables render with policy data", {
+  fx <- make_ols_fixture(N = 80)
+  shiny::testServer(
+    wiseapp:::mod_3_08_diagnostics_server,
+    args = list(
+      id = "diagnostics",
+      baseline_svy = shiny::reactiveVal(fx$svy_base),
+      policy_svy = shiny::reactiveVal(fx$svy_policy),
+      sim_run_id = shiny::reactiveVal(0L),
+      tabset_id = "tabs"
+    ),
+    {
+      session$flushReact()
+      expect_false(is.null(session$output$diag_summary_table))
+      expect_false(is.null(session$output$treatment_table))
+    }
+  )
+})
+
+test_that("decomposition UI omits redundant cards and tables", {
+  html <- as.character(htmltools::renderTags(
+    wiseapp:::mod_3_09_decomposition_ui("decomposition")
+  )$html)
+
+  expect_false(grepl("Policy Effect Decomposition", html, fixed = TRUE))
+  expect_false(grepl("Paired policy incidence", html, fixed = TRUE))
+  expect_false(grepl("Hierarchical channel details", html, fixed = TRUE))
+  expect_false(grepl("scenario_range_table", html, fixed = TRUE))
+  expect_true(grepl("mean historical-baseline weather", html, fixed = TRUE))
+})
+
+test_that("technical decomposition table is concise and human readable", {
+  fx <- make_ols_fixture()
+  result <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so
+  )
+  tbl <- wiseapp:::.build_decomp_table(result, is_rif = FALSE)
+
+  expect_identical(
+    names(tbl),
+    c("Effect component", "Mean effect (%)", "Coefficient SE (%)")
+  )
+  expect_true(all(c("Total effect",
+                    "Main effect (direct transfer and covariate shift)",
+                    "Direct transfer component",
+                    "Weather-policy interaction") %in% tbl$`Effect component`))
+  expect_false("Repositioning effect" %in% tbl$`Effect component`)
+
+  deciles <- wiseapp:::decomposition_channels_by_decile(
+    result, fx$svy_base, "welfare", is_rif = FALSE
+  )
+  exported <- wiseapp:::decomposition_decile_export(deciles, is_rif = FALSE)
+  expect_false(any(grepl("_", names(exported), fixed = TRUE)))
+  expect_false("Repositioning effect (%)" %in% names(exported))
+})

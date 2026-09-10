@@ -101,8 +101,7 @@ plot_decomposition_headline <- function(summary_df,
     ggplot2::geom_col(width = 0.62, colour = "#243746") +
     ggplot2::scale_fill_manual(values = c(Level = "#0072B2", Resilience = "#D55E00",
                                            Total = "#009E73"), guide = "none") +
-    ggplot2::labs(x = NULL, y = y_label,
-                  subtitle = "Level plus resilience equals the directly computed total on the model scale.") +
+    ggplot2::labs(x = NULL, y = y_label) +
     theme_wise(base_size = 12)
 }
 
@@ -130,15 +129,33 @@ decomposition_explanation <- function(is_rif) {
 }
 
 decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
-                                              outcome = "welfare") {
+                                              outcome = "welfare",
+                                              is_rif = NULL) {
   if (is.null(decomp_df) || !nrow(decomp_df)) return(tibble::tibble())
+  is_rif <- if (is.null(is_rif)) {
+    "delta_res1" %in% names(decomp_df) &&
+      any(abs(decomp_df$delta_res1 %||% 0) > 1e-12, na.rm = TRUE)
+  } else isTRUE(is_rif)
   if (!is.null(svy)) {
     dec <- weighted_baseline_deciles(svy, outcome, baseline_weight_column(svy))
     ids <- suppressWarnings(as.integer(decomp_df$id))
-    decomp_df$decile <- dec[ids]
+    mapped <- is.finite(ids) & ids >= 1L & ids <= length(dec)
+    stored_deciles <- if ("decile" %in% names(decomp_df))
+      suppressWarnings(as.integer(decomp_df$decile)) else integer(0)
+    decomp_df$decile <- NA_integer_
+    decomp_df$decile[mapped] <- dec[ids[mapped]]
+    if (!any(is.finite(decomp_df$decile)) && length(stored_deciles) == nrow(decomp_df)) {
+      decomp_df$decile <- stored_deciles
+    }
   }
+  decomp_df <- decomp_df[is.finite(decomp_df$decile), , drop = FALSE]
+  if (!nrow(decomp_df)) return(tibble::tibble())
   w <- .decomp_weights(decomp_df)
   main <- decomp_df$delta_main %||% rep(0, nrow(decomp_df))
+  direct <- decomp_df$delta_sp %||% rep(0, nrow(decomp_df))
+  covariate <- decomp_df$delta_main_covar %||% (main - direct)
+  repositioning <- decomp_df$delta_res1 %||% rep(0, nrow(decomp_df))
+  interaction <- decomp_df$delta_res2 %||% rep(0, nrow(decomp_df))
   res <- (decomp_df$delta_res1 %||% rep(0, nrow(decomp_df))) +
     (decomp_df$delta_res2 %||% rep(0, nrow(decomp_df)))
   total <- decomp_df$delta_total %||% (main + res)
@@ -151,6 +168,19 @@ decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
       total_log = .weighted_mean_safe(total[ok], w[ok]),
       level_percent = log_effect_to_percent(level_log),
       resilience_percent = log_effect_to_percent(resilience_log),
+      main_percent = log_effect_to_percent(.weighted_mean_safe(main[ok], w[ok])),
+      cash_transfer_percent = log_effect_to_percent(
+        .weighted_mean_safe(direct[ok], w[ok])
+      ),
+      covariate_shift_percent = log_effect_to_percent(
+        .weighted_mean_safe(covariate[ok], w[ok])
+      ),
+      repositioning_percent = log_effect_to_percent(
+        .weighted_mean_safe(repositioning[ok], w[ok])
+      ),
+      interaction_percent = log_effect_to_percent(
+        .weighted_mean_safe(interaction[ok], w[ok])
+      ),
       total_percent = log_effect_to_percent(total_log),
       n_households = sum(ok, na.rm = TRUE),
       weighted_population = sum(w[ok], na.rm = TRUE)
@@ -159,29 +189,80 @@ decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
   out
 }
 
-plot_decomposition_channels_by_decile <- function(tbl) {
+plot_decomposition_channels_by_decile <- function(tbl, is_rif = NULL) {
   if (is.null(tbl) || !nrow(tbl)) {
-    return(ggplot2::ggplot() + ggplot2::labs(title = "Decile decomposition is unavailable."))
+    return(
+      ggplot2::ggplot() +
+        ggplot2::annotate(
+          "text", x = 0.5, y = 0.5,
+          label = "Decile decomposition is unavailable for this run.",
+          colour = "grey40", size = 4
+        ) +
+        ggplot2::theme_void()
+    )
   }
+  is_rif <- if (is.null(is_rif)) "repositioning_percent" %in% names(tbl) &&
+    any(abs(tbl$repositioning_percent) > 1e-12, na.rm = TRUE) else isTRUE(is_rif)
+  channel_cols <- c(
+    "cash_transfer_percent", "covariate_shift_percent",
+    if (is_rif) "repositioning_percent", "interaction_percent"
+  )
+  active <- vapply(channel_cols, function(col)
+    any(abs(tbl[[col]]) > 1e-12, na.rm = TRUE), logical(1L))
+  if (any(active)) channel_cols <- channel_cols[active]
+  channel_labels <- c(
+    cash_transfer_percent = "SP direct effect",
+    covariate_shift_percent = "Main effect (covariate shift)",
+    repositioning_percent = "Resilience - Repositioning effect",
+    interaction_percent = "Resilience - Interaction effect"
+  )
   long <- tidyr::pivot_longer(
-    tbl[, c("decile", "level_percent", "resilience_percent")],
-    cols = c("level_percent", "resilience_percent"),
+    tbl[, c("decile", channel_cols)], cols = tidyselect::all_of(channel_cols),
     names_to = "channel", values_to = "effect"
   )
-  long$channel <- dplyr::recode(long$channel,
-    level_percent = "Level", resilience_percent = "Resilience"
+  long$channel <- factor(unname(channel_labels[long$channel]),
+                         levels = unname(channel_labels[channel_cols]))
+  colours <- c(
+    "SP direct effect" = "#0072B2",
+    "Main effect (covariate shift)" = "#2166ac",
+    "Resilience - Repositioning effect" = "#d6604d",
+    "Resilience - Interaction effect" = "#f4a582"
   )
   ggplot2::ggplot(long, ggplot2::aes(x = factor(.data$decile), y = .data$effect,
                                      fill = .data$channel)) +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-    ggplot2::geom_col(position = "dodge", width = 0.62) +
+    ggplot2::geom_col(position = "stack", width = 0.62) +
     ggplot2::geom_point(data = tbl,
                         ggplot2::aes(x = factor(.data$decile), y = .data$total_percent),
                         inherit.aes = FALSE, shape = 21, fill = "#009E73",
                         colour = "#243746", size = 2.8) +
-    ggplot2::scale_fill_manual(values = c(Level = "#0072B2", Resilience = "#D55E00")) +
+    ggplot2::scale_fill_manual(values = colours, drop = FALSE) +
     ggplot2::labs(x = "Fixed observed baseline welfare decile (1 = poorest)",
                   y = "Policy effect (percent change)", fill = "Channel",
-                  subtitle = "Bars show level and resilience; points show the reconciled total. Deciles use weighted observed baseline welfare.") +
+                  subtitle = if (is_rif)
+                    "Stacked bars show direct, covariate-shift, repositioning, and interaction effects; points show the total."
+                  else
+                    "Stacked bars show direct, covariate-shift, and interaction effects; repositioning is not available for this engine.") +
     theme_wise(base_size = 12) + ggplot2::theme(legend.position = "bottom")
+}
+
+decomposition_decile_export <- function(tbl, is_rif = FALSE) {
+  if (is.null(tbl) || !nrow(tbl)) return(NULL)
+  cols <- c(
+    decile = "Baseline welfare decile",
+    cash_transfer_percent = "Direct transfer effect (%)",
+    covariate_shift_percent = "Covariate shift effect (%)",
+    interaction_percent = "Weather-policy interaction (%)",
+    total_percent = "Total policy effect (%)",
+    n_households = "Sample units",
+    weighted_population = "Population represented"
+  )
+  if (isTRUE(is_rif)) {
+    cols <- append(cols, c(repositioning_percent = "Repositioning effect (%)"),
+                   after = 3L)
+  }
+  cols <- cols[names(cols) %in% names(tbl)]
+  out <- as.data.frame(tbl[, names(cols), drop = FALSE])
+  names(out) <- unname(cols)
+  out
 }

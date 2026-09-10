@@ -132,6 +132,22 @@ test_that("plot_weather_dist returns ggplot for binned variable", {
   expect_s3_class(p, "ggplot")
 })
 
+test_that("historical binned counts use the survey's finite outer labels", {
+  hist <- data.frame(
+    countryyear = "TST, historical",
+    n_hh = c(1, 1, 1),
+    tx = c(10, 25, 40),
+    cal_year = c(2018, 2018, 2018)
+  )
+  breaks <- c(-Inf, 20, 30, Inf)
+  attr(breaks, "observed") <- c(10, 20, 30, 40)
+
+  out <- wiseapp:::.hist_bin_counts(hist, "tx", breaks)
+
+  expect_false(anyNA(out$bin))
+  expect_setequal(out$bin, c("[10.0, 20.0]", "(20.0, 30.0]", "(30.0, 40.0]"))
+})
+
 test_that("weather wave palette follows the app blue and teal series", {
   pal <- wiseapp:::.wave_palette(c("A, 2020", "A, 2021", "B, 2020"))
   expect_equal(unname(pal), c("#0071BC", "#00A6C7", "#8667B3"))

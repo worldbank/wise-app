@@ -1327,7 +1327,8 @@ build_threshold_table_df <- function(threshold_tbl,
   wide <- tidyr::pivot_wider(
     df[, pivot_cols],
     names_from  = "rp_label",
-    values_from = "value_round"
+    values_from = "value_round",
+    values_fn   = function(x) mean(x, na.rm = TRUE)
   )
   wide <- as.data.frame(wide)
 
@@ -1706,7 +1707,7 @@ plot_model_robustness <- function(tbl, x_label = "Expected annual outcome") {
                         ggplot2::aes(x = .data$center, y = .data$scenario),
                         shape = 21, fill = "#009E73", colour = "#243746", size = 3) +
     ggplot2::labs(x = x_label, y = NULL,
-                  subtitle = "Each point is one climate model's mean across weather-year draws; interval = ensemble spread, not a probability.") +
+                  subtitle = "Dark points = individual model means; blue band = middle 80% (10th-90th percentile); green point = median model mean.") +
     theme_wise(base_size = 12)
 }
 

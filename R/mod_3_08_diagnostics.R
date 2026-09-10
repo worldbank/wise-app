@@ -1,5 +1,64 @@
 #' Diagnostics tab content UI.
 #' @noRd
+.policy_display_name <- function(x) {
+  x <- gsub("[_\\.]+", " ", x)
+  x <- gsub("([a-z])([A-Z])", "\\1 \\2", x)
+  tools::toTitleCase(x)
+}
+
+.format_policy_construction_table <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  out <- data.frame(
+    Item = df$item,
+    Value = as.character(df$value),
+    stringsAsFactors = FALSE
+  )
+  out$Item <- c(
+    "Changed variables", "Rows changed", "Population changed",
+    "Realized transfer total", "Random seed", "Reconciliation"
+  )[match(df$item, c(
+    "Active manipulated variables", "Changed row count", "Weighted changed share",
+    "Realized transfer total", "Random seed", "Reconciliation"
+  ))]
+  out$Value[out$Item == "Changed variables"] <- ifelse(
+    nzchar(out$Value[out$Item == "Changed variables"]),
+    .policy_display_name(out$Value[out$Item == "Changed variables"]), "None"
+  )
+  out$Value[out$Item == "Rows changed"] <- fmt_num(df$value[df$item == "Changed row count"], digits = 0)
+  out$Value[out$Item == "Population changed"] <- fmt_num(
+    100 * as.numeric(df$value[df$item == "Weighted changed share"]), digits = 1, suffix = "%"
+  )
+  out$Value[out$Item == "Realized transfer total"] <- fmt_num(
+    df$value[df$item == "Realized transfer total"], digits = 0, prefix = "$"
+  )
+  out$Value[out$Item == "Random seed"] <- fmt_num(df$value[df$item == "Random seed"], digits = 0)
+  out
+}
+
+.format_policy_input_table <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  names(df) <- c(
+    "Variable", "Baseline mean", "Policy mean", "Change in mean",
+    "Baseline spread", "Policy spread"
+  )
+  df$Variable <- .policy_display_name(df$Variable)
+  num_cols <- setdiff(names(df), "Variable")
+  df[num_cols] <- lapply(df[num_cols], function(x) fmt_num(x, digits = 2))
+  df
+}
+
+.format_policy_treatment_table <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  data.frame(
+    `Coverage status` = df$status,
+    `Sample units` = fmt_num(df$n, digits = 0),
+    `Population represented` = fmt_num(df$weighted_n, digits = 0),
+    `Population share` = fmt_num(100 * df$weighted_share, digits = 1, suffix = "%"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
 .diagnostics_content_ui <- function(ns) {
   shiny::tagList(
     shiny::uiOutput(ns("policy_summary_ui")),
@@ -11,6 +70,28 @@
       class = "results-section-card diagnostic-section-card",
       shiny::uiOutput(ns("construction_warning_ui")),
       DT::DTOutput(ns("construction_table"))
+    ),
+
+    shiny::h4(
+      "Which variables changed?",
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::tags$p(class = "diagnostic-note",
+                    "Summary statistics describe the same baseline units before and after applying the policy levers."),
+      DT::DTOutput(ns("diag_summary_table"))
+    ),
+
+    shiny::h4(
+      "How did the policy change the baseline population?",
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::tags$p(class = "diagnostic-note",
+                    "Charts compare the same baseline survey units before and after applying the policy levers. Differences are constructed counterfactual inputs, not observed program impacts."),
+      shiny::uiOutput(ns("hist_plots_ui"))
     ),
 
     shiny::h4(
@@ -36,55 +117,6 @@
       DT::DTOutput(ns("treatment_table"))
     ),
 
-    shiny::h4(
-      "Which variables changed?",
-      class = "diagnostic-section-heading"
-    ),
-    shiny::div(
-      class = "results-section-card diagnostic-section-card",
-      shiny::tags$p(class = "diagnostic-note",
-                    "Summary statistics describe the same baseline units before and after applying the policy levers."),
-      DT::DTOutput(ns("diag_summary_table"))
-    ),
-
-    shiny::h4(
-      "Does the policy remain within Step 1 model support?",
-      info_popover(
-        title = "Policy-adjusted model support",
-        shiny::p(
-          "Values outside the training range or categories absent from the",
-          "training data increase reliance on model extrapolation. This diagnostic",
-          "does not validate policy realism or causal validity."
-        ),
-        docs = TRUE
-      ),
-      class = "diagnostic-section-heading"
-    ),
-    shiny::div(
-      class = "results-section-card diagnostic-section-card",
-      shiny::uiOutput(ns("covariate_support_warning_ui")),
-      DT::DTOutput(ns("covariate_support_table"))
-    ),
-
-    shiny::h4(
-      "How did the policy change the baseline population?",
-      class = "diagnostic-section-heading"
-    ),
-    shiny::div(
-      class = "results-section-card diagnostic-section-card",
-      shiny::tags$p(class = "diagnostic-note",
-                    "Charts compare the same baseline survey units before and after applying the policy levers. Differences are constructed counterfactual inputs, not observed program impacts."),
-      shiny::uiOutput(ns("hist_plots_ui"))
-    ),
-
-    shiny::tags$details(
-      shiny::tags$summary("Technical definitions and downloads"),
-      shiny::tags$ul(
-        shiny::tags$li("Weighted counts and shares use the baseline survey weights when available."),
-        shiny::tags$li("Transfer totals exclude administrative costs, financing effects, behavioral responses, and general-equilibrium effects."),
-        shiny::tags$li("A different random seed can change which units are selected while leaving aggregate targets similar.")
-      )
-    )
   )
 }
 
@@ -273,12 +305,7 @@ mod_3_08_diagnostics_server <- function(id,
         ))
       }
 
-      # UI-32: one decimal everywhere, instead of 4 significant figures which
-      # rendered as 0.1234 next to 12340 in the same column.
-      num_cols <- setdiff(names(df), "variable")
-      df[num_cols] <- lapply(df[num_cols], function(x) {
-        if (is.numeric(x)) round(x, 1) else x
-      })
+      df <- .format_policy_input_table(df)
 
       DT::datatable(
         df, rownames = FALSE, class = "compact stripe",
@@ -445,8 +472,10 @@ mod_3_08_diagnostics_server <- function(id,
     output$construction_table <- DT::renderDT({
       d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
       DT::datatable(
-        policy_construction_summary(d$baseline_svy, d$policy_svy,
-                                    sp_scenario(), analysis_unit()),
+        .format_policy_construction_table(
+          policy_construction_summary(d$baseline_svy, d$policy_svy,
+                                      sp_scenario(), analysis_unit())
+        ),
         rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"),
@@ -455,43 +484,22 @@ mod_3_08_diagnostics_server <- function(id,
     })
     output$treatment_table <- DT::renderDT({
       d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
+      df <- policy_treatment_matrix(
+        d$baseline_svy, d$policy_svy,
+        eligibility = tryCatch(
+          if (!is.null(sp_scenario())) .determine_sp_eligibility(
+            d$baseline_svy, sp_scenario()
+          ) else NULL,
+          error = function(e) NULL
+        )
+      )
       DT::datatable(
-        policy_treatment_matrix(
-          d$baseline_svy, d$policy_svy,
-          eligibility = tryCatch(
-            if (!is.null(sp_scenario())) .determine_sp_eligibility(
-              d$baseline_svy, sp_scenario()
-            ) else NULL,
-            error = function(e) NULL
-          )
-        ),
+        .format_policy_treatment_table(df),
         rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"),
                        buttons = wise_csv_button("policy_treatment_assignment"))
       )
-    })
-    covariate_support_data <- reactive({
-      d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
-      bh <- baseline_hist_sim()
-      training <- if (!is.null(bh)) bh$train_data %||% d$baseline_svy else d$baseline_svy
-      policy_covariate_support(training, d$policy_svy)
-    })
-    output$covariate_support_table <- DT::renderDT({
-      req(covariate_support_data())
-      DT::datatable(
-        covariate_support_data(), rownames = FALSE,
-        class = "compact stripe",
-        extensions = "Buttons",
-        options = list(dom = wise_csv_dom("tp"), pageLength = 20,
-                       buttons = wise_csv_button("policy_covariate_support"))
-      )
-    })
-    output$covariate_support_warning_ui <- renderUI({
-      tbl <- covariate_support_data()
-      if (is.null(tbl) || !nrow(tbl) || !any(tbl$warning)) return(NULL)
-      shiny::tags$div(class = "alert alert-warning", role = "alert",
-                      "Policy-adjusted covariates leave Step 1 training support or use absent/rare categories. Support overlap does not establish policy realism or causal validity.")
     })
     output$construction_warning_ui <- renderUI({
       if (is.null(diag_data()) || !is.null(diag_data()$status)) return(NULL)
@@ -528,14 +536,6 @@ mod_3_08_diagnostics_server <- function(id,
       },
       description = "Weighted baseline eligible/not-eligible by policy treated/not-treated status."
     )
-    wise_export_table(
-      key = "policy_covariate_support",
-      label = "Policy covariate support",
-      step = 3L,
-      fun = covariate_support_data,
-      description = "Policy-adjusted covariate ranges and category support against Step 1 training data."
-    )
-
     invisible(NULL)
   })
 }

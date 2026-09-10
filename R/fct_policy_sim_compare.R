@@ -482,8 +482,12 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       )
     })
     parts <- Filter(Negate(is.null), parts)
-    ens_lo <- dplyr::bind_rows(lapply(parts, `[[`, "lo"))
-    ens_hi <- dplyr::bind_rows(lapply(parts, `[[`, "hi"))
+    if (length(parts)) {
+      ens_lo <- dplyr::bind_rows(lapply(parts, `[[`, "lo"))
+      ens_hi <- dplyr::bind_rows(lapply(parts, `[[`, "hi"))
+    } else {
+      ens_lo <- ens_hi <- tbl[FALSE, , drop = FALSE]
+    }
   } else {
     ens_lo <- ens_hi <- tbl[FALSE, , drop = FALSE]
   }
@@ -1012,7 +1016,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
             "90%"                  = "p05_p95",
             "80%"                  = "p10_p90"
           ),
-          selected = "minmax",
+           selected = "none",
           layout   = "horizontal"
         )
       ),
@@ -1057,7 +1061,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
             "90%"                  = "p05_p95",
             "80%"                  = "p10_p90"
           ),
-          selected = "minmax",
+           selected = "none",
           layout   = "horizontal"
         )
       ),
@@ -1100,42 +1104,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       )
     ),
 
-    # ---- Section 5: Uncertainty decomposition ------------------------------
-    shiny::h4(
-      "What drives uncertainty, and does the policy reduce outcome variance?",
-      info_popover(
-        title = "Uncertainty sources",
-        shiny::p(
-          "Compares standard deviation contributions across annual weather variability,",
-          "climate-model disagreement, and model-estimation uncertainty.",
-          "Comparing baseline and policy reveals whether the intervention dampens",
-          "weather sensitivity (resilience channel)."
-        ),
-        shiny::p(
-          "Coefficient uncertainty is the analytic delta-method standard error from the fitted model's coefficient covariance matrix",
-          "(plus residual-draw variance when stochastic residuals are enabled). It is shown as one standard deviation, not a 95% confidence interval;",
-          "an approximate normal 95% interval would be estimate +/- 1.96 times this value."
-        ),
-        shiny::p(
-          "The components are displayed separately because standard deviations are not additive."
-        ),
-        docs = TRUE
-      ),
-      style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
-    ),
-    shiny::div(
-      class = "results-section-card",
-      wise_plot_output(
-        ns("uncertainty_sources_plot"),
-        "Standard deviation of outcome by uncertainty source: baseline vs policy",
-        height = "320px"
-      ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-         "Bars are standard deviations in outcome units, not confidence intervals. Inter-annual variability is the within-model standard deviation across simulated weather years; inter-model spread is the standard deviation of model means across climate models; coefficient uncertainty is the analytic delta-method SE from the fitted model covariance (plus any enabled stochastic residual variance)."
-      )
-    )
   )
 }
 
@@ -1471,9 +1439,9 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
   paired_effect_summary_rv <- reactive({
     dat <- paired_effect_data()
     if (!length(dat)) return(tibble::tibble())
-    bq <- if (identical(input$ensemble_band %||% "minmax", "none"))
+    bq <- if (identical(input$ensemble_band %||% "none", "none"))
       c(lo = 0.5, hi = 0.5) else
-      resolve_band_q(input$ensemble_band %||% "minmax")
+      resolve_band_q(input$ensemble_band %||% "none")
     dplyr::bind_rows(lapply(names(dat), function(nm) {
       paired_effect_summary(dat[[nm]], band_q = bq, scenario = nm)
     }))
@@ -1758,9 +1726,13 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
         make_row(coef_hi_lbl,     coef_hi_vec)
       )
       if (!is_hist) {
-        rows <- c(rows, list(
-          make_row(ens_lo_lbl,    intermod_lo_vec),
-          make_row(ens_hi_lbl,    intermod_hi_vec),
+        ensemble_rows <- if (identical(ens_lo_lbl, ens_hi_lbl)) {
+          list(make_row(ens_lo_lbl, central_vec))
+        } else {
+          list(make_row(ens_lo_lbl, intermod_lo_vec),
+               make_row(ens_hi_lbl, intermod_hi_vec))
+        }
+        rows <- c(rows, ensemble_rows, list(
           make_row(pooled_lo_lbl, total_lo_vec),
           make_row(pooled_hi_lbl, total_hi_vec)
         ))
@@ -1780,9 +1752,9 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
   pointrange_bands_rv <- reactive({
     req(baseline_agg_hist())
     bq_coef <- resolve_band_q(input$uncertainty_band %||% "p10_p90")
-    bq_ens  <- if (identical(input$ensemble_band %||% "minmax", "none"))
+    bq_ens  <- if (identical(input$ensemble_band %||% "none", "none"))
       c(lo = 0.5, hi = 0.5) else
-      resolve_band_q(input$ensemble_band %||% "minmax")
+      resolve_band_q(input$ensemble_band %||% "none")
     hr      <- hist_ref_val()
     dplyr::bind_rows(
       .build_pointrange_rows(baseline_agg_hist(), baseline_agg_scenarios(),
@@ -1817,9 +1789,9 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
   threshold_table_rv <- reactive({
     req(baseline_agg_hist())
     bq_coef <- resolve_band_q(input$uncertainty_band %||% "p10_p90")
-    bq_ens  <- if (identical(input$ensemble_band %||% "minmax", "none"))
+    bq_ens  <- if (identical(input$ensemble_band %||% "none", "none"))
       c(lo = 0.5, hi = 0.5) else
-      resolve_band_q(input$ensemble_band %||% "minmax")
+      resolve_band_q(input$ensemble_band %||% "none")
     hr      <- hist_ref_val()
     dplyr::bind_rows(
       .build_threshold_rows(baseline_agg_hist(), baseline_agg_scenarios(),
@@ -1853,7 +1825,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       method = input$cmp_agg_method %||% "mean",
       so     = baseline_hist_sim()$so
     )
-    if (identical(input$ensemble_band %||% "minmax", "none") && nrow(dot)) {
+    if (identical(input$ensemble_band %||% "none", "none") && nrow(dot)) {
       dot$policy_lo <- NA_real_
       dot$policy_hi <- NA_real_
     }
@@ -1872,23 +1844,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     )
   }, height = 380)
   outputOptions(output, "adverse_dot_plot", suspendWhenHidden = TRUE)
-
-  # ---- Section 4: Uncertainty decomposition --------------------------------
-  step3_variance_breakdown_rv <- reactive({
-    req(baseline_all_series(), policy_all_series())
-    step3_variance_breakdown(
-      baseline_series    = baseline_all_series(),
-      policy_series      = policy_all_series(),
-      selected_scenarios = selected_scenario_names(),
-      method             = input$cmp_agg_method %||% "mean"
-    )
-  })
-
-  output$uncertainty_sources_plot <- renderPlot({
-    req(step3_variance_breakdown_rv())
-    plot_step3_variance_contribution(step3_variance_breakdown_rv())
-  }, height = 320)
-  outputOptions(output, "uncertainty_sources_plot", suspendWhenHidden = TRUE)
 
   # ---- Section 4: Decision & return-period table ---------------------------
   threshold_table_df <- function() {
@@ -2092,7 +2047,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     fun   = function() {
       bands <- pointrange_bands_rv()
       if (is.null(bands)) return(NULL)
-      if (identical(input$ensemble_band %||% "minmax", "none")) {
+      if (identical(input$ensemble_band %||% "none", "none")) {
         bands$intermod_lo <- NA_real_
         bands$intermod_hi <- NA_real_
       }
@@ -2130,7 +2085,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
 
   output$exceedance_plot <- renderPlot({
     req(exceedance_curves_rv())
-    sel_spread <- input$exceedance_model_spread %||% "minmax"
+    sel_spread <- input$exceedance_model_spread %||% "none"
     ens_q <- if (identical(sel_spread, "none")) {
       c(lo = 0.5, hi = 0.5)
     } else {

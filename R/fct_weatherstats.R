@@ -167,13 +167,38 @@ merge_survey_weather <- function(survey_data, weather_data) {
   }
   if (!any(keep)) return(NULL)
 
-  data.frame(
+  out <- data.frame(
     countryyear = as.character(hist_df$countryyear[keep]),
     bin         = as.character(cut(v[keep], breaks = breaks,
                                    include.lowest = TRUE)),
     w           = as.numeric(hist_df$n_hh[keep]),
     stringsAsFactors = FALSE
-  ) |>
+  )
+
+  # The survey series uses display-safe finite outer labels from
+  # `relabel_bin_levels()`, while this historical frame is cut from continuous
+  # values and would otherwise retain `-Inf`/`Inf` in the outer labels. Keep
+  # both series on the same bin keys before they are combined for plotting.
+  observed <- attr(breaks, "observed")
+  if (!is.null(observed)) {
+    raw_levels <- levels(cut(v[keep], breaks = breaks, include.lowest = TRUE))
+    finite_levels <- vapply(seq_along(raw_levels), function(i) {
+      parts <- trimws(strsplit(
+        substr(raw_levels[[i]], 2L, nchar(raw_levels[[i]]) - 1L),
+        ",", fixed = TRUE
+      )[[1L]])
+      if (length(parts) != 2L) return(raw_levels[[i]])
+      lo <- if (parts[[1L]] == "-Inf") observed[[i]] else as.numeric(parts[[1L]])
+      hi <- if (parts[[2L]] == "Inf") observed[[i + 1L]] else as.numeric(parts[[2L]])
+      paste0(substr(raw_levels[[i]], 1L, 1L),
+             formatC(lo, format = "f", digits = 1), ", ",
+             formatC(hi, format = "f", digits = 1),
+             substr(raw_levels[[i]], nchar(raw_levels[[i]]), nchar(raw_levels[[i]])))
+    }, character(1L))
+    out$bin <- finite_levels[match(out$bin, raw_levels)]
+  }
+
+  out |>
     dplyr::group_by(.data$countryyear, .data$bin) |>
     dplyr::summarise(w = sum(.data$w, na.rm = TRUE), .groups = "drop") |>
     as.data.frame()

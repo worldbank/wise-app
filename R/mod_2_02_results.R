@@ -199,7 +199,7 @@ mod_2_02_results_ui <- function(id) {
             "90%"                  = "p05_p95",
             "80%"                  = "p10_p90"
           ),
-          selected = "minmax",
+           selected = "none",
           layout   = "horizontal"
         )
       ),
@@ -247,7 +247,7 @@ mod_2_02_results_ui <- function(id) {
             "90%"                  = "p05_p95",
             "80%"                  = "p10_p90"
           ),
-          selected = "minmax",
+           selected = "none",
           layout   = "horizontal"
         )
       ),
@@ -395,7 +395,7 @@ mod_2_02_results_server <- function(id,
                                      error = function(e) list()),
         method            = input$cmp_agg_method %||% "mean",
         deviation         = input$cmp_deviation %||% "none",
-        ensemble_band     = input$ensemble_band %||% "minmax",
+         ensemble_band     = input$ensemble_band %||% "none",
         uncertainty_band  = input$uncertainty_band %||% "p10_p90",
         skip_coef_draws   = tryCatch(if (is.function(skip_coef_draws)) skip_coef_draws() else skip_coef_draws,
                                      error = function(e) FALSE),
@@ -830,9 +830,9 @@ mod_2_02_results_server <- function(id,
     pointrange_bands_rv <- reactive({
       req(hist_agg_rv())
       bq_coef <- resolve_band_q(input$uncertainty_band %||% "p10_p90")
-      bq_ens  <- if (identical(input$ensemble_band %||% "minmax", "none"))
+      bq_ens  <- if (identical(input$ensemble_band %||% "none", "none"))
         c(lo = 0.5, hi = 0.5) else
-        resolve_band_q(input$ensemble_band %||% "minmax")
+        resolve_band_q(input$ensemble_band %||% "none")
       z_coef_lo <- stats::qnorm(bq_coef[["lo"]])
       z_coef_hi <- stats::qnorm(bq_coef[["hi"]])
       hist_ref  <- hist_ref_val()
@@ -1110,9 +1110,9 @@ mod_2_02_results_server <- function(id,
     threshold_table_rv <- reactive({
       req(hist_agg_rv())
       bq_coef <- resolve_band_q(input$uncertainty_band %||% "p10_p90")
-      bq_ens  <- if (identical(input$ensemble_band %||% "minmax", "none"))
+      bq_ens  <- if (identical(input$ensemble_band %||% "none", "none"))
         c(lo = 0.5, hi = 0.5) else
-        resolve_band_q(input$ensemble_band %||% "minmax")
+        resolve_band_q(input$ensemble_band %||% "none")
       z_coef_lo <- stats::qnorm(bq_coef[["lo"]])
       z_coef_hi <- stats::qnorm(bq_coef[["hi"]])
       hist_ref  <- hist_ref_val()
@@ -1195,9 +1195,13 @@ mod_2_02_results_server <- function(id,
           make_row(coef_hi_lbl,     coef_hi_vec)
         )
         if (!is_hist) {
-          rows <- c(rows, list(
-            make_row(ens_lo_lbl,    intermod_lo_vec),
-            make_row(ens_hi_lbl,    intermod_hi_vec),
+          ensemble_rows <- if (identical(ens_lo_lbl, ens_hi_lbl)) {
+            list(make_row(ens_lo_lbl, central_vec))
+          } else {
+            list(make_row(ens_lo_lbl, intermod_lo_vec),
+                 make_row(ens_hi_lbl, intermod_hi_vec))
+          }
+          rows <- c(rows, ensemble_rows, list(
             make_row(pooled_lo_lbl, total_lo_vec),
             make_row(pooled_hi_lbl, total_hi_vec)
           ))
@@ -1223,41 +1227,13 @@ mod_2_02_results_server <- function(id,
       key   = "climate_headline_summary",
       label = "Climate headline summary cards",
       step  = 2L,
-      fun   = function() {
-        step2_headline_df(headline_cards_data_rv())
-      },
-      description = "At-a-glance summary cards for the focus climate scenario: typical outcome, adverse weather years, weather-year range, model spread, and simulation coverage."
+      fun   = function() step2_headline_df(headline_cards_data_rv()),
+      description = "At-a-glance summary cards for the focus climate scenario."
     )
-
-    wise_export_figure(
-      key   = "climate_outcome_distribution",
-      label = "Simulated welfare by scenario and period",
-      step  = 2L,
-      fun   = function() {
-        bands <- pointrange_bands_rv()
-        if (is.null(bands)) return(NULL)
-        if (identical(input$ensemble_band %||% "minmax", "none")) {
-          bands$intermod_lo <- NA_real_
-          bands$intermod_hi <- NA_real_
-        }
-        plot_pointrange_climate(
-          bands_tbl    = bands,
-          x_label      = agg_hist()$x_label,
-          group_order  = input$cmp_group_order %||% "scenario_x_year",
-          show_coef    = isTRUE(input$show_coef_uncertainty) && has_draws()
-        )
-      },
-      description = paste(
-        "Simulated welfare by climate scenario and projection period, with",
-        "coefficient and inter-model uncertainty bands where enabled."
-      ),
-      width = 10, height = 6.5
-    )
-
     output$summary_box_plot <- renderPlot({
       req(pointrange_bands_rv())
       bands <- pointrange_bands_rv()
-      if (identical(input$ensemble_band %||% "minmax", "none")) {
+      if (identical(input$ensemble_band %||% "none", "none")) {
         bands$intermod_lo <- NA_real_
         bands$intermod_hi <- NA_real_
       }
@@ -1268,6 +1244,27 @@ mod_2_02_results_server <- function(id,
         show_coef    = isTRUE(input$show_coef_uncertainty) && has_draws()
       )
     }, height = 600)
+    wise_export_figure(
+      key   = "climate_outcome_distribution",
+      label = "Simulated welfare by scenario and period",
+      step  = 2L,
+      fun   = function() {
+        bands <- pointrange_bands_rv()
+        req(bands)
+        if (identical(input$ensemble_band %||% "none", "none")) {
+          bands$intermod_lo <- NA_real_
+          bands$intermod_hi <- NA_real_
+        }
+        plot_pointrange_climate(
+          bands_tbl = bands,
+          x_label = agg_hist()$x_label,
+          group_order = input$cmp_group_order %||% "scenario_x_year",
+          show_coef = isTRUE(input$show_coef_uncertainty) && has_draws()
+        )
+      },
+      description = "Simulated welfare by climate scenario and projection period.",
+      width = 10, height = 6.5
+    )
 
     output$annual_distribution_plot <- renderPlot({
       req(annual_distribution_curves_rv())
@@ -1373,22 +1370,6 @@ mod_2_02_results_server <- function(id,
       fun = annual_distribution_export,
       description = "Tidy data behind the annual aggregate distribution, including metric and aggregation metadata."
     )
-    wise_export_table(
-      key = "climate_expected_outcomes",
-      label = "Expected outcome summaries",
-      step = 2L,
-      fun = function() {
-        annotate_visualization_export(
-          pointrange_bands_rv(), input$cmp_agg_method %||% "mean",
-          hist_sim()$so,
-          observation_unit = "scenario-period annual aggregate summary",
-          aggregation_order = "model means across weather-year draws, then median across equally weighted models",
-          uncertainty = "inter-model ensemble spread and coefficient uncertainty"
-        )
-      },
-      description = "Expected annual outcomes by scenario and projection window with separately labelled uncertainty sources."
-    )
-
     # UI-48: one builder behind the on-screen table, its CSV button and the
     # export bundle.
     threshold_table_df <- function() {
@@ -1396,7 +1377,7 @@ mod_2_02_results_server <- function(id,
       if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
         return(NULL)
       }
-      if (identical(input$ensemble_band %||% "minmax", "none")) {
+      if (identical(input$ensemble_band %||% "none", "none")) {
         tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
       }
       so_obj <- tryCatch(if (!is.null(hist_sim())) hist_sim()$so else NULL, error = function(e) NULL)
@@ -1417,22 +1398,6 @@ mod_2_02_results_server <- function(id,
       )
     }
 
-    decision_threshold_df <- reactive({
-      threshold_table_df()
-    })
-    wise_export_table(
-      key = "climate_decision_thresholds",
-      label = "Decision return-period summary",
-      step = 2L,
-      fun = function() annotate_visualization_export(
-        threshold_table_df(), input$cmp_agg_method %||% "mean", hist_sim()$so,
-        observation_unit = "scenario-period annual aggregate at supported return period",
-        aggregation_order = "per-model return-period interpolation, then median across equally weighted models",
-        uncertainty = "comprehensive return period outcomes with climate model and econometric uncertainty"
-      ),
-      description = "Comprehensive expected and adverse return-period outcomes with uncertainty bounds."
-    )
-
     output$threshold_csv <- csv_download_handler("climate_return_period_outcomes", function() threshold_table_df())
 
     output$uncertainty_sources_plot <- renderPlot({
@@ -1441,6 +1406,19 @@ mod_2_02_results_server <- function(id,
     }, height = 300)
     outputOptions(output, "uncertainty_sources_plot", suspendWhenHidden = TRUE)
 
+    wise_export_figure(
+      key   = "climate_uncertainty_sources",
+      label = "Climate simulation uncertainty sources",
+      step  = 2L,
+      fun   = function() {
+        vb <- variance_breakdown_rv()
+        req(!is.null(vb), nrow(vb) > 0L)
+        plot_variance_contribution(vb)
+      },
+      description = "Standard deviation contribution from weather-year, coefficient, residual, and climate-model uncertainty sources.",
+      width = 9, height = 5
+    )
+
     adverse_dot_data_rv <- reactive({
       req(threshold_table_rv())
       dot <- step2_adverse_dot_data(
@@ -1448,7 +1426,7 @@ mod_2_02_results_server <- function(id,
         method = input$cmp_agg_method %||% "mean",
         so = hist_sim()$so
       )
-      if (identical(input$ensemble_band %||% "minmax", "none") && nrow(dot)) {
+      if (identical(input$ensemble_band %||% "none", "none") && nrow(dot)) {
         dot$intermod_lo <- NA_real_
         dot$intermod_hi <- NA_real_
       }
@@ -1529,7 +1507,7 @@ mod_2_02_results_server <- function(id,
         curves <- exceedance_curves_rv()
         ah     <- agg_hist()
         if (is.null(curves) || is.null(ah)) return(NULL)
-        sel_spread <- input$exceedance_model_spread %||% "minmax"
+        sel_spread <- input$exceedance_model_spread %||% "none"
         ens_q <- if (identical(sel_spread, "none")) {
           c(lo = 0.5, hi = 0.5)
         } else {
@@ -1554,7 +1532,7 @@ mod_2_02_results_server <- function(id,
 
     output$exceedance_plot <- renderPlot({
       req(exceedance_curves_rv())
-      sel_spread <- input$exceedance_model_spread %||% "minmax"
+        sel_spread <- input$exceedance_model_spread %||% "none"
       ens_q <- if (identical(sel_spread, "none")) {
         c(lo = 0.5, hi = 0.5)
       } else {
@@ -1680,8 +1658,8 @@ mod_2_02_results_server <- function(id,
       results_tab_added  = results_tab_added,
       timeseries_curves  = reactive({
         req(timeseries_curves_rv())
-        ens_q <- if (!identical(input$ensemble_band %||% "minmax", "none"))
-          resolve_band_q(input$ensemble_band %||% "minmax")
+        ens_q <- if (!identical(input$ensemble_band %||% "none", "none"))
+          resolve_band_q(input$ensemble_band %||% "none")
         else c(lo = 0.5, hi = 0.5)
         list(
           tbl     = timeseries_curves_rv(),

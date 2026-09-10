@@ -150,7 +150,7 @@ test_that("step3_decision_table_data and make_step3_decision_table_html work cor
   expect_match(rendered, "historical-row", fixed = TRUE)
 })
 
-test_that(".results_pane_ui renders aggregation panel and 5 question sections", {
+test_that(".results_pane_ui renders aggregation panel and results sections", {
   so <- list(name = "welfare", type = "numeric", label = "Consumption", level = "hh", units = "$/day")
   ui <- .results_pane_ui(shiny::NS("results3"), so)
   html <- as.character(htmltools::renderTags(ui)$html)
@@ -165,7 +165,7 @@ test_that(".results_pane_ui renders aggregation panel and 5 question sections", 
   expect_match(html, "How does the policy shift consumption across climate scenarios and weather years?", fixed = TRUE)
   expect_match(html, "Does the policy protect against adverse weather years?", fixed = TRUE)
   expect_match(html, "How does the policy change the probability of severe outcomes?", fixed = TRUE)
-  expect_match(html, "What drives uncertainty, and does the policy reduce outcome variance?", fixed = TRUE)
+  expect_false(grepl("What drives uncertainty, and does the policy reduce outcome variance?", html, fixed = TRUE))
   expect_match(html, "Detailed baseline, policy, and return-period outcomes", fixed = TRUE)
 
   # Plot and table outputs
@@ -177,8 +177,9 @@ test_that(".results_pane_ui renders aggregation panel and 5 question sections", 
   expect_match(html, "Climate model spread", fixed = TRUE)
   expect_match(html, "Full ensemble spread", fixed = TRUE)
   expect_match(html, "results3-ensemble_band", fixed = TRUE)
+  expect_match(html, "value=\"none\"", fixed = TRUE)
   expect_match(html, "results3-exceedance_plot", fixed = TRUE)
-  expect_match(html, "results3-uncertainty_sources_plot", fixed = TRUE)
+  expect_false(grepl("results3-uncertainty_sources_plot", html, fixed = TRUE))
   expect_match(html, "results3-summary_threshold_table", fixed = TRUE)
   expect_match(html, "results3-threshold_csv", fixed = TRUE)
 })

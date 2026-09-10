@@ -1209,6 +1209,22 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           levels = unique(combined$modx_label[order(combined$modx_val)])
         )
 
+        if (identical(mode, "main")) {
+          # The main relationship plot is the population-level RIF profile.
+          # Keep the moderator-specific curves for the heterogeneity plot, but
+          # average their estimates at each quantile and weather-bin panel here.
+          combined <- combined |>
+            dplyr::group_by(.data$tau, .data$bin_id, .data$bin_label) |>
+            dplyr::summarise(
+              estimate = mean(.data$estimate, na.rm = TRUE),
+              std.error = sqrt(mean(.data$std.error^2, na.rm = TRUE)),
+              conf.low = mean(.data$conf.low, na.rm = TRUE),
+              conf.high = mean(.data$conf.high, na.rm = TRUE),
+              .groups = "drop"
+            ) |>
+            dplyr::mutate(modx_label = "Average across moderator levels")
+        }
+
         # coef_label() is scalar - vectorise over each unique bin id so that
         # multi-bin (binned) predictors produce one facet per bin. Sort by
         # parsed numeric lower bound so negative ranges aren't ordered
@@ -1251,7 +1267,9 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           ggplot2::labs(
             x       = "Welfare quantile",
             y       = rif_y_lab,
-            caption = "Ribbon = 95% CI (cov(main, interaction) omitted)"
+            caption = if (identical(mode, "main"))
+              "Line and ribbon average the estimated effect across moderator levels; ribbon = 95% CI (cov(main, interaction) omitted)."
+            else "Ribbon = 95% CI (cov(main, interaction) omitted)"
           ) +
           theme_wise() +
           ggplot2::theme(

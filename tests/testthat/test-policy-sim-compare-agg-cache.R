@@ -269,14 +269,14 @@ test_that("threshold table has unique keys with two years and two members", {
       hit <- duplicated(tbl[key]) | duplicated(tbl[key], fromLast = TRUE)
       expect_false(any(hit))
 
-      # The scenario block carries the full band set: Central, Coef lo/hi,
-      # Ensemble lo/hi, Pooled lo/hi - one row each, twice (Baseline + Policy)
-      # plus the historical triple per arm.
-      expect_equal(nrow(tbl), 20L)
+      # The default no-spread state carries one ensemble median row instead of
+      # duplicate lower/upper P50 rows, twice (Baseline + Policy), plus the
+      # historical triple per arm.
+      expect_equal(nrow(tbl), 18L)
       expect_setequal(
         tbl$Estimate[tbl$scenario != "Historical"],
         c("Central (P50)", "Coef P10", "Coef P90",
-          "Ensemble min", "Ensemble max", "Pooled P10", "Pooled P90")
+          "Ensemble P50", "Pooled P10", "Pooled P90")
       )
     }
   )

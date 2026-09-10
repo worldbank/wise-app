@@ -448,6 +448,7 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "Climate model spread", fixed = TRUE)
   expect_match(html, "Full ensemble spread", fixed = TRUE)
   expect_match(html, "results-ensemble_band", fixed = TRUE)
+  expect_match(html, "value=\"none\"", fixed = TRUE)
   expect_match(html, "What drives the uncertainty in these predictions?", fixed = TRUE)
   expect_match(html, "Detailed return-period outcomes and uncertainty", fixed = TRUE)
 
