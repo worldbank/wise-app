@@ -180,10 +180,15 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
 # provenance side - the snapshot must agree with it.
 .EXPORT_INPUT_DROP <- c(
   "^run_model$", "^run_sim$", "^run_policy_sim$", "^load_", "^refresh",
+  # These controls may appear under names that are not known to the app. The
+  # class-based snapshot filter below handles current sessions; these patterns
+  # keep older exported configurations from restoring them.
+  "^survey_stats$", "^weather_stats$", "_btn$",
   "^apply_", "^import_config", "^show_lasso",
   "_toggle$", "_open$", "^hide_",
   "_rows_current$", "_rows_all$", "_rows_selected$", "_columns_selected$",
   "_cells_selected$", "_search$", "_state$", "_cell_clicked$",
+  "^DataTables_Table_", "_cell_edit$", "_state_change$",
   "^plotly_", "_click$", "_hover$", "_brush$", "_dblclick$",
   "^\\.clientdata", "^sidebar", "^accordion$", "_bounds$", "_center$",
   "_zoom$", "_shape_", "_marker_", "_groups$",
@@ -228,6 +233,11 @@ wise_config_snapshot <- function(input, seed = WISEAPP_DEFAULT_SEED,
   vals <- tryCatch(shiny::reactiveValuesToList(input), error = function(e) list())
   if (length(vals)) {
     vals <- vals[.export_keep_input(names(vals))]
+    # Shiny action-button values are click counters, not restorable settings;
+    # filtering by class also catches buttons added without a known id.
+    vals <- vals[!vapply(vals, function(v) {
+      inherits(v, "shinyActionButtonValue")
+    }, logical(1))]
     # Drop values that carry no meaning outside the live session.
     vals <- vals[vapply(vals, function(v) {
       is.null(v) || is.atomic(v) || is.list(v)
@@ -263,15 +273,29 @@ wise_config_apply <- function(config, session, existing = character(0)) {
   vals <- config$inputs %||% list()
   if (!length(vals)) return(invisible(list(applied = character(0),
                                            pending = character(0))))
+  # Filter on import as well as export so configurations written by older
+  # versions cannot queue controls that can never be restored.
+  vals <- vals[.export_keep_input(names(vals))]
+  if (!length(vals)) return(invisible(list(applied = character(0),
+                                           pending = character(0))))
   ids <- names(vals)
   can <- if (length(existing)) ids %in% existing else rep(TRUE, length(ids))
+
+  is_button <- function(id) {
+    value <- tryCatch(session$input[[id]], error = function(e) NULL)
+    inherits(value, "shinyActionButtonValue")
+  }
+
+  applied <- character(0)
   for (id in ids[can]) {
+    if (is_button(id)) next
     tryCatch(
       session$sendInputMessage(id, list(value = vals[[id]])),
       error = function(e) NULL
     )
+    applied <- c(applied, id)
   }
-  invisible(list(applied = ids[can], pending = ids[!can]))
+  invisible(list(applied = applied, pending = ids[!can]))
 }
 
 #' Validate an imported configuration before anything is applied

@@ -266,7 +266,11 @@ policy_summary_card <- function(selected_policies = NULL,
                                 policy_saved_scenarios = list(),
                                 selected_weather = NULL,
                                 sp_scenario = NULL,
-                                policy_scenarios = list()) {
+                                policy_scenarios = list(),
+                                infra_scenario = NULL,
+                                digital_scenario = NULL,
+                                labor_scenario = NULL,
+                                education_scenario = NULL) {
   policies <- selected_policies %||% character(0)
   policies <- policies[!is.na(policies) & nzchar(policies)]
   labels <- vapply(policies, function(key) {
@@ -278,36 +282,17 @@ policy_summary_card <- function(selected_policies = NULL,
     }
   }, character(1))
 
-  policy_pills <- if (length(labels)) {
-    policy_scenarios <- policy_scenarios %||% list()
-    labels <- mapply(function(key, label) {
-      scenario <- policy_scenarios[[key]] %||% list()
-      parameter_key <- c(A = "elec", B = "water", C = "sanitation", D = "health_travel",
-                         E = "internet", F = "mobile", G = "piped", H = "piped_to_prem",
-                         I = "imp_wat_san", K = "primary", L = "secondary", M = "postsec")[[key]]
-      if (is.null(parameter_key)) {
-        parameter_key <- switch(key, J = "employment", character(0))
-      }
-      pct <- scenario[[paste0(parameter_key, "_access_change_pct")]] %||%
-        scenario[[paste0(parameter_key, "_pct")]] %||% scenario$health_travel_pct
-      pct <- suppressWarnings(as.numeric(pct)[1])
-      universal <- isTRUE(scenario[[paste0(parameter_key, "_universal")]])
-      parameter <- if (universal || isTRUE(pct == 100)) "universal"
-                   else if (is.finite(pct)) paste0(if (pct >= 0) "+" else "", pct, "%")
-                   else if (identical(key, "J")) {
-                     change <- suppressWarnings(as.numeric(scenario$employment_change_pp)[1])
-                     if (is.finite(change)) paste0(if (change >= 0) "+" else "", change, " pp") else NULL
-                   }
-                   else NULL
-      paste(c(sub("^[^/]+/\\s*", "", label), parameter), collapse = " · ")
-    }, policies, labels, USE.NAMES = FALSE)
-  } else "None"
-  sp <- sp_scenario %||% list()
-  if (is.function(sp)) sp <- sp()
-  sp_active <- is.list(sp) && (
-    isTRUE(sp$transfer_amount_usd > 0) || isTRUE(sp$budget_fixed > 0)
-  )
-  sp_label <- if (sp_active) {
+  deref <- function(x) {
+    if (is.function(x)) x <- tryCatch(x(), error = function(e) NULL)
+    if (is.list(x)) x else NULL
+  }
+  sp <- deref(sp_scenario)
+  infra <- deref(infra_scenario)
+  digital <- deref(digital_scenario)
+  labor <- deref(labor_scenario)
+  education <- deref(education_scenario)
+
+  sp_label <- if (has_sp_change(sp)) {
     amount <- if (isTRUE(sp$transfer_amount_usd > 0)) {
       paste0("$", format(sp$transfer_amount_usd, trim = TRUE, big.mark = ","), "/payment")
     } else {
@@ -317,14 +302,33 @@ policy_summary_card <- function(selected_policies = NULL,
       paste0(" x ", sp$transfer_n_payments, "/year")
     } else ""
     targeting <- sp$targeting %||% "universal"
-    paste("SP", amount, payments, "-", targeting)
+    paste("Social protection", amount, payments, "-", targeting)
   } else NULL
-  policy_pills <- c(sp_label, policy_pills[policy_pills != "None"])
-  if (!length(policy_pills)) policy_pills <- "None"
+  active <- c(
+    sp_label,
+    if (has_infra_change(infra)) "Infrastructure",
+    if (has_digital_change(digital)) "Digital inclusion",
+    if (has_labor_change(labor)) "Labor market",
+    if (has_education_change(education)) "Education"
+  )
+  configured_count <- length(active)
+  policy_pills <- if (configured_count > 0L) active else "None"
+  rows <- list(list(
+    name = "Policies",
+    sub = if (!configured_count) "no lever has been changed yet",
+    pills = policy_pills
+  ))
+  if (length(labels)) {
+    rows <- c(rows, list(list(
+      name = "Policy interaction",
+      pills = labels
+    )))
+  }
   selection_summary_card(
     title = "Selected Policy Scenarios",
-    badge = NULL,
-    rows = list(list(name = "Policies", sub = NULL, pills = policy_pills))
+    badge = paste(configured_count,
+                  if (configured_count == 1L) "policy" else "policies"),
+    rows = rows
   )
 }
 
@@ -666,11 +670,22 @@ wise_csv_button <- function(filename, enabled = TRUE) {
 
 #' Add the Buttons placeholder to a DT `dom` string
 #'
+#' When both the page-length picker (`l`) and search box (`f`) are present,
+#' wrap Buttons and those controls in one flex row. Tables without both retain
+#' the simple leading `B` form.
+#'
 #' @param dom A DataTables `dom` string (e.g. "t", "lfrtip").
-#' @return The same string with a leading "B" if it lacked one.
+#' @return A `dom` string including the Buttons placeholder.
 #' @noRd
 wise_csv_dom <- function(dom = "lfrtip") {
-  if (grepl("B", dom, fixed = TRUE)) dom else paste0("B", dom)
+  if (grepl("B", dom, fixed = TRUE)) return(dom)
+  has_len <- grepl("l", dom, fixed = TRUE)
+  has_search <- grepl("f", dom, fixed = TRUE)
+  if (!has_len || !has_search) return(paste0("B", dom))
+
+  # Pull l and f out of their original positions into the shared toolbar.
+  rest <- gsub("[lf]", "", dom)
+  paste0("<'wise-dt-controls'Blf>", rest)
 }
 
 #' Small "Download CSV" link for a non-DT table

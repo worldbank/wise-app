@@ -38,6 +38,40 @@ test_that("point-estimate additivity: delta_total == delta_main + delta_res1 + d
   expect_lt(err, 1e-12)
 })
 
+test_that("policy decomposition derives a missing poor outcome", {
+  set.seed(12)
+  n <- 120L
+  base <- data.frame(
+    welfare = exp(stats::rnorm(n, log(3), 0.25)),
+    temp = stats::rnorm(n, 25, 2),
+    transfer = stats::rbinom(n, 1, 0.3),
+    weight = stats::runif(n, 0.5, 2)
+  )
+  base$poor <- as.integer(base$welfare < 3)
+  fit <- stats::lm(poor ~ temp + transfer + temp:transfer, data = base)
+  policy <- base
+  policy$transfer <- 1L
+  policy[[wiseapp::SP_TRANSFER_COL]] <- 0
+  policy$poor <- NULL
+  base$poor <- NULL
+
+  result <- wiseapp::decompose_policy_effect(
+    base,
+    policy,
+    list(
+      engine = "fixest",
+      fit3 = fit,
+      weather_terms = "temp",
+      train_data = transform(base, poor = as.integer(welfare < 3))
+    ),
+    list(name = "poor", units = "PPP", transform = NA_character_, povline = 3)
+  )
+
+  expect_s3_class(result, "data.frame")
+  expect_equal(nrow(result), n)
+  expect_true(all(is.finite(result$delta_total)))
+})
+
 test_that("variance additivity: Var(total) == Var(main) + Var(res1) + Var(res2)", {
   # Under the diagonal-Σ approximation documented in fct_policy_decompose.R,
   # channels are independent and variances add exactly.

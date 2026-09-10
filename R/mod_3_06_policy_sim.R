@@ -84,6 +84,12 @@ mod_3_06_policy_sim_server <- function(id,
     policy_hist_sim_rv          <- reactiveVal(NULL)
     policy_saved_scenarios_rv   <- reactiveVal(list())
     sp_scenario_rv              <- reactiveVal(NULL)
+    # Snapshot all policy domains with the run so summary surfaces describe
+    # the configuration that produced the results.
+    infra_scenario_rv           <- reactiveVal(NULL)
+    digital_scenario_rv         <- reactiveVal(NULL)
+    labor_scenario_rv           <- reactiveVal(NULL)
+    education_scenario_rv       <- reactiveVal(NULL)
 
     output$sim_status_ui <- shiny::renderUI({
       err <- sim_error()
@@ -174,8 +180,15 @@ mod_3_06_policy_sim_server <- function(id,
       # contains rows for all survey years in selected_surveys - joining the
       # FULL survey_weather() would pull in extra households from non-baseline
       # rounds and produce a systematically different aggregate.
-      svy <- hs$svy %||% .safe(survey_weather())
-      sp_cfg <- .safe(sp_scenario())
+       svy <- hs$svy %||% .safe(survey_weather())
+       # The synthetic `poor` outcome is created during Step 1 preparation,
+       # but may not be retained in the Step 2 survey snapshot.
+       svy <- ensure_outcome_column(svy, hs$so)
+      sp_cfg        <- .safe(sp_scenario())
+      infra_cfg     <- .safe(infra_scenario())
+      digital_cfg   <- .safe(digital_scenario())
+      labor_cfg     <- .safe(labor_scenario())
+      education_cfg <- .safe(education_scenario())
 
       .fail <- function(msg) {
         sim_error(simpleError(msg))
@@ -213,11 +226,11 @@ mod_3_06_policy_sim_server <- function(id,
 
           svy_mod <- apply_policy_to_svy(
             svy,
-            infra         = infra_scenario(),
-            sp            = sp_scenario(),
-            digital       = digital_scenario(),
-            labor         = labor_scenario(),
-            education     = education_scenario(),
+             infra         = infra_cfg,
+             sp            = sp_cfg,
+             digital       = digital_cfg,
+             labor         = labor_cfg,
+             education     = education_cfg,
             model_vars    = model_term_names(.safe(selected_model())),
             analysis_unit = analysis_unit(),
             seed          = WISEAPP_DEFAULT_SEED
@@ -407,6 +420,10 @@ mod_3_06_policy_sim_server <- function(id,
            policy_hist_sim_rv(pol_out$hist_sim)
            policy_saved_scenarios_rv(pol_out$saved_scenarios)
            sp_scenario_rv(sp_cfg)
+           infra_scenario_rv(infra_cfg)
+           digital_scenario_rv(digital_cfg)
+           labor_scenario_rv(labor_cfg)
+           education_scenario_rv(education_cfg)
           decomp_rv(decomp)
           decomp_scenarios_rv(decomp_sc)
           policy_stale(FALSE)
@@ -466,6 +483,10 @@ mod_3_06_policy_sim_server <- function(id,
       policy_hist_sim          = policy_hist_sim_rv,
       policy_saved_scenarios   = policy_saved_scenarios_rv,
       sp_scenario              = sp_scenario_rv,
+      infra_scenario           = infra_scenario_rv,
+      digital_scenario         = digital_scenario_rv,
+      labor_scenario           = labor_scenario_rv,
+      education_scenario       = education_scenario_rv,
       policy_scenarios         = reactive(list(
         A = infra_scenario() %||% list(), B = infra_scenario() %||% list(),
         C = infra_scenario() %||% list(), D = infra_scenario() %||% list(),

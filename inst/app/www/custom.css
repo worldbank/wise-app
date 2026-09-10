@@ -1148,6 +1148,44 @@ table.dataTable td.dt-wrap {
   word-break: break-word;
 }
 
+/* One row of DataTables chrome: download and length on the left, search on
+   the right. The controls wrap on narrow screens rather than forcing table
+   overflow. */
+.wise-dt-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  margin-bottom: 0.4rem;
+}
+
+.wise-dt-controls > .dataTables_filter,
+.wise-dt-controls > .dt-search {
+  margin-left: auto;
+  text-align: right;
+}
+
+.wise-dt-controls > .dataTables_length,
+.wise-dt-controls > .dataTables_filter,
+.wise-dt-controls > .dt-length,
+.wise-dt-controls > .dt-search,
+.wise-dt-controls > div.dt-buttons {
+  float: none;
+  margin-bottom: 0;
+  padding: 0;
+}
+
+.wise-dt-controls .dataTables_length label,
+.wise-dt-controls .dataTables_filter label,
+.wise-dt-controls .dt-length label,
+.wise-dt-controls .dt-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
 /* ---- Navbar export menu (UI-48) ------------------------------------------ */
 
 .navbar .dropdown-menu .export-menu-head {

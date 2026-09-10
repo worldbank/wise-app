@@ -54,6 +54,35 @@ prepare_outcome_df <- function(df, so) {
 }
 
 
+#' Ensure a derived outcome column exists without applying transforms
+#'
+#' The `poor` outcome is synthesized from `welfare` and the selected poverty
+#' line. Step 2 survey snapshots can omit that derived column, so callers that
+#' operate on those snapshots must restore it before reading the outcome.
+#' Existing columns are left untouched. Unlike `prepare_outcome_df()`, this
+#' helper never logs or currency-converts values.
+#'
+#' @param df A survey data frame.
+#' @param so Outcome metadata containing `name`, `units`, and `povline`.
+#' @return `df`, with a derivable missing outcome column added.
+#' @export
+ensure_outcome_column <- function(df, so) {
+  if (is.null(df) || !is.data.frame(df) || is.null(so)) return(df)
+
+  name <- as.character(so$name %||% NA_character_)[1]
+  if (is.na(name) || !nzchar(name) || name %in% names(df)) return(df)
+  if (!identical(name, "poor") || !"welfare" %in% names(df)) return(df)
+
+  povline <- suppressWarnings(as.numeric(so$povline %||% NA_real_)[1])
+  if (!is.finite(povline)) return(df)
+
+  units <- as.character(so$units %||% NA_character_)[1]
+  line <- .povline_to_ppp(povline, df, identical(units, "LCU"))
+  df[[name]] <- as.numeric(df[["welfare"]] < line)
+  df
+}
+
+
 # Scale a user-specified poverty line to match the stored welfare column
 # (2021 PPP). LCU lines are divided by the per-observation ppp2021 factor;
 # PPP lines - and data loaded without deflators, where no load-time

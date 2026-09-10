@@ -105,9 +105,13 @@ mod_3_09_decomposition_server <- function(id,
                                            baseline_hist_sim = reactive(NULL),
                                            baseline_svy = reactive(NULL),
                                            policy_svy = reactive(NULL),
-                                           selected_weather = reactive(NULL),
-                                           sp_scenario = reactive(NULL),
-                                           policy_saved_scenarios = reactive(list())) {
+                                            selected_weather = reactive(NULL),
+                                            sp_scenario = reactive(NULL),
+                                            infra_scenario = reactive(NULL),
+                                            digital_scenario = reactive(NULL),
+                                            labor_scenario = reactive(NULL),
+                                            education_scenario = reactive(NULL),
+                                            policy_saved_scenarios = reactive(list())) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -122,6 +126,10 @@ mod_3_09_decomposition_server <- function(id,
         baseline_hist_sim = baseline_hist_sim(),
         selected_weather = selected_weather(),
         sp_scenario = sp_scenario(),
+        infra_scenario = infra_scenario(),
+        digital_scenario = digital_scenario(),
+        labor_scenario = labor_scenario(),
+        education_scenario = education_scenario(),
         policy_saved_scenarios = policy_saved_scenarios(),
         policy_scenarios = policy_scenarios()
       )

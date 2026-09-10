@@ -1123,6 +1123,10 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
                                selected_policies = reactive(NULL),
                                policy_scenarios = reactive(list()),
                                sp_scenario = reactive(NULL),
+                               infra_scenario = reactive(NULL),
+                               digital_scenario = reactive(NULL),
+                               labor_scenario = reactive(NULL),
+                               education_scenario = reactive(NULL),
                                residuals = reactive("original"),
                                stale = reactive(FALSE),
                                decomp_result = reactive(NULL),
@@ -1148,6 +1152,10 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       policy_saved_scenarios = policy_saved_scenarios(),
       selected_weather       = bh$sim_summary$weather %||% NULL,
       sp_scenario             = sp_scenario(),
+      infra_scenario          = infra_scenario(),
+      digital_scenario        = digital_scenario(),
+      labor_scenario          = labor_scenario(),
+      education_scenario      = education_scenario(),
       policy_scenarios        = policy_scenarios()
     )
   })

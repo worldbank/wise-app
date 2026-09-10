@@ -483,6 +483,19 @@ decompose_policy_effect <- function(svy_baseline,
   outcome <- so$name
   is_log <- isTRUE(so$transform == "log")
 
+  # Step 2 snapshots may omit the synthetic `poor` outcome even though the
+  # fitted model and selected outcome metadata refer to it.
+  svy_baseline <- ensure_outcome_column(svy_baseline, so)
+  svy_policy <- ensure_outcome_column(svy_policy, so)
+  if (!outcome %in% names(svy_baseline) || !outcome %in% names(svy_policy)) {
+    warning(
+      "[decompose_policy_effect] Outcome column `", outcome,
+      "` is unavailable in the baseline or policy survey.",
+      call. = FALSE
+    )
+    return(NULL)
+  }
+
   # Identify weather hazard variable(s) and their realised values
   weather_vars <- model_fit$weather_terms
   if (is.null(weather_vars) || length(weather_vars) == 0) return(NULL)

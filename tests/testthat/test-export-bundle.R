@@ -335,6 +335,39 @@ test_that("transient UI state is excluded from the exported configuration", {
   expect_true(all(.export_keep_input(keep)))
 })
 
+test_that("DataTables UI state and legacy button ids are excluded", {
+  expect_false(all(.export_keep_input(c(
+    "DataTables_Table_0_length",
+    "DataTables_Table_1_search",
+    "tbl_cell_edit",
+    "grid_state_change",
+    "survey_stats",
+    "weather_stats",
+    "outcome_stats_btn"
+  ))))
+  expect_true(all(.export_keep_input(c(
+    "outcome",
+    "step1-model-model_type",
+    "step3-sp-targeting"
+  ))))
+})
+
+test_that("action-button values are filtered by class during snapshot", {
+  testServer(function(input, output, session) {}, {
+    button <- structure(3L,
+                        class = c("shinyActionButtonValue", "integer"))
+    session$setInputs(
+      `step1-model-model_type` = "Linear regression",
+      outcome = "welfare",
+      arbitrary_button = button
+    )
+    cfg <- wise_config_snapshot(input)
+    expect_true(all(c("step1-model-model_type", "outcome") %in%
+                    names(cfg$inputs)))
+    expect_false("arbitrary_button" %in% names(cfg$inputs))
+  })
+})
+
 test_that("credential-shaped inputs are never exported (SEC-06)", {
   # Every secret/key field the Overview connection form asks for. The bundle
   # is meant to be shared, so none of these may ride the snapshot - and the
@@ -428,6 +461,25 @@ test_that("applying a config sends values and reports what could not be placed",
   expect_equal(res$pending, "absent")
   expect_equal(sent$present, "yes")
   expect_null(sent$absent)
+})
+
+test_that("applying legacy configurations filters transient ids", {
+  sent <- list()
+  fake <- list(sendInputMessage = function(id, msg) {
+    sent[[id]] <<- msg$value
+    invisible(NULL)
+  })
+  cfg <- list(inputs = list(
+    real_setting = "yes",
+    DataTables_Table_0_length = 25,
+    old_run_btn = 4L
+  ))
+  res <- wise_config_apply(cfg, fake,
+                           existing = names(cfg$inputs))
+  expect_equal(res$applied, "real_setting")
+  expect_equal(sent$real_setting, "yes")
+  expect_false(any(c("DataTables_Table_0_length", "old_run_btn") %in%
+                   names(sent)))
 })
 
 test_that("applying an empty config is a no-op", {
