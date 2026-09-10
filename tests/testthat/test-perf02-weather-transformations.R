@@ -92,6 +92,11 @@ test_that("wide climate references preserve legacy transformations", {
     base_tbl, selected, base_tbl, climate_ref = ref
   ))
   expect_equal(length(regmatches(sql, gregexpr("LEFT JOIN", sql, fixed = TRUE))[[1L]]), 1L)
+
+  ref_sql <- dbplyr::sql_render(ref$tbl)
+  expect_match(ref_sql, "AVG(tx) FILTER (WHERE tx IS NOT NULL)", fixed = TRUE)
+  expect_match(ref_sql, "STDDEV_SAMP(rain) FILTER (WHERE rain IS NOT NULL)",
+               fixed = TRUE)
 })
 
 

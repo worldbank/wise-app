@@ -86,6 +86,17 @@ mod_2_02_results_ui <- function(id) {
           selected = "mean",
           layout   = "horizontal"
         ),
+        pill_toggle(
+          inputId  = ns("cmp_deviation"),
+          label    = NULL,
+          choices  = c(
+            "Outcome level"                 = "none",
+            "Change from historical mean"   = "mean",
+            "Change from historical median" = "median"
+          ),
+          selected = "none",
+          layout   = "horizontal"
+        ),
         shiny::conditionalPanel(
           condition = paste0(
             "['headcount_ratio','gap','fgt2','prosperity_gap','avg_poverty']",
@@ -136,17 +147,6 @@ mod_2_02_results_ui <- function(id) {
       class = "results-section-card",
       shiny::div(
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
-         pill_toggle(
-           ns("cmp_deviation"),
-          label    = NULL,
-          choices  = c(
-            "Outcome level"                   = "none",
-            "Change from historical mean"     = "mean",
-            "Change from historical median"   = "median"
-          ),
-          selected = "none",
-           layout   = "horizontal"
-         ),
          pill_toggle(
            ns("annual_distribution_type"),
            label    = NULL,

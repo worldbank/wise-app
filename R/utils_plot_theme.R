@@ -5,20 +5,20 @@
 #' Captions (CI notes) stay readable. Per-plot `+ theme(...)` overrides
 #' layered after this still win.
 #'
-#' @param base_size Base font size, default 14. Use 11-12 only for
+#' @param base_size Base font size, default 16. Use 12-14 only for
 #'   multi-panel patchwork layouts.
 #' @param ... Passed to [ggplot2::theme_minimal()].
 #' @noRd
-theme_wise <- function(base_size = 14, ...) {
+theme_wise <- function(base_size = 16, ...) {
   ggplot2::theme_minimal(base_size = base_size, ...) +
     ggplot2::theme(
-      plot.title    = ggplot2::element_text(size = ggplot2::rel(0.85),
+      plot.title    = ggplot2::element_text(size = ggplot2::rel(0.95),
                                             face = "bold", hjust = 0),
-      plot.subtitle = ggplot2::element_text(size = ggplot2::rel(0.75),
+      plot.subtitle = ggplot2::element_text(size = ggplot2::rel(0.85),
                                             colour = "grey40"),
-      plot.caption  = ggplot2::element_text(size = ggplot2::rel(0.65),
+      plot.caption  = ggplot2::element_text(size = ggplot2::rel(0.75),
                                             colour = "grey40", hjust = 0),
-      strip.text    = ggplot2::element_text(face = "bold")
+      strip.text    = ggplot2::element_text(size = ggplot2::rel(0.95), face = "bold")
     )
 }
 

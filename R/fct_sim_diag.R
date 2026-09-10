@@ -218,23 +218,14 @@
       ) +
       ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
       ggplot2::labs(
-        title    = disp_label,
-        subtitle = paste0(
-          "Hist: ", length(hist_vals), " cells",
-          if (isTRUE(show_regression)) {
-            reg_n <- sum(all_df$source == "Regression input")
-            if (reg_n > 0) paste0("  |  Reg: ", reg_n, " cells") else ""
-          } else "",
-          if (n_scen_shown > 0) paste0("  |  Scen: ", n_scen_shown) else ""
-        ),
+        title    = NULL,
+        subtitle = NULL,
         x = disp_label,
         y = "Relative frequency"
       ) +
-      theme_wise(base_size = 11) +
+      theme_wise() +
       ggplot2::theme(
         legend.position = if (show_legend) "bottom" else "none",
-        plot.subtitle   = ggplot2::element_text(size = 9, colour = "grey40"),
-        plot.title      = ggplot2::element_text(size = 11, face = "bold"),
         axis.text.x     = ggplot2::element_text(angle = 30, hjust = 1)
       )
 
@@ -355,21 +346,14 @@
   n_scen_shown <- length(ssp_df_list)
   p <- p +
     ggplot2::labs(
-      title = disp_label,
-      subtitle = paste0(
-        "Hist: ", length(hist_vals), " cells",
-        if (isTRUE(show_regression) && length(reg_vals) > 0)
-          paste0("  |  Reg: ", length(reg_vals), " cells") else "",
-        if (n_scen_shown > 0) paste0("  |  Scen: ", n_scen_shown) else ""
-      ),
+      title = NULL,
+      subtitle = NULL,
       x = disp_label,
       y = "Density"
     ) +
-    theme_wise(base_size = 11) +
+    theme_wise() +
     ggplot2::theme(
-      legend.position = if (show_legend) "bottom" else "none",
-      plot.subtitle   = ggplot2::element_text(size = 9, colour = "grey40"),
-      plot.title      = ggplot2::element_text(size = 11, face = "bold")
+      legend.position = if (show_legend) "bottom" else "none"
     )
 
   if (isTRUE(log_x)) p <- p + ggplot2::scale_x_log10()
@@ -500,30 +484,57 @@ weather_density_data <- function(survey_weather, weather_raw, weather_vars,
 
 weather_support_summary <- function(regression_weather, scenario_weather,
                                     weather_vars, lower = 0.01, upper = 0.99,
+                                    weather_specs = NULL,
                                     warn_share = 0.05) {
   if (is.null(regression_weather) || !is.data.frame(regression_weather)) {
     return(data.frame())
   }
   scenarios <- scenario_weather %||% list()
   rows <- lapply(intersect(weather_vars, names(regression_weather)), function(v) {
-    ref <- suppressWarnings(as.numeric(regression_weather[[v]]))
-    ref <- ref[is.finite(ref)]
-    if (!length(ref)) return(NULL)
-    robust <- as.numeric(stats::quantile(ref, c(lower, upper), names = FALSE,
-                                         na.rm = TRUE, type = 8))
+    spec <- if (!is.null(weather_specs) && "name" %in% names(weather_specs))
+      weather_specs[weather_specs$name == v, , drop = FALSE] else NULL
+    is_binned <- !is.null(spec) && nrow(spec) &&
+      identical(as.character(spec$cont_binned[1]), "Binned")
+    if (is_binned) {
+      ref <- as.character(regression_weather[[v]])
+      ref <- ref[!is.na(ref) & nzchar(ref)]
+      supported <- unique(ref)
+      if (!length(supported)) return(NULL)
+      reference_label <- paste(supported, collapse = ", ")
+      robust <- c(NA_real_, NA_real_)
+    } else {
+      ref <- suppressWarnings(as.numeric(regression_weather[[v]]))
+      ref <- ref[is.finite(ref)]
+      if (!length(ref)) return(NULL)
+      robust <- as.numeric(stats::quantile(ref, c(lower, upper), names = FALSE,
+                                           na.rm = TRUE, type = 8))
+      supported <- NULL
+      reference_label <- NA_character_
+    }
     out <- lapply(names(scenarios), function(nm) {
-      x <- suppressWarnings(as.numeric(scenarios[[nm]][[v]]))
-      x <- x[is.finite(x)]
+      x_raw <- scenarios[[nm]][[v]]
+      x <- if (is_binned) {
+        x <- as.character(x_raw)
+        x[!is.na(x) & nzchar(x)]
+      } else {
+        x <- suppressWarnings(as.numeric(x_raw))
+        x[is.finite(x)]
+      }
       if (!length(x)) return(NULL)
-      outside <- x < robust[[1L]] | x > robust[[2L]]
+      outside <- if (is_binned) !(x %in% supported) else
+        x < robust[[1L]] | x > robust[[2L]]
       data.frame(
         weather_variable = v, scenario = nm,
         n_reference = length(ref), n_scenario = length(x),
         robust_lo = robust[[1L]], robust_hi = robust[[2L]],
+        reference_label = reference_label,
+        is_binned = is_binned,
         outside_n = sum(outside), outside_share = mean(outside),
         warning = mean(outside) > warn_share,
-        warning_rule = paste0("Robust ", lower * 100, "%-", upper * 100,
-                              "% reference interval; warn above ", warn_share * 100, "% outside"),
+        warning_rule = if (is_binned) paste0("Reference bins; warn above ",
+                                              warn_share * 100, "% outside") else
+          paste0("Robust ", lower * 100, "%-", upper * 100,
+                 "% reference interval; warn above ", warn_share * 100, "% outside"),
         stringsAsFactors = FALSE
       )
     })

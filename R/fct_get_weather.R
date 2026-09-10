@@ -303,11 +303,15 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
 
   stats_exprs <- c(
     stats::setNames(
-      lapply(specs$name, function(v) dbplyr::sql(paste0("AVG(", v, ")"))),
+      lapply(specs$name, function(v) dbplyr::sql(paste0(
+        "AVG(", v, ") FILTER (WHERE ", v, " IS NOT NULL)"
+      ))),
       specs$mean_col
     ),
     stats::setNames(
-      lapply(specs$name, function(v) dbplyr::sql(paste0("STDDEV_SAMP(", v, ")"))),
+      lapply(specs$name, function(v) dbplyr::sql(paste0(
+        "STDDEV_SAMP(", v, ") FILTER (WHERE ", v, " IS NOT NULL)"
+      ))),
       specs$sd_col
     )
   )

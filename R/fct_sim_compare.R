@@ -333,7 +333,7 @@ plot_pointrange_climate <- function(bands_tbl,
     ggplot2::theme(
       panel.grid.major.x = ggplot2::element_blank(),
       panel.grid.minor.x = ggplot2::element_blank(),
-      axis.text.x        = ggplot2::element_text(size = 10),
+      axis.text.x        = ggplot2::element_text(size = 14),
       legend.position    = if (has_source) "top" else "none"
     )
 }
@@ -478,7 +478,7 @@ paired_effect_plot <- function(tbl, x_label = "Policy effect (outcome units)") {
                         colour = "#243746", stroke = 0.8, na.rm = TRUE) +
     ggplot2::labs(x = x_label, y = NULL,
                   subtitle = "Policy minus baseline, paired by household, climate model, and weather-year draw. Thick interval = ensemble spread; thin interval = coefficient uncertainty.") +
-    theme_wise(base_size = 12)
+    theme_wise()
 }
 
 #' Horizontal dumbbell chart for Step 3 Outcome Levels (Figure S3-2B)
@@ -585,7 +585,7 @@ plot_policy_levels_dumbbell <- function(baseline_df, policy_df,
       title = "Baseline and policy-adjusted outcomes",
       subtitle = "Connected points use identical climate-weather draws; open = Baseline, filled = Policy. Separation is the policy effect."
     ) +
-    theme_wise(base_size = 12) +
+    theme_wise() +
     ggplot2::theme(panel.grid.major.y = ggplot2::element_line(colour = "grey92"))
 
   plt
@@ -684,16 +684,11 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
         name = "Series",
         labels = c(Baseline = "Baseline mean", Policy = "Policy mean")
       ) +
-      ggplot2::guides(
-        fill = ggplot2::guide_legend(order = 1),
-        alpha = ggplot2::guide_legend(order = 2),
-        shape = ggplot2::guide_legend(order = 2)
-      ) +
+       ggplot2::guides(fill = "none", alpha = "none", shape = "none") +
       ggplot2::labs(x = NULL, y = x_label, title = title, subtitle = subtitle) +
-      theme_wise(base_size = 12) +
-      ggplot2::theme(legend.position = "bottom",
-                     legend.box = "horizontal",
-                     plot.margin = ggplot2::margin(8, 8, 18, 8),
+      theme_wise() +
+       ggplot2::theme(legend.position = "none",
+                      plot.margin = ggplot2::margin(8, 8, 18, 8),
                      axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
 
     return(p)
@@ -723,14 +718,13 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                           size = 2.8, fill = "white", colour = "#173042",
                           na.rm = TRUE) +
      ggplot2::scale_fill_manual(values = scenario_palette,
-                                na.value = "#8c8c8c", name = "Climate scenario") +
+                                na.value = "#8c8c8c", guide = "none") +
      ggplot2::scale_colour_manual(values = scenario_palette, guide = "none") +
     ggplot2::labs(x = NULL, y = x_label, title = title,
                   subtitle = subtitle) +
-    theme_wise(base_size = 12) +
-    ggplot2::theme(legend.position = "bottom",
-                   legend.box = "horizontal",
-                   plot.margin = ggplot2::margin(8, 8, 18, 8),
+    theme_wise() +
+     ggplot2::theme(legend.position = "none",
+                    plot.margin = ggplot2::margin(8, 8, 18, 8),
                    axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
   p
 }
@@ -752,7 +746,7 @@ plot_adverse_effects <- function(tbl, x_label = "Policy effect (outcome units)")
                                  na.value = "#0072B2", guide = "none") +
     ggplot2::labs(x = x_label, y = NULL,
                   subtitle = "Equal-probability tail contrast: policy quantile minus baseline quantile. CMIP6 values are ensemble spread, not probabilities.") +
-    theme_wise(base_size = 12)
+    theme_wise()
 }
 
 paired_adverse_effect_table <- function(effect_tbl,
@@ -846,8 +840,11 @@ step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                             vapply(central$scenario, .normalise_ssp, character(1L)))
   central$yr_lbl  <- ifelse(central$is_historical, "Historical",
                             vapply(central$scenario, .parse_year, character(1L)))
-  central$rp_label <- factor(central$rp_label,
-                             levels = rev(c("Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20", "Adverse 1-in-50")))
+  central$rp_label <- factor(
+    central$rp_label,
+    levels = rev(c("Expected", "Adverse 1-in-5", "Adverse 1-in-10",
+                   "Adverse 1-in-20", "Adverse 1-in-50"))
+  )
   central
 }
 
@@ -888,7 +885,7 @@ plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
       title = title,
       subtitle = subtitle
     ) +
-    theme_wise(base_size = 12) +
+    theme_wise() +
     ggplot2::theme(legend.position = "bottom")
 
   fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
@@ -964,13 +961,17 @@ step2_headline_cards <- function(bands,
   } else {
     "Historical baseline"
   }
+  # The expected outcome is the mean across simulated weather years. This is
+  # separate from the selected household-level aggregation within each year.
+  weather_year_label <- "Mean weather year"
 
   card1 <- list(
-    label = "Typical outcome",
+    label = "Expected outcome",
     value = val_1,
-    note = line1_1,
+    note = paste(line1_1, weather_year_label, sep = " \u00b7 "),
     note_html = shiny::tagList(
-      shiny::tags$div(line1_1)
+      shiny::tags$div(line1_1),
+      shiny::tags$div(style = "font-weight: 600;", weather_year_label)
     ),
     info = paste(
       "Expected annual aggregate outcome under the historical baseline compared with the",
@@ -1030,17 +1031,52 @@ step2_headline_cards <- function(bands,
     )
   )
 
-  # 3. Range across years (inter-annual weather variability)
-  val_3 <- if (has_future && is.finite(focus$interann_lo) && is.finite(focus$interann_hi)) {
-    paste(fmt_num(focus$interann_lo, 2), "to", fmt_num(focus$interann_hi, 2))
-  } else if (is.finite(hist$interann_lo) && is.finite(hist$interann_hi)) {
-    paste(fmt_num(hist$interann_lo, 2), "to", fmt_num(hist$interann_hi, 2))
+  # 3. Range across years (inter-annual weather variability). For future
+  # scenarios, first calculate each model's observed year range, then average
+  # the lower and upper endpoints across models. This is different from taking
+  # quantiles of the pooled model-year values, which can overweight extremes.
+  finite_range <- function(x) {
+    x <- x[is.finite(x)]
+    if (!length(x)) return(c(lo = NA_real_, hi = NA_real_))
+    c(lo = min(x), hi = max(x))
+  }
+  scenario_year_range <- function(scenario) {
+    if (is.null(timeseries_curves) || !nrow(timeseries_curves) ||
+        !all(c("scenario", "value") %in% names(timeseries_curves))) {
+      return(c(lo = NA_real_, hi = NA_real_))
+    }
+    x <- timeseries_curves[timeseries_curves$scenario == scenario, , drop = FALSE]
+    if (!nrow(x)) return(c(lo = NA_real_, hi = NA_real_))
+    if ("model_id" %in% names(x)) {
+      by_model <- split(x$value, x$model_id)
+      ranges <- lapply(by_model, finite_range)
+      ranges <- ranges[vapply(ranges, function(r) all(is.finite(r)), logical(1L))]
+      if (!length(ranges)) return(c(lo = NA_real_, hi = NA_real_))
+      c(lo = mean(vapply(ranges, `[[`, numeric(1L), "lo"), na.rm = TRUE),
+        hi = mean(vapply(ranges, `[[`, numeric(1L), "hi"), na.rm = TRUE))
+    } else {
+      finite_range(x$value)
+    }
+  }
+  hist_range <- scenario_year_range("Historical")
+  focus_range <- scenario_year_range(focus$scenario)
+  if (!is.finite(focus_range[["lo"]])) {
+    focus_range <- c(lo = focus$interann_lo, hi = focus$interann_hi)
+  }
+  if (!is.finite(hist_range[["lo"]])) {
+    hist_range <- c(lo = hist$interann_lo, hi = hist$interann_hi)
+  }
+
+  val_3 <- if (has_future && all(is.finite(focus_range))) {
+    paste(fmt_num(focus_range[["lo"]], 2), "to", fmt_num(focus_range[["hi"]], 2))
+  } else if (all(is.finite(hist_range))) {
+    paste(fmt_num(hist_range[["lo"]], 2), "to", fmt_num(hist_range[["hi"]], 2))
   } else {
     "Unavailable"
   }
 
-  line1_3 <- if (has_future && is.finite(hist$interann_lo) && is.finite(hist$interann_hi)) {
-    paste0("Hist: ", fmt_num(hist$interann_lo, 2), " to ", fmt_num(hist$interann_hi, 2))
+  line1_3 <- if (has_future && all(is.finite(hist_range))) {
+    paste0("Hist: ", fmt_num(hist_range[["lo"]], 2), " to ", fmt_num(hist_range[["hi"]], 2))
   } else {
     "Historical baseline"
   }
@@ -1062,21 +1098,29 @@ step2_headline_cards <- function(bands,
     )
   )
 
-  # 4. Climate-model spread (ensemble spread at expected outcome)
+  # 4. Climate-model spread (full range of model means at expected outcome)
   n_mods <- suppressWarnings(as.integer(focus$n_models %||% 1L))[1L]
   if (!is.finite(n_mods) || n_mods < 1L) n_mods <- 1L
 
-  val_4 <- if (has_future && n_mods > 1L &&
-               is.finite(focus$intermod_lo) && is.finite(focus$intermod_hi)) {
-    paste(fmt_num(focus$intermod_lo, 2), "to", fmt_num(focus$intermod_hi, 2))
+  focus_model_means <- if (!is.null(timeseries_curves) && nrow(timeseries_curves) &&
+                           all(c("scenario", "value") %in% names(timeseries_curves))) {
+    x <- timeseries_curves[timeseries_curves$scenario == focus$scenario, , drop = FALSE]
+    if (nrow(x) && "model_id" %in% names(x)) {
+      tapply(x$value, x$model_id, mean, na.rm = TRUE)
+    } else numeric(0L)
+  } else numeric(0L)
+  focus_model_means <- as.numeric(focus_model_means[is.finite(focus_model_means)])
+
+  val_4 <- if (has_future && length(focus_model_means) > 1L) {
+    paste(fmt_num(min(focus_model_means), 2), "to", fmt_num(max(focus_model_means), 2))
   } else if (has_future) {
     fmt_num(focus$value, 2)
   } else {
     "Not applicable"
   }
 
-  line1_4 <- if (has_future && n_mods > 1L) {
-    paste0("Ensemble spread (", n_mods, " models)")
+  line1_4 <- if (has_future && length(focus_model_means) > 1L) {
+    paste0("Full range across ", length(focus_model_means), " models")
   } else if (has_future) {
     "Single climate model"
   } else {
@@ -1570,9 +1614,14 @@ plot_timeseries_spaghetti <- function(ts_tbl,
     ggplot2::labs(
       x = "Historical weather-year draw (simulated)",
       y = x_label,
-      subtitle = "Lines show simulation draws within each climate regime, not a continuous calendar forecast."
+      subtitle = NULL
     ) +
     theme_wise() +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(title = NULL),
+      linetype = ggplot2::guide_legend(title = NULL),
+      alpha = ggplot2::guide_legend(title = NULL)
+    ) +
     ggplot2::theme(legend.position = "bottom")
 }
 
@@ -1699,16 +1748,12 @@ plot_model_robustness <- function(tbl, x_label = "Expected annual outcome") {
     return(ggplot2::ggplot() + ggplot2::labs(title = "Climate-model robustness is unavailable."))
   }
   ggplot2::ggplot(tbl, ggplot2::aes(x = .data$model_mean, y = .data$scenario)) +
-    ggplot2::geom_segment(ggplot2::aes(x = .data$ensemble_lo, xend = .data$ensemble_hi,
-                                       y = .data$scenario, yend = .data$scenario),
-                          linewidth = 5, colour = "#0072B2", alpha = 0.3) +
     ggplot2::geom_point(size = 2, colour = "#243746", alpha = 0.7) +
     ggplot2::geom_point(data = unique(tbl[c("scenario", "center")]),
                         ggplot2::aes(x = .data$center, y = .data$scenario),
                         shape = 21, fill = "#009E73", colour = "#243746", size = 3) +
-    ggplot2::labs(x = x_label, y = NULL,
-                  subtitle = "Dark points = individual model means; blue band = middle 80% (10th-90th percentile); green point = median model mean.") +
-    theme_wise(base_size = 12)
+    ggplot2::labs(x = x_label, y = NULL) +
+    theme_wise()
 }
 
 # ---------------------------------------------------------------------------- #

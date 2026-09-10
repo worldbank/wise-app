@@ -350,6 +350,45 @@ test_that("Step 3 agg cache: deviation changes reuse cache; method/pov-line key 
   )
 })
 
+test_that("switching directly to a poverty method always has a poverty line", {
+  skip_if_not_installed("shiny")
+
+  bh  <- shiny::reactiveVal(make_step3_hist_fixture())
+  ph  <- shiny::reactiveVal(make_step3_hist_fixture())
+  bsc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  psc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+
+  shiny::testServer(
+    function(input, output, session) {
+      internals <<- .wire_results_pane(
+        input, output, session,
+        baseline_hist_sim = bh,
+        baseline_saved_scenarios = bsc,
+        policy_hist_sim = ph,
+        policy_saved_scenarios = psc,
+        selected_hist = shiny::reactiveVal(NULL),
+        residuals = shiny::reactiveVal("none")
+      )
+    },
+    {
+      session$setInputs(cmp_agg_method = "mean", cmp_pov_line = 3.00)
+      session$elapse(500)
+      session$flushReact()
+
+      # Do not elapse the input debounce: this reproduces the UI transition
+      # that previously paired headcount_ratio with a stale NULL line.
+      session$setInputs(cmp_agg_method = "headcount_ratio")
+      session$flushReact()
+
+      expect_equal(internals$pov_line_val(), 3.00)
+      expect_no_error(internals$baseline_agg_hist())
+      expect_no_error(internals$policy_agg_hist())
+      expect_no_error(internals$baseline_agg_scenarios())
+      expect_no_error(internals$policy_agg_scenarios())
+    }
+  )
+})
+
 test_that("Step 3 agg cache is invalidated on simulation republish; recompute identical", {
   skip_if_not_installed("shiny")
 

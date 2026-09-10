@@ -309,6 +309,13 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   )
 
   saved <- list("SSP3-7.0 / 2025-2035" = list(n_models = 22L))
+  timeseries <- tibble::tibble(
+    scenario = rep("SSP3-7.0 / 2025-2035", 6L),
+    model_id = rep(c("m1", "m2"), each = 3L),
+    sim_year = rep(2025:2027, 2L),
+    value = c(4.20, 4.70, 4.45, 4.50, 4.90, 4.55),
+    is_historical = FALSE
+  )
 
   cards <- step2_headline_cards(
     bands            = bands,
@@ -318,7 +325,8 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
     method           = "mean",
     deviation        = "none",
     ensemble_band    = "minmax",
-    uncertainty_band = "p10_p90"
+    uncertainty_band = "p10_p90",
+    timeseries_curves = timeseries
   )
 
   expect_length(cards, 5L)
@@ -327,7 +335,7 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   labels <- vapply(cards, function(c) c$label, character(1L))
   expect_identical(
     labels,
-    c("Typical outcome", "Adverse weather years", "Range across years",
+    c("Expected outcome", "Adverse weather years", "Range across years",
       "Climate-model spread", "Simulation years")
   )
 
@@ -343,6 +351,21 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   # Card 1: Typical outcome
   expect_identical(cards[[1]]$value, "4.50 vs 4.52")
   expect_match(cards[[1]]$note, "Historical vs SSP", fixed = TRUE)
+  expect_match(cards[[1]]$note, "Mean weather year", fixed = TRUE)
+
+  median_cards <- step2_headline_cards(
+    bands            = bands,
+    threshold_tbl    = thresh_tbl,
+    hist_sim         = hist_sim,
+    saved_scenarios  = saved,
+    method           = "median",
+    deviation        = "none",
+    ensemble_band    = "minmax",
+    uncertainty_band = "p10_p90",
+    timeseries_curves = timeseries
+  )
+  expect_match(median_cards[[1]]$note, "Mean weather year", fixed = TRUE)
+  expect_false(grepl("Median weather year", median_cards[[1]]$note, fixed = TRUE))
 
   # Card 2: Adverse weather years (1-in-20 year)
   expect_identical(cards[[2]]$value, "4.05 vs 4.10")
@@ -350,19 +373,19 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   expect_match(cards[[2]]$note, "1-in-20 year", fixed = TRUE)
 
   # Card 3: Range across years
-  expect_identical(cards[[3]]$value, "4.25 to 4.85")
+  expect_identical(cards[[3]]$value, "4.35 to 4.80")
   expect_match(cards[[3]]$note, "Hist: 4.20 to 4.80", fixed = TRUE)
   expect_match(cards[[3]]$note, "Inter-annual weather variability", fixed = TRUE)
 
   # Card 4: Climate-model spread
-  expect_identical(cards[[4]]$value, "4.48 to 4.56")
-  expect_match(cards[[4]]$note, "Ensemble spread (22 models)", fixed = TRUE)
+  expect_identical(cards[[4]]$value, "4.45 to 4.65")
+  expect_match(cards[[4]]$note, "Full range across 2 models", fixed = TRUE)
   expect_match(cards[[4]]$note, "CMIP6 model disagreement", fixed = TRUE)
   expect_false(grepl("Coef", cards[[4]]$note, fixed = TRUE))
 
   # Card 5: Simulation years
-  expect_identical(cards[[5]]$value, "690")
-  expect_match(cards[[5]]$note, "(1 SSP \u00d7 22 models + 1 historical) \u00d7 30 yrs", fixed = TRUE)
+  expect_identical(cards[[5]]$value, "6")
+  expect_match(cards[[5]]$note, "(1 SSP \u00d7 22 models + 1 historical) \u00d7 3 yrs", fixed = TRUE)
   expect_identical(cards[[5]]$class, "neutral")
 
   # Table conversion
@@ -428,11 +451,11 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "Poverty line ($/day, 2021 PPP):", fixed = TRUE)
   expect_match(html, "toggle-slider pill-toggle", fixed = TRUE)
 
-  # Verify removed controls are NOT in the aggregation panel
+  # Shared outcome/deviation controls belong in the aggregation panel.
   agg_panel_html <- as.character(htmltools::renderTags(ui[[3]])$html)
   expect_match(agg_panel_html, "results-aggregation-panel", fixed = TRUE)
   expect_false(grepl("results-controls", agg_panel_html, fixed = TRUE))
-  expect_false(grepl("results-cmp_deviation", agg_panel_html, fixed = TRUE))
+  expect_match(agg_panel_html, "results-cmp_deviation", fixed = TRUE)
   expect_false(grepl("results-uncertainty_band", agg_panel_html, fixed = TRUE))
   expect_false(grepl("results-ensemble_band", agg_panel_html, fixed = TRUE))
   expect_false(grepl("results-show_coef_uncertainty", agg_panel_html, fixed = TRUE))

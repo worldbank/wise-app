@@ -902,6 +902,17 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
           selected = "mean",
           layout   = "horizontal"
         ),
+        pill_toggle(
+          inputId  = ns("cmp_deviation"),
+          label    = NULL,
+          choices  = c(
+            "Outcome level"                 = "none",
+            "Change from historical mean"   = "mean",
+            "Change from historical median" = "median"
+          ),
+          selected = "none",
+          layout   = "horizontal"
+        ),
         shiny::conditionalPanel(
           condition = paste0(
             "['headcount_ratio','gap','fgt2','prosperity_gap','avg_poverty']",
@@ -953,17 +964,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       class = "results-section-card",
       shiny::div(
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
-        pill_toggle(
-          ns("cmp_deviation"),
-          label    = NULL,
-          choices  = c(
-            "Outcome level"                   = "none",
-            "Change from historical mean"     = "mean",
-            "Change from historical median"   = "median"
-          ),
-          selected = "none",
-          layout   = "horizontal"
-        ),
         pill_toggle(
           ns("annual_distribution_type"),
           label    = NULL,
@@ -1206,25 +1206,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     if (!is.null(nm) && nzchar(nm)) nm else "Historical"
   })
 
-  # Debounced (400 ms) so rapid spinner/typing edits don't retrigger the
-  # aggregation pipeline on every keystroke. Non-poverty methods keep the
-  # NULL behaviour so downstream consumers skip the poverty line.
-  # Family list matches the Step 2 poverty-line conditionalPanel (alignment).
-  # While the user has not edited the value, the run's own poverty line is
-  # authoritative (the sync observer keeps the visible input in step with it);
-  # once edited (INT-01), the user's value wins.
-  pov_line_val <- shiny::debounce(reactive({
-    if (isTRUE(input$cmp_agg_method %in%
-               c("headcount_ratio", "gap", "fgt2",
-                 "prosperity_gap", "avg_poverty"))) {
-      if (pov_line_touched()) {
-        pl <- suppressWarnings(as.numeric(input$cmp_pov_line))
-        if (!is.null(pl) && length(pl) > 0L && !is.na(pl)) return(pl)
-      }
-      baseline_hist_sim()$pov_line %||% 3.00
-    } else NULL
-  }), 400)
-
   # Sync the static poverty-line input to the run's value while the user has
   # not edited it (INT-01: once edited, the user's value survives re-runs).
   # "Edited" means the input differs from the last-synced value, so the
@@ -1242,6 +1223,33 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     .pov_line_last_sync(v)
     if (pov_line_touched()) return()
     shiny::updateNumericInput(session, "cmp_pov_line", value = v)
+  })
+
+  poverty_methods <- c("headcount_ratio", "gap", "fgt2",
+                       "prosperity_gap", "avg_poverty")
+  valid_pov_line <- function(x) {
+    x <- suppressWarnings(as.numeric(x)[1L])
+    if (length(x) && is.finite(x) && x > 0) x else NULL
+  }
+
+  # Debounce only edits to the numeric value, never the aggregation method.
+  # Debouncing both together left a 400 ms window where a newly selected
+  # poverty method was paired with the previous method's NULL poverty line.
+  debounced_pov_line_input <- shiny::debounce(reactive({
+    valid_pov_line(input$cmp_pov_line)
+  }), 400)
+
+  pov_line_val <- reactive({
+    method <- input$cmp_agg_method %||% "mean"
+    if (!method %in% poverty_methods) return(NULL)
+
+    if (pov_line_touched()) {
+      edited <- debounced_pov_line_input()
+      if (!is.null(edited)) return(edited)
+    }
+
+    valid_pov_line(baseline_hist_sim()$pov_line) %||%
+      valid_pov_line(.pov_line_last_sync()) %||% 3.00
   })
 
   # Scenario selection is intentionally not exposed in Module 3 Results.
@@ -1291,17 +1299,19 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     if (is.null(hs)) return(NULL)
     pl <- hs$pipeline
     if (is.null(pl) || is.null(pl$y_point)) return(NULL)
-    method    <- input$cmp_agg_method %||% "mean"
+    method <- input$cmp_agg_method %||% "mean"
+    poverty_line <- pov_line_val()
+    if (method %in% poverty_methods && is.null(poverty_line)) poverty_line <- 3.00
 
     ws <- agg_cache_ws()
-    hit <- get0(.agg_cache_key(tag, method, pov_line_val()), envir = ws)
+    hit <- get0(.agg_cache_key(tag, method, poverty_line), envir = ws)
     if (!is.null(hit)) return(hit)
 
     agg <- aggregate_pipeline_table(
       pipelines = pl,
       method    = method,
       weighted  = TRUE,
-      pov_line  = pov_line_val(),
+      pov_line  = poverty_line,
       residuals = active_residuals(hs),
       is_log    = isTRUE(hs$so$transform == "log"),
       band_q    = c(lo = 0.10, hi = 0.90),
@@ -1310,7 +1320,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       shared_context = hs$shared_context
     )
     res <- list(out = agg)
-    assign(.agg_cache_key(tag, method, pov_line_val()), res, envir = ws)
+    assign(.agg_cache_key(tag, method, poverty_line), res, envir = ws)
     res
   }
 
@@ -1347,11 +1357,13 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
 
   make_agg_scenarios <- function(sc, hs_for_dev, tag) {
     if (length(sc) == 0) return(list())
-    method    <- input$cmp_agg_method %||% "mean"
+    method <- input$cmp_agg_method %||% "mean"
+    poverty_line <- pov_line_val()
+    if (method %in% poverty_methods && is.null(poverty_line)) poverty_line <- 3.00
     use_w     <- TRUE
 
     ws <- agg_cache_ws()
-    hit <- get0(.agg_cache_key(tag, method, pov_line_val()), envir = ws)
+    hit <- get0(.agg_cache_key(tag, method, poverty_line), envir = ws)
     if (!is.null(hit)) return(hit)
 
     failed <- character(0)
@@ -1368,7 +1380,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
           pipelines = pipes,
           method    = method,
           weighted  = use_w,
-          pov_line  = pov_line_val(),
+          pov_line  = poverty_line,
           residuals = active_residuals(hs_for_dev),
           is_log    = isTRUE(s$so$transform == "log"),
           band_q    = c(lo = 0.10, hi = 0.90),
@@ -1385,7 +1397,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       })
     }), names(sc))
     .notify_agg_failures(failed, length(sc))
-    assign(.agg_cache_key(tag, method, pov_line_val()), res, envir = ws)
+    assign(.agg_cache_key(tag, method, poverty_line), res, envir = ws)
     res
   }
 

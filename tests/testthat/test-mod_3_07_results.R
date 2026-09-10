@@ -20,7 +20,7 @@ test_that("step3_headline_cards builds 5 concise policy cards", {
     scenario      = rep(c("Historical", "SSP2-4.5 / 2030-2040"), each = 4),
     source        = rep(c("Baseline", "Baseline", "Policy", "Policy"), 2),
     Estimate      = rep("Central (P50)", 8),
-    rp_name       = rep(c("1:1", "9:10"), 4),
+    rp_name       = rep(c("1:1", "1:10"), 4),
     value         = c(3.0, 2.0, 3.0, 2.0,
                       3.2, 2.1, 3.65, 2.68),
     n_obs         = 30L,
@@ -80,7 +80,7 @@ test_that("step3_adverse_dot_data and plot_step3_adverse_dot work correctly", {
     scenario      = rep(c("Historical", "SSP2-4.5 / 2030-2040"), each = 8),
     source        = rep(rep(c("Baseline", "Policy"), each = 4), 2),
     Estimate      = rep(c("Central (P50)", "Ensemble 0%", "Ensemble 100%", "Central (P50)"), 4),
-    rp_name       = rep(c("1:1", "9:10", "9:10", "9:10"), 4),
+    rp_name       = rep(c("1:1", "1:10", "1:10", "1:10"), 4),
     value         = c(3.0, 2.0, 2.0, 2.0, 3.0, 2.0, 2.0, 2.0,
                       3.2, 2.1, 2.1, 2.1, 3.65, 2.4, 2.9, 2.68),
     n_obs         = 30L,
@@ -127,7 +127,7 @@ test_that("step3_decision_table_data and make_step3_decision_table_html work cor
     scenario      = rep(c("Historical", "SSP2-4.5 / 2030-2040"), each = 4),
     source        = rep(c("Baseline", "Baseline", "Policy", "Policy"), 2),
     Estimate      = rep("Central (P50)", 8),
-    rp_name       = rep(c("1:1", "9:10"), 4),
+    rp_name       = rep(c("1:1", "1:10"), 4),
     value         = c(3.0, 2.0, 3.0, 2.0,
                       3.2, 2.1, 3.65, 2.68),
     n_obs         = 30L,
@@ -160,6 +160,7 @@ test_that(".results_pane_ui renders aggregation panel and results sections", {
   expect_match(html, "How to summarise consumption across households?", fixed = TRUE)
   expect_match(html, "results3-cmp_agg_method", fixed = TRUE)
   expect_match(html, "results3-cmp_pov_line", fixed = TRUE)
+  expect_match(html, "results3-cmp_deviation", fixed = TRUE)
 
   # Five question-based section cards
   expect_match(html, "How does the policy shift consumption across climate scenarios and weather years?", fixed = TRUE)
