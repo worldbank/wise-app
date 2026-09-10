@@ -173,8 +173,8 @@ test_that(".results_pane_ui renders aggregation panel and 5 question sections", 
   expect_match(html, "results3-adverse_dot_plot", fixed = TRUE)
   expect_match(html, "results3-exceedance_plot", fixed = TRUE)
   expect_match(html, "results3-uncertainty_sources_plot", fixed = TRUE)
-  expect_match(html, "results3-decision_table_html", fixed = TRUE)
   expect_match(html, "results3-summary_threshold_table", fixed = TRUE)
+  expect_match(html, "results3-threshold_csv", fixed = TRUE)
 })
 
 test_that("format_weather_heading_phrase handles scalar, vector, data.frame, and length 12 safely", {

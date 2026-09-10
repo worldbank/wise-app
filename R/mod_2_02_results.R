@@ -56,7 +56,6 @@ mod_2_02_results_ui <- function(id) {
     # ---- 0. Stale banner (INT-08) -------------------------------------------
     shiny::uiOutput(ns("stale_banner")),
     shiny::uiOutput(ns("simulation_summary_ui")),
-    shiny::uiOutput(ns("headline_cards_ui")),
 
     # ---- 1. Analysis controls: Aggregation method & poverty line ------------
     shiny::div(
@@ -112,42 +111,42 @@ mod_2_02_results_ui <- function(id) {
       )
     ),
 
+    # ---- 2. Headline cards --------------------------------------------------
+    shiny::uiOutput(ns("headline_cards_ui")),
+
     # ---- Section 1: Central outcomes & weather-year variation ---------------
+    shiny::h4(
+      sec1_heading,
+      info_popover(
+        title = "Annual weather variation",
+        shiny::p(
+          "Each dot represents the population aggregate outcome under one simulated",
+          "weather year. The box and violin illustrate the full range of annual",
+          "weather-year variation for the fixed baseline population under each",
+          "climate regime."
+        ),
+        shiny::p(
+          "The dashed horizontal line marks the historical baseline mean. The white diamond",
+          "shows the central expected outcome."
+        ),
+        docs = TRUE
+      ),
+      style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+    ),
     shiny::div(
       class = "results-section-card",
       shiny::div(
-        style = "display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;",
-        shiny::h4(
-          sec1_heading,
-          info_popover(
-            title = "Annual weather variation",
-            shiny::p(
-              "Each dot represents the population aggregate outcome under one simulated",
-              "weather year. The box and violin illustrate the full range of annual",
-              "weather-year variation for the fixed baseline population under each",
-              "climate regime."
-            ),
-            shiny::p(
-              "The dashed horizontal line marks the historical baseline mean. The white diamond",
-              "shows the central expected outcome."
-            ),
-            docs = TRUE
+        style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+        pill_toggle(
+          ns("cmp_deviation"),
+          label    = NULL,
+          choices  = c(
+            "Outcome level"                   = "none",
+            "Change from historical mean"     = "mean",
+            "Change from historical median"   = "median"
           ),
-          style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin: 0;"
-        ),
-        shiny::div(
-          style = "display: flex; align-items: center; gap: 8px;",
-          pill_toggle(
-            ns("cmp_deviation"),
-            label    = NULL,
-            choices  = c(
-              "Outcome level"                   = "none",
-              "Change from historical mean"     = "mean",
-              "Change from historical median"   = "median"
-            ),
-            selected = "none",
-            layout   = "horizontal"
-          )
+          selected = "none",
+          layout   = "horizontal"
         )
       ),
       shiny::div(
@@ -167,42 +166,38 @@ mod_2_02_results_ui <- function(id) {
     ),
 
     # ---- Section 2: Adverse weather years (tail risk) -----------------------
+    shiny::h4(
+      "What outcomes are predicted in adverse weather years?",
+      info_popover(
+        title = "Adverse weather-year risk",
+        shiny::p(
+          "Adverse return-period outcomes represent severe annual weather conditions.",
+          "An adverse 1-in-10-year outcome is reached or exceeded in the unfavorable",
+          "direction in approximately one out of ten simulated weather years."
+        ),
+        shiny::p(
+          "Points show expected outcomes and adverse-year thresholds; intervals",
+          "show disagreement across CMIP6 climate models (ensemble spread)."
+        ),
+        docs = TRUE
+      ),
+      style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+    ),
     shiny::div(
       class = "results-section-card",
       shiny::div(
-        style = "display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;",
-        shiny::h4(
-          "What outcomes are predicted in adverse weather years?",
-          info_popover(
-            title = "Adverse weather-year risk",
-            shiny::p(
-              "Adverse return-period outcomes represent severe annual weather conditions.",
-              "An adverse 1-in-10-year outcome is reached or exceeded in the unfavorable",
-              "direction in approximately one out of ten simulated weather years."
-            ),
-            shiny::p(
-              "Points show expected outcomes and adverse-year thresholds; intervals",
-              "show disagreement across CMIP6 climate models (ensemble spread)."
-            ),
-            docs = TRUE
+        style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+        pill_toggle(
+          ns("ensemble_band"),
+          label    = NULL,
+          choices  = c(
+            "Full ensemble spread" = "minmax",
+            "95%"                  = "p025_p975",
+            "90%"                  = "p05_p95",
+            "80%"                  = "p10_p90"
           ),
-          style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin: 0;"
-        ),
-        shiny::div(
-          style = "display: flex; align-items: center; gap: 8px;",
-          shiny::tags$span(style = "font-size: 0.8rem; font-weight: 600; color: #526575; white-space: nowrap;", "Model spread:"),
-          shiny::selectInput(
-            ns("ensemble_band"),
-            label    = NULL,
-            choices  = c(
-              "Full range (min-max)" = "minmax",
-              "95% (p025-p975)"      = "p025_p975",
-              "90% (p05-p95)"        = "p05_p95",
-              "80% (p10-p90)"        = "p10_p90"
-            ),
-            selected = "minmax",
-            width    = "160px"
-          )
+          selected = "minmax",
+          layout   = "horizontal"
         )
       ),
       wise_plot_output(
@@ -218,49 +213,39 @@ mod_2_02_results_ui <- function(id) {
     ),
 
     # ---- Section 3: Exceedance probability curves --------------------------
+    shiny::h4(
+      "What is the probability of severe outcomes occurring?",
+      info_popover(
+        title = "Exceedance probability",
+        shiny::p(
+          "Shows the annual probability of reaching or exceeding severe outcome",
+          "thresholds across simulated weather years under each climate regime.",
+          "Dashed lines indicate standard return periods (e.g. 1-in-10 or 1-in-20 year events)."
+        ),
+        shiny::p(
+          "Solid black curve is the historical baseline. Coloured curves show the",
+          "ensemble median across climate models, with shaded ribbons indicating inter-model spread."
+        ),
+        docs = TRUE
+      ),
+      style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+    ),
     shiny::div(
       class = "results-section-card",
       shiny::div(
-        style = "margin-bottom: 8px;",
-        shiny::h4(
-          "What is the probability of severe outcomes occurring?",
-          info_popover(
-            title = "Exceedance probability",
-            shiny::p(
-              "Shows the annual probability of reaching or exceeding severe outcome",
-              "thresholds across simulated weather years under each climate regime.",
-              "Dashed lines indicate standard return periods (e.g. 1-in-10 or 1-in-20 year events)."
-            ),
-            shiny::p(
-              "Solid black curve is the historical baseline. Coloured curves show the",
-              "ensemble median across climate models, with shaded ribbons indicating inter-model spread."
-            ),
-            docs = TRUE
+        style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+        pill_toggle(
+          inputId  = ns("exceedance_model_spread"),
+          label    = "Climate model spread",
+          choices  = c(
+            "None"                 = "none",
+            "Full ensemble spread" = "minmax",
+            "95%"                  = "p025_p975",
+            "90%"                  = "p05_p95",
+            "80%"                  = "p10_p90"
           ),
-          style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin: 0;"
-        )
-      ),
-      shiny::div(
-        style = "display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px;",
-        shiny::checkboxInput(
-          ns("exceedance_logit_x"),
-          "Expand rare-event tails (logit scale)",
-          value = FALSE
-        ),
-        shiny::checkboxInput(
-          ns("show_return_period"),
-          "Show return period lines",
-          value = TRUE
-        ),
-        shiny::checkboxInput(
-          ns("show_model_spread"),
-          "Show climate-model ribbon",
-          value = TRUE
-        ),
-        shiny::checkboxInput(
-          ns("show_coef_uncertainty"),
-          "Show coefficient uncertainty",
-          value = FALSE
+          selected = "minmax",
+          layout   = "horizontal"
         )
       ),
       wise_plot_output(
@@ -271,31 +256,55 @@ mod_2_02_results_ui <- function(id) {
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-        "Curves depict annual probability of exceeding outcome levels in the adverse direction. Shaded regions capture disagreement across climate models."
+        "Curves depict annual probability of exceeding outcome levels in the adverse direction (0.50 AEP or less on log scale). Shaded regions capture disagreement across climate models."
       )
     ),
 
-    # ---- Section 4: Uncertainty decomposition ------------------------------
+    # ---- Section 4: Decision & return-period table -------------------------
+    shiny::h4(
+      "Detailed return-period outcomes and uncertainty",
+      info_popover(
+        title = "Return-period decision table",
+        shiny::p(
+          "Summary of central expected outcomes and severe weather-year thresholds",
+          "for each scenario across return periods, with climate model and econometric uncertainty bounds."
+        ),
+        docs = TRUE
+      ),
+      style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+    ),
     shiny::div(
       class = "results-section-card",
       shiny::div(
-        style = "margin-bottom: 8px;",
-        shiny::h4(
-          "What drives the uncertainty in these predictions?",
-          info_popover(
-            title = "Uncertainty sources",
-            shiny::p(
-              "Compares the absolute standard deviation contributed by each distinct source:",
-              "annual weather variability, climate-model disagreement, and econometric coefficient uncertainty."
-            ),
-            shiny::p(
-              "Because standard deviations are not additive, bars are displayed side-by-side on a common scale."
-            ),
-            docs = TRUE
-          ),
-          style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin: 0;"
-        )
+        style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+        csv_download_link(ns("threshold_csv"), "Download CSV")
       ),
+      DT::DTOutput(ns("summary_threshold_table")),
+      shiny::tags$p(
+        class = "text-muted small",
+        style = "margin-top: 8px; margin-bottom: 0;",
+        "Central estimates show median outcomes across weather years and climate models. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled)."
+      )
+    ),
+
+    # ---- Section 5: Uncertainty decomposition ------------------------------
+    shiny::h4(
+      "What drives the uncertainty in these predictions?",
+      info_popover(
+        title = "Uncertainty sources",
+        shiny::p(
+          "Compares the absolute standard deviation contributed by each distinct source:",
+          "annual weather variability, climate-model disagreement, and econometric coefficient uncertainty."
+        ),
+        shiny::p(
+          "Because standard deviations are not additive, bars are displayed side-by-side on a common scale."
+        ),
+        docs = TRUE
+      ),
+      style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+    ),
+    shiny::div(
+      class = "results-section-card",
       wise_plot_output(
         ns("uncertainty_sources_plot"),
         "Standard deviation of outcome by uncertainty source",
@@ -305,40 +314,6 @@ mod_2_02_results_ui <- function(id) {
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
         "Separate standard deviations in outcome units. Annual weather variability reflects year-to-year swings; inter-model spread reflects CMIP6 model disagreement; coefficient uncertainty reflects econometric estimation precision."
-      )
-    ),
-
-    # ---- Section 5: Decision & return-period table -------------------------
-    shiny::div(
-      class = "results-section-card",
-      shiny::div(
-        style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;",
-        shiny::h4(
-          "Detailed return-period outcomes and uncertainty",
-          info_popover(
-            title = "Return-period decision table",
-            shiny::p(
-              "Summary of central expected outcomes and severe weather-year thresholds",
-              "for each scenario, along with change from the historical baseline."
-            ),
-            docs = TRUE
-          ),
-          style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin: 0;"
-        ),
-        csv_download_link(ns("decision_csv"), "Download CSV")
-      ),
-      shiny::uiOutput(ns("decision_table_html")),
-      shiny::tags$details(
-        style = "margin-top: 14px;",
-        shiny::tags$summary(
-          style = "cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #526575;",
-          "Complete technical uncertainty table (all bounds & quantiles)"
-        ),
-        shiny::div(
-          style = "margin-top: 8px;",
-          DT::DTOutput(ns("summary_threshold_table")),
-          shiny::div(style = "margin-top: 6px;", csv_download_link(ns("threshold_csv"), "Download technical table CSV"))
-        )
       )
     )
   )
@@ -1169,14 +1144,16 @@ mod_2_02_results_server <- function(id,
     })
 
     # ---- exceedance_curves_rv: per (scenario, model) ECDF rows -------------
-    # One row per (scenario, model, rank). welfare_val is sorted ascending per
-    # model; exceed_prob is rev((seq - 0.5)/n_years). coef_sd is the per-
-    # (model, year) SD reordered to match the welfare sort.
+    # One row per (scenario, model, rank). welfare_val is sorted in the adverse
+    # tail direction; exceed_prob is (rank - 0.5)/n_pts limited to <= 0.50 AEP.
     exceedance_curves_rv <- reactive({
       req(hist_agg_rv())
       hist_ref <- hist_ref_val()
       wk       <- weight_key()
       method   <- input$cmp_agg_method %||% "mean"
+      so_obj   <- tryCatch(if (!is.null(hist_sim())) hist_sim()$so else NULL, error = function(e) NULL)
+      spec     <- metric_metadata(method, so_obj)
+      adverse_tail <- spec$adverse_tail
 
       one_scenario <- function(tbl, scenario_label, is_hist) {
         if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
@@ -1185,21 +1162,37 @@ mod_2_02_results_server <- function(id,
         vals <- mm$vals; sds <- mm$sds
         n_yrs <- ncol(vals)
         if (n_yrs == 0L) return(NULL)
-        probs <- rev((seq_len(n_yrs) - 0.5) / n_yrs)
 
         do.call(dplyr::bind_rows, lapply(seq_len(nrow(vals)), function(i) {
           v <- vals[i, ]; s <- sds[i, ]
           ok <- is.finite(v)
           if (!any(ok)) return(NULL)
           v <- v[ok]; s <- s[ok]
-          ord <- order(v)
+          n_pts <- length(v)
+
+          # Adverse tail direction:
+          # If adverse_tail == "low" (welfare/consumption): smaller is worse -> ascending.
+          # If adverse_tail == "high" (poverty): larger is worse -> descending.
+          ord <- if (identical(adverse_tail, "high")) {
+            order(v, decreasing = TRUE)
+          } else {
+            order(v, decreasing = FALSE)
+          }
+          v_ord <- v[ord]
+          s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
+          probs <- (seq_along(ord) - 0.5) / n_pts
+
+          # Limit strictly to adverse tail: 0.50 AEP or less
+          keep <- probs <= 0.50
+          if (!any(keep)) return(NULL)
+
           tibble::tibble(
-            scenario    = scenario_label,
-            model_id    = mm$model_ids[[i]],
-            rank        = seq_along(ord),
-            welfare_val = v[ord] - hist_ref,
-            coef_sd     = if (length(s) == length(ord)) s[ord] else rep(0, length(ord)),
-            exceed_prob = rev((seq_len(length(ord)) - 0.5) / length(ord)),
+            scenario      = scenario_label,
+            model_id      = mm$model_ids[[i]],
+            rank          = seq_along(ord)[keep],
+            welfare_val   = v_ord[keep] - hist_ref,
+            coef_sd       = s_ord[keep],
+            exceed_prob   = probs[keep],
             is_historical = is_hist
           )
         }))
@@ -1515,77 +1508,41 @@ mod_2_02_results_server <- function(id,
       if (!isTRUE(input$show_model_spread)) {
         tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
       }
+      so_obj <- tryCatch(if (!is.null(hist_sim())) hist_sim()$so else NULL, error = function(e) NULL)
+      n_h_yrs <- tryCatch({
+        run_info <- if (!is.null(hist_sim())) hist_sim()$sim_summary %||% list() else list()
+        hy <- run_info$historical_years %||% integer(0)
+        if (length(hy) >= 2L) as.integer(hy[2] - hy[1] + 1L) else max(tbl$n_obs, na.rm = TRUE)
+      }, error = function(e) max(tbl$n_obs, na.rm = TRUE))
+
       build_threshold_table_df(
         threshold_tbl = tbl,
         group_order   = input$cmp_group_order %||% "scenario_x_year",
-        show_coef     = isTRUE(input$show_coef_uncertainty) && has_draws()
+        show_coef     = TRUE,
+        adverse_only  = TRUE,
+        method        = input$cmp_agg_method %||% "mean",
+        so            = so_obj,
+        n_hist_years  = n_h_yrs
       )
     }
 
     decision_threshold_df <- reactive({
-      tbl <- threshold_table_rv()
-      if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
-        return(NULL)
-      }
-      tbl <- tbl[tbl$Estimate == "Central (P50)", , drop = FALSE]
-      if (!nrow(tbl)) return(NULL)
-      rp_map <- metric_decision_return_periods(
-        input$cmp_agg_method %||% "mean", hist_sim()$so
-      )
-      keep <- tbl$rp_name %in% unname(rp_map)
-      out <- tbl[keep, c("scenario", "rp_name", "value", "n_obs"), drop = FALSE]
-      if (!nrow(out)) return(NULL)
-      out$rp_label <- names(rp_map)[match(out$rp_name, unname(rp_map))]
-      rp_order <- c("Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20", "Adverse 1-in-50")
-      out <- out[order(out$scenario, match(out$rp_label, rp_order)), ]
-      wide <- tidyr::pivot_wider(out, names_from = rp_label, values_from = value)
-
-      hist_val <- if ("Expected" %in% names(wide) && any(wide$scenario == "Historical")) {
-        wide$Expected[wide$scenario == "Historical"][1L]
-      } else NA_real_
-
-      if (is.finite(hist_val) && "Expected" %in% names(wide)) {
-        wide$`Change from historical` <- ifelse(
-          wide$scenario == "Historical",
-          NA_real_,
-          wide$Expected - hist_val
-        )
-      }
-      wide
+      threshold_table_df()
     })
     wise_export_table(
       key = "climate_decision_thresholds",
       label = "Decision return-period summary",
       step = 2L,
       fun = function() annotate_visualization_export(
-        decision_threshold_df(), input$cmp_agg_method %||% "mean", hist_sim()$so,
+        threshold_table_df(), input$cmp_agg_method %||% "mean", hist_sim()$so,
         observation_unit = "scenario-period annual aggregate at supported return period",
         aggregation_order = "per-model return-period interpolation, then median across equally weighted models",
-        uncertainty = "central estimate; technical uncertainty rows exported separately"
+        uncertainty = "comprehensive return period outcomes with climate model and econometric uncertainty"
       ),
-      description = "Decision-first expected and adverse return-period summary."
+      description = "Comprehensive expected and adverse return-period outcomes with uncertainty bounds."
     )
 
-    output$decision_table_html <- renderUI({
-      req(decision_threshold_df())
-      df <- decision_threshold_df()
-      so <- if (!is.null(hist_sim())) hist_sim()$so else NULL
-      meta <- metric_metadata(input$cmp_agg_method %||% "mean", so)
-      sub_txt <- paste0("Outcome: ", meta$label, if (nzchar(meta$unit)) paste0(" (", meta$unit, ")") else "")
-      make_decision_table_html(
-        df,
-        subheader = sub_txt,
-        footnotes = c(
-          "Typical (Expected) shows the central annual aggregate across weather years and climate models.",
-          "Adverse return-period thresholds reflect simulated outcomes reached or exceeded in the unfavorable direction.",
-          "Change from historical compares scenario expected outcome to the fixed baseline population under historical weather."
-        )
-      )
-    })
-    outputOptions(output, "decision_table_html", suspendWhenHidden = TRUE)
-
-    output$decision_csv <- csv_download_handler("climate_decision_summary", function() decision_threshold_df())
-    output$threshold_csv <- csv_download_handler("climate_technical_thresholds", function() threshold_table_df())
+    output$threshold_csv <- csv_download_handler("climate_return_period_outcomes", function() threshold_table_df())
 
     output$uncertainty_sources_plot <- renderPlot({
       req(variance_breakdown_rv())
@@ -1644,25 +1601,13 @@ mod_2_02_results_server <- function(id,
     )
 
     output$summary_threshold_table <- DT::renderDT({
-      req(threshold_table_rv())
-      tbl <- threshold_table_rv()
-      if (!nrow(tbl) || !"Estimate" %in% names(tbl)) {
+      req(threshold_table_df())
+      df <- threshold_table_df()
+      if (is.null(df) || nrow(df) == 0L) {
         return(DT::datatable(data.frame(Message = "Insufficient data"),
                              rownames = FALSE, class = "compact stripe",
                              options  = list(dom = "t")))
       }
-      if (!isTRUE(input$show_model_spread)) {
-        tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
-      }
-      df <- build_threshold_table_df(
-        threshold_tbl = tbl,
-        group_order   = input$cmp_group_order %||% "scenario_x_year",
-        show_coef     = isTRUE(input$show_coef_uncertainty) && has_draws()
-      )
-      if (is.null(df) || nrow(df) == 0L)
-        return(DT::datatable(data.frame(Message = "Insufficient data"),
-                             rownames = FALSE, class = "compact stripe",
-                             options  = list(dom = "t")))
       # INT-08: export is disabled while the results are stale - the table
       # stays visible, the CSV button does not.
       dt_buttons <- wise_csv_button("outcome_thresholds",
@@ -1670,53 +1615,12 @@ mod_2_02_results_server <- function(id,
       DT::datatable(
         df, rownames = FALSE, class = "compact stripe",
         options = list(
-          pageLength = 15, dom = wise_csv_dom("tip"),
-          ordering = list(list(2, "desc")),
+          pageLength = 20, dom = wise_csv_dom("tip"),
+          ordering = FALSE,
           columnDefs = list(list(className = "dt-center", targets = "_all")),
           buttons = dt_buttons
         ),
         extensions = "Buttons"
-      )
-    })
-
-    output$threshold_table_header <- renderUI({
-      req(agg_hist())
-      tagList(
-        shiny::h4(
-          "Outcome value at return-period thresholds (both tails)",
-          info_popover(
-            title = "Return-period thresholds",
-            shiny::p(shiny::tags$b("Central (P50)"),
-              " = across-model median of each model's return-period value (or the single historical curve)."),
-            shiny::p(shiny::tags$b("Coef Pxx"),
-              " = analytic per-outcome SE band around the central value (coefficient + residual uncertainty). Percentiles follow the 'Coefficient uncertainty band' selector."),
-            shiny::p(shiny::tags$b("Ensemble Pxx / min / max"),
-              " (future only) = quantile of per-model return-period values across CMIP6 ensemble members. Percentiles follow the 'Weather + model spread band' selector."),
-            shiny::p(shiny::tags$b("Pooled Pxx"),
-              " = combined band assuming independence: SE_pooled = sqrt(coef_SE\u00B2 + var_across_models). Future scenarios only - for historical (no inter-model component) Pooled would equal Coef and is not reported."),
-            shiny::p(
-              "Low odds show the value exceeded in only 1-in-N years; high odds",
-              "= value reached in all but 1-in-N years; 1:1 is the median year."
-            ),
-            shiny::p(
-              "Obs = number of simulated years feeding each per-model exceedance",
-              "curve. Return periods that fall outside the empirical range",
-              "supported by Obs (probability < 0.5/Obs or > 1 - 0.5/Obs) are not",
-              "reported rather than extrapolated."
-            ),
-            docs = TRUE
-          )
-        ),
-        shiny::tags$small(class = "text-muted", table_subtitle())
-      )
-    })
-
-    output$threshold_table_footer <- renderUI({
-      req(agg_hist())
-      shiny::tags$p(
-        style = "font-size:11px; color:#666; margin-top:6px;",
-        "Central = median estimate; Coef/Ensemble/Pooled = uncertainty bands - click ",
-        shiny::icon("circle-info"), " above for definitions."
       )
     })
 
@@ -1729,23 +1633,24 @@ mod_2_02_results_server <- function(id,
         curves <- exceedance_curves_rv()
         ah     <- agg_hist()
         if (is.null(curves) || is.null(ah)) return(NULL)
-        ens_q <- if (isTRUE(input$show_model_spread))
-          resolve_band_q(input$ensemble_band %||% "minmax")
-        else c(lo = 0.5, hi = 0.5)
+        sel_spread <- input$exceedance_model_spread %||% "minmax"
+        ens_q <- if (identical(sel_spread, "none")) {
+          c(lo = 0.5, hi = 0.5)
+        } else {
+          resolve_band_q(sel_spread)
+        }
         enhance_exceedance(
           curves_tbl      = curves,
           x_label         = ah$x_label,
-          return_period   = isTRUE(input$show_return_period),
+          return_period   = TRUE,
           n_sim_years     = nrow(ah$out),
-          logit_x         = isTRUE(input$exceedance_logit_x),
-          band_q          = if (isTRUE(input$show_coef_uncertainty) && has_draws())
-                              resolve_band_q(input$uncertainty_band %||% "p10_p90")
-                            else NULL,
+          logit_x         = TRUE,
+          band_q          = NULL,
           ensemble_band_q = ens_q
         )
       },
       description = paste(
-        "Probability of welfare falling below each level, by climate scenario",
+        "Probability of welfare falling below each level in adverse weather years, by climate scenario",
         "and projection period."
       ),
       width = 10, height = 6.5
@@ -1753,31 +1658,20 @@ mod_2_02_results_server <- function(id,
 
     output$exceedance_plot <- renderPlot({
       req(exceedance_curves_rv())
-      ens_q <- if (isTRUE(input$show_model_spread))
-        resolve_band_q(input$ensemble_band %||% "minmax")
-      else c(lo = 0.5, hi = 0.5)
+      sel_spread <- input$exceedance_model_spread %||% "minmax"
+      ens_q <- if (identical(sel_spread, "none")) {
+        c(lo = 0.5, hi = 0.5)
+      } else {
+        resolve_band_q(sel_spread)
+      }
       enhance_exceedance(
         curves_tbl      = exceedance_curves_rv(),
         x_label         = agg_hist()$x_label,
-        return_period   = isTRUE(input$show_return_period),
+        return_period   = TRUE,
         n_sim_years     = nrow(agg_hist()$out),
-        logit_x         = isTRUE(input$exceedance_logit_x),
-        band_q          = if (isTRUE(input$show_coef_uncertainty) && has_draws())
-                            resolve_band_q(input$uncertainty_band %||% "p10_p90")
-                          else NULL,
+        logit_x         = TRUE,
+        band_q          = NULL,
         ensemble_band_q = ens_q
-      )
-    })
-
-    output$exceedance_caption <- renderUI({
-      req(agg_hist())
-      axis_txt <- if (isTRUE(input$exceedance_logit_x))
-        "Probability axis is logit-scaled, giving equal visual weight to both tails."
-      else
-        "Annual exceedance probability - each curve is computed over the simulation years."
-      shiny::tags$p(
-        style = "font-size:11px; color:#666; margin-top:6px;",
-        axis_txt
       )
     })
 
@@ -1880,9 +1774,6 @@ mod_2_02_results_server <- function(id,
     outputOptions(output, "summary_threshold_table", suspendWhenHidden = TRUE)
     outputOptions(output, "exceedance_plot",         suspendWhenHidden = TRUE)
     outputOptions(output, "scenario_filter_ui",      suspendWhenHidden = TRUE)
-    outputOptions(output, "threshold_table_header",  suspendWhenHidden = TRUE)
-    outputOptions(output, "threshold_table_footer",  suspendWhenHidden = TRUE)
-    outputOptions(output, "exceedance_caption",      suspendWhenHidden = TRUE)
     
     # ---- Return API --------------------------------------------------------
     # timeseries_curves bundles everything the Diagnostics tab needs to render

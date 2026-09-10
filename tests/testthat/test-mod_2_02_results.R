@@ -246,10 +246,10 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   )
 
   thresh_tbl <- tibble::tibble(
-    scenario = rep("SSP3-7.0 / 2025-2035", 4L),
-    Estimate = rep("Central (P50)", 4L),
-    rp_name  = c("1:1", "4:5", "9:10", "19:20"),
-    value    = c(4.52, 4.38, 4.25, 4.10)
+    scenario = c(rep("Historical", 4L), rep("SSP3-7.0 / 2025-2035", 4L)),
+    Estimate = rep("Central (P50)", 8L),
+    rp_name  = rep(c("1:1", "4:5", "9:10", "19:20"), 2L),
+    value    = c(4.50, 4.30, 4.20, 4.05, 4.52, 4.38, 4.25, 4.10)
   )
 
   hist_sim <- list(
@@ -279,7 +279,7 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   labels <- vapply(cards, function(c) c$label, character(1L))
   expect_identical(
     labels,
-    c("Typical outcome", "Adverse weather years", "Weather-year range",
+    c("Typical outcome", "Adverse weather years", "Range across years",
       "Climate-model spread", "Simulation years")
   )
 
@@ -293,27 +293,28 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   }
 
   # Card 1: Typical outcome
-  expect_identical(cards[[1]]$value, "4.52")
-  expect_match(cards[[1]]$note, "Hist: 4.50", fixed = TRUE)
-  expect_match(cards[[1]]$note, "\u0394 +0.02", fixed = TRUE)
-  expect_match(cards[[1]]$note, "SSP3-7.0 / 2025-2035", fixed = TRUE)
+  expect_identical(cards[[1]]$value, "4.50 vs 4.52")
+  expect_match(cards[[1]]$note, "Historical vs SSP", fixed = TRUE)
 
-  # Card 2: Adverse weather years
-  expect_identical(cards[[2]]$value, "4.25 vs 4.10")
-  expect_match(cards[[2]]$note, "1-in-10 yr vs 1-in-20 yr", fixed = TRUE)
+  # Card 2: Adverse weather years (1-in-20 year)
+  expect_identical(cards[[2]]$value, "4.05 vs 4.10")
+  expect_match(cards[[2]]$note, "Historical vs SSP", fixed = TRUE)
+  expect_match(cards[[2]]$note, "1-in-20 year", fixed = TRUE)
 
-  # Card 3: Weather-year range
+  # Card 3: Range across years
   expect_identical(cards[[3]]$value, "4.25 to 4.85")
-  expect_match(cards[[3]]$note, "min\u2013max", fixed = TRUE)
+  expect_match(cards[[3]]$note, "Hist: 4.20 to 4.80", fixed = TRUE)
+  expect_match(cards[[3]]$note, "Inter-annual weather variability", fixed = TRUE)
 
   # Card 4: Climate-model spread
   expect_identical(cards[[4]]$value, "4.48 to 4.56")
-  expect_match(cards[[4]]$note, "22 models", fixed = TRUE)
-  expect_match(cards[[4]]$note, "Coef 80% CI: \u00b10.05", fixed = TRUE)
+  expect_match(cards[[4]]$note, "Ensemble spread (22 models)", fixed = TRUE)
+  expect_match(cards[[4]]$note, "CMIP6 model disagreement", fixed = TRUE)
+  expect_false(grepl("Coef", cards[[4]]$note, fixed = TRUE))
 
   # Card 5: Simulation years
   expect_identical(cards[[5]]$value, "690")
-  expect_match(cards[[5]]$note, "1 scenario \u00d7 22 models \u00d7 30 yrs", fixed = TRUE)
+  expect_match(cards[[5]]$note, "(1 SSP \u00d7 22 models + 1 historical) \u00d7 30 yrs", fixed = TRUE)
   expect_identical(cards[[5]]$class, "neutral")
 
   # Table conversion
@@ -357,7 +358,7 @@ test_that("step2_headline_cards handles historical-only simulation gracefully", 
   expect_length(cards, 5L)
   expect_identical(cards[[1]]$value, "4.50")
   expect_identical(cards[[4]]$value, "Not applicable")
-  expect_match(cards[[5]]$note, "Historical \u00d7 30 weather yrs", fixed = TRUE)
+  expect_match(cards[[5]]$note, "1 historical \u00d7 30 yrs", fixed = TRUE)
 })
 
 test_that("results content UI produces clear aggregation panel with question and pill selector", {
@@ -380,7 +381,7 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "toggle-slider pill-toggle", fixed = TRUE)
 
   # Verify removed controls are NOT in the aggregation panel
-  agg_panel_html <- as.character(htmltools::renderTags(ui[[4]])$html)
+  agg_panel_html <- as.character(htmltools::renderTags(ui[[3]])$html)
   expect_match(agg_panel_html, "results-aggregation-panel", fixed = TRUE)
   expect_false(grepl("results-controls", agg_panel_html, fixed = TRUE))
   expect_false(grepl("results-cmp_deviation", agg_panel_html, fixed = TRUE))
@@ -395,6 +396,9 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "How is consumption predicted to vary across climate scenarios and weather years?", fixed = TRUE)
   expect_match(html, "What outcomes are predicted in adverse weather years?", fixed = TRUE)
   expect_match(html, "What is the probability of severe outcomes occurring?", fixed = TRUE)
+  expect_match(html, "results-exceedance_model_spread", fixed = TRUE)
+  expect_match(html, "Climate model spread", fixed = TRUE)
+  expect_match(html, "Full ensemble spread", fixed = TRUE)
   expect_match(html, "What drives the uncertainty in these predictions?", fixed = TRUE)
   expect_match(html, "Detailed return-period outcomes and uncertainty", fixed = TRUE)
 

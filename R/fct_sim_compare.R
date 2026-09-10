@@ -896,75 +896,65 @@ step2_headline_cards <- function(bands,
   so <- if (!is.null(hist_sim)) hist_sim$so else NULL
 
   # 1. Typical weather year outcome
-  val_1 <- if (identical(deviation, "none")) {
-    fmt_num(focus$value, 2)
+  val_1 <- if (has_future) {
+    paste0(fmt_num(hist$value, 2), " vs ", fmt_num(focus$value, 2))
   } else {
-    sprintf("%+.2f", focus$value)
+    fmt_num(hist$value, 2)
   }
 
-  if (has_future) {
-    if (identical(deviation, "none")) {
-      diff_val <- focus$value - hist$value
-      line1_1 <- paste0("Hist: ", fmt_num(hist$value, 2), " \u00b7 \u0394 ", sprintf("%+.2f", diff_val))
-    } else {
-      line1_1 <- paste0("Deviation from historical ", deviation)
-    }
-    line2_1 <- if (nrow(fut_rows) > 1L) {
-      paste0(focus$scenario, " (focus of ", nrow(fut_rows), ")")
-    } else {
-      as.character(focus$scenario)
-    }
+  line1_1 <- if (has_future) {
+    "Historical vs SSP"
   } else {
-    line1_1 <- "Historical expected aggregate"
-    line2_1 <- "Fixed baseline population"
+    "Historical baseline"
   }
 
   card1 <- list(
     label = "Typical outcome",
     value = val_1,
-    note = paste(line1_1, line2_1, sep = " \u00b7 "),
+    note = line1_1,
     note_html = shiny::tagList(
-      shiny::tags$div(line1_1),
-      shiny::tags$div(style = "font-weight: 600;", line2_1)
+      shiny::tags$div(line1_1)
     ),
     info = paste(
-      "Expected annual aggregate outcome under the focus climate scenario",
-      "(mean across weather years and climate models), compared with the",
-      "historical baseline for the fixed survey population. Differences",
-      "reflect simulated climate conditions only."
+      "Expected annual aggregate outcome under the historical baseline compared with the",
+      "focus climate scenario (mean across weather years and climate models).",
+      "Differences reflect simulated climate conditions for the fixed survey population."
     )
   )
 
-  # 2. Adverse weather year outcomes (1-in-10 and 1-in-20)
-  v10 <- NA_real_
-  v20 <- NA_real_
+  # 2. Adverse weather year outcomes (1-in-20 year)
+  v20_hist <- NA_real_
+  v20_ssp  <- NA_real_
   if (!is.null(threshold_tbl) && nrow(threshold_tbl) &&
       all(c("scenario", "rp_name", "Estimate") %in% names(threshold_tbl))) {
-    rp_map <- metric_decision_return_periods(method %||% "mean", so)
-    rp_10  <- unname(rp_map[["Adverse 1-in-10"]])
-    rp_20  <- unname(rp_map[["Adverse 1-in-20"]])
-    r10 <- threshold_tbl[threshold_tbl$scenario == focus$scenario &
-                         threshold_tbl$rp_name == rp_10 &
-                         threshold_tbl$Estimate == "Central (P50)", , drop = FALSE]
-    r20 <- threshold_tbl[threshold_tbl$scenario == focus$scenario &
-                         threshold_tbl$rp_name == rp_20 &
-                         threshold_tbl$Estimate == "Central (P50)", , drop = FALSE]
-    if (nrow(r10) && is.finite(r10$value[[1L]])) v10 <- r10$value[[1L]]
-    if (nrow(r20) && is.finite(r20$value[[1L]])) v20 <- r20$value[[1L]]
+    rp_map   <- metric_decision_return_periods(method %||% "mean", so)
+    rp_20    <- unname(rp_map[["Adverse 1-in-20"]])
+    r20_hist <- threshold_tbl[threshold_tbl$scenario == "Historical" &
+                              threshold_tbl$rp_name == rp_20 &
+                              threshold_tbl$Estimate == "Central (P50)", , drop = FALSE]
+    r20_ssp  <- threshold_tbl[threshold_tbl$scenario == focus$scenario &
+                              threshold_tbl$rp_name == rp_20 &
+                              threshold_tbl$Estimate == "Central (P50)", , drop = FALSE]
+    if (nrow(r20_hist) && is.finite(r20_hist$value[[1L]])) v20_hist <- r20_hist$value[[1L]]
+    if (nrow(r20_ssp)  && is.finite(r20_ssp$value[[1L]]))  v20_ssp  <- r20_ssp$value[[1L]]
   }
 
-  if (is.finite(v10) && is.finite(v20)) {
-    val_2   <- paste0(fmt_num(v10, 2), " vs ", fmt_num(v20, 2))
-    line1_2 <- "1-in-10 yr vs 1-in-20 yr"
-    line2_2 <- "Severe & extreme adverse thresholds"
-  } else if (is.finite(v10)) {
-    val_2   <- fmt_num(v10, 2)
-    line1_2 <- "Adverse 1-in-10 year"
-    line2_2 <- "1-in-20 requires \u226520 weather years"
+  if (has_future && is.finite(v20_hist) && is.finite(v20_ssp)) {
+    val_2   <- paste0(fmt_num(v20_hist, 2), " vs ", fmt_num(v20_ssp, 2))
+    line1_2 <- "Historical vs SSP"
+    line2_2 <- "1-in-20 year"
+  } else if (!has_future && is.finite(v20_hist)) {
+    val_2   <- fmt_num(v20_hist, 2)
+    line1_2 <- "Historical baseline"
+    line2_2 <- "1-in-20 year"
+  } else if (has_future && is.finite(v20_ssp)) {
+    val_2   <- fmt_num(v20_ssp, 2)
+    line1_2 <- as.character(focus$scenario)
+    line2_2 <- "1-in-20 year"
   } else {
     val_2   <- "Unavailable"
-    line1_2 <- "Adverse-year thresholds"
-    line2_2 <- if (has_future) focus$scenario else "Historical baseline"
+    line1_2 <- "Requires \u226520 weather years"
+    line2_2 <- "1-in-20 year"
   }
 
   card2 <- list(
@@ -976,34 +966,31 @@ step2_headline_cards <- function(bands,
       shiny::tags$div(style = "font-weight: 600;", line2_2)
     ),
     info = paste(
-      "Simulated aggregate outcome in adverse weather years under the selected",
-      "climate regime. A 1-in-10 year event occurs in approximately 10% of",
-      "simulated weather years; a 1-in-20 year event in 5%. The adverse tail is",
-      "determined automatically by the selected metric."
+      "Simulated aggregate outcome in adverse 1-in-20 weather years under the historical",
+      "baseline compared with the focus climate regime. A 1-in-20 year event occurs in",
+      "approximately 5% of simulated weather years. The adverse tail is determined",
+      "automatically by the selected metric."
     )
   )
 
-  # 3. Weather-year range (inter-annual weather variability)
-  ens_lbl <- switch(ensemble_band %||% "minmax",
-    minmax    = "min\u2013max",
-    p05_p95   = "p05\u2013p95",
-    p10_p90   = "p10\u2013p90",
-    p20_p80   = "p20\u2013p80",
-    p25_p75   = "p25\u2013p75",
-    p025_p975 = "p02.5\u2013p97.5",
-    p005_p995 = "p00.5\u2013p99.5",
-    "min\u2013max"
-  )
-  val_3 <- if (is.finite(focus$interann_lo) && is.finite(focus$interann_hi)) {
+  # 3. Range across years (inter-annual weather variability)
+  val_3 <- if (has_future && is.finite(focus$interann_lo) && is.finite(focus$interann_hi)) {
     paste(fmt_num(focus$interann_lo, 2), "to", fmt_num(focus$interann_hi, 2))
+  } else if (is.finite(hist$interann_lo) && is.finite(hist$interann_hi)) {
+    paste(fmt_num(hist$interann_lo, 2), "to", fmt_num(hist$interann_hi, 2))
   } else {
     "Unavailable"
   }
-  line1_3 <- paste0("Variation across years (", ens_lbl, ")")
+
+  line1_3 <- if (has_future && is.finite(hist$interann_lo) && is.finite(hist$interann_hi)) {
+    paste0("Hist: ", fmt_num(hist$interann_lo, 2), " to ", fmt_num(hist$interann_hi, 2))
+  } else {
+    "Historical baseline"
+  }
   line2_3 <- "Inter-annual weather variability"
 
   card3 <- list(
-    label = "Weather-year range",
+    label = "Range across years",
     value = val_3,
     note = paste(line1_3, line2_3, sep = " \u00b7 "),
     note_html = shiny::tagList(
@@ -1018,7 +1005,7 @@ step2_headline_cards <- function(bands,
     )
   )
 
-  # 4. Climate-model spread & coefficient uncertainty
+  # 4. Climate-model spread (ensemble spread at expected outcome)
   n_mods <- suppressWarnings(as.integer(focus$n_models %||% 1L))[1L]
   if (!is.finite(n_mods) || n_mods < 1L) n_mods <- 1L
 
@@ -1031,29 +1018,6 @@ step2_headline_cards <- function(bands,
     "Not applicable"
   }
 
-  hw <- if (is.finite(focus$coef_hi) && is.finite(focus$coef_lo)) {
-    (focus$coef_hi - focus$coef_lo) / 2
-  } else NA_real_
-
-  coef_band_lbl <- switch(uncertainty_band %||% "p10_p90",
-    p25_p75   = "50% CI",
-    p20_p80   = "60% CI",
-    p10_p90   = "80% CI",
-    p05_p95   = "90% CI",
-    p025_p975 = "95% CI",
-    p005_p995 = "99% CI",
-    minmax    = "min-max",
-    "CI"
-  )
-
-  coef_str <- if (!is.null(skip_coef_draws) && isTRUE(skip_coef_draws)) {
-    "Coef uncertainty: point estimates"
-  } else if (is.finite(hw) && hw > 0) {
-    paste0("Coef ", coef_band_lbl, ": \u00b1", fmt_num(hw, 2))
-  } else {
-    "Coef uncertainty: \u2014"
-  }
-
   line1_4 <- if (has_future && n_mods > 1L) {
     paste0("Ensemble spread (", n_mods, " models)")
   } else if (has_future) {
@@ -1061,7 +1025,7 @@ step2_headline_cards <- function(bands,
   } else {
     "Single historical climate series"
   }
-  line2_4 <- coef_str
+  line2_4 <- "CMIP6 model disagreement"
 
   card4 <- list(
     label = "Climate-model spread",
@@ -1072,10 +1036,9 @@ step2_headline_cards <- function(bands,
       shiny::tags$div(style = "font-weight: 600;", line2_4)
     ),
     info = paste(
-      "Climate-model spread describes disagreement in expected outcomes across",
-      "CMIP6 climate models (ensemble spread, not a probability). Coefficient",
-      "uncertainty reflects sampling precision from the Step 1 econometric",
-      "estimation."
+      "Range of expected annual aggregate outcomes across CMIP6 climate models for",
+      "the focus scenario. Reflects climate projection disagreement, evaluated at the",
+      "central expected outcome."
     )
   )
 
@@ -1112,20 +1075,18 @@ step2_headline_cards <- function(bands,
   val_5 <- format(total_runs, big.mark = ",")
 
   line1_5 <- if (n_scenarios > 0L) {
-    paste0(n_scenarios, if (n_scenarios == 1L) " scenario" else " scenarios",
-           " \u00d7 ", n_mods, " models \u00d7 ", n_years, " yrs")
+    paste0("(", n_scenarios, if (n_scenarios == 1L) " SSP \u00d7 " else " SSPs \u00d7 ",
+           n_mods, " models + 1 historical) \u00d7 ", n_years, " yrs")
   } else {
-    paste0("Historical \u00d7 ", n_years, " weather yrs")
+    paste0("1 historical \u00d7 ", n_years, " yrs")
   }
-  line2_5 <- "Total simulated model-years"
 
   card5 <- list(
     label = "Simulation years",
     value = val_5,
-    note = paste(line1_5, line2_5, sep = " \u00b7 "),
+    note = line1_5,
     note_html = shiny::tagList(
-      shiny::tags$div(line1_5),
-      shiny::tags$div(style = "font-weight: 600;", line2_5)
+      shiny::tags$div(line1_5)
     ),
     class = "neutral",
     info = paste(
@@ -1254,8 +1215,12 @@ make_decision_table_html <- function(df, subheader = NULL, footnotes = NULL) {
 #' @importFrom stats quantile median
 #' @export
 build_threshold_table_df <- function(threshold_tbl,
-                                     group_order = "scenario_x_year",
-                                     show_coef   = TRUE) {
+                                     group_order  = "scenario_x_year",
+                                     show_coef    = TRUE,
+                                     adverse_only = FALSE,
+                                     method       = "mean",
+                                     so           = NULL,
+                                     n_hist_years = NULL) {
 
   if (is.null(threshold_tbl) || nrow(threshold_tbl) == 0L) return(NULL)
   df <- threshold_tbl
@@ -1273,31 +1238,61 @@ build_threshold_table_df <- function(threshold_tbl,
   }
   if (nrow(df) == 0L) return(NULL)
 
+  if (isTRUE(adverse_only)) {
+    rp_map <- metric_decision_return_periods(method, so)
+    max_yrs <- if (!is.null(n_hist_years) && is.finite(n_hist_years)) {
+      as.integer(n_hist_years)
+    } else {
+      max(df$n_obs, na.rm = TRUE)
+    }
+    if (max_yrs < 50L) {
+      rp_map <- rp_map[!names(rp_map) %in% c("Adverse 1-in-50", "Adverse 1 in 50")]
+    }
+    df <- df[df$rp_name %in% unname(rp_map), , drop = FALSE]
+    if (nrow(df) == 0L) return(NULL)
+
+    label_lookup <- names(rp_map)
+    names(label_lookup) <- unname(rp_map)
+    df$rp_label <- label_lookup[df$rp_name]
+    df$rp_label <- gsub("-", " ", df$rp_label)
+  }
+
   # Pivot: one column per RP threshold, value rounded.
   rp_levels <- unique(df$rp_label)
-  df$value_round <- round(df$value, 3)
+  df$value_round <- round(df$value, 2)
 
   pivot_cols <- if (has_source)
-    c("scenario", "source", "Estimate", "rp_label", "n_obs", "value_round")
+    c("scenario", "source", "Estimate", "rp_label", "value_round")
   else
-    c("scenario", "Estimate", "rp_label", "n_obs", "value_round")
+    c("scenario", "Estimate", "rp_label", "value_round")
+  if (!isTRUE(adverse_only)) pivot_cols <- c(pivot_cols, "n_obs")
+
   wide <- tidyr::pivot_wider(
     df[, pivot_cols],
     names_from  = "rp_label",
     values_from = "value_round"
   )
   wide <- as.data.frame(wide)
-  wide <- dplyr::rename(wide, Scenario = scenario, Obs = n_obs)
-  if (has_source) wide <- dplyr::rename(wide, Source = source)
 
-  # Reorder columns to canonical sequential order: 1:50, 1:20, ..., 1:1, ...,
-  # 19:20, 49:50. RPs that didn't survive the n-year reliability filter are
-  # simply absent from `names(wide)` and are skipped.
-  canonical <- c(names(RP_LOW), "1:1", names(RP_HIGH))
-  rp_present <- intersect(canonical, names(wide))
-  lead_cols  <- if (has_source) c("Scenario", "Source", "Estimate", "Obs")
-                else c("Scenario", "Estimate", "Obs")
-  wide <- wide[, c(lead_cols, rp_present), drop = FALSE]
+  if (isTRUE(adverse_only)) {
+    wide <- dplyr::rename(wide, `Scenario / Period` = scenario)
+    if (has_source) wide <- dplyr::rename(wide, Source = source)
+    rp_canonical <- c("Expected", "Adverse 1 in 5", "Adverse 1 in 10", "Adverse 1 in 20", "Adverse 1 in 50")
+    rp_present <- intersect(rp_canonical, names(wide))
+    lead_cols  <- if (has_source) c("Scenario / Period", "Source", "Estimate")
+                  else c("Scenario / Period", "Estimate")
+    wide <- wide[, c(lead_cols, rp_present), drop = FALSE]
+    scenario_col <- "Scenario / Period"
+  } else {
+    wide <- dplyr::rename(wide, Scenario = scenario, Obs = n_obs)
+    if (has_source) wide <- dplyr::rename(wide, Source = source)
+    canonical <- c(names(RP_LOW), "1:1", names(RP_HIGH))
+    rp_present <- intersect(canonical, names(wide))
+    lead_cols  <- if (has_source) c("Scenario", "Source", "Estimate", "Obs")
+                  else c("Scenario", "Estimate", "Obs")
+    wide <- wide[, c(lead_cols, rp_present), drop = FALSE]
+    scenario_col <- "Scenario"
+  }
 
   # Sort rows: Historical first, then SSPs. Within each scenario the
   # Estimate rows are arranged concentrically around the Central P50:
@@ -1319,19 +1314,19 @@ build_threshold_table_df <- function(threshold_tbl,
   }
   wide$.est_order <- .est_rank(wide$Estimate)
 
-  hist_rows <- wide[wide$Scenario == "Historical", , drop = FALSE]
-  ssp_rows  <- wide[wide$Scenario != "Historical", , drop = FALSE]
+  hist_rows <- wide[wide[[scenario_col]] == "Historical", , drop = FALSE]
+  ssp_rows  <- wide[wide[[scenario_col]] != "Historical", , drop = FALSE]
 
   if (nrow(hist_rows) > 0)
     hist_rows <- hist_rows[order(hist_rows$.est_order), , drop = FALSE]
 
   if (nrow(ssp_rows) > 0) {
-    ssp_rows$.ssp_sort <- sub(" /.*", "", ssp_rows$Scenario)
-    yr_m <- regexpr("[0-9]{4}-[0-9]{4}", ssp_rows$Scenario)
+    ssp_rows$.ssp_sort <- sub(" /.*", "", ssp_rows[[scenario_col]])
+    yr_m <- regexpr("[0-9]{4}-[0-9]{4}", ssp_rows[[scenario_col]])
     ssp_rows$.yr_sort  <- ifelse(
       yr_m > 0,
-      regmatches(ssp_rows$Scenario, yr_m),
-      regmatches(ssp_rows$Scenario, regexpr("[0-9]{4}", ssp_rows$Scenario))
+      regmatches(ssp_rows[[scenario_col]], yr_m),
+      regmatches(ssp_rows[[scenario_col]], regexpr("[0-9]{4}", ssp_rows[[scenario_col]]))
     )
     src_sort <- if (has_source)
       match(ssp_rows$Source, c("Baseline", "Policy")) else 1L
@@ -1820,7 +1815,7 @@ enhance_exceedance <- function(curves_tbl,
     fut_mod_df[fut_mod_df$source == "Policy", , drop = FALSE]
   else fut_mod_df[0, , drop = FALSE]
   hist_mean  <- if (nrow(hist_df) > 0L) mean(hist_df$central, na.rm = TRUE) else NA_real_
-  ann_y      <- if (isTRUE(logit_x)) 0.97 else 0.95
+  ann_y      <- if (max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55) 0.48 else if (isTRUE(logit_x)) 0.97 else 0.95
 
   # ---- Plot ---------------------------------------------------------------
   # Layer order (back to front): inter-model ribbon (future) -> coefficient
@@ -1848,7 +1843,9 @@ enhance_exceedance <- function(curves_tbl,
 
   # Inter-model ribbon (futures only). When source is present, avoid overlaying
   # baseline and policy ribbons by default (displaying policy spread).
-  if (nrow(fut_mod_df) > 0L) {
+  show_ens_ribbon <- !is.null(ensemble_band_q) &&
+    (ensemble_band_q[["hi"]] > ensemble_band_q[["lo"]])
+  if (nrow(fut_mod_df) > 0L && isTRUE(show_ens_ribbon)) {
     ribbon_df <- if (has_source) fut_policy_df else fut_mod_df
     ribbon_aes <- if (has_source)
       ggplot2::aes(y = .data$exceed_prob, xmin = .data$intermod_lo,
@@ -1970,7 +1967,7 @@ enhance_exceedance <- function(curves_tbl,
   p <- p +
     ggplot2::labs(
       x = x_label,
-      y = "Annual exceedance probability"
+      y = if (max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55) "Annual adverse exceedance probability (AEP)" else "Annual exceedance probability"
     ) +
     theme_wise() +
     ggplot2::theme(
@@ -1978,14 +1975,21 @@ enhance_exceedance <- function(curves_tbl,
     ) +
     ggplot2::coord_flip()
 
-  # ---- Return period lines (both tails, symmetric) -----------------------
+  # ---- Return period lines -----------------------
+  is_adverse_tail <- max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55
   if (isTRUE(return_period)) {
-    rp_all <- c(RP_LOW, RP_HIGH)
+    min_prob <- max(min(agg_df$exceed_prob, na.rm = TRUE), 0.005)
+    rp_all <- if (is_adverse_tail) {
+      rp_adv <- c("1:2" = 0.50, RP_LOW)
+      rp_adv[rp_adv >= min_prob * 0.85]
+    } else {
+      c(RP_LOW, RP_HIGH)
+    }
     for (nm in names(rp_all)) {
       prob      <- rp_all[nm]
       reliable  <- is.null(n_sim_years) ||
-        (!(nm == "1:20" && n_sim_years < 40) &&
-         !(nm == "1:50" && n_sim_years < 100))
+        (!(nm == "1:20" && n_sim_years < 20) &&
+         !(nm == "1:50" && n_sim_years < 50))
       rp_label  <- if (reliable) nm else paste0(nm, "*")
       label_col <- if (reliable) "grey40" else "grey65"
       p <- p +
@@ -1998,7 +2002,7 @@ enhance_exceedance <- function(curves_tbl,
           hjust = -0.1, vjust = -0.3, size = 2.8, colour = label_col
         )
     }
-    if (!is.null(n_sim_years) && n_sim_years < 100) {
+    if (!is.null(n_sim_years) && n_sim_years < 50 && "1:50" %in% names(rp_all)) {
       p <- p + ggplot2::annotate(
         "text", x = Inf, y = 0.02,
         label  = paste0("\u26a0 unreliable (n = ", n_sim_years, " yrs)"),
@@ -2007,8 +2011,21 @@ enhance_exceedance <- function(curves_tbl,
     }
   }
 
-  # ---- Optional logit probability axis -----------------------------------
-  if (isTRUE(logit_x)) {
+  # ---- Probability axis scaling ------------------------------------------
+  if (is_adverse_tail) {
+    # Adverse tail: log scale covering all adverse-tail points up to 0.55
+    log_breaks <- c(0.50, 0.20, 0.10, 0.05, 0.02)
+    log_labels <- c("1:2 (50%)", "1:5 (20%)", "1:10 (10%)", "1:20 (5%)", "1:50 (2%)")
+    min_prob <- max(min(agg_df$exceed_prob, na.rm = TRUE), 0.005)
+    keep_b <- log_breaks >= min_prob * 0.9
+    low_lim <- min(min_prob * 0.9, min(log_breaks[keep_b]) * 0.9)
+    p <- p + ggplot2::scale_y_continuous(
+      trans  = scales::log10_trans(),
+      breaks = log_breaks[keep_b],
+      labels = log_labels[keep_b],
+      limits = c(low_lim, 0.55)
+    )
+  } else if (isTRUE(logit_x)) {
     logit_breaks <- c(unname(RP_LOW), 0.50, rev(1 - unname(RP_LOW)))
     logit_labels <- c(names(RP_LOW), "Median", rev(names(RP_HIGH)))
     p <- p + ggplot2::scale_y_continuous(
