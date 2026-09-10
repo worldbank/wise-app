@@ -96,6 +96,40 @@ test_that("step3_adverse_dot_data and plot_step3_adverse_dot work correctly", {
   expect_s3_class(plt, "ggplot")
 })
 
+test_that("step3 adverse dot data carries model spread for baseline and policy", {
+  # Ensemble rows exist for both sources; the dot data must expose a spread
+  # band for each so all future scenarios can show model disagreement.
+  thresh <- tibble::tibble(
+    scenario      = rep("SSP2-4.5 / 2030-2040", each = 8),
+    source        = rep(rep(c("Baseline", "Policy"), each = 4), 1),
+    Estimate      = rep(c("Central (P50)", "Ensemble 0%", "Ensemble 100%", "Central (P50)"), 2),
+    rp_name       = rep(c("1:1", "1:10", "1:10", "1:10"), 2),
+    value         = c(3.2, 2.9, 3.1, 3.2, 3.65, 2.4, 2.9, 2.68),
+    n_obs         = 30L,
+    is_historical = FALSE
+  )
+  dot_df <- step3_adverse_dot_data(thresh, method = "mean", so = list(type = "numeric", name = "welfare"))
+  rp10 <- dot_df$rp_name == "1:10"
+  expect_true(all(c("base_lo", "base_hi", "policy_lo", "policy_hi") %in% names(dot_df)))
+  expect_equal(dot_df$base_lo[rp10], 2.9)
+  expect_equal(dot_df$base_hi[rp10], 3.1)
+  expect_equal(dot_df$policy_lo[rp10], 2.4)
+  expect_equal(dot_df$policy_hi[rp10], 2.9)
+  # Historical-free data: no baseline band on the 1:1 row is fine, but the
+  # RP with ensemble rows must carry finite bands for both series.
+  expect_true(is.finite(dot_df$base_lo[rp10]) && is.finite(dot_df$base_hi[rp10]))
+  expect_true(is.finite(dot_df$policy_lo[rp10]) && is.finite(dot_df$policy_hi[rp10]))
+
+  plt <- plot_step3_adverse_dot(dot_df, x_label = "Consumption ($/day)")
+  # Two spread-segment layers: baseline and policy.
+  n_spread_layers <- sum(vapply(plt$layers, function(l) {
+    inherits(l$geom, "GeomSegment") &&
+      !is.null(l$mapping) && !is.null(l$mapping$xend) &&
+      !is.null(l$mapping$colour)
+  }, logical(1)))
+  expect_equal(n_spread_layers, 2L)
+})
+
 test_that("step3_variance_breakdown and plot_step3_variance_contribution work correctly", {
   hist_entry <- list(out = tibble::tibble(
     sim_year = 2020:2029,

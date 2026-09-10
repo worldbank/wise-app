@@ -485,6 +485,30 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     ens_lo <- ens_hi <- tbl[FALSE, , drop = FALSE]
   }
 
+  # Baseline (no-policy) ensemble spread: every future scenario also has a
+  # baseline run with its own across-model disagreement, so the dot plot can
+  # show a spread band for both series.
+  ens_rows_b <- tbl[tbl$source == "Baseline" & grepl("^Ensemble ", tbl$Estimate), , drop = FALSE]
+  if (nrow(ens_rows_b)) {
+    parts_b <- lapply(split(ens_rows_b, ens_rows_b$scenario), function(x) {
+      n_each <- nrow(x) %/% 2L
+      if (n_each < 1L || nrow(x) != 2L * n_each) return(NULL)
+      list(
+        lo = x[seq_len(n_each), , drop = FALSE],
+        hi = x[seq.int(n_each + 1L, nrow(x)), , drop = FALSE]
+      )
+    })
+    parts_b <- Filter(Negate(is.null), parts_b)
+    if (length(parts_b)) {
+      ens_lo_b <- dplyr::bind_rows(lapply(parts_b, `[[`, "lo"))
+      ens_hi_b <- dplyr::bind_rows(lapply(parts_b, `[[`, "hi"))
+    } else {
+      ens_lo_b <- ens_hi_b <- tbl[FALSE, , drop = FALSE]
+    }
+  } else {
+    ens_lo_b <- ens_hi_b <- tbl[FALSE, , drop = FALSE]
+  }
+
   scenarios <- unique(as.character(central$scenario))
   rp_order <- c("Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20", "Adverse 1-in-50")
 
@@ -507,7 +531,15 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       pol_lo <- if (length(lo_val) && is.finite(lo_val[[1L]])) lo_val[[1L]] else p_val
       pol_hi <- if (length(hi_val) && is.finite(hi_val[[1L]])) hi_val[[1L]] else p_val
 
+      # Baseline (no-policy) spread band for this scenario and RP.
+      lo_val_b <- ens_lo_b$value[ens_lo_b$scenario == sc & ens_lo_b$rp_name == rp_id]
+      hi_val_b <- ens_hi_b$value[ens_hi_b$scenario == sc & ens_hi_b$rp_name == rp_id]
       is_hist <- identical(sc, "Historical")
+      base_lo <- if (!is_hist && length(lo_val_b) && is.finite(lo_val_b[[1L]]))
+        lo_val_b[[1L]] else NA_real_
+      base_hi <- if (!is_hist && length(hi_val_b) && is.finite(hi_val_b[[1L]]))
+        hi_val_b[[1L]] else NA_real_
+
       ssp_k   <- if (is_hist) "Historical" else .normalise_ssp(sc)
       yr_l    <- if (is_hist) "Historical" else .parse_year(sc)
 
@@ -519,6 +551,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         policy_val    = p_val,
         policy_lo     = pol_lo,
         policy_hi     = pol_hi,
+        base_lo       = base_lo,
+        base_hi       = base_hi,
         effect        = p_val - b_val,
         ssp_key       = ssp_k,
         yr_lbl        = yr_l,
@@ -552,25 +586,49 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
   )
   tbl$series <- ifelse(tbl$is_historical, "Historical", "Future")
 
-  p <- ggplot2::ggplot(tbl, ggplot2::aes(y = .data$rp_label)) +
+  # Vertical dodge: multiple scenarios share each return-period row, so
+  # offset the dumbbells per scenario to keep them readable.
+  dodge_width <- 0.42
+  tbl$rp_y <- as.integer(tbl$rp_label)
+  tbl$dodge_offset <- stats::ave(
+    seq_len(nrow(tbl)),
+    tbl$rp_y,
+    FUN = function(idx) {
+      k <- length(idx)
+      if (k <= 1L) return(0)
+      seq(-(k - 1L) / 2, (k - 1L) / 2, length.out = k)[
+        order(match(as.character(tbl$scenario_key[idx]), scenario_levels))
+      ] * (dodge_width / max(k - 1L, 1))
+    }
+  )
+
+  p <- ggplot2::ggplot(tbl, ggplot2::aes(y = .data$rp_y + .data$dodge_offset)) +
     ggplot2::geom_segment(
       ggplot2::aes(x = .data$baseline_val, xend = .data$policy_val,
-                   y = .data$rp_label, yend = .data$rp_label),
+                   yend = .data$rp_y + .data$dodge_offset),
       colour = .wise_slate, linewidth = 1.0, na.rm = TRUE
     ) +
     ggplot2::geom_segment(
       ggplot2::aes(x = .data$policy_lo, xend = .data$policy_hi,
-                   y = .data$rp_label, yend = .data$rp_label,
+                   yend = .data$rp_y + .data$dodge_offset,
                     colour = .data$scenario_key),
       linewidth = 2.4, alpha = 0.55, na.rm = TRUE
     ) +
+    # Baseline (no-policy) model-spread band: thinner than the policy band,
+    # same scenario colour, so both series carry model disagreement.
+    ggplot2::geom_segment(
+      ggplot2::aes(x = .data$base_lo, xend = .data$base_hi,
+                   yend = .data$rp_y + .data$dodge_offset,
+                    colour = .data$scenario_key),
+      linewidth = 1.3, alpha = 0.40, na.rm = TRUE
+    ) +
     ggplot2::geom_point(
-      ggplot2::aes(x = .data$baseline_val, y = .data$rp_label,
+      ggplot2::aes(x = .data$baseline_val,
                    shape = .data$series, colour = .data$scenario_key),
       fill = "#ffffff", stroke = 1.1, size = 3.0, na.rm = TRUE
     ) +
     ggplot2::geom_point(
-      ggplot2::aes(x = .data$policy_val, y = .data$rp_label,
+      ggplot2::aes(x = .data$policy_val,
                    shape = .data$series, colour = .data$scenario_key),
       fill = .wise_policy, stroke = 1.0,
       size = 3.6, na.rm = TRUE
@@ -588,13 +646,27 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
         labels = scenario_levels, name = NULL,
         guide = "none"
       ) +
+    ggplot2::annotate(
+      "text", x = -Inf,
+      y = sort(unique(tbl$rp_y)),
+      hjust = -0.08,
+      label = levels(droplevels(tbl$rp_label)),
+      size = 3.6, fontface = "bold",
+      colour = .wise_slate
+    ) +
     ggplot2::labs(
       x = x_label, y = NULL,
       title = title,
       subtitle = subtitle
     ) +
      theme_wise() +
-     ggplot2::theme(legend.position = "bottom") +
+     ggplot2::theme(
+       legend.position = "bottom",
+       # Return-period names are drawn as annotations next to each row band;
+       # suppress the default axis labels to avoid duplication.
+       axis.text.y  = ggplot2::element_blank(),
+       axis.ticks.y = ggplot2::element_blank()
+     ) +
      ggplot2::guides(
        colour = ggplot2::guide_legend(order = 1),
        shape = ggplot2::guide_legend(order = 2,
@@ -1863,6 +1935,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     if (identical(input$ensemble_band %||% "none", "none") && nrow(dot)) {
       dot$policy_lo <- NA_real_
       dot$policy_hi <- NA_real_
+      dot$base_lo <- NA_real_
+      dot$base_hi <- NA_real_
     }
     dot
   })
