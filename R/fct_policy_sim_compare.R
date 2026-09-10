@@ -575,18 +575,19 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
       shape = 21, fill = "#ffffff", colour = "#526575", stroke = 1.1, size = 3.0, na.rm = TRUE
     ) +
     ggplot2::geom_point(
-      ggplot2::aes(x = .data$policy_val, y = .data$rp_label,
-                    fill = .data$scenario_key),
-      shape = 21, colour = "#173042", stroke = 1.0, size = 3.6, na.rm = TRUE
+      ggplot2::aes(x = .data$policy_val, y = .data$rp_label),
+      shape = 21, fill = "#D55E00", colour = "#7F2704", stroke = 1.0,
+      size = 3.6, na.rm = TRUE
     ) +
      ggplot2::scale_colour_manual(
        values = scenario_colours, breaks = scenario_levels,
        labels = scenario_levels, name = "Climate scenario and period"
      ) +
-     ggplot2::scale_fill_manual(
-       values = scenario_colours, breaks = scenario_levels,
-       labels = scenario_levels, name = "Climate scenario and period"
-     ) +
+      ggplot2::scale_fill_manual(
+        values = scenario_colours, breaks = scenario_levels,
+        labels = scenario_levels, name = "Climate scenario and period",
+        guide = "none"
+      ) +
     ggplot2::labs(
       x = x_label, y = NULL,
       title = title,
@@ -673,7 +674,7 @@ plot_step3_variance_contribution <- function(var_tbl) {
 
   fill_map <- c(
     "Baseline" = "#9aa9b5",
-    "Policy"   = "#173042"
+    "Policy"   = "#D55E00"
   )
 
   ggplot2::ggplot(long, ggplot2::aes(x = .data$scenario, y = .data$sd, fill = .data$source)) +
@@ -1682,6 +1683,12 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
                                     bq_coef, bq_ens) {
     z_lo <- stats::qnorm(bq_coef[["lo"]])
     z_hi <- stats::qnorm(bq_coef[["hi"]])
+    method <- input$cmp_agg_method %||% "mean"
+    so_obj <- tryCatch(
+      if (!is.null(baseline_hist_sim())) baseline_hist_sim()$so else NULL,
+      error = function(e) NULL
+    )
+    adverse_tail <- metric_metadata(method, so_obj)$adverse_tail
     RPs <- c(RP_LOW, c("1:1" = 0.5), RP_HIGH)
     one <- function(tbl, scenario_label, is_hist) {
       if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
@@ -1695,7 +1702,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       if (length(RPs_keep) == 0L) return(NULL)
       # Per-model rank-interp at each kept RP (matrix: model * RP) - shape
       # guaranteed by the helper (see by_model_rp_matrix()).
-      mm        <- by_model_rp_matrix(vals, sds, RPs_keep)
+      mm        <- by_model_rp_matrix(vals, sds, RPs_keep, adverse_tail)
       per_model_rp    <- mm$rp
       per_model_sd_at_rp <- mm$sd
       central_vec <- if (is_hist) per_model_rp[1L, ] else

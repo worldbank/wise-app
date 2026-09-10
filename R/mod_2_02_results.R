@@ -1118,6 +1118,9 @@ mod_2_02_results_server <- function(id,
       hist_ref  <- hist_ref_val()
       wk        <- weight_key()
       method    <- input$cmp_agg_method %||% "mean"
+      so_obj    <- tryCatch(if (!is.null(hist_sim())) hist_sim()$so else NULL,
+                            error = function(e) NULL)
+      adverse_tail <- metric_metadata(method, so_obj)$adverse_tail
 
       RPs <- c(RP_LOW, c("1:1" = 0.5), RP_HIGH)
 
@@ -1139,7 +1142,7 @@ mod_2_02_results_server <- function(id,
 
         # Per-model rank-interp at each kept RP (matrix: model * RP) - shape
         # guaranteed by the helper (see by_model_rp_matrix()).
-        mm        <- by_model_rp_matrix(vals, sds, RPs_keep)
+         mm        <- by_model_rp_matrix(vals, sds, RPs_keep, adverse_tail)
         per_model_rp       <- mm$rp
         per_model_sd_at_rp <- mm$sd
 

@@ -32,7 +32,9 @@ metric_metadata <- function(method = "mean", so = NULL) {
     unit = "outcome units", format = "number"
   )
   direction <- out$direction %||% NULL
-  if (!is.null(so)) {
+  # Built-in aggregation methods have an explicit direction contract. Do not
+  # let stale outcome metadata from an earlier selection reverse their tail.
+  if (!is.null(so) && !method %in% names(.WISE_METRIC_REGISTRY)) {
     so_direction <- if (is.data.frame(so) && "direction" %in% names(so)) {
       so$direction[[1]]
     } else if (is.list(so)) {
@@ -77,8 +79,8 @@ metric_axis_label <- function(method = "mean", so = NULL, deviation = "none") {
 metric_decision_return_periods <- function(method = "mean", so = NULL) {
   spec <- metric_metadata(method, so)
   tail_names <- if (identical(spec$adverse_tail, "high")) {
-    c("Adverse 1-in-5" = "4:5", "Adverse 1-in-10" = "9:10",
-      "Adverse 1-in-20" = "19:20", "Adverse 1-in-50" = "49:50")
+    c("Adverse 1-in-5" = "1:5", "Adverse 1-in-10" = "1:10",
+      "Adverse 1-in-20" = "1:20", "Adverse 1-in-50" = "1:50")
   } else {
     c("Adverse 1-in-5" = "1:5", "Adverse 1-in-10" = "1:10",
       "Adverse 1-in-20" = "1:20", "Adverse 1-in-50" = "1:50")

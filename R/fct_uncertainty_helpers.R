@@ -69,10 +69,13 @@ by_model_matrix <- function(tbl) {
 #'
 #' @param vals    Numeric matrix (`models x sim years`) of point values.
 #' @param sds     Numeric matrix (`models x sim years`) of coefficient SDs.
-#' @param RPs_keep Named numeric vector of admissible exceedance probabilities.
+#' @param RPs_keep Named numeric vector of admissible adverse-tail probabilities.
+#' @param adverse_tail Whether adverse outcomes are in the upper or lower tail.
 #' @return List with `rp` and `sd`, both `models x RPs`.
 #' @noRd
-by_model_rp_matrix <- function(vals, sds, RPs_keep) {
+by_model_rp_matrix <- function(vals, sds, RPs_keep,
+                               adverse_tail = c("high", "low")) {
+  adverse_tail <- match.arg(adverse_tail)
   n_m <- nrow(vals)
   n_r <- length(RPs_keep)
   rp    <- matrix(NA_real_, nrow = n_m, ncol = n_r)
@@ -82,12 +85,15 @@ by_model_rp_matrix <- function(vals, sds, RPs_keep) {
     ok <- is.finite(v)
     if (sum(ok) < 2L) next
     sv <- sort(v[ok])
-    rp[i, ] <- vapply(RPs_keep, function(p) rank_interp(sv, p), numeric(1L))
+    rp[i, ] <- vapply(RPs_keep, function(p) {
+      rank_interp(sv, if (identical(adverse_tail, "high")) p else 1 - p)
+    }, numeric(1L))
     s <- sds[i, ]
     if (all(is.na(s))) next
     s_sorted <- s[ok][order(v[ok])]
-    sd_at[i, ] <- vapply(RPs_keep, function(p) rank_interp(s_sorted, p),
-                         numeric(1L))
+    sd_at[i, ] <- vapply(RPs_keep, function(p) {
+      rank_interp(s_sorted, if (identical(adverse_tail, "high")) p else 1 - p)
+    }, numeric(1L))
   }
   list(rp = rp, sd = sd_at)
 }

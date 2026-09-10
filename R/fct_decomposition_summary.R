@@ -44,7 +44,7 @@ decomposition_summary_data <- function(decomp_df, is_rif = TRUE,
   rows <- tibble::tibble(
     channel_id = c("total", "level", "cash_transfer", "covariate_shift",
                    "resilience", "repositioning", "interaction"),
-    channel = c("Total", "Level", "Cash transfer", "Covariate shift",
+    channel = c("Total", "Main effect", "Cash transfer", "Covariate shift",
                 "Resilience", "Repositioning", "Interaction"),
     parent = c(NA_character_, "total", "level", "level", "total",
                "resilience", "resilience"),
@@ -94,13 +94,19 @@ plot_decomposition_headline <- function(summary_df,
   }
   ids <- c("level", "resilience", "total")
   df <- summary_df[summary_df$channel_id %in% ids, , drop = FALSE]
-  df$channel <- factor(df$channel, levels = c("Level", "Resilience", "Total"))
+  df$channel <- factor(df$channel, levels = c("Main effect", "Resilience", "Total"))
+  if (!"scenario" %in% names(df)) df$scenario <- "Historical"
+  scenario_levels <- unique(as.character(df$scenario))
+  scenario_palette <- c("#7f8c99", "#009E73", "#56B4E9", "#D55E00", "#CC79A7")
+  scenario_colours <- stats::setNames(
+    rep(scenario_palette, length.out = length(scenario_levels)), scenario_levels
+  )
   ggplot2::ggplot(df, ggplot2::aes(x = .data$channel, y = .data$percent,
-                                   fill = .data$channel)) +
+                                   fill = .data$scenario)) +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-    ggplot2::geom_col(width = 0.62, colour = "#243746") +
-    ggplot2::scale_fill_manual(values = c(Level = "#0072B2", Resilience = "#D55E00",
-                                           Total = "#009E73"), guide = "none") +
+    ggplot2::geom_col(width = 0.72, colour = "#243746",
+                      position = ggplot2::position_dodge(width = 0.78)) +
+    ggplot2::scale_fill_manual(values = scenario_colours, name = "Scenario") +
     ggplot2::labs(x = NULL, y = y_label) +
     theme_wise(base_size = 12)
 }
@@ -108,9 +114,9 @@ plot_decomposition_headline <- function(summary_df,
 decomposition_explanation <- function(is_rif) {
   if (is_rif) {
     list(
-      title = "RIF decomposition: level and resilience channels",
+      title = "RIF decomposition: main effect and resilience channels",
       text = paste(
-        "Level includes the cash transfer and covariate shift.",
+        "Main effect includes the cash transfer and covariate shift.",
         "Resilience includes repositioning along the estimated welfare-quantile",
         "weather-sensitivity curve and the weather-policy interaction.",
         "RIF interpolation is limited to the estimated quantile grid."
@@ -118,10 +124,10 @@ decomposition_explanation <- function(is_rif) {
     )
   } else {
     list(
-      title = "OLS decomposition: level and interaction channels",
+      title = "OLS decomposition: main effect and interaction channels",
       text = paste(
         "OLS has no repositioning channel because its weather coefficients are",
-        "constant. Level includes the cash transfer and covariate shift; resilience",
+        "constant. Main effect includes the cash transfer and covariate shift; resilience",
         "is represented by the weather-policy interaction only."
       )
     )
@@ -239,10 +245,7 @@ plot_decomposition_channels_by_decile <- function(tbl, is_rif = NULL) {
     ggplot2::scale_fill_manual(values = colours, drop = FALSE) +
     ggplot2::labs(x = "Fixed observed baseline welfare decile (1 = poorest)",
                   y = "Policy effect (percent change)", fill = "Channel",
-                  subtitle = if (is_rif)
-                    "Stacked bars show direct, covariate-shift, repositioning, and interaction effects; points show the total."
-                  else
-                    "Stacked bars show direct, covariate-shift, and interaction effects; repositioning is not available for this engine.") +
+                  subtitle = NULL) +
     theme_wise(base_size = 12) + ggplot2::theme(legend.position = "bottom")
 }
 

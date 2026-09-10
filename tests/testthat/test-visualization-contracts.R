@@ -9,6 +9,24 @@ test_that("metric metadata carries direction and adverse tail", {
   expect_identical(high$adverse_tail, "low")
 })
 
+test_that("selected built-in metric direction overrides stale outcome metadata", {
+  spec <- wiseapp:::metric_metadata(
+    "headcount_ratio",
+    so = list(direction = "higher_is_better")
+  )
+  expect_identical(spec$direction, "lower_is_better")
+  expect_identical(spec$adverse_tail, "high")
+})
+
+test_that("return-period interpolation selects the adverse tail", {
+  vals <- matrix(seq_len(20), nrow = 1)
+  sds <- matrix(0, nrow = 1, ncol = 20)
+  high <- wiseapp:::by_model_rp_matrix(vals, sds, c(`1:20` = 0.05), "high")$rp[1, 1]
+  low <- wiseapp:::by_model_rp_matrix(vals, sds, c(`1:20` = 0.05), "low")$rp[1, 1]
+  expect_equal(high, 19.5)
+  expect_equal(low, 1.5)
+})
+
 test_that("paired effects are zero for identical baseline and policy tables", {
   tbl <- tibble::tibble(
     sim_year = c(2020L, 2021L),
@@ -82,7 +100,7 @@ test_that("weather support export preserves source and variable", {
     scenario_weather = list(`SSP2 / 2030` = transform(weather, temp = temp + 1))
   )
   expect_true(all(c("weather_variable", "source", "value") %in% names(out)))
-  expect_setequal(unique(out$source), c("Step 1 regression input", "Full historical archive", "SSP2 / 2030"))
+  expect_setequal(unique(out$source), c("Model support", "Full historical archive", "SSP2 / 2030"))
   expect_true(all(is.finite(out$value)))
 })
 
@@ -182,7 +200,20 @@ test_that("decision return periods follow metric adverse direction", {
   high <- wiseapp:::metric_decision_return_periods("mean")
   low <- wiseapp:::metric_decision_return_periods("headcount_ratio")
   expect_identical(unname(high[["Adverse 1-in-10"]]), "1:10")
-  expect_identical(unname(low[["Adverse 1-in-10"]]), "9:10")
+  expect_identical(unname(low[["Adverse 1-in-10"]]), "1:10")
+})
+
+test_that("adverse threshold interpolation follows metric tail direction", {
+  vals <- matrix(seq_len(20), nrow = 1L)
+  sds <- matrix(0, nrow = 1L, ncol = 20L)
+  rp <- c("1:20" = 0.05)
+
+  high <- wiseapp:::by_model_rp_matrix(vals, sds, rp, adverse_tail = "high")$rp[1, 1]
+  low  <- wiseapp:::by_model_rp_matrix(vals, sds, rp, adverse_tail = "low")$rp[1, 1]
+
+  expect_gt(high, low)
+  expect_equal(high, 19.5)
+  expect_equal(low, 1.5)
 })
 
 test_that("step2 adverse dot data extracts supported periods and ensemble bounds", {
@@ -242,6 +273,18 @@ test_that("decomposition scenario range has no continuous lines across periods",
   expect_s3_class(plt, "ggplot")
   line_layers <- vapply(plt$layers, function(l) inherits(l$geom, "GeomLine"), logical(1))
   expect_false(any(line_layers))
+})
+
+test_that("decomposition scenario range uses free y-scales for channels", {
+  sc <- data.frame(
+    scenario = rep("SSP2 / 2030", 3),
+    year_start = 2030, year_end = 2040, sim_year = 1:3,
+    delta_main = 0.05, delta_res1 = 0.01,
+    delta_res2 = c(-0.02, -0.03, -0.01),
+    delta_total = c(0.03, 0.02, 0.04), weight = 1
+  )
+  plt <- wiseapp:::.plot_decomp_scenario_range(sc, is_rif = TRUE)
+  expect_true(is.null(plt$facet$params$scales) || identical(plt$facet$params$scales, "free_y"))
 })
 
 test_that("new export keys return valid figures or data frames", {

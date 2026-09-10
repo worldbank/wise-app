@@ -560,10 +560,10 @@ plot_policy_levels_dumbbell <- function(baseline_df, policy_df,
     plt <- plt +
       ggplot2::geom_point(
         data = fut_merged,
-        ggplot2::aes(x = .data$value_policy, fill = .data$ssp_col),
-        shape = 21, colour = "#243746", size = 4.0, stroke = 1.2, na.rm = TRUE
+        ggplot2::aes(x = .data$value_policy),
+        shape = 21, fill = "#D55E00", colour = "#7F2704", size = 4.0,
+        stroke = 1.2, na.rm = TRUE
       ) +
-      ggplot2::scale_fill_identity() +
       ggplot2::geom_text(
         data = fut_merged,
         ggplot2::aes(x = pmax(.data$value_base, .data$value_policy),
@@ -652,6 +652,11 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
       )
     }
 
+    mean_df <- stats::aggregate(value ~ scenario + source, data = df,
+                                FUN = mean, na.rm = TRUE)
+    mean_df$scenario <- factor(mean_df$scenario, levels = scenario_levels)
+    mean_df$source <- factor(mean_df$source, levels = c("Baseline", "Policy"))
+
     p <- p + distribution_layer +
       ggplot2::geom_point(
         ggplot2::aes(group = interaction(.data$scenario, .data$source),
@@ -659,12 +664,18 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
         position = ggplot2::position_jitterdodge(jitter.width = 0.06, dodge.width = 0.65),
         size = 1.0, na.rm = TRUE
       ) +
-      ggplot2::stat_summary(
-        ggplot2::aes(group = interaction(.data$scenario, .data$source),
-                     shape = .data$source),
-        fun = mean, geom = "point",
-        size = 3.0, fill = "white", colour = "#173042",
-        position = ggplot2::position_dodge(width = 0.65),
+      ggplot2::geom_point(
+        data = mean_df[mean_df$source == "Baseline", , drop = FALSE],
+        ggplot2::aes(x = .data$scenario, y = .data$value),
+        shape = 21, size = 3.0, fill = "white", colour = "#526575", stroke = 1.0,
+        position = ggplot2::position_nudge(x = -0.1625),
+        na.rm = TRUE
+      ) +
+      ggplot2::geom_point(
+        data = mean_df[mean_df$source == "Policy", , drop = FALSE],
+        ggplot2::aes(x = .data$scenario, y = .data$value),
+        shape = 21, size = 3.4, fill = "#D55E00", colour = "#7F2704", stroke = 1.0,
+        position = ggplot2::position_nudge(x = 0.1625),
         na.rm = TRUE
       ) +
       ggplot2::scale_fill_manual(
@@ -710,13 +721,15 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                           colour = "#243746", fill = "white")
   }
 
-  p <- p + distribution_layer +
-     ggplot2::geom_point(ggplot2::aes(colour = .data$scenario_key),
-                         position = ggplot2::position_jitter(width = 0.08),
-                         alpha = 0.55, size = 1.2, na.rm = TRUE) +
-    ggplot2::stat_summary(fun = mean, geom = "point", shape = 23,
-                          size = 2.8, fill = "white", colour = "#173042",
-                          na.rm = TRUE) +
+    p <- p + distribution_layer +
+      ggplot2::geom_point(ggplot2::aes(colour = .data$scenario_key),
+                          position = ggplot2::position_jitter(width = 0.08),
+                          alpha = 0.55, size = 1.2, na.rm = TRUE) +
+      ggplot2::stat_summary(
+        fun = mean, geom = "point", shape = 23,
+        size = 2.8, fill = "white", colour = "#526575", stroke = 1.0,
+        na.rm = TRUE
+      ) +
      ggplot2::scale_fill_manual(values = scenario_palette,
                                 na.value = "#8c8c8c", guide = "none") +
      ggplot2::scale_colour_manual(values = scenario_palette, guide = "none") +
@@ -1687,7 +1700,7 @@ plot_variance_contribution <- function(var_tbl) {
     ggplot2::labs(
       x = NULL,
       y = "Standard deviation (outcome units)",
-      subtitle = "Aligned components are separate quantities; they are not stacked or added."
+      subtitle = NULL
     ) +
     theme_wise() +
     ggplot2::theme(
@@ -2003,13 +2016,13 @@ enhance_exceedance <- function(curves_tbl,
     p +
       ggplot2::geom_line(data = hist_df, colour = "black", na.rm = TRUE) +
       # Baseline: dashed line with scenario colour.
-      # Policy: solid line with scenario colour, avoiding hardcoded red.
       ggplot2::geom_line(data = fut_baseline_df, linetype = "dashed",
                          alpha = 0.8, na.rm = TRUE) +
       ggplot2::geom_line(data = fut_policy_df, linetype = "solid",
+                         colour = "#D55E00", linewidth = 1.5,
                          na.rm = TRUE,
                          show.legend = c(colour = FALSE, linetype = FALSE,
-                                         linewidth = TRUE))
+                                          linewidth = TRUE))
   } else {
     p +
       ggplot2::geom_line(data = hist_df, linewidth = 0.9, na.rm = TRUE) +
@@ -2033,7 +2046,7 @@ enhance_exceedance <- function(curves_tbl,
       values = scenario_colour_map,
       breaks = scenario_levels,
       labels = scenario_levels,
-      name   = "Scenario",
+      name   = NULL,
       guide  = ggplot2::guide_legend(
         override.aes = list(linewidth = 0.9, linetype = "solid", alpha = 1)
       )
@@ -2046,19 +2059,15 @@ enhance_exceedance <- function(curves_tbl,
     ggplot2::scale_linetype_manual(
       values = scenario_linetype_map,
       breaks = scenario_levels,
-      name   = "Scenario"
+      name   = NULL
     )
   if (has_source) {
     p <- p +
       ggplot2::scale_linewidth_manual(
-        values = c(Baseline = 0.8, Policy = 1.3),
+        values = c(Baseline = 0.8, Policy = 1.5),
         breaks = c("Baseline", "Policy"),
-        name   = "Series",
-        guide  = ggplot2::guide_legend(
-          override.aes = list(
-            colour = c("#4b5563", "#243746"), linetype = c("dashed", "solid")
-          )
-        )
+         name   = NULL,
+         guide  = ggplot2::guide_legend(title = NULL)
       ) +
       ggplot2::scale_alpha_manual(
         # Keep both uncertainty bands transparent; policy's central line is
@@ -2075,7 +2084,7 @@ enhance_exceedance <- function(curves_tbl,
     ) +
     theme_wise() +
     ggplot2::theme(
-      legend.position = "bottom"
+         legend.position = "bottom"
     ) +
     ggplot2::coord_flip()
 

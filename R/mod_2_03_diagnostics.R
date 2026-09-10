@@ -35,10 +35,8 @@ mod_2_03_diagnostics_ui <- function(id) {
       class = "results-section-card diagnostic-section-card",
       shiny::tags$div(
         style = "display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:8px;",
-        shiny::tags$div(
-          pill_toggle(ns("diag_weather_vars"), label = NULL,
-                      choices = c("Loading weather variables" = ""), selected = "")
-        ),
+        pill_toggle(ns("diag_weather_vars"), label = NULL,
+                    choices = c("Loading weather variables" = ""), selected = ""),
         shiny::uiOutput(ns("diag_weather_scenario_ui"))
       ),
       wise_plot_output(ns("diag_weather_density"),

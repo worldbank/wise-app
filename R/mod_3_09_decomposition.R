@@ -19,13 +19,22 @@ mod_3_09_decomposition_ui <- function(id) {
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      shiny::uiOutput(ns("decomp_explanation_ui")),
+      pill_toggle(
+        ns("decomp_weather_basis"),
+        label = "Weather-year basis",
+        choices = c(
+          "Mean" = "mean",
+          "Adverse 1-in-10" = "adverse_10",
+          "Adverse 1-in-20" = "adverse_20"
+        ),
+        selected = "mean",
+        layout = "horizontal"
+      ),
       wise_plot_output(ns("headline_decomp_plot"),
-                       "Level, resilience, and total policy effect decomposition",
+                       "Main effect, resilience, and total policy effect decomposition",
                        height = "360px"),
       DT::DTOutput(ns("headline_decomp_table")),
-      shiny::tags$p(class = "diagnostic-note",
-                    "This figure summarizes the average policy effect across the baseline population using mean historical-baseline weather. It is not an adverse-year or future climate-scenario result.")
+      shiny::uiOutput(ns("headline_decomp_note_ui"))
     ),
 
     shiny::h4(
@@ -34,11 +43,21 @@ mod_3_09_decomposition_ui <- function(id) {
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
+      shiny::div(
+        style = "display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;",
+        pill_toggle(
+          ns("decile_weather_basis"),
+          label = "Weather-year basis",
+          choices = c("Mean" = "mean", "Adverse 1-in-10" = "adverse_10", "Adverse 1-in-20" = "adverse_20"),
+          selected = "mean",
+          layout = "horizontal"
+        ),
+        shiny::uiOutput(ns("decile_scenario_ui"))
+      ),
       wise_plot_output(ns("decomp_bar_plot"),
                        "Stacked policy-effect channels by baseline welfare decile",
                        height = "450px"),
-      shiny::tags$p(class = "diagnostic-note",
-                    "Decile 1 is the poorest. Stacked bars separate direct transfer, covariate shift, weather-policy interaction, and - for RIF models only - repositioning. The marker shows the total policy effect. Deciles are fixed from weighted observed baseline welfare.")
+      shiny::uiOutput(ns("decomp_bar_note_ui"))
     ),
 
     shiny::uiOutput(ns("beta_curve_ui")),
@@ -46,7 +65,7 @@ mod_3_09_decomposition_ui <- function(id) {
     shiny::uiOutput(ns("scenario_range_ui")),
 
     shiny::h4(
-      "What should be checked in the technical decomposition?",
+      "How do decomposition channels vary by weather year?",
       class = "diagnostic-section-heading"
     ),
     shiny::div(
@@ -54,7 +73,7 @@ mod_3_09_decomposition_ui <- function(id) {
       DT::DTOutput(ns("decomp_summary_table")),
       shiny::uiOutput(ns("interaction_warning_ui")),
       shiny::tags$p(class = "diagnostic-note",
-                    "Mean effects are weighted across the baseline population under mean historical weather. Coefficient SE is the delta-method standard error from the fitted coefficient covariance; it is not a 95% confidence interval. Residual and survey-sampling uncertainty are not included.")
+                    "Columns show weighted policy effects under mean weather and adverse historical weather years. Coefficient SE is the delta-method standard error from the fitted coefficient covariance; it is not a 95% confidence interval. Residual and survey-sampling uncertainty are not included.")
     )
   )
 }
@@ -118,13 +137,89 @@ mod_3_09_decomposition_server <- function(id,
       else as.character(vl$label[idx])
     }
 
-    headline_decomp_data <- reactive({
-      decomposition_summary_data(decomp_result(), is_rif())
+    weather_basis_label <- reactive({
+      switch(input$decomp_weather_basis %||% "mean",
+             mean = "mean historical-baseline weather",
+             adverse_10 = "adverse 1-in-10 historical weather year",
+             adverse_20 = "adverse 1-in-20 historical weather year",
+             "mean historical-baseline weather")
     })
-    output$decomp_explanation_ui <- renderUI({
-      e <- decomposition_explanation(is_rif())
-      shiny::tags$p(class = "diagnostic-note",
-                    shiny::tags$strong(paste0(e$title, ". ")), e$text)
+
+    historical_weather_basis_for_probability <- function(target_p) {
+      hs <- baseline_hist_sim()
+      if (is.null(hs) || is.null(hs$weather_raw)) return(NULL)
+      raw <- step2_resolve_weather(hs$weather_raw, hs)
+      if (is.null(raw) || !nrow(raw)) return(NULL)
+      if (is.null(target_p)) return(raw)
+      if (!"timestamp" %in% names(raw)) return(raw)
+      years <- as.integer(format(raw$timestamp, "%Y"))
+      year_values <- split(raw, years)
+      pipe <- hs$pipeline
+      if (is.null(pipe) || is.null(pipe$y_point) || is.null(pipe$sim_year)) return(raw)
+      simulated_years <- split(seq_along(pipe$y_point), pipe$sim_year)
+      annual_values <- vapply(simulated_years, function(idx) {
+        vals <- as.numeric(pipe$y_point[idx])
+        weights <- if (!is.null(pipe$weight)) as.numeric(pipe$weight[idx]) else NULL
+        if (is.null(weights)) mean(vals, na.rm = TRUE) else
+          stats::weighted.mean(vals, weights, na.rm = TRUE)
+      }, numeric(1L))
+      # Select the most adverse observed annual outcome using the same metric
+      # direction contract as the Results plots.
+      agg <- annual_values[names(annual_values) %in% names(year_values)]
+      adverse_high <- identical(
+        outcome_direction(hs$so$name %||% "welfare", hs$so$type %||% "numeric"),
+        "lower_is_better"
+      )
+      ordered <- order(agg, decreasing = adverse_high)
+      take <- max(1L, min(length(ordered), round(length(ordered) * target_p)))
+      year_values[[names(agg)[ordered[[take]]]]]
+    }
+
+    historical_weather_for_basis <- function(basis) {
+      if (identical(basis, "mean")) return(historical_weather_basis_for_probability(NULL))
+      historical_weather_basis_for_probability(
+        if (identical(basis, "adverse_10")) 0.10 else 0.05
+      )
+    }
+    historical_weather_basis <- reactive({
+      historical_weather_for_basis(input$decomp_weather_basis %||% "mean")
+    })
+
+    decomp_for_basis <- function(basis) {
+      if (identical(basis, "mean")) return(decomp_result())
+      hs <- baseline_hist_sim()
+      svy_b <- baseline_svy(); svy_p <- policy_svy(); mf <- model_fit()
+      if (is.null(hs) || is.null(svy_b) || is.null(svy_p) || is.null(mf)) return(decomp_result())
+      tryCatch(
+        decompose_policy_effect(
+          svy_baseline = svy_b, svy_policy = svy_p, model_fit = mf,
+          so = hs$so, weather_raw = historical_weather_for_basis(basis),
+          skip_coef = !isTRUE(show_coef_uncertainty())
+        ),
+        error = function(e) decomp_result()
+      )
+    }
+    selected_decomp_result <- reactive({
+      decomp_for_basis(input$decomp_weather_basis %||% "mean")
+    })
+
+    headline_decomp_data <- reactive({
+      hist <- decomposition_summary_data(selected_decomp_result(), is_rif())
+      hist$scenario <- "Historical"
+      sc <- decomp_scenarios()
+      if (is.null(sc) || !is.data.frame(sc) || !nrow(sc)) return(hist)
+      future <- dplyr::bind_rows(lapply(split(sc, sc$scenario), function(x) {
+        out <- decomposition_summary_data(x, is_rif())
+        out$scenario <- as.character(x$scenario[[1L]])
+        out
+      }))
+      dplyr::bind_rows(hist, future)
+    })
+    output$headline_decomp_note_ui <- renderUI({
+      shiny::tags$p(class = "diagnostic-note", paste0(
+        "This figure summarizes the policy effect using ", weather_basis_label(),
+        ". It is not a future climate-scenario result."
+      ))
     })
     output$headline_decomp_plot <- renderPlot({
       req(headline_decomp_data())
@@ -138,6 +233,7 @@ mod_3_09_decomposition_server <- function(id,
       tbl <- headline_decomp_data()
       tbl <- tbl[tbl$channel_id %in% c("level", "resilience", "total"), , drop = FALSE]
       tbl <- data.frame(
+        Scenario = tbl$scenario,
         `Effect component` = tbl$channel,
         `Mean effect (%)` = round(tbl$percent, 2),
         `Share of total (%)` = round(100 * tbl$share_of_total, 1),
@@ -154,10 +250,10 @@ mod_3_09_decomposition_server <- function(id,
     outputOptions(output, "headline_decomp_table", suspendWhenHidden = FALSE)
     wise_export_figure(
       key = "policy_decomposition_headline",
-      label = "Headline level and resilience decomposition",
+      label = "Headline main effect and resilience decomposition",
       step = 3L,
       fun = function() plot_decomposition_headline(headline_decomp_data()),
-      description = "Headline decomposition into level, resilience, and total effects with reconciliation on the model scale.",
+      description = "Headline decomposition into main effect, resilience, and total effects with reconciliation on the model scale.",
       width = 9, height = 5
     )
     wise_export_table(
@@ -168,13 +264,14 @@ mod_3_09_decomposition_server <- function(id,
         out <- headline_decomp_data()
         out <- out[out$channel_id %in% c("level", "resilience", "total"), , drop = FALSE]
         data.frame(
+          Scenario = out$scenario,
           `Effect component` = out$channel,
           `Mean effect (%)` = round(out$percent, 2),
           `Share of total (%)` = round(100 * out$share_of_total, 1),
           check.names = FALSE
         )
       },
-      description = "Mean-historical-weather decomposition into level, resilience, and total policy effects."
+      description = "Mean-historical-weather decomposition into main effect, resilience, and total policy effects."
     )
 
     # --- Stacked bar chart by decile ---
@@ -184,7 +281,7 @@ mod_3_09_decomposition_server <- function(id,
       label = "Policy effect by channel",
       step  = 3L,
       fun   = function() {
-        res <- decomp_result()
+        res <- selected_decomp_result()
         if (is.null(res) || !is.data.frame(res) || nrow(res) == 0) return(NULL)
           plot_decomposition_channels_by_decile(
             decomposition_channels_by_decile(res, baseline_svy(), so()$name %||% "welfare", is_rif()),
@@ -202,8 +299,8 @@ mod_3_09_decomposition_server <- function(id,
       label = "Decomposition channels by baseline decile",
       step = 3L,
        fun = function() decomposition_decile_export(
-         decomposition_channels_by_decile(
-           decomp_result(), baseline_svy(), so()$name %||% "welfare", is_rif()
+          decomposition_channels_by_decile(
+            selected_decomp_result(), baseline_svy(), so()$name %||% "welfare", is_rif()
          ),
          is_rif()
        ),
@@ -225,12 +322,41 @@ mod_3_09_decomposition_server <- function(id,
       ),
       width = 9, height = 6
     )
+    output$decile_scenario_ui <- shiny::renderUI({
+      sc <- decomp_scenarios()
+      choices <- c("Historical" = "Historical")
+      if (is.data.frame(sc) && nrow(sc) && "scenario" %in% names(sc)) {
+        future <- unique(as.character(sc$scenario))
+        choices <- c(choices, stats::setNames(future, future))
+      }
+      pill_toggle(ns("decile_scenario"), label = "Scenario", choices = choices,
+                  selected = isolate(input$decile_scenario) %||% "Historical",
+                  layout = "horizontal")
+    })
+
     decile_decomp_data <- reactive({
-      res <- decomp_result()
       outcome <- so()
-      if (is.null(res) || !is.data.frame(res) || !nrow(res) || is.null(outcome)) {
+      if (is.null(outcome)) {
         return(tibble::tibble())
       }
+      scenario <- input$decile_scenario %||% "Historical"
+      basis <- input$decile_weather_basis %||% "mean"
+      if (identical(scenario, "Historical")) {
+        res <- decomp_for_basis(basis)
+      } else {
+        sc <- decomp_scenarios()
+        res <- if (is.data.frame(sc) && nrow(sc))
+          sc[sc$scenario == scenario, , drop = FALSE] else NULL
+        if (!is.null(res) && nrow(res) && !identical(basis, "mean") && "sim_year" %in% names(res)) {
+          target <- if (identical(basis, "adverse_10")) 0.10 else 0.05
+          year_total <- tapply(res$delta_total, res$sim_year, mean, na.rm = TRUE)
+          adverse_high <- identical(outcome_direction(outcome$name, outcome$type), "lower_is_better")
+          ordered <- order(year_total, decreasing = adverse_high)
+          take <- max(1L, min(length(ordered), round(length(ordered) * target)))
+          res <- res[res$sim_year == names(year_total)[ordered[[take]]], , drop = FALSE]
+        }
+      }
+      if (is.null(res) || !is.data.frame(res) || !nrow(res)) return(tibble::tibble())
       decomposition_channels_by_decile(
         res, baseline_svy(), outcome$name %||% "welfare", is_rif()
       )
@@ -243,6 +369,23 @@ mod_3_09_decomposition_server <- function(id,
       )
     }, height = 450)
     outputOptions(output, "decomp_bar_plot", suspendWhenHidden = FALSE)
+    output$decomp_bar_note_ui <- renderUI({
+      basis <- input$decile_weather_basis %||% "mean"
+      basis_label <- switch(
+        basis,
+        adverse_10 = "adverse 1-in-10 historical weather year",
+        adverse_20 = "adverse 1-in-20 historical weather year",
+        "mean historical-baseline weather"
+      )
+      shiny::tags$p(
+        class = "diagnostic-note",
+        paste0(
+          "Decile 1 is the poorest. Stacked bars separate direct transfer, covariate shift, weather-policy interaction, and - for RIF models only - repositioning. The marker shows the total policy effect for ",
+          basis_label, " under the ", input$decile_scenario %||% "Historical",
+          " scenario. Deciles are fixed from weighted observed baseline welfare."
+        )
+      )
+    })
 
     # --- Beta curve (RIF only): one panel per weather variable -------------
     output$beta_curve_ui <- renderUI({
@@ -327,19 +470,28 @@ mod_3_09_decomposition_server <- function(id,
           (!is.data.frame(sc) && length(sc) == 0)) return(NULL)
       shiny::tagList(
         shiny::h4(
-          "Does the decomposition change across climate scenarios?",
+          "How does the policy shift welfare per day with monthly temperature across climate scenarios?",
           class = "diagnostic-section-heading"
         ),
-        shiny::div(
-          class = "results-section-card diagnostic-section-card",
-          shiny::tags$p(
-            class = "diagnostic-note",
-            "Each point or box is one SSP scenario and projection period.",
-            "Variation reflects changing simulated weather years, not coefficient uncertainty."
-          ),
-          wise_plot_output(ns("scenario_range_plot"),
+          shiny::div(
+            class = "results-section-card diagnostic-section-card",
+            shiny::div(
+              style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+              pill_toggle(
+                ns("scenario_range_type"),
+                label = NULL,
+                choices = c("Violin" = "violin", "Boxplot" = "boxplot"),
+                selected = "violin",
+                layout = "horizontal"
+              )
+            ),
+            wise_plot_output(ns("scenario_range_plot"),
                            "Policy-effect channels across climate scenarios and projection periods",
                            height = "420px")
+          , shiny::tags$p(
+            class = "diagnostic-note",
+            "Main effects are constant across weather years and shown as points. Weather-sensitive channels show simulated-year distributions with each year overlaid as a dot; each channel has its own y-axis."
+          )
         )
       )
     })
@@ -347,19 +499,47 @@ mod_3_09_decomposition_server <- function(id,
     output$scenario_range_plot <- shiny::renderPlot({
       sc <- decomp_scenarios()
       req(!is.null(sc), is.data.frame(sc), nrow(sc) > 0)
-      .plot_decomp_scenario_range(sc, is_rif())
+      .plot_decomp_scenario_range(
+        sc, is_rif(),
+        plot_type = input$scenario_range_type %||% "violin"
+      )
     }, height = 420)
     outputOptions(output, "scenario_range_plot", suspendWhenHidden = FALSE)
+    technical_decomp_table <- reactive({
+      bases <- list(
+        `Mean weather` = decomp_result(),
+        `Adverse 1-in-5` = tryCatch(
+          decompose_policy_effect(
+            baseline_svy(), policy_svy(), model_fit(), baseline_hist_sim()$so,
+            weather_raw = historical_weather_basis_for_probability(0.20),
+            skip_coef = !isTRUE(show_coef_uncertainty())
+          ), error = function(e) NULL),
+        `Adverse 1-in-10` = tryCatch(
+          decompose_policy_effect(
+            baseline_svy(), policy_svy(), model_fit(), baseline_hist_sim()$so,
+            weather_raw = historical_weather_basis_for_probability(0.10),
+            skip_coef = !isTRUE(show_coef_uncertainty())
+          ), error = function(e) NULL),
+        `Adverse 1-in-20` = tryCatch(
+          decompose_policy_effect(
+            baseline_svy(), policy_svy(), model_fit(), baseline_hist_sim()$so,
+            weather_raw = historical_weather_basis_for_probability(0.05),
+            skip_coef = !isTRUE(show_coef_uncertainty())
+          ), error = function(e) NULL)
+      )
+      .build_decomp_table_by_basis(bases, is_rif())
+    })
+
     # --- Summary table ---
     output$decomp_summary_table <- DT::renderDT({
-      req(decomp_result())
+      req(technical_decomp_table())
       DT::datatable(
-        .build_decomp_table(decomp_result(), is_rif()),
+        technical_decomp_table(),
         rownames = FALSE, class = "compact stripe", extensions = "Buttons",
         options = list(
           dom = wise_csv_dom("t"), ordering = FALSE,
           buttons = wise_csv_button("policy_decomposition_summary"),
-          columnDefs = list(list(className = "dt-right", targets = 1:2))
+          columnDefs = list(list(className = "dt-right", targets = 1:ncol(technical_decomp_table())))
         )
       )
     })
@@ -369,11 +549,9 @@ mod_3_09_decomposition_server <- function(id,
       label = "Policy decomposition summary",
       step = 3L,
       fun = function() {
-        res <- decomp_result()
-        if (is.null(res) || !is.data.frame(res) || !nrow(res)) return(NULL)
-        .build_decomp_table(res, is_rif())
+        technical_decomp_table()
       },
-      description = "Weighted summary of policy-effect decomposition channels and uncertainty."
+      description = "Weighted policy-effect decomposition under mean weather and adverse historical weather years."
     )
 
     # --- Interaction warning ---
@@ -403,9 +581,11 @@ mod_3_09_decomposition_server <- function(id,
 # ---------------------------------------------------------------------------- #
 
 #' @noRd
-.plot_decomp_scenario_range <- function(sc_df, is_rif = TRUE) {
+.plot_decomp_scenario_range <- function(sc_df, is_rif = TRUE,
+                                        plot_type = c("violin", "boxplot")) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
   if (is.null(sc_df) || nrow(sc_df) == 0) return(NULL)
+  plot_type <- match.arg(plot_type)
 
   channels <- if (is_rif) {
     c("delta_main"  = "Main effect",
@@ -486,12 +666,23 @@ mod_3_09_decomposition_server <- function(id,
   ) +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
                         colour = "grey50", linewidth = 0.5) +
-    # For weather-sensitive channels: boxplot to show within-period year spread
-    ggplot2::geom_boxplot(
+    # For weather-sensitive channels: show the simulated-year distribution.
+    if (identical(plot_type, "violin")) ggplot2::geom_violin(
       data = ~ dplyr::filter(.x, weather_sensitive),
       ggplot2::aes(group = interaction(period_lbl, ssp)),
-      alpha = 0.25, outlier.size = 1, linewidth = 0.5,
+      alpha = 0.25, colour = NA, scale = "width",
       position = ggplot2::position_dodge(width = 0.6)
+    ) else ggplot2::geom_boxplot(
+      data = ~ dplyr::filter(.x, weather_sensitive),
+      ggplot2::aes(group = interaction(period_lbl, ssp)),
+      alpha = 0.25, outlier.shape = NA, linewidth = 0.5,
+      position = ggplot2::position_dodge(width = 0.6)
+    ) +
+    ggplot2::geom_point(
+      data = ~ dplyr::filter(.x, weather_sensitive),
+      ggplot2::aes(group = interaction(period_lbl, ssp)),
+      position = ggplot2::position_jitter(width = 0.07, height = 0),
+      size = 1.7, alpha = 0.7, colour = "#243746"
     ) +
     # For main effect (constant across years): point only, never connect across periods
     ggplot2::geom_point(
@@ -507,12 +698,7 @@ mod_3_09_decomposition_server <- function(id,
     wise_scale_fill_okabe_ito(name = "SSP scenario") +
     ggplot2::labs(
       x        = "Projection period",
-      y        = "Effect (% change in welfare)",
-      subtitle = paste0(
-        "Level effects are constant across weather years (points); ",
-        "boxes show within-period variation for weather-sensitive channels. ",
-        "Projection windows are discrete regimes, not continuous paths."
-      )
+      y        = "Effect (% change in welfare)"
     ) +
     theme_wise() +
     ggplot2::theme(
@@ -581,4 +767,28 @@ mod_3_09_decomposition_server <- function(id,
     `Coefficient SE (%)` = df$`+/- SE (%)`,
     check.names = FALSE
   )
+}
+
+.build_decomp_table_by_basis <- function(bases, is_rif) {
+  if (is.null(bases) || !length(bases)) return(data.frame())
+  tables <- lapply(bases, function(x) {
+    if (is.null(x) || !is.data.frame(x) || !nrow(x)) return(NULL)
+    .build_decomp_table(x, is_rif)
+  })
+  available <- Filter(Negate(is.null), tables)
+  if (!length(available)) return(data.frame())
+  template <- available[[1L]]
+  out <- template["Effect component"]
+  for (nm in names(tables)) {
+    tbl <- tables[[nm]]
+    if (is.null(tbl)) {
+      out[[paste0(nm, " (%)")]] <- NA_real_
+      next
+    }
+    out[[paste0(nm, " (%)")]] <- tbl[["Mean effect (%)"]]
+    if (identical(nm, "Mean weather")) {
+      out[["Coefficient SE (%)"]] <- tbl[["Coefficient SE (%)"]]
+    }
+  }
+  out
 }

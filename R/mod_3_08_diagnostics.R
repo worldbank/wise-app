@@ -310,7 +310,7 @@ mod_3_08_diagnostics_server <- function(id,
       DT::datatable(
         df, rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
-        options = list(pageLength = 25, dom = wise_csv_dom("tp"),
+        options = list(dom = wise_csv_dom("t"), paging = FALSE,
                        ordering = TRUE,
                        buttons = wise_csv_button("policy_diagnostics"))
       )

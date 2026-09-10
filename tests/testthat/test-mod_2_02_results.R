@@ -296,7 +296,7 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   thresh_tbl <- tibble::tibble(
     scenario = c(rep("Historical", 4L), rep("SSP3-7.0 / 2025-2035", 4L)),
     Estimate = rep("Central (P50)", 8L),
-    rp_name  = rep(c("1:1", "4:5", "9:10", "19:20"), 2L),
+    rp_name  = rep(c("1:1", "1:5", "1:10", "1:20"), 2L),
     value    = c(4.50, 4.30, 4.20, 4.05, 4.52, 4.38, 4.25, 4.10)
   )
 
@@ -491,12 +491,23 @@ test_that("annual distribution UI includes a plot type selector", {
   expect_match(html, "Boxplot", fixed = TRUE)
 })
 
+test_that("threshold-table direction is always defined from the selected metric", {
+  expect_identical(
+    wiseapp:::metric_metadata("headcount_ratio", list(direction = "higher_is_better"))$adverse_tail,
+    "high"
+  )
+  expect_identical(
+    wiseapp:::metric_metadata("mean", list(direction = "lower_is_better"))$adverse_tail,
+    "low"
+  )
+})
+
 test_that("adverse plot uses the selected climate-model spread", {
   threshold_tbl <- tibble::tibble(
     scenario = rep("SSP2-4.5 / 2030", 6L),
     Estimate = c("Central (P50)", "Central (P50)",
                  "Ensemble min", "Ensemble min", "Ensemble max", "Ensemble max"),
-    rp_name = c("1:1", "4:5", "1:1", "4:5", "1:1", "4:5"),
+    rp_name = c("1:1", "1:5", "1:1", "1:5", "1:1", "1:5"),
     value = c(5, 5, 4, 3, 6, 7),
     is_historical = FALSE,
     n_obs = 30L
@@ -518,7 +529,7 @@ test_that("adverse plot legend identifies projection periods", {
     Estimate = rep(c("Central (P50)", "Central (P50)",
                      "Ensemble min", "Ensemble min",
                      "Ensemble max", "Ensemble max"), 2L),
-    rp_name = rep(c("1:1", "4:5", "1:1", "4:5", "1:1", "4:5"), 2L),
+    rp_name = rep(c("1:1", "1:5", "1:1", "1:5", "1:1", "1:5"), 2L),
     value = rep(c(5, 5, 4, 3, 6, 7), 2L),
     is_historical = FALSE,
     n_obs = 30L

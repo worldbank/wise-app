@@ -227,7 +227,7 @@ test_that("decomposition UI omits redundant cards and tables", {
   expect_false(grepl("Paired policy incidence", html, fixed = TRUE))
   expect_false(grepl("Hierarchical channel details", html, fixed = TRUE))
   expect_false(grepl("scenario_range_table", html, fixed = TRUE))
-  expect_true(grepl("mean historical-baseline weather", html, fixed = TRUE))
+  expect_true(grepl("Weather-year basis", html, fixed = TRUE))
 })
 
 test_that("technical decomposition table is concise and human readable", {
@@ -253,4 +253,33 @@ test_that("technical decomposition table is concise and human readable", {
   exported <- wiseapp:::decomposition_decile_export(deciles, is_rif = FALSE)
   expect_false(any(grepl("_", names(exported), fixed = TRUE)))
   expect_false("Repositioning effect (%)" %in% names(exported))
+})
+
+test_that("technical decomposition table includes adverse weather bases", {
+  fx <- make_ols_fixture()
+  result <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so
+  )
+  tbl <- wiseapp:::.build_decomp_table_by_basis(
+    list(
+      `Mean weather` = result,
+      `Adverse 1-in-5` = result,
+      `Adverse 1-in-10` = result,
+      `Adverse 1-in-20` = result
+    ),
+    is_rif = FALSE
+  )
+  expect_identical(
+    names(tbl),
+    c("Effect component", "Mean weather (%)", "Coefficient SE (%)",
+      "Adverse 1-in-5 (%)", "Adverse 1-in-10 (%)", "Adverse 1-in-20 (%)")
+  )
+  expect_true(all(c("Total effect", "Weather-policy interaction") %in% tbl$`Effect component`))
+})
+
+test_that("technical decomposition table handles unavailable weather bases", {
+  expect_identical(
+    wiseapp:::.build_decomp_table_by_basis(list(NULL, NULL), is_rif = FALSE),
+    data.frame()
+  )
 })

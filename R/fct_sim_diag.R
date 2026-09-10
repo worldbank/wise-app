@@ -143,7 +143,7 @@
       if (length(reg_vals_fct) > 0)
         all_df <- rbind(all_df, data.frame(
           value  = reg_vals_fct,
-          source = "Regression input",
+           source = "Model support",
           stringsAsFactors = FALSE
         ))
     }
@@ -172,23 +172,23 @@
                                     else sort(unique(as.character(all_df$value))))
 
     all_df$source <- factor(all_df$source,
-                            levels = c("Full historical", "Regression input",
-                                       setdiff(unique(all_df$source),
-                                               c("Full historical", "Regression input"))))
+                             levels = c("Full historical", "Model support",
+                                        setdiff(unique(all_df$source),
+                                                c("Full historical", "Model support"))))
 
     sources    <- levels(all_df$source)
     colour_map <- vapply(sources, function(s) {
       if (s == "Full historical")  return("#808080")
-      if (s == "Regression input") return("#000000")
+      if (s == "Model support") return("#000000")
       ssp_key <- .normalise_ssp(s)
       if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours))
         .ssp_colours[ssp_key] else "#cccccc"
     }, character(1))
     fill_map           <- colour_map
-    fill_map["Regression input"] <- NA  # no fill for regression - outline only
+    fill_map["Model support"] <- "#ffffff"  # white fill with a clear outline
 
     n_scen_shown <- length(unique(all_df$source)) -
-                    sum(c("Full historical", "Regression input") %in% all_df$source)
+                    sum(c("Full historical", "Model support") %in% all_df$source)
 
     p <- ggplot2::ggplot(all_df,
            ggplot2::aes(
@@ -290,8 +290,8 @@
   colour_map   <- ssp_colour_map
   linetype_map <- ssp_linetype_map
   if (isTRUE(show_regression)) {
-    colour_map["Regression input"]   <- "black"
-    linetype_map["Regression input"] <- "dashed"
+    colour_map["Model support"]   <- "black"
+    linetype_map["Model support"] <- "dashed"
   }
 
   p <- ggplot2::ggplot()
@@ -306,7 +306,7 @@
 
   if (isTRUE(show_regression) && length(reg_vals) > 0) {
     p <- p + ggplot2::geom_density(
-      data      = data.frame(value = reg_vals, source = "Regression input",
+      data      = data.frame(value = reg_vals, source = "Model support",
                              stringsAsFactors = FALSE),
       mapping   = ggplot2::aes(x = .data$value, colour = .data$source),
       fill      = NA,
@@ -473,7 +473,7 @@ weather_density_data <- function(survey_weather, weather_raw, weather_vars,
       )
     }
   }
-  add(reg_filt, "Step 1 regression input")
+    add(reg_filt, "Model support")
   add(hist_filt, "Full historical archive")
   visible <- names(scenario_weather %||% list())
   if (!is.null(active_scenarios)) visible <- intersect(visible, active_scenarios)
