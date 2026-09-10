@@ -514,6 +514,27 @@ test_that("outer bins capture values outside survey range", {
   expect_equal(length(levels(bins)), n_bins)
 })
 
+test_that("binned simulation levels match relabelled model levels", {
+  skip_if_not_installed("fixest")
+
+  breaks <- list(temp = c(-Inf, 20, 30, Inf))
+  attr(breaks$temp, "observed") <- c(10, 20, 30, 40)
+
+  train <- data.frame(
+    temp = rep(c(15, 25, 35), each = 10),
+    outcome = rep(c(1, 2, 4), each = 10)
+  )
+  train <- relabel_bin_levels(.apply_binning(train, breaks), breaks)
+  simulation <- .apply_binning(data.frame(temp = c(15, 25, 35)), breaks)
+
+  expect_identical(levels(simulation$temp), levels(train$temp))
+
+  fit <- fixest::feols(outcome ~ temp, data = train)
+  predicted <- stats::predict(fit, newdata = simulation)
+  expect_equal(as.numeric(predicted), c(1, 2, 4), tolerance = 1e-10)
+  expect_equal(dplyr::n_distinct(predicted), 3L)
+})
+
 test_that("K-means binning produces correct number of centers", {
   set.seed(123)
   vals    <- c(rnorm(50, 5), rnorm(50, 15), rnorm(50, 25))

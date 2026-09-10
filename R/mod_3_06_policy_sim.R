@@ -466,6 +466,16 @@ mod_3_06_policy_sim_server <- function(id,
       policy_hist_sim          = policy_hist_sim_rv,
       policy_saved_scenarios   = policy_saved_scenarios_rv,
       sp_scenario              = sp_scenario_rv,
+      policy_scenarios         = reactive(list(
+        A = infra_scenario() %||% list(), B = infra_scenario() %||% list(),
+        C = infra_scenario() %||% list(), D = infra_scenario() %||% list(),
+        E = digital_scenario() %||% list(), F = digital_scenario() %||% list(),
+        K = education_scenario() %||% list(), L = education_scenario() %||% list(),
+        M = education_scenario() %||% list(),
+        G = infra_scenario() %||% list(), H = infra_scenario() %||% list(),
+        I = infra_scenario() %||% list()
+        , J = labor_scenario() %||% list()
+      )),
       stale                    = policy_stale
     )
   })

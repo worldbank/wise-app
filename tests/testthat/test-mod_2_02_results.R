@@ -185,9 +185,9 @@ test_that("results tab is appended, removed on clear, re-appended on rerun", {
   )
 })
 
-# ---- UI-38: scenario grid can never drop its last selection -----------------
+# ---- Scenario coverage ------------------------------------------------------
 
-test_that("unchecking the final scenario re-selects the held scenarios", {
+test_that("all saved scenarios feed results when no scenario filter is shown", {
   skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
@@ -207,22 +207,70 @@ test_that("unchecking the final scenario re-selects the held scenarios", {
     ),
     {
       settle <- function() { session$elapse(500); session$flushReact() }
-      k1 <- "SSP2-4.5 / 2030"
-      k2 <- "SSP5-8.5 / 2030"
-
       settle()
-      session$setInputs(sc_SSP2_4_5___2030 = TRUE, sc_SSP5_8_5___2030 = TRUE)
-      settle()
-      expect_setequal(selected_scenario_names(), c(k1, k2))
+      expect_setequal(
+        selected_scenario_names(),
+        c("SSP2-4.5 / 2030", "SSP5-8.5 / 2030")
+      )
+    }
+  )
+})
 
-      # Uncheck the first: the second remains
-      session$setInputs(sc_SSP2_4_5___2030 = FALSE); settle()
-      expect_setequal(selected_scenario_names(), k2)
+test_that("all Module 2 summaries use the same complete scenario set", {
+  skip_if_not_installed("shiny")
 
-      # Uncheck the final box: the held selection (k2) is restored, not the
-      # first scenario (old behaviour silently re-added keys[1]).
-      session$setInputs(sc_SSP5_8_5___2030 = FALSE); settle()
-      expect_setequal(selected_scenario_names(), k2)
+  hist <- make_hist_sim_fixture()
+  shifted_pipeline <- function(shift) {
+    pipe <- hist$pipeline
+    pipe$y_point <- pipe$y_point + shift
+    pipe
+  }
+  scenario_entry <- function(shift) {
+    list(
+      so = hist$so,
+      pipelines = list(model_1 = shifted_pipeline(shift)),
+      n_models = 1L
+    )
+  }
+  scenario_names <- c("SSP2-4.5 / 2030", "SSP5-8.5 / 2050")
+  saved <- stats::setNames(
+    list(scenario_entry(0.10), scenario_entry(0.30)),
+    scenario_names
+  )
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = shiny::reactiveVal(hist),
+      saved_scenarios = shiny::reactiveVal(saved),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs"
+    ),
+    {
+      session$setInputs(
+        cmp_agg_method = "mean",
+        cmp_deviation = "none",
+        ensemble_band = "minmax",
+        uncertainty_band = "p10_p90"
+      )
+      session$flushReact()
+
+      expected <- c("Historical", scenario_names)
+      annual <- annual_distribution_curves_rv()
+      bands <- pointrange_bands_rv()
+      thresholds <- threshold_table_rv()
+      exceedance <- exceedance_curves_rv()
+
+      expect_setequal(unique(annual$scenario), expected)
+      expect_setequal(unique(bands$scenario), expected)
+      expect_setequal(unique(thresholds$scenario), expected)
+      expect_setequal(unique(exceedance$scenario), expected)
+      expect_equal(dplyr::n_distinct(round(bands$value, 8)), 3L)
+
+      central <- thresholds[thresholds$Estimate == "Central (P50)" &
+                              thresholds$rp_name == "1:1", , drop = FALSE]
+      expect_equal(dplyr::n_distinct(round(central$value, 8)), 3L)
     }
   )
 })

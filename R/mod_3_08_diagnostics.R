@@ -3,29 +3,88 @@
 .diagnostics_content_ui <- function(ns) {
   shiny::tagList(
     shiny::uiOutput(ns("policy_summary_ui")),
-    shiny::h4("Total social protection transfer amount"),
-    DT::DTOutput(ns("transfer_summary_ui")),
-    shiny::h4("Policy construction and realized treatment"),
-    shiny::uiOutput(ns("construction_warning_ui")),
-    DT::DTOutput(ns("construction_table")),
-    shiny::h4("Treatment assignment"),
-    DT::DTOutput(ns("treatment_table")),
-    shiny::h4("Covariate support against Step 1 training data"),
-    shiny::uiOutput(ns("covariate_support_warning_ui")),
-    DT::DTOutput(ns("covariate_support_table")),
-    shiny::div(style = "margin: 12px 0;"),
-    shiny::h4("Summary of manipulated variables"),
-    shiny::tags$small(
-      class = "text-muted",
-      "Summary statistics (mean, SD) for variables changed by policy adjustments."
+    shiny::h4(
+      "Was the policy constructed as intended?",
+      class = "diagnostic-section-heading"
     ),
-    DT::DTOutput(ns("diag_summary_table")),
-    shiny::h4("Before/after distributions"),
-    shiny::tags$small(
-      class = "text-muted",
-      "Density and coverage comparisons between baseline (grey) and policy-adjusted (blue) populations."
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::uiOutput(ns("construction_warning_ui")),
+      DT::DTOutput(ns("construction_table"))
     ),
-    shiny::uiOutput(ns("hist_plots_ui"))
+
+    shiny::h4(
+      "What is the scale and targeting of the intervention?",
+      info_popover(
+        title = "Program scale and targeting",
+        shiny::p(
+          "Transfer totals are realized values in the policy-adjusted survey.",
+          "The treatment table shows the weighted assignment across baseline",
+          "eligibility and policy treatment status."
+        ),
+        docs = TRUE
+      ),
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::h5("Program scale"),
+      DT::DTOutput(ns("transfer_summary_ui")),
+      shiny::h5("Who was selected by the policy?"),
+      shiny::tags$p(class = "diagnostic-note",
+                    "Assignment reflects the selected eligibility rule and simulated inclusion or exclusion errors."),
+      DT::DTOutput(ns("treatment_table"))
+    ),
+
+    shiny::h4(
+      "Which variables changed?",
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::tags$p(class = "diagnostic-note",
+                    "Summary statistics describe the same baseline units before and after applying the policy levers."),
+      DT::DTOutput(ns("diag_summary_table"))
+    ),
+
+    shiny::h4(
+      "Does the policy remain within Step 1 model support?",
+      info_popover(
+        title = "Policy-adjusted model support",
+        shiny::p(
+          "Values outside the training range or categories absent from the",
+          "training data increase reliance on model extrapolation. This diagnostic",
+          "does not validate policy realism or causal validity."
+        ),
+        docs = TRUE
+      ),
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::uiOutput(ns("covariate_support_warning_ui")),
+      DT::DTOutput(ns("covariate_support_table"))
+    ),
+
+    shiny::h4(
+      "How did the policy change the baseline population?",
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::tags$p(class = "diagnostic-note",
+                    "Charts compare the same baseline survey units before and after applying the policy levers. Differences are constructed counterfactual inputs, not observed program impacts."),
+      shiny::uiOutput(ns("hist_plots_ui"))
+    ),
+
+    shiny::tags$details(
+      shiny::tags$summary("Technical definitions and downloads"),
+      shiny::tags$ul(
+        shiny::tags$li("Weighted counts and shares use the baseline survey weights when available."),
+        shiny::tags$li("Transfer totals exclude administrative costs, financing effects, behavioral responses, and general-equilibrium effects."),
+        shiny::tags$li("A different random seed can change which units are selected while leaving aggregate targets similar.")
+      )
+    )
   )
 }
 
@@ -75,6 +134,7 @@ mod_3_08_diagnostics_server <- function(id,
                                          tabset_session = NULL,
                                          analysis_unit = reactive("hh"),
                                          selected_policies = reactive(NULL),
+                                         policy_scenarios = reactive(list()),
                                          baseline_hist_sim = reactive(NULL),
                                          selected_weather = reactive(NULL),
                                          sp_scenario = reactive(NULL),
@@ -377,7 +437,8 @@ mod_3_08_diagnostics_server <- function(id,
         baseline_hist_sim    = baseline_hist_sim(),
         selected_weather     = selected_weather(),
         sp_scenario          = sp_scenario(),
-        policy_saved_scenarios = policy_saved_scenarios()
+        policy_saved_scenarios = policy_saved_scenarios(),
+        policy_scenarios = policy_scenarios()
       )
     })
 

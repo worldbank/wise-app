@@ -113,7 +113,6 @@ mod_2_02_results_ui <- function(id) {
 
     # ---- 2. Headline cards --------------------------------------------------
     shiny::uiOutput(ns("headline_cards_ui")),
-
     # ---- Section 1: Central outcomes & weather-year variation ---------------
     shiny::h4(
       sec1_heading,
@@ -149,11 +148,7 @@ mod_2_02_results_ui <- function(id) {
           layout   = "horizontal"
         )
       ),
-      shiny::div(
-        style = "margin-bottom: 8px;",
-        shiny::uiOutput(ns("scenario_filter_ui"))
-      ),
-      wise_plot_output(
+       wise_plot_output(
         ns("annual_distribution_plot"),
         "Distribution of annual aggregates across simulated weather years by climate scenario",
         height = "420px"
@@ -187,11 +182,12 @@ mod_2_02_results_ui <- function(id) {
       class = "results-section-card",
       shiny::div(
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
-        pill_toggle(
-          ns("ensemble_band"),
-          label    = NULL,
-          choices  = c(
-            "Full ensemble spread" = "minmax",
+          pill_toggle(
+           ns("ensemble_band"),
+           label    = NULL,
+           choices  = c(
+            "None"                 = "none",
+             "Full ensemble spread" = "minmax",
             "95%"                  = "p025_p975",
             "90%"                  = "p05_p95",
             "80%"                  = "p10_p90"
@@ -723,59 +719,10 @@ mod_2_02_results_server <- function(id,
 
 
 
-    # UI-38: hold the most recent non-empty grid selection so unchecking the
-    # final scenario never silently re-displays the first one.
-    last_selected_scenarios <- reactiveVal(NULL)
-
-    observe({
-      sc   <- saved_scenarios()
-      if (length(sc) == 0L) return(invisible(NULL))
-      keys <- names(sc)
-
-      selected <- Filter(Negate(is.null), lapply(keys, function(key) {
-        cb_id <- paste0("sc_", gsub("[^a-zA-Z0-9]", "_", key))
-        if (isTRUE(input[[cb_id]])) key else NULL
-      }))
-
-      if (length(selected) > 0L) {
-        last_selected_scenarios(unlist(selected))
-      } else {
-        # Re-check the held boxes so the grid never sits fully unchecked.
-        held <- last_selected_scenarios()
-        held <- held[held %in% keys]
-        if (length(held) == 0L) held <- keys[1L]
-        for (key in held) {
-          shiny::updateCheckboxInput(
-            session,
-            inputId = paste0("sc_", gsub("[^a-zA-Z0-9]", "_", key)),
-            value   = TRUE
-          )
-        }
-      }
-    })
-
     selected_scenario_names <- reactive({
       sc   <- saved_scenarios()
       if (length(sc) == 0L) return(character(0))
-      keys <- names(sc)
-
-      # Read each grid checkbox
-      selected <- Filter(Negate(is.null), lapply(keys, function(key) {
-        cb_id <- paste0("sc_", gsub("[^a-zA-Z0-9]", "_", key))
-        val   <- input[[cb_id]]
-        if (isTRUE(val)) key else NULL
-      }))
-
-      # Enforce minimum 1 selected: hold the last real selection (UI-38)
-      # rather than silently re-adding the first scenario.
-      if (length(selected) == 0L) {
-        held <- last_selected_scenarios()
-        held <- held[held %in% keys]
-        if (length(held) == 0L) held <- keys[1L]
-        held
-      } else {
-        unlist(selected)
-      }
+      names(sc)
     })
 
     agg_hist <- reactive({
@@ -852,83 +799,6 @@ mod_2_02_results_server <- function(id,
       )
     })
 
-    # ---- renderUI / render* outputs ----------------------------------------
-
-    output$scenario_filter_ui <- renderUI({
-      sc <- saved_scenarios()
-      if (length(sc) == 0L)
-        return(shiny::helpText("Run a simulation."))
-
-      # Parse scenario keys into SSP * period grid
-      keys  <- names(sc)
-      ssps  <- sort(unique(sub(" / .*$", "", keys)))
-      yrs   <- sort(unique(sub("^.* / ", "", keys)))
-
-      # Build header row
-      header <- shiny::tags$tr(
-        shiny::tags$th(""),
-        lapply(ssps, function(s)
-          shiny::tags$th(s,
-            style = "text-align:center; font-size:11px;
-                    font-weight:600; padding:2px 8px;"))
-      )
-
-      # Build one row per period
-      period_rows <- lapply(yrs, function(yr) {
-        shiny::tags$tr(
-          shiny::tags$td(yr,
-            style = "font-size:11px; font-weight:600;
-                    padding:2px 8px; white-space:nowrap;"),
-          lapply(ssps, function(s) {
-            key     <- paste0(s, " / ", yr)
-            exists  <- key %in% keys
-            cb_id   <- ns(paste0("sc_", gsub("[^a-zA-Z0-9]", "_", key)))
-            shiny::tags$td(
-              style = "text-align:center; padding:2px 4px;",
-              if (exists)
-                # UI-03: the grid's row/column headers carry the meaning
-                # visually; give each checkbox its own accessible name.
-                shiny::checkboxInput(
-                  cb_id,
-                  label = shiny::tags$span(class = "visually-hidden",
-                                           paste("Include", s, yr,
-                                                 "in the comparison")),
-                  value = TRUE
-                )
-              else
-                shiny::tags$span(
-                  style = "color:#ccc; font-size:11px;",
-                  "-"
-                )
-            )
-          })
-        )
-      })
-
-      shiny::tags$table(
-        id    = "scenario-filter-grid",
-        style = "border-collapse:collapse; margin-top:4px;",
-        shiny::tags$style(shiny::HTML("
-          #scenario-filter-grid .checkbox { margin: 0; padding: 0; }
-          #scenario-filter-grid .checkbox label { 
-            padding-left: 0; 
-            min-height: 0;
-          }
-          #scenario-filter-grid .checkbox label span { display: none; }
-          #scenario-filter-grid input[type='checkbox'] { 
-            width: 16px; height: 16px; 
-            margin: 0 auto; 
-            display: block;
-            position: static;
-          }
-          #scenario-filter-grid td { padding: 4px 12px; }
-          #scenario-filter-grid th { padding: 4px 12px; font-size: 11px; }
-        ")),
-        shiny::tags$thead(header),
-        shiny::tags$tbody(period_rows)
-      )
-    })
-
     # ---- Three-source uncertainty decomposition ----------------------------
     # All three downstream displays (hero, exceedance, table) source their
     # bands from the helpers below. Each helper produces a per-scenario view
@@ -948,7 +818,9 @@ mod_2_02_results_server <- function(id,
     pointrange_bands_rv <- reactive({
       req(hist_agg_rv())
       bq_coef <- resolve_band_q(input$uncertainty_band %||% "p10_p90")
-      bq_ens  <- resolve_band_q(input$ensemble_band    %||% "minmax")
+      bq_ens  <- if (identical(input$ensemble_band %||% "minmax", "none"))
+        c(lo = 0.5, hi = 0.5) else
+        resolve_band_q(input$ensemble_band %||% "minmax")
       z_coef_lo <- stats::qnorm(bq_coef[["lo"]])
       z_coef_hi <- stats::qnorm(bq_coef[["hi"]])
       hist_ref  <- hist_ref_val()
@@ -1056,7 +928,7 @@ mod_2_02_results_server <- function(id,
     })
 
     # ---- timeseries_curves_rv: per (scenario, model, sim_year) values ------
-    timeseries_curves_rv <- reactive({
+    build_timeseries_curves <- function(selected_only = TRUE) {
       req(hist_agg_rv())
       hist_ref <- hist_ref_val()
       wk       <- weight_key()
@@ -1084,13 +956,16 @@ mod_2_02_results_server <- function(id,
       sa <- scenario_agg_rv()
       if (!is.null(sa) && length(sa) > 0L) {
         for (dk in names(sa)) {
-          if (!dk %in% selected_scenario_names()) next
+          if (isTRUE(selected_only) && !dk %in% selected_scenario_names()) next
           rows[[length(rows) + 1L]] <- one_scenario(.apply_contrast_sd(sa[[dk]][[wk]][[method]], hist_F_agg_ref()),
                                                     dk, FALSE)
         }
       }
       dplyr::bind_rows(Filter(Negate(is.null), rows))
-    })
+    }
+
+    timeseries_curves_rv <- reactive(build_timeseries_curves(TRUE))
+    annual_distribution_curves_rv <- reactive(build_timeseries_curves(FALSE))
 
     # ---- variance_breakdown_rv: one row per scenario, three components -----
     # Aggregates the per-(sim_year) var_within / var_across columns to scalars
@@ -1223,7 +1098,9 @@ mod_2_02_results_server <- function(id,
     threshold_table_rv <- reactive({
       req(hist_agg_rv())
       bq_coef <- resolve_band_q(input$uncertainty_band %||% "p10_p90")
-      bq_ens  <- resolve_band_q(input$ensemble_band    %||% "minmax")
+      bq_ens  <- if (identical(input$ensemble_band %||% "minmax", "none"))
+        c(lo = 0.5, hi = 0.5) else
+        resolve_band_q(input$ensemble_band %||% "minmax")
       z_coef_lo <- stats::qnorm(bq_coef[["lo"]])
       z_coef_hi <- stats::qnorm(bq_coef[["hi"]])
       hist_ref  <- hist_ref_val()
@@ -1347,7 +1224,7 @@ mod_2_02_results_server <- function(id,
       fun   = function() {
         bands <- pointrange_bands_rv()
         if (is.null(bands)) return(NULL)
-        if (!isTRUE(input$show_model_spread)) {
+        if (identical(input$ensemble_band %||% "minmax", "none")) {
           bands$intermod_lo <- NA_real_
           bands$intermod_hi <- NA_real_
         }
@@ -1368,7 +1245,7 @@ mod_2_02_results_server <- function(id,
     output$summary_box_plot <- renderPlot({
       req(pointrange_bands_rv())
       bands <- pointrange_bands_rv()
-      if (!isTRUE(input$show_model_spread)) {
+      if (identical(input$ensemble_band %||% "minmax", "none")) {
         bands$intermod_lo <- NA_real_
         bands$intermod_hi <- NA_real_
       }
@@ -1381,8 +1258,8 @@ mod_2_02_results_server <- function(id,
     }, height = 600)
 
     output$annual_distribution_plot <- renderPlot({
-      req(timeseries_curves_rv())
-      curves <- timeseries_curves_rv()
+      req(annual_distribution_curves_rv())
+      curves <- annual_distribution_curves_rv()
       plot_annual_distribution(
         curves,
         x_label = metric_axis_label(
@@ -1449,7 +1326,7 @@ mod_2_02_results_server <- function(id,
 
     # Export the same tidy annual aggregates used by the distribution plot.
     annual_distribution_export <- function() {
-      curves <- timeseries_curves_rv()
+      curves <- annual_distribution_curves_rv()
       req(curves)
       annotate_visualization_export(
         curves,
@@ -1466,7 +1343,7 @@ mod_2_02_results_server <- function(id,
       step = 2L,
       fun = function() {
         plot_annual_distribution(
-          timeseries_curves_rv(),
+          annual_distribution_curves_rv(),
           x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
                                       hist_sim()$so,
                                       input$cmp_deviation %||% "none")
@@ -1505,7 +1382,7 @@ mod_2_02_results_server <- function(id,
       if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
         return(NULL)
       }
-      if (!isTRUE(input$show_model_spread)) {
+      if (identical(input$ensemble_band %||% "minmax", "none")) {
         tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
       }
       so_obj <- tryCatch(if (!is.null(hist_sim())) hist_sim()$so else NULL, error = function(e) NULL)
@@ -1552,11 +1429,16 @@ mod_2_02_results_server <- function(id,
 
     adverse_dot_data_rv <- reactive({
       req(threshold_table_rv())
-      step2_adverse_dot_data(
+      dot <- step2_adverse_dot_data(
         threshold_table_rv(),
         method = input$cmp_agg_method %||% "mean",
         so = hist_sim()$so
       )
+      if (identical(input$ensemble_band %||% "minmax", "none") && nrow(dot)) {
+        dot$intermod_lo <- NA_real_
+        dot$intermod_hi <- NA_real_
+      }
+      dot
     })
     output$adverse_dot_plot <- renderPlot({
       req(adverse_dot_data_rv())
@@ -1773,7 +1655,6 @@ mod_2_02_results_server <- function(id,
     outputOptions(output, "annual_distribution_plot", suspendWhenHidden = TRUE)
     outputOptions(output, "summary_threshold_table", suspendWhenHidden = TRUE)
     outputOptions(output, "exceedance_plot",         suspendWhenHidden = TRUE)
-    outputOptions(output, "scenario_filter_ui",      suspendWhenHidden = TRUE)
     
     # ---- Return API --------------------------------------------------------
     # timeseries_curves bundles everything the Diagnostics tab needs to render
@@ -1785,7 +1666,7 @@ mod_2_02_results_server <- function(id,
       results_tab_added  = results_tab_added,
       timeseries_curves  = reactive({
         req(timeseries_curves_rv())
-        ens_q <- if (isTRUE(input$show_model_spread))
+        ens_q <- if (!identical(input$ensemble_band %||% "minmax", "none"))
           resolve_band_q(input$ensemble_band %||% "minmax")
         else c(lo = 0.5, hi = 0.5)
         list(

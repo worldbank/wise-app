@@ -13,50 +13,68 @@ mod_3_09_decomposition_ui <- function(id) {
   ns <- NS(id)
   tagList(
     shiny::uiOutput(ns("policy_summary_ui")),
-    shiny::uiOutput(ns("decomp_header_ui")),
-    shiny::uiOutput(ns("decomp_explanation_ui")),
-    shiny::uiOutput(ns("decomp_headline_cards_ui")),
-    shiny::wellPanel(
-      shiny::h4("Headline decomposition"),
+    shiny::h4(
+      "What drives the total policy effect?",
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::uiOutput(ns("decomp_header_ui")),
+      shiny::uiOutput(ns("decomp_explanation_ui")),
       wise_plot_output(ns("headline_decomp_plot"),
                        "Level, resilience, and total policy effect decomposition",
                        height = "360px"),
       shiny::uiOutput(ns("reconciliation_status_ui")),
-      DT::DTOutput(ns("headline_decomp_table"))
+      DT::DTOutput(ns("headline_decomp_table")),
+      shiny::tags$p(class = "diagnostic-note",
+                    "The total is computed directly; level plus resilience is checked on the model scale before percentage transformation.")
     ),
-    shiny::wellPanel(
-      shiny::h4(
-        "Policy effect decomposition by welfare decile",
-        info_popover(
-          p(paste(
-            "Bars show the average effect in each channel by baseline",
-            "welfare decile. Decile 1 = poorest. Effects in percentage",
-            "change. Weather hazard: mean of historical baseline."
-          ))
-        )
-      ),
+
+    shiny::h4(
+      "Who gains, and through which channel?",
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::h5("Policy effect and resilience by baseline welfare decile"),
       wise_plot_output(ns("decomp_bar_plot"),
                        "Level and resilience policy effects by baseline welfare decile",
                        height = "450px"),
-      shiny::tags$p(
-        style = "font-size:11px; color:#666; margin-top:6px;",
-        "Bars = average effect by channel and welfare decile (decile 1 = poorest)."
-      )
+      shiny::tags$p(class = "diagnostic-note",
+                    "Decile 1 is the poorest. Bars show level and resilience channels; the marker shows their reconciled total. Deciles are fixed from weighted observed baseline welfare.")
     ),
-    shiny::wellPanel(
-      shiny::h4("Paired policy incidence by baseline welfare decile"),
+
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::h5("Paired policy incidence by baseline welfare decile"),
       wise_plot_output(ns("incidence_plot"),
                        "Paired policy minus baseline effect by fixed baseline welfare decile",
                        height = "420px"),
       DT::DTOutput(ns("incidence_table")),
-      shiny::tags$p(class = "text-muted small",
+      shiny::tags$p(class = "diagnostic-note",
                     "Deciles are fixed from weighted observed baseline welfare; policy effects are not re-ranked after treatment.")
     ),
+
+    shiny::h4(
+      "How does weather sensitivity vary across the welfare distribution?",
+      class = "diagnostic-section-heading"
+    ),
     shiny::uiOutput(ns("beta_curve_ui")),
+
+    shiny::h4(
+      "Does the decomposition change across climate scenarios?",
+      class = "diagnostic-section-heading"
+    ),
     shiny::uiOutput(ns("scenario_range_ui")),
-    shiny::wellPanel(
-      shiny::h4(
-        "Decomposition summary",
+
+    shiny::h4(
+      "What should be checked in the technical decomposition?",
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::h5(
+        "Numerical reconciliation and channel details",
         info_popover(
           title = "\u00B1 SE columns",
           shiny::p(
@@ -82,11 +100,8 @@ mod_3_09_decomposition_ui <- function(id) {
       shiny::h5("Hierarchical channel details"),
       DT::DTOutput(ns("decomp_channel_table")),
       shiny::uiOutput(ns("interaction_warning_ui")),
-      shiny::tags$p(
-        style = "font-size:11px; color:#666; margin-top:6px;",
-        "\u00B1 SE = standard error of each channel's mean effect - click ",
-        shiny::icon("circle-info"), " above for the formula."
-      )
+      shiny::tags$p(class = "diagnostic-note",
+                    "SE columns describe coefficient uncertainty in the paired decomposition. Residual and survey-sampling uncertainty are not represented here.")
     )
   )
 }
@@ -114,6 +129,7 @@ mod_3_09_decomposition_server <- function(id,
                                            so                = reactive(NULL),
                                            show_coef_uncertainty = reactive(TRUE),
                                            selected_policies = reactive(NULL),
+                                           policy_scenarios = reactive(list()),
                                            baseline_hist_sim = reactive(NULL),
                                            baseline_svy = reactive(NULL),
                                            policy_svy = reactive(NULL),
@@ -134,7 +150,8 @@ mod_3_09_decomposition_server <- function(id,
         baseline_hist_sim = baseline_hist_sim(),
         selected_weather = selected_weather(),
         sp_scenario = sp_scenario(),
-        policy_saved_scenarios = policy_saved_scenarios()
+        policy_saved_scenarios = policy_saved_scenarios(),
+        policy_scenarios = policy_scenarios()
       )
     })
 
@@ -184,30 +201,6 @@ mod_3_09_decomposition_server <- function(id,
       e <- decomposition_explanation(is_rif())
       shiny::tags$div(class = "alert alert-info", role = "note",
                       shiny::tags$strong(e$title), shiny::tags$br(), e$text)
-    })
-    output$decomp_headline_cards_ui <- renderUI({
-      tbl <- headline_decomp_data()
-      if (is.null(tbl) || !nrow(tbl)) return(NULL)
-      value_for <- function(id) {
-        x <- tbl$percent[tbl$channel_id == id]
-        if (length(x) && is.finite(x[[1L]])) fmt_num(x[[1L]], 2) else "Unavailable"
-      }
-      sp <- sp_scenario()
-      cost <- if (is.list(sp) && is.finite(sp$budget_fixed %||% NA_real_))
-        paste0("$", format(round(sp$budget_fixed), big.mark = ",")) else "Not specified"
-      realized <- tryCatch(.sp_transfer_totals(policy_svy(), "hh"),
-                           error = function(e) NULL)
-      recipients <- if (!is.null(realized)) {
-        format(round(realized$n_recipients_weighted), big.mark = ",")
-      } else "Unavailable"
-      headline_cards_ui(list(
-        list(label = "Level effect", value = value_for("level"), note = "Percent change"),
-        list(label = "Resilience effect", value = value_for("resilience"), note = "Percent change"),
-        list(label = "Total policy effect", value = value_for("total"), note = "Reconciled on model scale"),
-        list(label = "Program cost", value = cost, note = "Configured annual budget"),
-        list(label = "Beneficiaries", value = recipients,
-             note = "Realized weighted recipient count")
-      ))
     })
     output$headline_decomp_plot <- renderPlot({
       req(headline_decomp_data())
@@ -373,8 +366,9 @@ mod_3_09_decomposition_server <- function(id,
       n_vars <- length(mf$weather_terms %||% character(0))
       if (n_vars == 0) return(NULL)
 
-      shiny::wellPanel(
-        shiny::h4("Weather beta curve across welfare distribution"),
+      shiny::div(
+        class = "results-section-card diagnostic-section-card",
+        shiny::h5("Weather sensitivity across the welfare distribution"),
         weather_plot_layout(
           ns, n_vars,
           ids    = c("beta_curve_plot1", "beta_curve_plot2"),
@@ -384,7 +378,7 @@ mod_3_09_decomposition_server <- function(id,
                          mf$weather_terms)
         ),
         shiny::tags$p(
-          style = "font-size:11px; color:#666; margin-top:6px;",
+          class = "diagnostic-note",
           "Shows how weather sensitivity varies by quantile.",
           "Repositioning effect arises from households moving along this curve."
         )
@@ -438,10 +432,10 @@ mod_3_09_decomposition_server <- function(id,
       sc <- decomp_scenarios()
       if (is.null(sc) || (is.data.frame(sc) && nrow(sc) == 0) ||
           (!is.data.frame(sc) && length(sc) == 0)) return(NULL)
-      shiny::wellPanel(
-        shiny::h4("Policy effect decomposition across climate scenarios"),
+      shiny::div(
+        class = "results-section-card diagnostic-section-card",
         shiny::tags$p(
-          style = "font-size:12px; color:#555; margin-bottom:8px;",
+          class = "diagnostic-note",
           "Each point/line is one SSP scenario \u00d7 period combination.",
           "Variation reflects changing weather conditions rather than uncertainty",
           "in the model coefficients.",

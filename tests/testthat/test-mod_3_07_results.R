@@ -49,18 +49,18 @@ test_that("step3_headline_cards builds 5 concise policy cards", {
   expect_match(cards[[1]]$note, "Policy: 3.65 vs Base: 3.20", fixed = TRUE)
 
   # Card 2: Adverse 1-in-10 protection
-  expect_identical(cards[[2]]$label, "Adverse 1-in-10 protection")
-  expect_identical(cards[[2]]$value, "+0.58")
-  expect_match(cards[[2]]$note, "Severe weather-year protection", fixed = TRUE)
+  expect_identical(cards[[2]]$label, "Adverse 1-in-20 year protection")
+  expect_identical(cards[[2]]$value, "Unavailable")
+  expect_match(cards[[2]]$note, "1-in-10: +0.58", fixed = TRUE)
 
   # Card 3: Policy channels
-  expect_identical(cards[[3]]$label, "Policy channels")
-  expect_identical(cards[[3]]$value, "Level & resilience")
+  expect_identical(cards[[3]]$label, "Resilience effect")
+  expect_identical(cards[[3]]$value, "Unavailable")
 
   # Card 4: Program scale & reach
   expect_identical(cards[[4]]$label, "Program scale & reach")
-  expect_identical(cards[[4]]$value, "$12.5M")
-  expect_match(cards[[4]]$note, "Annual fixed budget", fixed = TRUE)
+  expect_identical(cards[[4]]$value, "Unavailable")
+  expect_match(cards[[4]]$note, "Population reached", fixed = TRUE)
 
   # Card 5: Policy robustness
   expect_identical(cards[[5]]$label, "Policy robustness")
@@ -71,8 +71,8 @@ test_that("step3_headline_cards builds 5 concise policy cards", {
   df <- step3_headline_df(cards)
   expect_s3_class(df, "data.frame")
   expect_equal(nrow(df), 5L)
-  expect_identical(df$label, c("Expected policy effect", "Adverse 1-in-10 protection",
-                               "Policy channels", "Program scale & reach", "Policy robustness"))
+  expect_identical(df$label, c("Expected policy effect", "Adverse 1-in-20 year protection",
+                               "Resilience effect", "Program scale & reach", "Policy robustness"))
 })
 
 test_that("step3_adverse_dot_data and plot_step3_adverse_dot work correctly", {

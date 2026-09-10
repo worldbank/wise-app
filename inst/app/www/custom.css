@@ -1319,6 +1319,61 @@ button.wise-csv-btn .fa {
   margin-bottom: 16px;
 }
 
+/* ---- Diagnostic and decomposition pages ---------------------------------- */
+.diagnostic-page-heading {
+  color: #173042;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 1.2rem 0 0.45rem;
+}
+
+.diagnostic-section-heading {
+  color: #173042;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 1.35rem 0 0.5rem;
+}
+
+.diagnostic-section-card {
+  margin-bottom: 1.1rem;
+}
+
+.diagnostic-section-card > h4,
+.diagnostic-section-card > h5 {
+  color: #173042;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 0.65rem;
+}
+
+.diagnostic-note {
+  color: #718292;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0.55rem 0 0;
+}
+
+.diagnostic-filter-card {
+  background: #f8fafc;
+  border: 1px solid #d6e1ea;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  padding: 0.65rem 1rem 0.35rem;
+}
+
+.diagnostic-filter-card .form-check-inline {
+  margin-right: 0.6rem;
+}
+
+.diagnostic-section-card > .shiny-details,
+.diagnostic-section-card details {
+  margin-bottom: 0;
+}
+
+.diagnostic-section-card table.dataTable {
+  margin-top: 0.35rem !important;
+}
+
 .results-section-card .table {
   margin-bottom: 0;
 }

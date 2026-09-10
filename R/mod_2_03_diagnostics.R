@@ -20,7 +20,22 @@ mod_2_03_diagnostics_ui <- function(id) {
     shiny::uiOutput(ns("scenario_filter_panel")),
 
     # ---- 1. Weather inputs panel -------------------------------------------
-    shiny::wellPanel(
+    shiny::h4(
+      "Are simulated weather conditions within model support?",
+      info_popover(
+        title = "Weather support and overlap",
+        shiny::p(
+          "The Step 1 regression input is the reference distribution. Future",
+          "scenario values are compared with its robust 1st-99th percentile",
+          "interval. Values outside that interval require extrapolation of the",
+          "estimated weather-outcome relationship."
+        ),
+        docs = TRUE
+      ),
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
       shiny::h4(
         "Weather input distributions",
         info_popover(
@@ -57,91 +72,77 @@ mod_2_03_diagnostics_ui <- function(id) {
                        height = "340px"),
       shiny::uiOutput(ns("diag_weather_log_ui")),
       shiny::uiOutput(ns("weather_support_warning_ui")),
+      DT::DTOutput(ns("weather_support_table")),
       shiny::tags$p(
-        style = "font-size:11px; color:#666; margin-top:4px;",
-        "Grey fill = historical; black dashed = regression input; coloured lines = future scenarios."
+        class = "diagnostic-note",
+        "Distributions are normalized separately so samples with different sizes can be compared. Overlap does not by itself establish model validity."
       )
     ),
 
-    # ---- 2. Variance contribution panel ------------------------------------
-    shiny::wellPanel(
-      shiny::h4(
-        "Sources of variation and uncertainty",
-        info_popover(
-          title = "Sources of variation and uncertainty",
-          shiny::p(shiny::tags$b("Each bar"),
-            " is one source's standard deviation in outcome units."),
-          shiny::p(shiny::tags$b("Important:"),
-            " bars are aligned, not stacked. Inter-annual weather variability,",
-            " inter-model climate spread, and coefficient uncertainty are",
-            " different quantities and are not combined into an unlabeled band."),
-          shiny::p(shiny::tags$b("Coefficient uncertainty"),
-            " = SD of the regression-fit per-outcome variance, averaged."),
-          shiny::p(shiny::tags$b("Inter-annual variability"),
-            " = SD of within-model year-to-year spread of the aggregate. This",
-            " characterises the spread of simulated years, not uncertainty",
-            " about the central tendency."),
-          shiny::p(shiny::tags$b("Inter-model spread"),
-            " (future scenarios only) = SD of across-model disagreement in",
-            " the per-model mean aggregate - uncertainty about the central",
-            " tendency arising from model choice."),
-          docs = TRUE
-        )
+    # ---- 2. Climate-model robustness (Figure D2-3A default) -----------------
+    shiny::h4(
+      "Are expected outcomes consistent across climate models?",
+      info_popover(
+        title = "Climate-model agreement",
+        shiny::p(
+          "Each point is one climate model's mean outcome across simulated",
+          "weather years for a scenario and projection period. Historical is",
+          "shown once as the neutral reference."
+        ),
+        docs = TRUE
       ),
-      wise_plot_output(ns("variance_contribution_plot"),
-                       "Bar plot of each weather variable's contribution to simulated outcome variance",
-                       height = "320px"),
-      shiny::checkboxInput(ns("show_variance_shares"),
-                           "Show approximate variance shares (advanced)",
-                           value = FALSE),
-      shiny::uiOutput(ns("variance_share_warning")),
-      DT::DTOutput(ns("variance_share_table")),
-      shiny::tags$p(
-        style = "font-size:11px; color:#666; margin-top:6px;",
-        "Aligned bars show separate SD components; they are not additive - click ",
-        shiny::icon("circle-info"), " above for details."
-      )
+      class = "diagnostic-section-heading"
     ),
-
-    # ---- 3. Climate-model robustness (Figure D2-3A default) -----------------
-    shiny::wellPanel(
-      shiny::h4("Climate-model robustness",
-                info_popover(
-                  title = "Climate-model agreement",
-                  shiny::p("Each point is one climate model's mean outcome across simulated weather years."),
-                  shiny::p("Historical appears once as a neutral reference. Intervals reflect ensemble spread, not probabilities."),
-                  docs = TRUE
-                )),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
+      shiny::h5("Expected outcome across climate models"),
       wise_plot_output(ns("model_robustness_plot"),
                        "Climate-model mean outcome by scenario and period",
                        height = "420px"),
-      shiny::tags$p(class = "text-muted small",
-                    "Historical appears once. Future points are model means across weather-year draws; intervals are ensemble spread, not probabilities.")
+      shiny::tags$p(class = "diagnostic-note",
+                    "Each point is one climate model's mean across simulated weather-year draws; intervals show ensemble disagreement, not probabilities.")
     ),
 
-    # ---- 4. Weather-year trajectories (Figure D2-3B advanced) ---------------
-    shiny::wellPanel(
+    # ---- 3. Weather-year trajectories (Figure D2-3B advanced) ---------------
+    shiny::h4(
+      "How much can outcomes vary across weather-year draws?",
+      info_popover(
+        title = "Weather-year variation",
+        shiny::p(
+          "This technical view shows annual outcome variation within each",
+          "climate model. It is useful for understanding the inter-annual",
+          "component behind the Results summaries."
+        ),
+        docs = TRUE
+      ),
+      class = "diagnostic-section-heading"
+    ),
+    shiny::div(
+      class = "results-section-card diagnostic-section-card",
       shiny::tags$details(
         shiny::tags$summary(
-          style = "cursor:pointer; font-size:14px; font-weight:600; color:#333; margin-bottom:8px;",
-          "Advanced detail: Weather-year trajectories by climate model \u25BC"
+          "Advanced detail: Weather-year trajectories by climate model"
         ),
         shiny::p(
-          class = "text-muted small",
-          "Shows annual outcome variation within each climate model across simulated weather years."
-        ),
-        info_popover(
-          title = "Reading this chart",
-          shiny::p("Thin lines = one CMIP6 ensemble member across historical weather-year draws."),
-          shiny::p("Bold line = across-model median trajectory."),
-          shiny::p("Observations represent simulation draws, not calendar-year forecasts."),
-          docs = TRUE
+          class = "diagnostic-note",
+          "Thin lines show model-specific simulation draws; the bold line is the across-model median. Projection windows are separate regimes, not a continuous forecast."
         ),
         wise_plot_output(ns("timeseries_plot"),
-                         "Time series of the outcome across simulated weather years",
+                         "Outcome across simulated weather-year draws",
                          height = "380px"),
-        shiny::tags$p(class = "text-muted small",
-                      "Thin lines = ensemble members; bold = median; ribbon = inter-model spread.")
+        shiny::tags$p(class = "diagnostic-note",
+                      "These are simulation draws within each climate projection window, not annual socioeconomic forecasts.")
+      )
+    ),
+
+    # ---- 4. Technical definitions ------------------------------------------
+    shiny::tags$details(
+      shiny::tags$summary("Technical definitions and interpretation"),
+      shiny::tags$ul(
+        shiny::tags$li("Regression input: weather observations entering the Step 1 estimation sample."),
+        shiny::tags$li("Annual aggregate: the selected outcome summarized for one weather-year draw."),
+        shiny::tags$li("Climate-model mean: the average annual aggregate within one model and scenario period."),
+        shiny::tags$li("Model agreement and weather-year spread describe different dimensions of variation and should not be combined by adding standard deviations.")
       )
     )
   )
@@ -166,6 +167,7 @@ mod_2_03_diagnostics_ui <- function(id) {
 mod_2_03_diagnostics_server <- function(id,
                                          hist_sim,
                                          saved_scenarios,
+                                         selected_hist = NULL,
                                          survey_weather,
                                          selected_weather,
                                          variance_breakdown = NULL,
@@ -185,7 +187,7 @@ mod_2_03_diagnostics_server <- function(id,
       simulation_summary_card(
         hist_sim        = hist_sim(),
         saved_scenarios = if (!is.null(saved_scenarios)) saved_scenarios() else list(),
-        selected_hist   = NULL,
+        selected_hist   = if (is.function(selected_hist)) selected_hist() else selected_hist,
         selected_weather = if (!is.null(selected_weather)) selected_weather() else NULL
       )
     })
@@ -250,7 +252,7 @@ mod_2_03_diagnostics_server <- function(id,
                                         vapply(sc_all, .parse_year,    character(1)))))
 
       shiny::wellPanel(
-        style = "padding: 10px 16px 8px 16px; background:#f8f8f8; margin-bottom:10px;",
+       class = "diagnostic-filter-card",
         shiny::tags$div(
           style = "display:flex; align-items:baseline; gap:8px; margin-bottom:10px;",
           shiny::tags$b("Scenario Filters", style = "font-size:13px;"),
@@ -352,8 +354,31 @@ mod_2_03_diagnostics_server <- function(id,
       vars <- input$diag_weather_vars
       req(length(vars) > 0L, !is.null(hist_sim()$weather_raw))
       ref <- .filter_hist_weather(hist_sim()$weather_raw, survey_weather())
-      weather_support_summary(ref, scenario_weather_data(), vars)
+      scenarios <- scenario_weather_data()
+      active <- active_scenarios_data()
+      if (length(active) > 0L) scenarios <- scenarios[names(scenarios) %in% active]
+      weather_support_summary(ref, scenarios, vars)
     })
+
+    output$weather_support_table <- DT::renderDT({
+      tbl <- weather_support_data()
+      if (is.null(tbl) || !nrow(tbl)) {
+        return(DT::datatable(
+          data.frame(Message = "No weather-support summary is available."),
+          rownames = FALSE, options = list(dom = "t")
+        ))
+      }
+      display <- tbl
+      display$outside_share <- round(100 * display$outside_share, 1)
+      names(display)[names(display) == "outside_share"] <- "outside_robust_support_pct"
+      DT::datatable(
+        display, rownames = FALSE, class = "compact stripe",
+        extensions = "Buttons",
+        options = list(dom = wise_csv_dom("tp"), pageLength = 10,
+                       buttons = wise_csv_button("simulation_weather_support_summary"))
+      )
+    })
+    outputOptions(output, "weather_support_table", suspendWhenHidden = TRUE)
     output$weather_support_warning_ui <- renderUI({
       tbl <- weather_support_data()
       if (is.null(tbl) || !nrow(tbl) || !any(tbl$warning)) return(NULL)

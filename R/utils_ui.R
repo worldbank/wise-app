@@ -265,7 +265,8 @@ policy_summary_card <- function(selected_policies = NULL,
                                 baseline_hist_sim = NULL,
                                 policy_saved_scenarios = list(),
                                 selected_weather = NULL,
-                                sp_scenario = NULL) {
+                                sp_scenario = NULL,
+                                policy_scenarios = list()) {
   policies <- selected_policies %||% character(0)
   policies <- policies[!is.na(policies) & nzchar(policies)]
   labels <- vapply(policies, function(key) {
@@ -277,31 +278,29 @@ policy_summary_card <- function(selected_policies = NULL,
     }
   }, character(1))
 
-  hs <- baseline_hist_sim
-  run <- if (!is.null(hs)) hs$sim_summary %||% list() else list()
-  baseline <- run$baseline_survey %||% "Selected baseline survey"
-  baseline_n <- run$baseline_n %||% NA_integer_
-  model <- run$model %||% list()
-  so_label <- if (!is.null(hs) && "label" %in% names(hs$so)) {
-    as.character(hs$so$label[1])
-  } else "Selected outcome"
-  sw <- run$weather %||% selected_weather
-  weather_labels <- if (!is.null(sw) && "label" %in% names(sw)) {
-    as.character(sw$label)
-  } else character(0)
-  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
-  model_bits <- c(
-    if (is.finite(model$fixed_effects %||% NA_integer_))
-      paste0(model$fixed_effects, " FE"),
-    if (is.finite(model$covariates %||% NA_integer_))
-      paste0(model$covariates, " covariates")
-  )
-  historical_years <- run$historical_years %||% integer(0)
-  historical <- if (length(historical_years) >= 2L) {
-    paste0("Historical ", historical_years[1], "-", historical_years[2])
-  } else NULL
   policy_pills <- if (length(labels)) {
-    paste0(policies, " \u00B7 ", labels)
+    policy_scenarios <- policy_scenarios %||% list()
+    labels <- mapply(function(key, label) {
+      scenario <- policy_scenarios[[key]] %||% list()
+      parameter_key <- c(A = "elec", B = "water", C = "sanitation", D = "health_travel",
+                         E = "internet", F = "mobile", G = "piped", H = "piped_to_prem",
+                         I = "imp_wat_san", K = "primary", L = "secondary", M = "postsec")[[key]]
+      if (is.null(parameter_key)) {
+        parameter_key <- switch(key, J = "employment", character(0))
+      }
+      pct <- scenario[[paste0(parameter_key, "_access_change_pct")]] %||%
+        scenario[[paste0(parameter_key, "_pct")]] %||% scenario$health_travel_pct
+      pct <- suppressWarnings(as.numeric(pct)[1])
+      universal <- isTRUE(scenario[[paste0(parameter_key, "_universal")]])
+      parameter <- if (universal || isTRUE(pct == 100)) "universal"
+                   else if (is.finite(pct)) paste0(if (pct >= 0) "+" else "", pct, "%")
+                   else if (identical(key, "J")) {
+                     change <- suppressWarnings(as.numeric(scenario$employment_change_pp)[1])
+                     if (is.finite(change)) paste0(if (change >= 0) "+" else "", change, " pp") else NULL
+                   }
+                   else NULL
+      paste(c(sub("^[^/]+/\\s*", "", label), parameter), collapse = " · ")
+    }, policies, labels, USE.NAMES = FALSE)
   } else "None"
   sp <- sp_scenario %||% list()
   if (is.function(sp)) sp <- sp()
@@ -322,39 +321,10 @@ policy_summary_card <- function(selected_policies = NULL,
   } else NULL
   policy_pills <- c(sp_label, policy_pills[policy_pills != "None"])
   if (!length(policy_pills)) policy_pills <- "None"
-  configured_count <- length(policy_pills[policy_pills != "None"])
-  climate_scenarios <- names(policy_saved_scenarios)
-
   selection_summary_card(
-    title = "Selected policy scenarios",
-    badge = paste(configured_count,
-                  if (configured_count == 1L) "policy" else "policies"),
-    rows = list(
-      list(
-        name = "Climate scenarios",
-        sub = if (length(historical)) historical else "Historical climate",
-        pills = climate_scenarios
-      ),
-      list(name = "Policies", sub = NULL, pills = policy_pills),
-      list(
-        name = "Model",
-        sub = model$label %||% "Fitted model",
-        pills = c(
-          paste0("Outcome: ", so_label),
-          if (length(weather_labels)) paste0(
-            "Weather: ", paste(weather_labels, collapse = ", ")
-          ),
-          model_bits
-        )
-      ),
-      list(
-        name = "Baseline",
-        sub = baseline,
-        pills = c(
-          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
-        )
-      )
-    )
+    title = NULL,
+    badge = NULL,
+    rows = list(list(name = "Policies", sub = NULL, pills = policy_pills))
   )
 }
 

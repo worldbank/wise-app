@@ -283,7 +283,7 @@ step3_headline_cards <- function(paired_summary,
     )
   )
 
-  # 2. Adverse weather year protection (1-in-10, 1-in-20, 1-in-50)
+  # 2. Adverse weather year protection (1-in-20 headline)
   eff_10 <- NA_real_
   eff_20 <- NA_real_
   eff_50 <- NA_real_
@@ -306,21 +306,19 @@ step3_headline_cards <- function(paired_summary,
     eff_50 <- get_eff(rp_50)
   }
 
-  val_2 <- if (is.finite(eff_10)) sprintf("%+.2f", eff_10) else "Unavailable"
+  val_2 <- if (is.finite(eff_20)) sprintf("%+.2f", eff_20) else "Unavailable"
 
   tail_parts <- character(0)
-  if (is.finite(eff_20)) tail_parts <- c(tail_parts, paste0("1-in-20: ", sprintf("%+.2f", eff_20)))
+  if (is.finite(eff_10)) tail_parts <- c(tail_parts, paste0("1-in-10: ", sprintf("%+.2f", eff_10)))
   if (is.finite(eff_50)) tail_parts <- c(tail_parts, paste0("1-in-50: ", sprintf("%+.2f", eff_50)))
-  line1_2 <- if (length(tail_parts)) paste(tail_parts, collapse = " \u00b7 ") else "1-in-10 adverse year protection"
-  line2_2 <- "Severe weather-year protection"
+  line1_2 <- if (length(tail_parts)) paste(tail_parts, collapse = " \u00b7 ") else "Adverse year protection"
 
   card2 <- list(
-    label = "Adverse 1-in-10 protection",
+    label = "Adverse 1-in-20 year protection",
     value = val_2,
-    note = paste(line1_2, line2_2, sep = " \u00b7 "),
+    note = line1_2,
     note_html = shiny::tagList(
-      shiny::tags$div(line1_2),
-      shiny::tags$div(style = "font-weight: 600;", line2_2)
+      shiny::tags$div(line1_2)
     ),
     info = paste(
       "Paired policy effect during severe adverse weather years (1-in-10, 1-in-20,",
@@ -329,7 +327,7 @@ step3_headline_cards <- function(paired_summary,
     )
   )
 
-  # 3. Policy channels (Level vs Resilience)
+  # 3. Resilience effect
   lev_str <- NA_character_
   res_str <- NA_character_
   if (!is.null(decomp_res) && is.data.frame(decomp_res) && nrow(decomp_res) > 0) {
@@ -343,21 +341,15 @@ step3_headline_cards <- function(paired_summary,
     }
   }
 
-  val_3 <- if (!is.na(lev_str) && !is.na(res_str)) {
-    paste0("L: ", lev_str, " \u00b7 R: ", res_str)
-  } else {
-    "Level & resilience"
-  }
-  line1_3 <- "Direct transfer vs resilience"
-  line2_3 <- "Structural decomposition channels"
+  val_3 <- if (!is.na(res_str)) res_str else "Unavailable"
+  line1_3 <- "Weather sensitivity effect"
 
   card3 <- list(
-    label = "Policy channels",
+    label = "Resilience effect",
     value = val_3,
-    note = paste(line1_3, line2_3, sep = " \u00b7 "),
+    note = line1_3,
     note_html = shiny::tagList(
-      shiny::tags$div(line1_3),
-      shiny::tags$div(style = "font-weight: 600;", line2_3)
+      shiny::tags$div(line1_3)
     ),
     info = paste(
       "Decomposes the simulated policy effect into a direct level effect",
@@ -371,43 +363,30 @@ step3_headline_cards <- function(paired_summary,
     tryCatch(.sp_transfer_totals(policy_svy, "hh"), error = function(e) NULL)
   } else NULL
 
-  scale_val <- "Defined"
-  line1_4 <- "Program parameters"
-  line2_4 <- "Policy simulation"
+  scale_val <- "Unavailable"
+  line1_4 <- "Population equivalent"
 
   if (!is.null(realized) && is.finite(realized$total) && realized$total > 0) {
-    scale_val <- if (realized$total >= 1e6) {
-      paste0("$", fmt_num(realized$total / 1e6, 1), "M")
-    } else {
-      paste0("$", format(round(realized$total), big.mark = ","))
-    }
-    n_recip <- realized$n_recipients_weighted %||% realized$n_recipients %||% NA_real_
-    line1_4 <- if (is.finite(n_recip)) {
-      paste0(format(round(n_recip), big.mark = ","), " recipient HHs")
-    } else "Annual transfer budget"
-    line2_4 <- "Realized program expenditure"
-  } else if (is.list(sp_scenario) && is.finite(sp_scenario$budget_fixed %||% NA_real_)) {
-    b_fix <- sp_scenario$budget_fixed
-    scale_val <- if (b_fix >= 1e6) {
-      paste0("$", fmt_num(b_fix / 1e6, 1), "M")
-    } else {
-      paste0("$", format(round(b_fix), big.mark = ","))
-    }
-    line1_4 <- "Annual fixed budget"
-    line2_4 <- "Specified policy constraint"
+    w <- if ("weight" %in% names(policy_svy)) as.numeric(policy_svy$weight) else rep(1, nrow(policy_svy))
+    transfer <- as.numeric(policy_svy[[SP_TRANSFER_COL]])
+    hhsize <- if ("hhsize" %in% names(policy_svy)) as.numeric(policy_svy$hhsize) else rep(1, nrow(policy_svy))
+    hhsize[!is.finite(hhsize) | hhsize <= 0] <- 1
+    pop <- sum(w[is.finite(w) & is.finite(transfer) & transfer > 0] *
+               hhsize[is.finite(w) & is.finite(transfer) & transfer > 0])
+    scale_val <- if (is.finite(pop)) paste0(fmt_num(pop / 1e6, 1), "M") else "Unavailable"
+    line1_4 <- "Population reached"
   }
 
   card4 <- list(
     label = "Program scale & reach",
     value = scale_val,
-    note = paste(line1_4, line2_4, sep = " \u00b7 "),
+    note = line1_4,
     note_html = shiny::tagList(
-      shiny::tags$div(line1_4),
-      shiny::tags$div(style = "font-weight: 600;", line2_4)
+      shiny::tags$div(line1_4)
     ),
     info = paste(
-      "Realized annual program expenditure and weighted recipient household count",
-      "simulated from the policy design parameters."
+      "Population reached is the weighted number of people receiving the policy,",
+      "using household size where applicable."
     )
   )
 
@@ -442,7 +421,7 @@ step3_headline_cards <- function(paired_summary,
     length(unique(paired_summary$scenario)) * n_mods * 30L
   }
 
-  line2_5 <- paste0("Ensemble consensus (", total_runs, " runs)")
+  line2_5 <- paste0("Across ", total_runs, " simulations")
 
   card5 <- list(
     label = "Policy robustness",
@@ -1136,6 +1115,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
                                policy_saved_scenarios,
                                selected_hist,
                                selected_policies = reactive(NULL),
+                               policy_scenarios = reactive(list()),
                                sp_scenario = reactive(NULL),
                                residuals = reactive("original"),
                                stale = reactive(FALSE),
@@ -1161,7 +1141,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       baseline_hist_sim      = bh,
       policy_saved_scenarios = policy_saved_scenarios(),
       selected_weather       = bh$sim_summary$weather %||% NULL,
-      sp_scenario             = sp_scenario()
+      sp_scenario             = sp_scenario(),
+      policy_scenarios        = policy_scenarios()
     )
   })
 

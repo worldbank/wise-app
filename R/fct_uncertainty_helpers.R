@@ -21,19 +21,38 @@
 #' @noRd
 by_model_matrix <- function(tbl) {
   if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
-  all_ids <- unique(unlist(tbl$model_id, use.names = FALSE))
+  required <- c("sim_year", "model_id", "value_all", "value_all_sd")
+  if (!all(required %in% names(tbl))) return(NULL)
+
+  cell <- function(x, k) if (is.list(x)) x[[k]] else x[[k]]
+  ids_by_year <- lapply(seq_len(nrow(tbl)), function(k)
+    as.character(cell(tbl$model_id, k)))
+  vals_by_year <- lapply(seq_len(nrow(tbl)), function(k)
+    as.numeric(cell(tbl$value_all, k)))
+  sds_by_year <- lapply(seq_len(nrow(tbl)), function(k)
+    as.numeric(cell(tbl$value_all_sd, k)))
+  valid_rows <- vapply(seq_along(ids_by_year), function(k) {
+    length(ids_by_year[[k]]) > 0L &&
+      length(vals_by_year[[k]]) == length(ids_by_year[[k]])
+  }, logical(1L))
+  if (!any(valid_rows)) return(NULL)
+
+  all_ids <- unique(unlist(ids_by_year[valid_rows], use.names = FALSE))
   n_yrs   <- nrow(tbl)
   vals_mat <- matrix(NA_real_, nrow = length(all_ids), ncol = n_yrs,
                      dimnames = list(all_ids, tbl$sim_year))
   sds_mat  <- matrix(NA_real_, nrow = length(all_ids), ncol = n_yrs,
                      dimnames = list(all_ids, tbl$sim_year))
   for (k in seq_len(n_yrs)) {
-    ids  <- as.character(tbl$model_id[[k]])
-    vals <- tbl$value_all[[k]]
-    sds  <- tbl$value_all_sd[[k]]
+    if (!valid_rows[[k]]) next
+    ids  <- ids_by_year[[k]]
+    vals <- vals_by_year[[k]]
+    sds  <- sds_by_year[[k]]
     if (length(sds) == 1L && length(vals) > 1L) sds <- rep(sds, length(vals))
-    vals_mat[ids, k] <- vals
-    sds_mat[ids,  k] <- sds
+    if (length(sds) != length(vals)) sds <- rep(NA_real_, length(vals))
+    keep <- !is.na(ids) & nzchar(ids) & ids %in% all_ids
+    vals_mat[ids[keep], k] <- vals[keep]
+    sds_mat[ids[keep],  k] <- sds[keep]
   }
   list(vals = vals_mat, sds = sds_mat, model_ids = all_ids,
        sim_years = tbl$sim_year)

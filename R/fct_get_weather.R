@@ -487,7 +487,8 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
 #' @param df     Collected data frame.
 #' @param breaks Named list of break vectors as returned by `.compute_breaks()`.
 #'
-#' @return `df` with binned columns converted to factors via `cut()`.
+#' @return `df` with binned columns converted to factors via `cut()` and using
+#'   the same display-safe levels as the fitted model data.
 #' @noRd
 .apply_binning <- function(df, breaks) {
   for (v in names(breaks)) {
@@ -495,7 +496,11 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
       df[[v]] <- cut(df[[v]], breaks = breaks[[v]], include.lowest = TRUE)
     }
   }
-  df
+  # Model fitting relabels sentinel outer edges for display. Apply that
+  # canonical relabelling here as well so simulation newdata has exactly the
+  # factor levels used by the fitted model and its weather coefficients are
+  # not silently omitted from the prediction design matrix.
+  relabel_bin_levels(df, breaks)
 }
 
 # ---------------------------------------------------------------------------- #

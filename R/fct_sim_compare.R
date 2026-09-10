@@ -602,7 +602,21 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                       vapply(df$scenario, .parse_year, character(1L)))
   df$ssp <- ifelse(df$scenario == "Historical", "Historical",
                    vapply(df$scenario, .normalise_ssp, character(1L)))
-  df$ssp <- factor(df$ssp, levels = c("Historical", names(.ssp_colours)))
+  scenario_levels <- c("Historical", sort(unique(df$scenario[df$scenario != "Historical"])))
+  scenario_palette <- c(Historical = "#8c8c8c")
+  for (ssp in unique(df$ssp[df$ssp != "Historical"])) {
+    members <- scenario_levels[scenario_levels != "Historical"]
+    members <- members[vapply(members, function(s)
+      identical(.normalise_ssp(s), ssp), logical(1L))]
+    members <- members[order(vapply(members, .parse_year, character(1L)))]
+    base_col <- if (ssp %in% names(.ssp_colours))
+      unname(.ssp_colours[[ssp]]) else "#0072B2"
+    shades <- if (length(members) > 1L)
+      colorspace::lighten(base_col, seq(0.30, 0, length.out = length(members)))
+    else base_col
+    scenario_palette[members] <- shades
+  }
+  df$scenario_key <- factor(df$scenario, levels = scenario_levels)
 
   hist_mean <- if (any(df$scenario == "Historical")) {
     mean(df$value[df$scenario == "Historical"], na.rm = TRUE)
@@ -622,20 +636,20 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
     # Dodged boxplots and violins for Baseline (muted) vs Policy (highlighted)
     p <- p +
       ggplot2::geom_violin(
-        ggplot2::aes(fill = .data$ssp, alpha = .data$source,
+         ggplot2::aes(fill = .data$scenario_key, alpha = .data$source,
                      group = interaction(.data$scenario, .data$source)),
         position = ggplot2::position_dodge(width = 0.65),
         scale = "width", colour = NA, na.rm = TRUE
       ) +
       ggplot2::geom_boxplot(
         ggplot2::aes(group = interaction(.data$scenario, .data$source),
-                     fill = .data$ssp, alpha = .data$source),
+                      fill = .data$scenario_key, alpha = .data$source),
         position = ggplot2::position_dodge(width = 0.65),
         width = 0.22, outlier.shape = NA, colour = "#243746", na.rm = TRUE
       ) +
       ggplot2::geom_point(
         ggplot2::aes(group = interaction(.data$scenario, .data$source),
-                     colour = .data$ssp, alpha = .data$source),
+                      colour = .data$scenario_key, alpha = .data$source),
         position = ggplot2::position_jitterdodge(jitter.width = 0.06, dodge.width = 0.65),
         size = 1.0, na.rm = TRUE
       ) +
@@ -648,11 +662,11 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
         na.rm = TRUE
       ) +
       ggplot2::scale_fill_manual(
-        values = c(Historical = "#8c8c8c", .ssp_colours),
+         values = scenario_palette,
         na.value = "#8c8c8c", name = "Climate scenario"
       ) +
       ggplot2::scale_colour_manual(
-        values = c(Historical = "#8c8c8c", .ssp_colours),
+         values = scenario_palette,
         na.value = "#8c8c8c", guide = "none"
       ) +
       ggplot2::scale_alpha_manual(
@@ -678,7 +692,7 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
   }
 
   p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$scenario, y = .data$value,
-                                   fill = .data$ssp))
+                                    fill = .data$scenario_key))
 
   if (is.finite(hist_mean)) {
     p <- p + ggplot2::geom_hline(yintercept = hist_mean, linetype = "dashed",
@@ -690,13 +704,15 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                          na.rm = TRUE) +
     ggplot2::geom_boxplot(width = 0.14, outlier.shape = NA, na.rm = TRUE,
                           colour = "#243746", fill = "white") +
-    ggplot2::geom_point(position = ggplot2::position_jitter(width = 0.08),
-                        alpha = 0.35, size = 1.2, na.rm = TRUE) +
+     ggplot2::geom_point(ggplot2::aes(colour = .data$scenario_key),
+                         position = ggplot2::position_jitter(width = 0.08),
+                         alpha = 0.55, size = 1.2, na.rm = TRUE) +
     ggplot2::stat_summary(fun = mean, geom = "point", shape = 23,
                           size = 2.8, fill = "white", colour = "#173042",
                           na.rm = TRUE) +
-    ggplot2::scale_fill_manual(values = c(Historical = "#8c8c8c", .ssp_colours),
-                               na.value = "#8c8c8c", name = "Climate scenario") +
+     ggplot2::scale_fill_manual(values = scenario_palette,
+                                na.value = "#8c8c8c", name = "Climate scenario") +
+     ggplot2::scale_colour_manual(values = scenario_palette, guide = "none") +
     ggplot2::labs(x = NULL, y = x_label, title = title,
                   subtitle = subtitle) +
     theme_wise(base_size = 12) +
@@ -1780,8 +1796,9 @@ enhance_exceedance <- function(curves_tbl,
     sort(unique(as.character(agg_df$scenario[!agg_df$is_historical])))
   )
   scenario_colour_map <- stats::setNames(vapply(scenario_levels, function(s) {
-    if (identical(s, "Historical")) return("black")
-    unname(colour_map_ssp[[.normalise_ssp(s)]] %||% "grey50")
+     if (identical(s, "Historical")) return("black")
+     ssp <- .normalise_ssp(s)
+     if (ssp %in% names(colour_map_ssp)) unname(colour_map_ssp[[ssp]]) else "grey50"
   }, character(1L)), scenario_levels)
   scenario_linetype_map <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) return("solid")
