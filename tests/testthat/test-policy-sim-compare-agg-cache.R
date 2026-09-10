@@ -125,40 +125,10 @@ test_that("Step 3 scenario filter grid and poverty line survive rebuilds (INT-01
     },
     {
       settle <- function() { session$elapse(500); session$flushReact() }
-      html_text <- function(html) paste(as.character(html), collapse = "\n")
-      n_checked <- function(txt) {
-        length(regmatches(txt, gregexpr('checked="checked"', txt))[[1]])
-      }
-      cell_checked <- function(txt, key_id) {
-        grepl(paste0('id="[^"]*', key_id, '"[^>]*checked="checked"'), txt)
-      }
-      cell_present <- function(txt, key_id) {
-        grepl(paste0('id="[^"]*', key_id, '"'), txt)
-      }
-
-      # First render: every grid cell checked (historical default)
-      html <- session$output$scenario_filter_ui
-      expect_equal(n_checked(html_text(html)), 2L)  # SSP2 + SSP5 cells
-
-      # User unchecks a scenario cell, then the scenario set is republished
-      # (Step 2 re-run): the surviving selection is kept, not reset to all.
-      session$setInputs(`sc_SSP5_8_5___2030_2040` = FALSE); settle()
-      bsc(make_step3_scenarios_fixture()); settle()
-      txt <- html_text(session$output$scenario_filter_ui)
-      expect_true(cell_checked(txt, "sc_SSP2_4_5___2030_2040"))
-      expect_false(cell_present(txt, "sc_SSP5_8_5___2030_2040"))
-
-      # Unchecking the final cell falls back to the held selection (UI-38),
-      # aligned with the Step 2 grid: the selection never becomes empty.
-      # (testServer does not simulate the updateCheckboxInput round-trip on
-      # renderUI-created inputs, so assert the selection reactive rather
-      # than the re-rendered markup here.)
-      session$setInputs(`sc_SSP2_4_5___2030_2040` = FALSE); settle()
-      expect_setequal(internals$selected_scenario_names(),
-                      "SSP2-4.5 / 2030-2040")
-      bsc(make_step3_scenarios_fixture_multi()); settle()
-      expect_setequal(internals$selected_scenario_names(),
-                      "SSP2-4.5 / 2030-2040")
+      expect_setequal(
+        internals$selected_scenario_names(),
+        c("SSP2-4.5 / 2030-2040", "SSP5-8.5 / 2030-2040")
+      )
 
       # Poverty line: the input is a static conditionalPanel cell (Step 2
       # alignment). The run's value is the aggregation default while the

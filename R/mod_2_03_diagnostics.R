@@ -16,9 +16,6 @@ mod_2_03_diagnostics_ui <- function(id) {
     shiny::uiOutput(ns("stale_banner")),
     shiny::uiOutput(ns("simulation_summary_ui")),
 
-    # ---- 0. Scenario filters -----------------------------------------------
-    shiny::uiOutput(ns("scenario_filter_panel")),
-
     # ---- 1. Weather inputs panel -------------------------------------------
     shiny::h4(
       "Are simulated weather conditions within model support?",
@@ -36,30 +33,13 @@ mod_2_03_diagnostics_ui <- function(id) {
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      shiny::h4(
-        "Weather input distributions",
-        info_popover(
-          title = "Weather input distributions",
-          shiny::p(shiny::tags$b("Grey fill = Full historical:"),
-            " all years at survey locations and months."),
-          shiny::p(shiny::tags$b("Black dashed = Regression input"),
-            " (shown when 'Include regression output' is selected above)."),
-          shiny::p(shiny::tags$b("Coloured lines = Future scenarios:"),
-            " solid = earliest simulation year, dashed = middle, dotted = latest."),
-           docs = TRUE
-        )
-      ),
       shiny::tags$div(
-        style = "display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:8px;",
-        shiny::tags$div(style = "flex:3; min-width:200px;",
-          shiny::selectInput(
-            ns("diag_weather_vars"),
-            label    = "Weather variables (select one or more)",
-            choices  = character(0),
-            selected = NULL,
-            multiple = TRUE
-          )
-        )
+        style = "display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; margin-bottom:8px;",
+        shiny::tags$div(style = "flex:1 1 220px; min-width:200px;",
+          pill_toggle(ns("diag_weather_vars"), label = NULL,
+                      choices = c("Loading weather variables" = ""), selected = "")
+        ),
+        shiny::uiOutput(ns("diag_weather_scenario_ui"))
       ),
       shiny::actionButton(
         ns("diag_update_weather"),
@@ -196,24 +176,6 @@ mod_2_03_diagnostics_server <- function(id,
 
     # ---- Reactive computations ---------------------------------------------
 
-    active_scenarios_data <- reactive({
-      sc_all <- if (!is.null(saved_scenarios)) names(saved_scenarios()) else character(0)
-      if (length(sc_all) == 0) return(character(0))
-
-      sel_ssps <- input$filter_ssps %||% character(0)
-      sel_yrs  <- input$filter_yrs  %||% character(0)
-
-      if (length(sel_ssps) == 0L && length(sel_yrs) == 0L) return(character(0))
-
-      Filter(function(nm) {
-        ssp    <- .normalise_ssp(nm)
-        yr     <- .parse_year(nm)
-        ssp_ok <- length(sel_ssps) == 0L || isTRUE(ssp %in% sel_ssps)
-        yr_ok  <- length(sel_yrs)  == 0L || isTRUE(yr  %in% sel_yrs)
-        ssp_ok && yr_ok
-      }, sc_all)
-    })
-
     scenario_weather_data <- reactive({
       sc <- if (!is.null(saved_scenarios)) saved_scenarios() else list()
       if (length(sc) == 0) return(NULL)
@@ -222,85 +184,22 @@ mod_2_03_diagnostics_server <- function(id,
       if (length(out) == 0) NULL else out
     })
 
-    output$weight_status_diag_ui <- shiny::renderUI({
-      req(hist_sim())
-      # Detect weight column independently of the toggle -- this allows
-      # the amber state when the column exists but the toggle is OFF.
-      has_w  <- !is.null(hist_sim()$pipeline$weight)
-      tog_on <- isTRUE(input$use_weights_diag)
-      if (has_w && tog_on)
-        NULL
-      else if (has_w && !tog_on)
-        shiny::tags$p(
-          style = "font-size:11px; color:#e65100; margin:2px 0 6px 0;",
-          "\u26A0 Survey weights available but not applied")
-      else
-        shiny::tags$p(
-          style = "font-size:11px; color:#c62828; margin:2px 0 6px 0;",
-          "\U0001F534 No weight column found - unweighted")
-    })
-
-
-
     # ---- renderUI / render* outputs ----------------------------------------
 
-    output$scenario_filter_panel <- shiny::renderUI({
-      sc_all      <- if (!is.null(saved_scenarios)) names(saved_scenarios()) else character(0)
-      unique_ssps <- sort(unique(Filter(Negate(is.na),
-                                        vapply(sc_all, .normalise_ssp, character(1)))))
-      unique_yrs  <- sort(unique(Filter(Negate(is.na),
-                                        vapply(sc_all, .parse_year,    character(1)))))
-
-      shiny::wellPanel(
-       class = "diagnostic-filter-card",
-        shiny::tags$div(
-          style = "display:flex; align-items:baseline; gap:8px; margin-bottom:10px;",
-          shiny::tags$b("Scenario Filters", style = "font-size:13px;"),
-          shiny::tags$span(
-            style = "font-size:11px; color:#888;",
-            "\u2014 applies to all panels below"
-          )
-        ),
-        shiny::tags$div(
-          style = "display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start;",
-          if (length(unique_ssps) > 0)
-            shiny::tags$div(
-              shiny::checkboxGroupInput(
-                inputId  = ns("filter_ssps"),
-                label    = shiny::tags$b("Climate scenario",
-                             style = "font-size:11px; font-weight:600;"),
-                choices  = setNames(unique_ssps, unique_ssps),
-                selected = character(0),
-                inline   = TRUE
-              )
-            ),
-          if (length(unique_yrs) > 0)
-            shiny::tags$div(
-              shiny::checkboxGroupInput(
-                inputId  = ns("filter_yrs"),
-                label    = shiny::tags$b("Simulation year",
-                             style = "font-size:11px; font-weight:600;"),
-                choices  = setNames(unique_yrs, unique_yrs),
-                selected = character(0),
-                inline   = TRUE
-              )
-            )
-        ),
-        shiny::tags$div(
-          style = "margin-top:8px; border-top:1px solid #e0e0e0; padding-top:6px;",
-          shiny::checkboxInput(
-            ns("show_regression_input"),
-            label = "Include regression output",
-            value = TRUE
-          ),
-          shiny::checkboxInput(
-            ns("use_weights_diag"),
-            label = "Use survey weights (if available)",
-            value = TRUE
-          ),
-          shiny::uiOutput(ns("weight_status_diag_ui"))
-        )
+    output$diag_weather_scenario_ui <- shiny::renderUI({
+      sc_all <- if (!is.null(saved_scenarios)) names(saved_scenarios()) else character(0)
+      if (!length(sc_all)) return(NULL)
+      pill_toggle(
+        ns("diag_weather_scenario"), label = NULL,
+        choices = c("All scenarios and periods" = "all",
+                    stats::setNames(sc_all, sc_all)),
+        selected = "all"
       )
+    })
+
+    active_weather_scenarios <- reactive({
+      selected <- input$diag_weather_scenario %||% "all"
+      if (identical(selected, "all")) NULL else selected
     })
 
     output$diag_weather_log_ui <- shiny::renderUI({
@@ -342,11 +241,12 @@ mod_2_03_diagnostics_server <- function(id,
         weather_vars     = vars,
         weather_labels   = lbl_map,
         scenario_weather = scenario_weather_data(),
-        active_scenarios = active_scenarios_data(),
+        active_scenarios = active_weather_scenarios(),
         log_x            = log_x_vec,
-        show_regression  = input$show_regression_input %||% TRUE
+        show_regression  = TRUE
       )
-    }) |> shiny::bindEvent(input$diag_update_weather, hist_sim(),
+    }) |> shiny::bindEvent(input$diag_update_weather, input$diag_weather_scenario,
+                           hist_sim(),
                            ignoreNULL = TRUE, ignoreInit = FALSE)
 
     weather_support_data <- reactive({
@@ -355,8 +255,6 @@ mod_2_03_diagnostics_server <- function(id,
       req(length(vars) > 0L, !is.null(hist_sim()$weather_raw))
       ref <- .filter_hist_weather(hist_sim()$weather_raw, survey_weather())
       scenarios <- scenario_weather_data()
-      active <- active_scenarios_data()
-      if (length(active) > 0L) scenarios <- scenarios[names(scenarios) %in% active]
       weather_support_summary(ref, scenarios, vars)
     })
 
@@ -368,9 +266,18 @@ mod_2_03_diagnostics_server <- function(id,
           rownames = FALSE, options = list(dom = "t")
         ))
       }
-      display <- tbl
-      display$outside_share <- round(100 * display$outside_share, 1)
-      names(display)[names(display) == "outside_share"] <- "outside_robust_support_pct"
+      display <- data.frame(
+        `Weather variable` = tbl$weather_variable,
+        `Scenario / period` = tbl$scenario,
+        `Reference interval (1%-99%)` = paste0(
+          formatC(tbl$robust_lo, format = "fg", digits = 4), " to ",
+          formatC(tbl$robust_hi, format = "fg", digits = 4)),
+        `Scenario values` = tbl$n_scenario,
+        `Outside interval` = paste0(tbl$outside_n, " (", round(100 * tbl$outside_share, 1), "%)"),
+        Status = ifelse(tbl$warning, "Review: extrapolation", "Within support"),
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
       DT::datatable(
         display, rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
@@ -397,11 +304,6 @@ mod_2_03_diagnostics_server <- function(id,
       fun   = function() {
         vb <- variance_breakdown()
         if (is.null(vb) || !nrow(vb)) return(NULL)
-        active <- active_scenarios_data()
-        if (length(active) > 0L) {
-          vb <- vb[vb$is_historical | vb$scenario %in% active, , drop = FALSE]
-        }
-        if (!nrow(vb)) return(NULL)
         plot_variance_contribution(vb)
       },
       description = paste(
@@ -439,8 +341,8 @@ mod_2_03_diagnostics_server <- function(id,
         plot_weather_density_panel(
           survey_weather(), hist_sim()$weather_raw, vars,
           scenario_weather = scenario_weather_data(),
-          active_scenarios = active_scenarios_data(),
-          show_regression = input$show_regression_input %||% TRUE
+          active_scenarios = active_weather_scenarios(),
+          show_regression = TRUE
         )
       },
       description = "Weather input distributions compared with the Step 1 regression support.",
@@ -457,8 +359,7 @@ mod_2_03_diagnostics_server <- function(id,
         annotate_visualization_export(
           weather_density_data(
             survey_weather(), hist_sim()$weather_raw, vars,
-            scenario_weather_data(), active_scenarios_data(),
-            input$show_regression_input %||% TRUE
+            scenario_weather_data(), active_weather_scenarios(), TRUE
           ),
           hist_sim()$so$method %||% "mean", hist_sim()$so,
           observation_unit = "weather input value entering the simulation",
@@ -535,13 +436,6 @@ mod_2_03_diagnostics_server <- function(id,
       req(variance_breakdown)
       vb <- variance_breakdown()
       req(!is.null(vb) && nrow(vb) > 0L)
-      # Filter to currently active scenarios when filters are set; otherwise
-      # show all available rows (Historical + all scenarios in vb).
-      active <- active_scenarios_data()
-      if (length(active) > 0L) {
-        keep <- vb$is_historical | vb$scenario %in% active
-        vb <- vb[keep, , drop = FALSE]
-      }
       plot_variance_contribution(vb)
     })
     output$variance_share_warning <- renderUI({
@@ -570,12 +464,6 @@ mod_2_03_diagnostics_server <- function(id,
       tc <- timeseries_curves()
       req(!is.null(tc$tbl) && nrow(tc$tbl) > 0L)
       ts_tbl <- tc$tbl
-      # Honour the Diagnostics scenario filters (historical always shown).
-      active <- active_scenarios_data()
-      if (length(active) > 0L) {
-        keep <- ts_tbl$is_historical | ts_tbl$scenario %in% active
-        ts_tbl <- ts_tbl[keep, , drop = FALSE]
-      }
       plot_timeseries_spaghetti(
         ts_tbl          = ts_tbl,
         x_label         = tc$x_label,
@@ -632,9 +520,10 @@ mod_2_03_diagnostics_server <- function(id,
         diag_tab_added(TRUE)
       }
 
-      shiny::updateSelectInput(session, "diag_weather_vars",
-                               choices  = choices,
-                               selected = choices[seq_len(min(2, length(choices)))])
+      selected <- if (length(choices)) choices[[1L]] else character(0)
+      shiny::updateRadioButtons(session, "diag_weather_vars",
+                                choices  = choices,
+                                selected = selected)
     }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
     observeEvent(selected_weather(), {
@@ -644,20 +533,21 @@ mod_2_03_diagnostics_server <- function(id,
       } else character(0)
       current <- isolate(input$diag_weather_vars)
       new_sel <- if (length(current) > 0) intersect(current, choices) else character(0)
-      if (length(new_sel) == 0) new_sel <- choices[seq_len(min(2, length(choices)))]
-      shiny::updateSelectInput(session, "diag_weather_vars",
-                               choices  = choices,
-                               selected = new_sel)
+      if (length(new_sel) == 0) {
+        new_sel <- if (length(choices)) choices[[1L]] else character(0)
+      }
+      shiny::updateRadioButtons(session, "diag_weather_vars",
+                                choices  = choices,
+                                selected = new_sel)
     }, ignoreInit = TRUE)
 
     # ---- Suspend outputs when Results tab is hidden ----------------------
-    outputOptions(output, "scenario_filter_panel",   suspendWhenHidden = TRUE)
+    outputOptions(output, "diag_weather_scenario_ui", suspendWhenHidden = TRUE)
     outputOptions(output, "diag_weather_log_ui",     suspendWhenHidden = TRUE)
     outputOptions(output, "diag_weather_density",    suspendWhenHidden = TRUE)
     outputOptions(output, "variance_contribution_plot", suspendWhenHidden = TRUE)
     outputOptions(output, "timeseries_plot",         suspendWhenHidden = TRUE)
     outputOptions(output, "variance_share_warning",  suspendWhenHidden = FALSE)
-    outputOptions(output, "weight_status_diag_ui",   suspendWhenHidden = TRUE)
 
     # ---- Return API --------------------------------------------------------
     list(diag_tab_added = diag_tab_added)
