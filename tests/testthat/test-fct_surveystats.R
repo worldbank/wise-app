@@ -114,10 +114,10 @@ test_that("interview date plot variants return ggplot objects", {
                "Individuals")
   p <- plot_interview_dates(d, palette = "sequential")
   fill_scale <- p$scales$get_scales("fill")
-  expect_equal(unname(fill_scale$palette(2)), c("#264A79", "#0071BC"))
+  expect_equal(unname(fill_scale$palette(2)), c("#0071BC", "#00A6C7"))
   expect_equal(
     unname(plot_interview_dates(d[4:1, ], palette = "sequential")$scales$get_scales("fill")$palette(2)),
-    c("#264A79", "#0071BC")
+    c("#0071BC", "#00A6C7")
   )
   d_multi <- data.frame(
     economy = rep(c("Benin", "Burkina Faso"), each = 4),
@@ -130,8 +130,8 @@ test_that("interview date plot variants return ggplot objects", {
   p_multi <- plot_interview_dates(d_multi, palette = "sequential")
   multi_cols <- unname(p_multi$scales$get_scales("fill")$palette(4))
   expect_equal(multi_cols,
-               c("#264A79", "#0071BC", "#185C78", "#00A6C7"))
+               c("#0071BC", "#00A6C7", "#8667B3", "#C28C2C"))
   expect_null(p_multi$scales$get_scales("fill")$name)
-  expect_equal(p_multi$theme$text$size, 12)
+  expect_equal(p_multi$theme$text$size, 13)
   expect_null(plot_interview_dates(NULL))
 })

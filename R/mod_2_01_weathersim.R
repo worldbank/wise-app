@@ -242,6 +242,7 @@ mod_2_01_weathersim_ui <- function(id) {
 #' @param stored_breaks Reactive returning a named list of pre-computed
 #'   histogram break points for the weather density plot. Defaults to
 #'   \code{reactive(NULL)} - breaks computed on demand when not supplied.
+#' @param run_trigger Optional reactive trigger for a programmatic run.
 #'
 #' @noRd
 mod_2_01_weathersim_server <- function(id,
@@ -252,7 +253,8 @@ mod_2_01_weathersim_server <- function(id,
                                         survey_weather,
                                         model_fit,
                                         stored_breaks = reactive(NULL),
-                                        survey_version = reactive(0L)) {
+                                        survey_version = reactive(0L),
+                                        run_trigger = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -262,6 +264,8 @@ mod_2_01_weathersim_server <- function(id,
     # INT-08: TRUE while the stored simulation's run signature no longer
     # matches the current fit/climate inputs.
     sim_stale       <- reactiveVal(FALSE)
+    run_generation  <- reactiveVal(0L)
+    run_status      <- reactiveVal("idle")
 
     cleanup_weather_stores <- function() {
       # Session-end callbacks are not reactive consumers. Isolate the final
@@ -342,6 +346,8 @@ mod_2_01_weathersim_server <- function(id,
         selectize = TRUE
       )
     })
+    shiny::outputOptions(output, "baseline_survey_ui",
+                         suspendWhenHidden = FALSE)
 
     output$baseline_warning_ui <- shiny::renderUI({
       sel <- input$baseline_survey %||% baseline_default()
@@ -665,7 +671,24 @@ mod_2_01_weathersim_server <- function(id,
 
     observeEvent(hist_sim(), sim_stale(FALSE))
 
-    observeEvent(input$run_sim, {
+    sim_run_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$run_sim, {
+      if (shiny::isTruthy(input$run_sim)) {
+        sim_run_event(list(source = "manual", value = input$run_sim))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) sim_run_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    observeEvent(sim_run_event(), {
+      run_generation(run_generation() + 1L)
+      run_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) run_status("failure")
+      }, add = TRUE)
       req(selected_weather(), selected_outcome(),
           survey_weather(), selected_hist(), model_fit())
       if (!sim_guard$begin()) return(invisible(NULL))
@@ -780,6 +803,8 @@ mod_2_01_weathersim_server <- function(id,
         sim_stale(FALSE)
         hist_sim(result$hist_sim_result)
         saved_scenarios(result$new_scenarios)
+        run_status("success")
+        completed <- TRUE
 
         shiny::setProgress(value = 1, detail = "Complete")
       })
@@ -845,7 +870,9 @@ mod_2_01_weathersim_server <- function(id,
       skip_coef_draws = reactive(!isTRUE(input$include_coef_uncertainty)),
       propagate_all_covariate_uncertainty =
         reactive(isTRUE(input$propagate_all_covariate_uncertainty)),
-      stale           = sim_stale
+      stale           = sim_stale,
+      run_generation  = run_generation,
+      run_status      = run_status
     )
   })
 }

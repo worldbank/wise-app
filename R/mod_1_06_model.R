@@ -42,6 +42,7 @@ mod_1_06_model_ui <- function(id) {
 #' @param selected_outcome Reactive data frame row for the selected outcome.
 #' @param selected_weather Reactive data frame of selected weather specs.
 #' @param survey_weather   Reactive data frame of merged survey + weather data.
+#' @param run_trigger      Optional reactive trigger for a programmatic fit.
 #'
 #' @noRd
 mod_1_06_model_server <- function(id,
@@ -50,7 +51,8 @@ mod_1_06_model_server <- function(id,
                                    analysis_unit,
                                    selected_outcome,
                                    selected_weather,
-                                   survey_weather) {
+                                   survey_weather,
+                                   run_trigger = shiny::reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -477,8 +479,10 @@ mod_1_06_model_server <- function(id,
     # existed until the user opened the flyout, and "Run model" silently
     # no-opped on `req(input$covariates)` until they did. Render them eagerly;
     # the flyout still controls visibility.
-    shiny::outputOptions(output, "model_specs_ui",    suspendWhenHidden = FALSE)
-    shiny::outputOptions(output, "covariate_inputs",  suspendWhenHidden = FALSE)
+    lapply(c("model_selector_ui", "policy_ui", "model_specs_ui",
+             "covariate_inputs"), function(out_id) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    })
 
     # Helper: vars at a given level (ind/hh/firm/area) from valid_vl
     .vars_at_level <- function(role) {
@@ -692,6 +696,8 @@ mod_1_06_model_server <- function(id,
 
       )
     })
+    shiny::outputOptions(output, "lasso_force_ui", suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "lasso_advanced_ui", suspendWhenHidden = FALSE)
 
     # --- LASSO MODEL ---------------------------------------------------------
     #
@@ -784,7 +790,18 @@ mod_1_06_model_server <- function(id,
     # `selected_model()`. The explicit priority is what orders the two - both
     # observers key off the same button, and flush order between equal
     # priorities is not something to rely on.
-    observeEvent(input$run_model, {
+    run_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$run_model, {
+      if (shiny::isTruthy(input$run_model)) {
+        run_event(list(source = "manual", value = input$run_model))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) run_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    observeEvent(run_event(), {
       if (!isTRUE(input$covariates == "Lasso")) {
         lasso_store(NULL)
         return(invisible(NULL))
@@ -961,7 +978,7 @@ mod_1_06_model_server <- function(id,
     list(
       selected_model    = selected_model,
       selected_policies = selected_policies_rv,
-      run_model         = reactive(input$run_model),
+      run_model         = run_event,
       fit_guard         = fit_guard
     )
   })

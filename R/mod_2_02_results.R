@@ -1284,7 +1284,7 @@ mod_2_02_results_server <- function(id,
          title = NULL,
         plot_type = input$annual_distribution_type %||% "violin"
       )
-    }, height = 510)
+    })
 
     incidence_data_rv <- reactive({
       req(hist_sim(), saved_scenarios(), shiny::isolate(input$cmp_agg_method))
@@ -1313,7 +1313,7 @@ mod_2_02_results_server <- function(id,
         incidence_data_rv(), rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("tp"), pageLength = 10,
-                       buttons = wise_csv_button("climate_distributional_incidence"))
+                        buttons = wise_csv_button("climate_distributional_incidence_data"))
       )
     })
     outputOptions(output, "incidence_table", suspendWhenHidden = TRUE)
@@ -1400,7 +1400,7 @@ mod_2_02_results_server <- function(id,
       )
     }
 
-    output$threshold_csv <- csv_download_handler("climate_return_period_outcomes", function() threshold_table_df())
+    output$threshold_csv <- csv_download_handler("climate_outcome_thresholds", function() threshold_table_df())
 
     output$uncertainty_sources_plot <- renderPlot({
       req(variance_breakdown_rv())
@@ -1486,7 +1486,7 @@ mod_2_02_results_server <- function(id,
       }
       # INT-08: export is disabled while the results are stale - the table
       # stays visible, the CSV button does not.
-      dt_buttons <- wise_csv_button("outcome_thresholds",
+       dt_buttons <- wise_csv_button("climate_outcome_thresholds",
                                     enabled = !isTRUE(stale()))
       DT::datatable(
         df, rownames = FALSE, class = "compact stripe",

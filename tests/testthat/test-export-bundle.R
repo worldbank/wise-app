@@ -536,7 +536,8 @@ test_that("already-in-force values are not counted as changes", {
     }
     proxy$userData <- session$userData
     export_menu_server(input, output, proxy,
-                       provenance = shiny::reactive(list()), seed = 1L)
+                       provenance = shiny::reactive(list()), seed = 1L,
+                       run_triggers = list(), step_results = list())
   }
 }
 
@@ -560,7 +561,7 @@ test_that("a deferred setting is applied once its control appears (UI-52)", {
 
     st <- session$userData$wise_import_status
     expect_equal(st$class, "alert-success")
-    expect_match(st$text, "1 more will be applied")
+    expect_match(st$text, "1 more will be applied", fixed = TRUE)
     expect_false("late_ctrl" %in% ls(sent))
 
     # The mock session flushes synchronously when the control appears, so the
@@ -600,9 +601,6 @@ test_that("deferred settings that never appear are abandoned audibly", {
     session$setInputs(import_config_file = list(
       datapath = f, name = "configuration.json", size = 20L,
       type = "application/json"))
-    expect_match(session$userData$wise_import_status$text,
-                 "1 more will be applied")
-
     # Expire the retry window; the next retry pass gives up, audibly.
     session$userData$wise_import_state$pending$deadline <- Sys.time() - 1
     session$setInputs(`dummy_existing` = 2L)

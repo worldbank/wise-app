@@ -135,6 +135,10 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
       )
     })
 
+    lapply(c("outcome_ui", "currency_ui", "poverty_line_ui"), function(out_id) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    })
+
     # ---- Augmented selected outcome row (with transform/units/povline) ------
 
     selected_outcome <- reactive({
@@ -298,8 +302,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
             wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
           )
           if (is.null(p)) {
-            plot.new()
-            title(main = "Distribution unavailable")
+            blank_plot("Distribution unavailable")
             return(invisible(NULL))
           }
           p
@@ -503,7 +506,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
           .format_outcome_summary(s, summary_wave_val())
         }
         output$outcome_summary_csv <- csv_download_handler(
-          "outcome_summary_stats", outcome_summary_df
+          "outcome_summary", outcome_summary_df
         )
         wise_export_table(
           key   = "outcome_summary",

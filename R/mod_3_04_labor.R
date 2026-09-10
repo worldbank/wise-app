@@ -177,6 +177,10 @@ mod_3_04_labor_server <- function(id,
       )
     })
 
+    lapply(c("labor_emp_ui", "labor_sector_ui"), function(out_id) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    })
+
     # ---- Agriculture share derived from mfg + services -----------------
 
     sector_agri <- reactive({

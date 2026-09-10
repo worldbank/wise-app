@@ -559,13 +559,6 @@ is_logistic_fit <- function(fit_list) {
 #'
 #' @export
 plot_residual_panels <- function(model, is_logistic = FALSE) {
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 3.5, color = "grey40", hjust = 0.5, vjust = 0.5) +
-      ggplot2::theme_void()
-  }
-
   if (is_logistic) {
     # Binary outcomes: raw residuals vs fitted are unreadable (all points on
     # two curves), so show binned residual means by decile of predicted risk
@@ -597,11 +590,12 @@ plot_residual_panels <- function(model, is_logistic = FALSE) {
         ggplot2::geom_ribbon(
           ggplot2::aes(ymin = .data$mean_res - 2 * .data$se,
                        ymax = .data$mean_res + 2 * .data$se),
-          fill = "steelblue", alpha = 0.15
+          fill = .wise_blue, alpha = 0.15
         ) +
-        ggplot2::geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
-        ggplot2::geom_line(color = "steelblue", linewidth = 0.6) +
-        ggplot2::geom_point(color = "steelblue", size = 2) +
+        ggplot2::geom_hline(yintercept = 0, color = .wise_zero,
+                            linetype = "dashed") +
+        ggplot2::geom_line(color = .wise_blue, linewidth = 0.6) +
+        ggplot2::geom_point(color = .wise_blue, size = 2) +
         theme_wise() +
         ggplot2::labs(
           subtitle = "Binned residuals by predicted risk",
@@ -621,27 +615,18 @@ plot_residual_panels <- function(model, is_logistic = FALSE) {
 
     p1 <- ggplot2::ggplot(df, ggplot2::aes(x = .data$fitted, y = .data$residuals)) +
       ggplot2::geom_point(alpha = 0.15) +
-      ggplot2::geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
-      ggplot2::geom_smooth(method = "loess", se = FALSE, color = "steelblue",
+      ggplot2::geom_hline(yintercept = 0, color = .wise_zero,
+                          linetype = "dashed") +
+      ggplot2::geom_smooth(method = "loess", se = FALSE, color = .wise_blue,
                            linewidth = 0.8, formula = y ~ x) +
-      theme_wise() +
-      ggplot2::theme(
-        plot.subtitle = ggplot2::element_text(size = 13, face = "bold",
-                                              colour = "grey30"),
-        plot.caption  = ggplot2::element_text(colour = "grey40")
-      ) +
+      theme_wise(base_size = 14) +
       ggplot2::labs(subtitle = "Residuals vs fitted",
                     x = "Fitted values", y = "Residuals")
 
     p2 <- ggplot2::ggplot(df, ggplot2::aes(sample = .data$residuals)) +
       ggplot2::stat_qq(alpha = 0.15, size = 1) +
-      ggplot2::stat_qq_line(color = "steelblue", linewidth = 0.6) +
-      theme_wise() +
-      ggplot2::theme(
-        plot.subtitle = ggplot2::element_text(size = 13, face = "bold",
-                                              colour = "grey30"),
-        plot.caption  = ggplot2::element_text(colour = "grey40")
-      ) +
+      ggplot2::stat_qq_line(color = .wise_blue, linewidth = 0.6) +
+      theme_wise(base_size = 14) +
       ggplot2::labs(subtitle = "Normal Q-Q",
                     x = "Theoretical quantiles", y = "Sample quantiles")
 
@@ -711,13 +696,6 @@ make_coefplot <- function(fit1, fit2, fit3,
                            x_label       = NULL,
                            has_controls  = TRUE) {
 
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 3.5, color = "grey40", hjust = 0.5, vjust = 0.5) +
-      ggplot2::theme_void()
-  }
-
   # --- RIF branch: beta curve plot -------------------------------------------
   if (identical(engine, "rif") && !is.null(rif_grid)) {
     return(tryCatch({
@@ -769,7 +747,8 @@ make_coefplot <- function(fit1, fit2, fit3,
       ggplot2::ggplot(plot_data, ggplot2::aes(x = tau, y = estimate,
                                                colour = model_label,
                                                fill   = model_label)) +
-        ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+        ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                            colour = .wise_zero) +
         ggplot2::geom_ribbon(
           ggplot2::aes(ymin = conf.low, ymax = conf.high),
           alpha = 0.10, colour = NA
@@ -781,8 +760,8 @@ make_coefplot <- function(fit1, fit2, fit3,
           breaks = taus,
           labels = scales::percent_format(1)
         ) +
-      wise_scale_colour_okabe_ito(name = NULL) +
-      wise_scale_fill_okabe_ito(name = NULL) +
+      wise_scale_colour_cat(name = NULL) +
+      wise_scale_fill_cat(name = NULL) +
       ggplot2::labs(
         subtitle = paste("UQR coefficients for", label_fun(pred_var)),
         x        = "Welfare quantile",
@@ -793,10 +772,7 @@ make_coefplot <- function(fit1, fit2, fit3,
         ggplot2::theme(
           legend.position  = "bottom",
           panel.border     = ggplot2::element_blank(),
-          strip.background = ggplot2::element_blank(),
-          plot.subtitle    = ggplot2::element_text(face = "bold", hjust = 0.5, size = 11),
-          plot.caption     = ggplot2::element_text(size = 9, colour = "grey40", hjust = 0),
-          axis.text        = ggplot2::element_text(size = 9)
+          strip.background = ggplot2::element_blank()
         )
     }, error = function(e) blank_plot(paste0("RIF coefficient plot error: ", conditionMessage(e)))))
   }
@@ -866,12 +842,14 @@ make_coefplot <- function(fit1, fit2, fit3,
         shape  = model
       )
     ) +
-      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = .wise_zero) +
       ggplot2::geom_pointrange(
         ggplot2::aes(xmin = conf.low, xmax = conf.high),
         position = ggplot2::position_dodge(width = 0.5)
       ) +
       ggplot2::scale_colour_manual(
+        # Progressively stronger specification: greys for simpler specs, the
+        # categorical lead blue (#0072B2) for the preferred full specification.
         values = c("No FE" = "grey72", "FE" = "grey58",
                    setNames("#0072B2", lab3)),
         name = NULL
@@ -959,13 +937,6 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
   mode <- match.arg(mode, c("auto", "main", "moderated"))
   effect_scale <- match.arg(effect_scale, c("model", "pp", "pp100", "pct"))
 
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 3.5, color = "grey40", hjust = 0.5, vjust = 0.5) +
-      ggplot2::theme_void()
-  }
-
   # Moderator level labels: raw 0/1 codes read as developer output, so binary
   # moderators become "<label>: no / <label>: yes".
   modx_level_label <- function(lab, v) {
@@ -1025,11 +996,11 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
     )
     tau_layers <- list(
       ggplot2::geom_vline(xintercept = mark_taus,
-                          linetype = "dashed", colour = "grey50"),
+                          linetype = "dashed", colour = .wise_zero),
       ggplot2::geom_text(data = tau_df,
                          ggplot2::aes(x = x, y = Inf, label = label),
                          inherit.aes = FALSE,
-                         vjust = 1.4, size = 2.8, colour = "grey40")
+                         vjust = 1.4, size = 3.2, colour = .wise_slate)
     )
   }
 
@@ -1085,10 +1056,10 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           ggplot2::aes(x = tau, y = estimate, ymin = conf.low, ymax = conf.high)
         ) +
           ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
-                              colour = "grey60") +
-          ggplot2::geom_ribbon(alpha = 0.15, fill = "steelblue") +
-          ggplot2::geom_line(colour = "steelblue", linewidth = 0.9) +
-          ggplot2::geom_point(colour = "steelblue", size = 2) +
+                              colour = .wise_zero) +
+          ggplot2::geom_ribbon(alpha = 0.15, fill = .wise_blue) +
+          ggplot2::geom_line(colour = .wise_blue, linewidth = 0.9) +
+          ggplot2::geom_point(colour = .wise_blue, size = 2) +
           ggplot2::facet_wrap(~ term_label) +
           ggplot2::scale_x_continuous(breaks = taus,
                                       labels = scales::percent_format(1)) +
@@ -1097,19 +1068,11 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
             y       = rif_y_lab,
             caption = "Ribbon = 95% CI"
           ) +
-          theme_wise() +
+          theme_wise(base_size = 14) +
           ggplot2::theme(
             legend.position    = "none",
             panel.border       = ggplot2::element_blank(),
-            strip.background   = ggplot2::element_blank(),
-            strip.text         = ggplot2::element_text(size = 8.5),
-            plot.caption       = ggplot2::element_text(size = 9,
-                                                       colour = "grey40",
-                                                       hjust = 0),
-            panel.grid.minor   = ggplot2::element_blank(),
-            axis.text          = ggplot2::element_text(size = 8),
-            axis.line.x.bottom = ggplot2::element_blank(),
-            axis.line.y.left   = ggplot2::element_blank()
+            strip.background   = ggplot2::element_blank()
           )
         if (!is.null(tau_layers)) p <- p + tau_layers
         return(p)
@@ -1117,13 +1080,13 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
       if (n_terms == 1) {
         # Single term: simple beta curve
         p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = tau, y = estimate)) +
-          ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+          ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
           ggplot2::geom_ribbon(
             ggplot2::aes(ymin = conf.low, ymax = conf.high),
-            alpha = 0.15, fill = "steelblue"
+            alpha = 0.15, fill = .wise_blue
           ) +
-          ggplot2::geom_line(colour = "steelblue", linewidth = 0.9) +
-          ggplot2::geom_point(colour = "steelblue", size = 2.5) +
+          ggplot2::geom_line(colour = .wise_blue, linewidth = 0.9) +
+          ggplot2::geom_point(colour = .wise_blue, size = 2.5) +
           ggplot2::scale_x_continuous(breaks = taus, labels = scales::percent_format(1)) +
           ggplot2::labs(
             x     = "Welfare quantile",
@@ -1132,14 +1095,9 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           ) +
           theme_wise() +
           ggplot2::theme(
-            legend.position    = "bottom",
+            legend.position    = "none",
             panel.border       = ggplot2::element_blank(),
-            strip.background   = ggplot2::element_blank(),
-            plot.caption       = ggplot2::element_text(size = 9, colour = "grey40", hjust = 0),
-            panel.grid.minor   = ggplot2::element_blank(),
-            axis.text          = ggplot2::element_text(size = 9),
-            axis.line.x.bottom = ggplot2::element_blank(),
-            axis.line.y.left   = ggplot2::element_blank()
+            strip.background   = ggplot2::element_blank()
           )
         if (!is.null(tau_layers)) p <- p + tau_layers
         p
@@ -1281,7 +1239,7 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
                        colour = modx_label, fill = modx_label)
         ) +
           ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
-                              colour = "grey60") +
+                              colour = .wise_zero) +
           ggplot2::geom_ribbon(
             ggplot2::aes(ymin = conf.low, ymax = conf.high),
             alpha = 0.15, colour = NA
@@ -1291,8 +1249,8 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           ggplot2::scale_x_continuous(breaks = taus,
                                       labels = scales::percent_format(1)) +
           # Legend keys already carry the moderator name ("Urban: no").
-          wise_scale_colour_okabe_ito(name = NULL) +
-          wise_scale_fill_okabe_ito(name = NULL) +
+          wise_scale_colour_cat(name = NULL) +
+          wise_scale_fill_cat(name = NULL) +
           ggplot2::labs(
             x       = "Welfare quantile",
             y       = rif_y_lab,
@@ -1304,14 +1262,7 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           ggplot2::theme(
             legend.position    = "bottom",
             panel.border       = ggplot2::element_blank(),
-            strip.background   = ggplot2::element_blank(),
-            plot.caption       = ggplot2::element_text(size = 9,
-                                                       colour = "grey40",
-                                                       hjust = 0),
-            panel.grid.minor   = ggplot2::element_blank(),
-            axis.text          = ggplot2::element_text(size = 9),
-            axis.line.x.bottom = ggplot2::element_blank(),
-            axis.line.y.left   = ggplot2::element_blank()
+            strip.background   = ggplot2::element_blank()
           )
 
         if (n_bins > 1) {
@@ -1448,20 +1399,16 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
             bins_df,
             ggplot2::aes(x = bin_index, y = Estimate, ymin = conf.low, ymax = conf.high)
           ) +
-            ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-            ggplot2::geom_pointrange(colour = "steelblue", size = 0.65) +
-            ggplot2::geom_line(ggplot2::aes(group = 1), colour = "steelblue", linewidth = 0.6) +
+            ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
+            ggplot2::geom_pointrange(colour = .wise_blue, size = 0.65) +
+            ggplot2::geom_line(ggplot2::aes(group = 1), colour = .wise_blue, linewidth = 0.6) +
             ggplot2::scale_x_continuous(breaks = bins_df$bin_index, labels = bins_df$bin_label) +
             ggplot2::labs(
               x = pred_x_lab,
               y = y_label %||% paste("Effect on", y_lab),
               caption = cap_binned
             ) +
-            theme_wise() +
-            ggplot2::theme(
-              plot.caption = ggplot2::element_text(hjust = 0, size = 9, colour = "grey40"),
-              axis.text.x = ggplot2::element_text(angle = 0)
-            )
+            theme_wise()
         )
       }
 
@@ -1539,10 +1486,10 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           colour = modx, group = modx
         )
       ) +
-        ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+        ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
         ggplot2::geom_pointrange(position = ggplot2::position_dodge(width = 0.2), size = 0.5) +
         ggplot2::geom_line(position = ggplot2::position_dodge(width = 0.2), linewidth = 0.6) +
-        wise_scale_colour_okabe_ito(name = NULL) +
+        wise_scale_colour_cat(name = NULL) +
         ggplot2::scale_x_continuous(breaks = bins_df$bin_index, labels = bins_df$bin_label) +
         ggplot2::labs(
           x = pred_x_lab,
@@ -1550,11 +1497,7 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           caption = cap_binned
         ) +
         theme_wise() +
-        ggplot2::theme(
-          plot.caption = ggplot2::element_text(hjust = 0, size = 9, colour = "grey40"),
-          legend.position = "bottom",
-          axis.text.x = ggplot2::element_text(angle = 0)
-        )
+        ggplot2::theme(legend.position = "bottom")
 
     }, error = function(e) blank_plot(paste0("Binned effect plot error: ", conditionMessage(e))))
 
@@ -1675,10 +1618,10 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
       extra_layers <- list()
       if (isTRUE(show_mean_ref) && is.finite(mean_x)) {
         extra_layers <- c(extra_layers, list(
-          ggplot2::geom_vline(xintercept = mean_x, colour = "grey40",
+          ggplot2::geom_vline(xintercept = mean_x, colour = .wise_slate,
                               linetype = "dashed"),
           ggplot2::annotate("text", x = mean_x, y = Inf, label = "mean",
-                            vjust = 1.4, size = 2.8, colour = "grey40")
+                            vjust = 1.4, size = 3.2, colour = .wise_slate)
         ))
       }
       if (isTRUE(show_rug)) {
@@ -1689,7 +1632,7 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
             ggplot2::geom_rug(
               data = data.frame(x = rug_x),
               ggplot2::aes(x = x),
-              sides = "b", alpha = 0.12, colour = "grey30",
+              sides = "b", alpha = 0.12, colour = .wise_slate,
               inherit.aes = FALSE
             )
           ))
@@ -1735,25 +1678,22 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           )
         ) +
           ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
-                              colour = "grey60") +
+                              colour = .wise_zero) +
           ggplot2::geom_ribbon(
             ggplot2::aes(ymin = lo, ymax = hi),
             alpha = 0.15, colour = NA
           ) +
           ggplot2::geom_line(linewidth = 0.9) +
           # Legend keys already carry the moderator name ("Urban: no").
-          wise_scale_colour_okabe_ito(name = NULL) +
-          wise_scale_fill_okabe_ito(name = NULL) +
+          wise_scale_colour_cat(name = NULL) +
+          wise_scale_fill_cat(name = NULL) +
           ggplot2::labs(
             x     = pred_x_lab,
             y     = y_label %||% paste("Change in", y_lab, "per +1 unit"),
             caption = cap_text
           ) +
           theme_wise() +
-          ggplot2::theme(
-            plot.caption       = ggplot2::element_text(hjust = 0, size = 9, colour = "grey40"),
-            legend.position = "bottom"
-          )
+          ggplot2::theme(legend.position = "bottom")
         if (length(extra_layers)) p <- p + extra_layers
         p
 
@@ -1762,21 +1702,18 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
 
         p <- ggplot2::ggplot(d, ggplot2::aes(x = x, y = fit)) +
           ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
-                              colour = "grey60") +
+                              colour = .wise_zero) +
           ggplot2::geom_ribbon(
             ggplot2::aes(ymin = lo, ymax = hi),
-            alpha = 0.2, fill = "steelblue"
+            alpha = 0.2, fill = .wise_blue
           ) +
-          ggplot2::geom_line(colour = "steelblue", linewidth = 0.9) +
+          ggplot2::geom_line(colour = .wise_blue, linewidth = 0.9) +
           ggplot2::labs(
             x     = pred_x_lab,
             y     = y_label %||% paste("Change in", y_lab, "per +1 unit"),
             caption = cap_text
           ) +
-          theme_wise() +
-          ggplot2::theme(
-            plot.caption  = ggplot2::element_text(hjust = 0, size = 9, colour = "grey40")
-          )
+          theme_wise()
         if (length(extra_layers)) p <- p + extra_layers
         p
       }
@@ -2226,19 +2163,21 @@ plot_resid_weather <- function(model, haz_var, weather_df, x_label = haz_var) {
                           labels = new_lab)
 
     ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$x, y = .data$residuals)) +
-      ggplot2::geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
-      ggplot2::geom_jitter(width = 0.15, alpha = 0.12) +
-      ggplot2::stat_summary(fun = mean, geom = "point", color = "orange", size = 2.5) +
+      ggplot2::geom_hline(yintercept = 0, color = .wise_zero, linetype = "dashed") +
+      ggplot2::geom_jitter(width = 0.15, alpha = 0.12, colour = .wise_charcoal) +
+      ggplot2::stat_summary(fun = mean, geom = "point", color = .wise_marker_alt,
+                            size = 2.5) +
       theme_wise() +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30, hjust = 1, vjust = 0.5)) +
       ggplot2::labs(x = stringr::str_wrap(x_label, 40), y = "Residuals")
   } else {
     plot_data <- data.frame(x = as.numeric(x_vals), residuals = res)
 
     ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$x, y = .data$residuals)) +
-      ggplot2::geom_point(alpha = 0.1) +
-      ggplot2::geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
-      ggplot2::stat_summary_bin(fun = mean, bins = 20, color = "orange", size = 2, geom = "point") +
+      ggplot2::geom_point(alpha = 0.1, colour = .wise_charcoal) +
+      ggplot2::geom_hline(yintercept = 0, color = .wise_zero, linetype = "dashed") +
+      ggplot2::stat_summary_bin(fun = mean, bins = 20, color = .wise_marker_alt,
+                                size = 2, geom = "point") +
       theme_wise() +
       ggplot2::labs(x = stringr::str_wrap(x_label, 40), y = "Residuals")
   }
@@ -2278,13 +2217,7 @@ plot_calibration <- function(model, n_bins = 10) {
                      })
 
   if (is.null(predicted) || is.null(actual)) {
-    return(
-      ggplot2::ggplot() +
-        ggplot2::annotate("text", x = 0.5, y = 0.5,
-                          label = "Could not recover fitted values from model.",
-                          size = 3.5, color = "grey40", hjust = 0.5) +
-        ggplot2::theme_void()
-    )
+    return(blank_plot("Could not recover fitted values from model."))
   }
 
   n <- min(length(actual), length(predicted))
@@ -2292,13 +2225,7 @@ plot_calibration <- function(model, n_bins = 10) {
   ord  <- order(as.numeric(predicted[seq_len(n)]))
   brks <- unique(floor(seq(0, n, length.out = k + 1)))
   if (length(brks) < 3) {
-    return(
-      ggplot2::ggplot() +
-        ggplot2::annotate("text", x = 0.5, y = 0.5,
-                          label = "Too few observations for calibration bins.",
-                          size = 3.5, color = "grey40", hjust = 0.5) +
-        ggplot2::theme_void()
-    )
+    return(blank_plot("Too few observations for calibration bins."))
   }
   grp <- cut(seq_len(n), breaks = brks, include.lowest = TRUE)
 
@@ -2316,12 +2243,12 @@ plot_calibration <- function(model, n_bins = 10) {
 
   ggplot2::ggplot(cal, ggplot2::aes(x = .data$pred, y = .data$obs)) +
     ggplot2::geom_abline(slope = 1, intercept = 0,
-                         color = "red", linetype = "dashed") +
+                         color = .wise_zero, linetype = "dashed") +
     ggplot2::geom_ribbon(ggplot2::aes(ymin = pmax(0, .data$obs - 2 * .data$se),
                                       ymax = pmin(1, .data$obs + 2 * .data$se)),
-                         fill = "steelblue", alpha = 0.15) +
-    ggplot2::geom_line(color = "steelblue", linewidth = 0.6) +
-    ggplot2::geom_point(color = "steelblue", size = 2) +
+                         fill = .wise_blue, alpha = 0.15) +
+    ggplot2::geom_line(color = .wise_blue, linewidth = 0.6) +
+    ggplot2::geom_point(color = .wise_blue, size = 2) +
     theme_wise() +
     ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
     ggplot2::labs(
@@ -2358,13 +2285,7 @@ plot_pred_vs_actual <- function(model, is_logistic, outcome_label = "outcome") {
   )
 
   if (is.null(actual)) {
-    return(
-      ggplot2::ggplot() +
-        ggplot2::annotate("text", x = 0.5, y = 0.5,
-                          label = "Could not recover outcome values from model.",
-                          size = 3.5, color = "grey40", hjust = 0.5) +
-        ggplot2::theme_void()
-    )
+    return(blank_plot("Could not recover outcome values from model."))
   }
 
   if (!is_logistic) {
@@ -2379,15 +2300,14 @@ plot_pred_vs_actual <- function(model, is_logistic, outcome_label = "outcome") {
         ggplot2::aes(y = 100 * ggplot2::after_stat(count) / sum(ggplot2::after_stat(count))),
         position = "dodge", alpha = 0.7, bins = 30
       ) +
-      ggplot2::scale_fill_manual(values = c("Actual" = "steelblue", "Predicted" = "orange")) +
+      ggplot2::scale_fill_manual(
+        # Observed data in the neutral slate; model output in brand blue.
+        values = c("Actual" = .wise_slate, "Predicted" = .wise_blue)
+      ) +
       ggplot2::labs(x = stringr::str_wrap(outcome_label, 40),
                     y = "Share of households (%)") +
       theme_wise() +
-      ggplot2::theme(
-        legend.position      = c(0.98, 0.98),
-        legend.justification = c(1, 1),
-        legend.title         = ggplot2::element_blank()
-      )
+      ggplot2::theme(legend.title = ggplot2::element_blank())
 
   } else {
     plot_calibration(model)
@@ -2498,13 +2418,6 @@ calc_fit_stats <- function(model, is_logistic, engine = "fixest", taus = NULL) {
 #'
 #' @export
 plot_importance <- function(model, label_fun = identity) {
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 3.5, color = "grey40", hjust = 0.5, vjust = 0.5) +
-      ggplot2::theme_void()
-  }
-
   mm <- resolve_model_matrix(model)
   if (is.null(mm)) return(blank_plot("Model matrix unavailable."))
 
@@ -2536,12 +2449,13 @@ plot_importance <- function(model, label_fun = identity) {
   df <- utils::head(df, 15)
 
   ggplot2::ggplot(df, ggplot2::aes(x = .data$share, y = stats::reorder(.data$label, .data$share))) +
-    ggplot2::geom_col(fill = "steelblue", width = 0.7) +
+    ggplot2::geom_col(fill = .wise_blue, width = 0.7) +
     ggplot2::geom_text(
       ggplot2::aes(label = sprintf("%.0f%%", .data$share)),
-      hjust = -0.15, size = 3, colour = "grey30"
+      hjust = -0.15, size = 3.2, colour = .wise_charcoal
     ) +
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.15))) +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_blank()) +
     ggplot2::labs(
       subtitle = "Squared standardized coefficients, as a share of their sum",
       x = "Share of explained variation (%)",

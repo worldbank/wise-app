@@ -1,3 +1,34 @@
+#' Select the simulated year corresponding to a weather basis.
+#'
+#' @noRd
+select_decomp_weather_basis <- function(decomp_df, basis = "mean", so = NULL) {
+  if (is.null(decomp_df) || !is.data.frame(decomp_df) || !nrow(decomp_df) ||
+      identical(basis, "mean") || !"sim_year" %in% names(decomp_df) ||
+      !"delta_total" %in% names(decomp_df)) {
+    return(decomp_df)
+  }
+
+  target <- if (identical(basis, "adverse_10")) 0.10 else 0.05
+  year_total <- tapply(seq_len(nrow(decomp_df)), decomp_df$sim_year, function(idx) {
+    vals <- as.numeric(decomp_df$delta_total[idx])
+    w <- if ("weight" %in% names(decomp_df)) as.numeric(decomp_df$weight[idx]) else rep(1, length(idx))
+    ok <- is.finite(vals) & is.finite(w) & w > 0
+    if (!any(ok)) return(NA_real_)
+    stats::weighted.mean(vals[ok], w[ok])
+  })
+  year_total <- year_total[is.finite(year_total)]
+  if (!length(year_total)) return(decomp_df)
+
+  adverse_high <- identical(
+    outcome_direction(so$name %||% "welfare", so$type %||% "numeric"),
+    "lower_is_better"
+  )
+  ordered <- order(year_total, decreasing = adverse_high)
+  take <- max(1L, min(length(ordered), round(length(ordered) * target)))
+  selected_year <- names(year_total)[ordered[[take]]]
+  decomp_df[as.character(decomp_df$sim_year) == selected_year, , drop = FALSE]
+}
+
 #' 3_09_decomposition UI Function
 #'
 #' @description A shiny Module. Renders the policy effect decomposition
@@ -61,8 +92,6 @@ mod_3_09_decomposition_ui <- function(id) {
     ),
 
     shiny::uiOutput(ns("beta_curve_ui")),
-
-    shiny::uiOutput(ns("scenario_range_ui")),
 
     shiny::h4(
       "How do decomposition channels vary by weather year?",
@@ -212,11 +241,14 @@ mod_3_09_decomposition_server <- function(id,
     })
 
     headline_decomp_data <- reactive({
+      basis <- input$decomp_weather_basis %||% "mean"
+      outcome <- so() %||% list()
       hist <- decomposition_summary_data(selected_decomp_result(), is_rif())
       hist$scenario <- "Historical"
       sc <- decomp_scenarios()
       if (is.null(sc) || !is.data.frame(sc) || !nrow(sc)) return(hist)
       future <- dplyr::bind_rows(lapply(split(sc, sc$scenario), function(x) {
+        x <- select_decomp_weather_basis(x, basis, outcome)
         out <- decomposition_summary_data(x, is_rif())
         out$scenario <- as.character(x$scenario[[1L]])
         out
@@ -252,7 +284,7 @@ mod_3_09_decomposition_server <- function(id,
         rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"),
-                       buttons = wise_csv_button("policy_decomposition_headline"))
+                       buttons = wise_csv_button("policy_decomposition_headline_data"))
       )
     })
     outputOptions(output, "headline_decomp_table", suspendWhenHidden = FALSE)
@@ -315,21 +347,6 @@ mod_3_09_decomposition_server <- function(id,
         description = "Engine-specific decomposition channels, total, and counts by fixed weighted baseline welfare decile."
     )
 
-    wise_export_figure(
-      key   = "policy_decomposition_by_scenario",
-      label = "Policy effect range across scenarios",
-      step  = 3L,
-      fun   = function() {
-        sc <- decomp_scenarios()
-        if (is.null(sc) || !is.data.frame(sc) || nrow(sc) == 0) return(NULL)
-        .plot_decomp_scenario_range(sc, is_rif())
-      },
-      description = paste(
-        "Year-to-year range of the decomposed policy effect across the saved",
-        "climate scenarios."
-      ),
-      width = 9, height = 6
-    )
     output$decile_scenario_ui <- shiny::renderUI({
       sc <- decomp_scenarios()
       choices <- c("Historical" = "Historical")
@@ -355,14 +372,7 @@ mod_3_09_decomposition_server <- function(id,
         sc <- decomp_scenarios()
         res <- if (is.data.frame(sc) && nrow(sc))
           sc[sc$scenario == scenario, , drop = FALSE] else NULL
-        if (!is.null(res) && nrow(res) && !identical(basis, "mean") && "sim_year" %in% names(res)) {
-          target <- if (identical(basis, "adverse_10")) 0.10 else 0.05
-          year_total <- tapply(res$delta_total, res$sim_year, mean, na.rm = TRUE)
-          adverse_high <- identical(outcome_direction(outcome$name, outcome$type), "lower_is_better")
-          ordered <- order(year_total, decreasing = adverse_high)
-          take <- max(1L, min(length(ordered), round(length(ordered) * target)))
-          res <- res[res$sim_year == names(year_total)[ordered[[take]]], , drop = FALSE]
-        }
+        res <- select_decomp_weather_basis(res, basis, outcome)
       }
       if (is.null(res) || !is.data.frame(res) || !nrow(res)) return(tibble::tibble())
       decomposition_channels_by_decile(
@@ -377,6 +387,19 @@ mod_3_09_decomposition_server <- function(id,
       )
     }, height = 450)
     outputOptions(output, "decomp_bar_plot", suspendWhenHidden = FALSE)
+    wise_export_figure(
+      key = "policy_decomposition_channels_selected",
+      label = "Selected policy decomposition channels",
+      step = 3L,
+      fun = function() {
+        plot_decomposition_channels_by_decile(
+          decile_decomp_data(),
+          is_rif()
+        )
+      },
+      description = "Policy-effect channels by fixed baseline welfare decile for the selected scenario and weather basis.",
+      width = 9, height = 6
+    )
     output$decomp_bar_note_ui <- renderUI({
       basis <- input$decile_weather_basis %||% "mean"
       basis_label <- switch(
@@ -471,48 +494,6 @@ mod_3_09_decomposition_server <- function(id,
       )
     })
 
-    # --- Scenario range panel ---
-    output$scenario_range_ui <- renderUI({
-      sc <- decomp_scenarios()
-      if (is.null(sc) || (is.data.frame(sc) && nrow(sc) == 0) ||
-          (!is.data.frame(sc) && length(sc) == 0)) return(NULL)
-      shiny::tagList(
-        shiny::h4(
-          "How does the policy shift welfare per day with monthly temperature across climate scenarios?",
-          class = "diagnostic-section-heading"
-        ),
-          shiny::div(
-            class = "results-section-card diagnostic-section-card",
-            shiny::div(
-              style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
-              pill_toggle(
-                ns("scenario_range_type"),
-                label = NULL,
-                choices = c("Violin" = "violin", "Boxplot" = "boxplot"),
-                selected = "violin",
-                layout = "horizontal"
-              )
-            ),
-            wise_plot_output(ns("scenario_range_plot"),
-                           "Policy-effect channels across climate scenarios and projection periods",
-                           height = "420px")
-          , shiny::tags$p(
-            class = "diagnostic-note",
-            "Main effects are constant across weather years and shown as points. Weather-sensitive channels show simulated-year distributions with each year overlaid as a dot; each channel has its own y-axis."
-          )
-        )
-      )
-    })
-
-    output$scenario_range_plot <- shiny::renderPlot({
-      sc <- decomp_scenarios()
-      req(!is.null(sc), is.data.frame(sc), nrow(sc) > 0)
-      .plot_decomp_scenario_range(
-        sc, is_rif(),
-        plot_type = input$scenario_range_type %||% "violin"
-      )
-    }, height = 420)
-    outputOptions(output, "scenario_range_plot", suspendWhenHidden = FALSE)
     technical_decomp_table <- reactive({
       bases <- list(
         `Mean weather` = decomp_result(),
@@ -541,13 +522,15 @@ mod_3_09_decomposition_server <- function(id,
     # --- Summary table ---
     output$decomp_summary_table <- DT::renderDT({
       req(technical_decomp_table())
+      tbl <- technical_decomp_table()
+      numeric_targets <- if (ncol(tbl) > 1L) seq.int(1L, ncol(tbl) - 1L) else integer(0)
       DT::datatable(
-        technical_decomp_table(),
+        tbl,
         rownames = FALSE, class = "compact stripe", extensions = "Buttons",
         options = list(
           dom = wise_csv_dom("t"), ordering = FALSE,
           buttons = wise_csv_button("policy_decomposition_summary"),
-          columnDefs = list(list(className = "dt-right", targets = 1:ncol(technical_decomp_table())))
+          columnDefs = list(list(className = "dt-right", targets = numeric_targets))
         )
       )
     })
@@ -587,136 +570,6 @@ mod_3_09_decomposition_server <- function(id,
 # ---------------------------------------------------------------------------- #
 # Plot helpers
 # ---------------------------------------------------------------------------- #
-
-#' @noRd
-.plot_decomp_scenario_range <- function(sc_df, is_rif = TRUE,
-                                        plot_type = c("violin", "boxplot")) {
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
-  if (is.null(sc_df) || nrow(sc_df) == 0) return(NULL)
-  plot_type <- match.arg(plot_type)
-
-  channels <- if (is_rif) {
-    c("delta_main"  = "Main effect",
-      "delta_res1"  = "Repositioning",
-      "delta_res2"  = "Interaction",
-      "delta_total" = "Total")
-  } else {
-    c("delta_main"  = "Main effect",
-      "delta_res2"  = "Interaction",
-      "delta_total" = "Total")
-  }
-
-  # Weighted mean per channel per scenario * sim_year
-  # (each row in sc_df is a household; aggregate to year-level first).
-  # One shared grouping, one grouped pass per channel (PERF-05 follow-up):
-  # the old code re-split the full frame for every channel.
-  has_years <- "sim_year" %in% names(sc_df) && !all(is.na(sc_df$sim_year))
-
-  key_cols <- if (has_years) {
-    c("scenario", "year_start", "year_end", "sim_year")
-  } else {
-    c("scenario", "year_start", "year_end")
-  }
-
-  # interaction()/split() dropped rows with missing grouping keys
-  keep <- complete.cases(sc_df[key_cols])
-  sc   <- sc_df[keep, , drop = FALSE]
-  if (nrow(sc) == 0) return(NULL)
-
-  g   <- collapse::GRP(sc, by = key_cols)
-  first_idx <- match(seq_len(g$N.groups), g$group.id)
-  w   <- sc$weight
-  w[is.na(w)] <- NA_real_
-  key_at <- function(col) sc[[col]][first_idx]
-
-  agg_df <- do.call(rbind, Filter(Negate(is.null), lapply(names(channels), function(col) {
-    if (!col %in% names(sc)) return(NULL)
-
-    # weighted.mean(..., na.rm = TRUE) drops NA values but keeps Inf and
-    # zero/negative weights, so only NAs are folded out here
-    z <- (exp(sc[[col]]) - 1) * 100
-    z[is.na(w)] <- NA_real_
-
-    pct <- as.numeric(collapse::fmean(z, g = g, w = w, na.rm = TRUE))
-    pct[is.nan(pct)] <- NA_real_
-
-    data.frame(
-      scenario   = key_at("scenario"),
-      year_start = key_at("year_start"),
-      year_end   = key_at("year_end"),
-      sim_year   = if (has_years) key_at("sim_year") else NA_integer_,
-      channel    = unname(channels[[col]]),
-      pct        = pct,
-      stringsAsFactors = FALSE
-    )
-  })))
-  if (is.null(agg_df) || nrow(agg_df) == 0) return(NULL)
-
-  agg_df$channel    <- factor(agg_df$channel, levels = unname(channels))
-  agg_df$period_lbl <- ifelse(
-    is.na(agg_df$year_start),
-    agg_df$scenario,
-    paste0(agg_df$year_start, "\u2013", agg_df$year_end)
-  )
-  agg_df$ssp <- sub(" / .*$", "", agg_df$scenario)
-
-  # Channels where weather variation drives spread vs. those that are constant
-  weather_sensitive <- if (is_rif) {
-    c("Repositioning", "Interaction", "Total")
-  } else {
-    c("Interaction", "Total")
-  }
-  agg_df$weather_sensitive <- agg_df$channel %in% weather_sensitive
-
-  ggplot2::ggplot(
-    agg_df,
-    ggplot2::aes(x = period_lbl, y = pct, colour = ssp, fill = ssp)
-  ) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
-                        colour = "grey50", linewidth = 0.5) +
-    # For weather-sensitive channels: show the simulated-year distribution.
-    if (identical(plot_type, "violin")) ggplot2::geom_violin(
-      data = ~ dplyr::filter(.x, weather_sensitive),
-      ggplot2::aes(group = interaction(period_lbl, ssp)),
-      alpha = 0.25, colour = NA, scale = "width",
-      position = ggplot2::position_dodge(width = 0.6)
-    ) else ggplot2::geom_boxplot(
-      data = ~ dplyr::filter(.x, weather_sensitive),
-      ggplot2::aes(group = interaction(period_lbl, ssp)),
-      alpha = 0.25, outlier.shape = NA, linewidth = 0.5,
-      position = ggplot2::position_dodge(width = 0.6)
-    ) +
-    ggplot2::geom_point(
-      data = ~ dplyr::filter(.x, weather_sensitive),
-      ggplot2::aes(group = interaction(period_lbl, ssp)),
-      position = ggplot2::position_jitter(width = 0.07, height = 0),
-      size = 1.7, alpha = 0.7, colour = "#243746"
-    ) +
-    # For main effect (constant across years): point only, never connect across periods
-    ggplot2::geom_point(
-      data = ~ dplyr::filter(.x, !weather_sensitive),
-      size = 3,
-      position = ggplot2::position_dodge(width = 0.6)
-    ) +
-    ggplot2::facet_wrap(
-      ~channel, scales = "free_y",
-      ncol = if (is_rif) 2L else 3L
-    ) +
-    wise_scale_colour_okabe_ito(name = "SSP scenario") +
-    wise_scale_fill_okabe_ito(name = "SSP scenario") +
-    ggplot2::labs(
-      x        = "Projection period",
-      y        = "Effect (% change in welfare)"
-    ) +
-    theme_wise() +
-    ggplot2::theme(
-      legend.position  = "bottom",
-      axis.text.x      = ggplot2::element_text(angle = 30, hjust = 1),
-      strip.text       = ggplot2::element_text(face = "bold"),
-      panel.grid.minor = ggplot2::element_blank()
-    )
-}
-
 
 #' @noRd
 .build_decomp_table <- function(decomp_df, is_rif) {

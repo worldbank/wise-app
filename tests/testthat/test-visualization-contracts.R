@@ -235,58 +235,6 @@ test_that("step2 adverse dot data extracts supported periods and ensemble bounds
   }
 })
 
-test_that("policy levels dumbbell chart renders without error", {
-  b <- data.frame(
-    scenario = c("Historical", "SSP2 / 2030"),
-    value = c(10, 12),
-    intermod_lo = c(NA, 11),
-    intermod_hi = c(NA, 13),
-    is_historical = c(TRUE, FALSE),
-    stringsAsFactors = FALSE
-  )
-  p <- data.frame(
-    scenario = c("Historical", "SSP2 / 2030"),
-    value = c(10, 15),
-    intermod_lo = c(NA, 14),
-    intermod_hi = c(NA, 16),
-    is_historical = c(TRUE, FALSE),
-    stringsAsFactors = FALSE
-  )
-  plt <- wiseapp:::plot_policy_levels_dumbbell(b, p, "Mean consumption")
-  expect_s3_class(plt, "ggplot")
-})
-
-test_that("decomposition scenario range has no continuous lines across periods", {
-  sc <- data.frame(
-    scenario = rep(c("SSP2 / 2030", "SSP2 / 2050"), each = 2),
-    year_start = rep(c(2030, 2050), each = 2),
-    year_end = rep(c(2040, 2060), each = 2),
-    sim_year = rep(1:2, 2),
-    delta_main = 0.05,
-    delta_res1 = 0.01,
-    delta_res2 = 0.01,
-    delta_total = 0.07,
-    weight = 1,
-    stringsAsFactors = FALSE
-  )
-  plt <- wiseapp:::.plot_decomp_scenario_range(sc, is_rif = TRUE)
-  expect_s3_class(plt, "ggplot")
-  line_layers <- vapply(plt$layers, function(l) inherits(l$geom, "GeomLine"), logical(1))
-  expect_false(any(line_layers))
-})
-
-test_that("decomposition scenario range uses free y-scales for channels", {
-  sc <- data.frame(
-    scenario = rep("SSP2 / 2030", 3),
-    year_start = 2030, year_end = 2040, sim_year = 1:3,
-    delta_main = 0.05, delta_res1 = 0.01,
-    delta_res2 = c(-0.02, -0.03, -0.01),
-    delta_total = c(0.03, 0.02, 0.04), weight = 1
-  )
-  plt <- wiseapp:::.plot_decomp_scenario_range(sc, is_rif = TRUE)
-  expect_true(is.null(plt$facet$params$scales) || identical(plt$facet$params$scales, "free_y"))
-})
-
 test_that("new export keys return valid figures or data frames", {
   # 1. climate_adverse_return_periods
   tbl <- data.frame(
@@ -297,13 +245,7 @@ test_that("new export keys return valid figures or data frames", {
   p_dot <- wiseapp:::plot_step2_adverse_dot(dot_data)
   expect_s3_class(p_dot, "ggplot")
 
-  # 2. policy_levels_dumbbell
-  b <- data.frame(scenario = "SSP2 / 2030", value = 10, intermod_lo = 9, intermod_hi = 11, is_historical = FALSE, stringsAsFactors = FALSE)
-  p <- data.frame(scenario = "SSP2 / 2030", value = 12, intermod_lo = 11, intermod_hi = 13, is_historical = FALSE, stringsAsFactors = FALSE)
-  p_db <- wiseapp:::plot_policy_levels_dumbbell(b, p)
-  expect_s3_class(p_db, "ggplot")
-
-  # 3. policy_distributional_incidence
+  # 2. policy_distributional_incidence
   inc <- data.frame(decile = 1:10, effect = rep(1, 10))
   p_inc <- wiseapp:::plot_incidence_by_decile(inc)
   expect_s3_class(p_inc, "ggplot")
@@ -316,7 +258,7 @@ test_that("new export keys return valid figures or data frames", {
   expect_s3_class(wiseapp:::policy_covariate_support(df1, df2), "data.frame")
 })
 
-test_that("treatment diagnostics distinguish ideal eligibility from realized treatment", {
+test_that("treatment diagnostics distinguish eligibility from realized treatment", {
   baseline <- data.frame(weight = c(1, 1, 1, 1))
   policy <- data.frame(
     weight = baseline$weight,
@@ -328,10 +270,10 @@ test_that("treatment diagnostics distinguish ideal eligibility from realized tre
   expect_identical(
     out$status,
     c(
-      "Not ideally eligible, not treated",
-      "Inclusion error: not ideally eligible, treated",
-      "Exclusion error: ideally eligible, not treated",
-      "Ideal targeting: eligible and treated"
+      "Not eligible, not treated",
+      "Inclusion error: not eligible, treated",
+      "Exclusion error: eligible, not treated",
+      "Eligible and treated"
     )
   )
 
@@ -345,7 +287,7 @@ test_that("treatment diagnostics distinguish ideal eligibility from realized tre
   expect_match(note, "not observed cash receipt", fixed = TRUE)
 })
 
-test_that("ideal targeting eligibility omits inclusion and exclusion errors", {
+test_that("selected eligibility omits inclusion and exclusion errors", {
   svy <- data.frame(welfare = 1:10)
   sp <- list(
     targeting = "exante_poor", targeting_threshold = 20,

@@ -124,6 +124,13 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
       tagList(year_inputs)
     })
 
+    # These controls are prerequisites for loading the survey sample. Render
+    # them even when Step 1 has not been visited so configuration replay does
+    # not depend on navbar state.
+    lapply(c("unit_ui", "sample_ui", "survey_year_ui"), function(out_id) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    })
+
     # ---- Collect selected years from dynamic inputs -------------------------
 
     selected_years_by_code <- reactive({

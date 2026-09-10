@@ -69,6 +69,7 @@ mod_2_simulation_ui <- function(id) {
 #' @param selected_surveys Reactive data frame from the survey list.
 #' @param survey_weather   Reactive data frame of merged survey-weather data.
 #' @param model_fit        Reactive list of fitted model objects.
+#' @param run_trigger      Optional reactive trigger for a programmatic run.
 #'
 #' @noRd
 mod_2_simulation_server <- function(id,
@@ -79,7 +80,8 @@ mod_2_simulation_server <- function(id,
                                     survey_weather,
                                     model_fit,
                                     stored_breaks = reactive(NULL),
-                                    survey_version = reactive(0L)) {
+                                     survey_version = reactive(0L),
+                                     run_trigger = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
 
     # ---- 1. Unified sidebar + simulation engine ----------------------------
@@ -92,7 +94,8 @@ mod_2_simulation_server <- function(id,
       survey_weather    = survey_weather,
       model_fit         = model_fit,
       stored_breaks     = stored_breaks,
-      survey_version    = survey_version
+       survey_version    = survey_version,
+       run_trigger       = run_trigger
     )
 
     # ---- 2. Results tab ----------------------------------------------------
@@ -148,7 +151,9 @@ mod_2_simulation_server <- function(id,
       skip_coef_draws = s1$skip_coef_draws,
       residuals       = s1$residuals,
       propagate_all_covariate_uncertainty = s1$propagate_all_covariate_uncertainty,
-      stale           = s1$stale
+      stale           = s1$stale,
+      run_generation  = s1$run_generation,
+      run_status      = s1$run_status
     )
   })
 }

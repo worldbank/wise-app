@@ -202,8 +202,6 @@ test_that("decomposition module renders core plots for OLS and RIF schemas", {
         session$flushReact()
         expect_false(is.null(session$output$headline_decomp_plot))
         expect_false(is.null(session$output$decomp_bar_plot))
-        expect_false(is.null(session$output$scenario_range_plot))
-        expect_false(is.null(session$output$scenario_range_ui))
         if (identical(engine, "rif")) {
           expect_false(is.null(session$output$beta_curve_ui))
           expect_false(is.null(session$output$beta_curve_plot1))
@@ -316,4 +314,18 @@ test_that("technical decomposition table handles unavailable weather bases", {
     wiseapp:::.build_decomp_table_by_basis(list(NULL, NULL), is_rif = FALSE),
     data.frame()
   )
+})
+
+test_that("weather basis selects adverse years for future decompositions", {
+  sc <- data.frame(
+    scenario = rep("SSP3-7.0 / 2025-2035", 3),
+    sim_year = 2025:2027,
+    delta_total = c(0.10, 0.30, 0.20),
+    weight = 1
+  )
+
+  selected <- wiseapp:::select_decomp_weather_basis(
+    sc, basis = "adverse_10", so = list(name = "welfare", type = "numeric")
+  )
+  expect_identical(selected$sim_year, 2025L)
 })

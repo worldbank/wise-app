@@ -307,9 +307,8 @@ plot_weather_bins_compare <- function(df, hv, label, hist_df = NULL,
       y = "Share of observations (%)"
     ) +
     ggplot2::theme(
-      axis.text.x     = ggplot2::element_text(angle = 45, hjust = 1),
-      legend.position = "top",
-      legend.text     = ggplot2::element_text(size = 9)
+      axis.text.x     = ggplot2::element_text(angle = 30, hjust = 1),
+      legend.position = "top"
     ) +
     ggplot2::guides(fill = ggplot2::guide_legend(nrow = length(sources)))
 }
@@ -518,8 +517,7 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
     ) +
     ggplot2::theme(
       legend.position = if (length(sources) > 1) "top" else "none",
-      legend.key      = ggplot2::element_rect(fill = "white", colour = "white"),
-      legend.text     = ggplot2::element_text(size = 9)
+      legend.key      = ggplot2::element_rect(fill = "white", colour = "white")
     )
 
   p
@@ -678,22 +676,22 @@ plot_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var) {
       ggplot2::geom_jitter(
         data = transform(point_df, x = factor(as.character(x), levels = x_levels)),
         width = 0.12, height = if (is_binary_y) 0.025 else 0,
-        alpha = 0.10, colour = "#264A79", size = 0.8
+        alpha = 0.10, colour = .wise_charcoal, size = 0.8
       ) +
       ggplot2::geom_line(
         data = summary_df,
         ggplot2::aes(x = .data$bin, y = .data$mean, group = 1),
-        colour = "#0071BC", linewidth = 0.7
+        colour = .wise_blue, linewidth = 0.7
       ) +
       ggplot2::geom_point(
         data = summary_df,
         ggplot2::aes(x = .data$bin, y = .data$mean, size = .data$n),
-        colour = "#00A6C7"
+        colour = .wise_cyan
       ) +
       ggplot2::scale_size_continuous(range = c(2, 5), guide = "none") +
       theme_wise() +
       ggplot2::theme(
-        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1)
+        axis.text.x = ggplot2::element_text(angle = 30, hjust = 1, vjust = 1)
       ) +
       ggplot2::labs(
         x = stringr::str_wrap(hv_label, 40),
@@ -724,17 +722,17 @@ plot_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var) {
     ggplot2::geom_point(
       data = point_df,
       ggplot2::aes(x = .data$x, y = .data$y),
-      alpha = 0.10, colour = "#264A79", size = 0.8
+      alpha = 0.10, colour = .wise_charcoal, size = 0.8
     ) +
     ggplot2::geom_line(
       data = summary_df,
       ggplot2::aes(x = .data$x, y = .data$mean),
-      colour = "#0071BC", linewidth = 0.9
+      colour = .wise_blue, linewidth = 0.9
     ) +
     ggplot2::geom_point(
       data = summary_df,
       ggplot2::aes(x = .data$x, y = .data$mean, size = .data$n),
-      colour = "#00A6C7"
+      colour = .wise_cyan
     ) +
     ggplot2::scale_size_continuous(range = c(2, 5), guide = "none") +
     theme_wise() +
@@ -1597,7 +1595,7 @@ make_weather_stats_dt <- function(survey_weather, selected_weather,
         pageLength = 10,
         columnDefs = list(list(className = "dt-wrap", targets = "_all")),
         dom     = wise_csv_dom("lfrtip"),
-        buttons = wise_csv_button("weather_summary_stats")
+        buttons = wise_csv_button("weather_summary")
       )
     )
 
@@ -1785,7 +1783,7 @@ make_weather_binned_stats_dt <- function(survey_weather, selected_weather,
         pageLength = 10,
         columnDefs = list(list(className = "dt-wrap", targets = "_all")),
         dom     = wise_csv_dom("lfrtip"),
-        buttons = wise_csv_button("weather_binned_stats")
+        buttons = wise_csv_button("weather_binned_distribution")
       )
     )
 

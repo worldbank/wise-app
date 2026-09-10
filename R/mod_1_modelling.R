@@ -82,6 +82,9 @@ mod_1_modelling_ui <- function(id) {
 #' @param variable_list   Reactive tibble of variable metadata.
 #' @param cpi_ppp         Reactive tibble of CPI/PPP conversion factors.
 #' @param pov_lines       Reactive tibble of 2021 PPP poverty lines.
+#' @param run_trigger         Optional reactive trigger for a programmatic fit.
+#' @param load_survey_trigger Optional reactive trigger for survey loading.
+#' @param load_weather_trigger Optional reactive trigger for weather loading.
 #'
 #' @noRd
 mod_1_modelling_server <- function(id,
@@ -89,7 +92,10 @@ mod_1_modelling_server <- function(id,
                                     survey_list,
                                     variable_list,
                                     cpi_ppp,
-                                    pov_lines) {
+                                     pov_lines,
+                                     run_trigger = shiny::reactive(NULL),
+                                     load_survey_trigger = shiny::reactive(NULL),
+                                     load_weather_trigger = shiny::reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
 
     # ---- 1. Sample ----------------------------------------------------------
@@ -112,7 +118,8 @@ mod_1_modelling_server <- function(id,
       selected_outcome  = NULL,
       tabset_id         = "step1_output_tabs",
       tabset_session    = session,
-      analysis_unit     = s1$analysis_unit
+      analysis_unit     = s1$analysis_unit,
+      run_trigger       = load_survey_trigger
     )
 
     # ---- 3. Outcome ---------------------------------------------------------
@@ -150,7 +157,8 @@ mod_1_modelling_server <- function(id,
       cell_data         = s2$cell_data,
       survey_version    = s2$survey_version,
       tabset_id         = "step1_output_tabs",
-      tabset_session    = session
+      tabset_session    = session,
+      run_trigger       = load_weather_trigger
     )
 
     # ---- 6. Model -----------------------------------------------------------
@@ -162,7 +170,8 @@ mod_1_modelling_server <- function(id,
       analysis_unit    = s1$analysis_unit,
       selected_outcome = s3$selected_outcome,
       selected_weather = s4$selected_weather,
-      survey_weather   = s5$survey_weather
+      survey_weather   = s5$survey_weather,
+      run_trigger      = run_trigger
     )
 
     # ---- 7. Results ---------------------------------------------------------
@@ -210,7 +219,13 @@ mod_1_modelling_server <- function(id,
       # Data
       survey_data    = s2$survey_data,
       survey_weather = s5$survey_weather,
+      survey_load_done = s2$load_done,
+      survey_load_status = s2$load_status,
+      weather_load_done = s5$load_done,
+      weather_load_status = s5$load_status,
       model_fit      = s7$model_fit,
+      fit_generation = s7$fit_generation,
+      fit_status     = s7$fit_status,
       stored_breaks  = s5$stored_breaks,
 
       # Provenance (INT-08)

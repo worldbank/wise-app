@@ -17,10 +17,10 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
   w[!is.finite(w) | w < 0] <- 0
   status <- interaction(b, p, drop = TRUE, sep = "_")
   labels <- c(
-    `FALSE_FALSE` = "Not ideally eligible, not treated",
-    `FALSE_TRUE` = "Inclusion error: not ideally eligible, treated",
-    `TRUE_FALSE` = "Exclusion error: ideally eligible, not treated",
-    `TRUE_TRUE` = "Ideal targeting: eligible and treated"
+    `FALSE_FALSE` = "Not eligible, not treated",
+    `FALSE_TRUE` = "Inclusion error: not eligible, treated",
+    `TRUE_FALSE` = "Exclusion error: eligible, not treated",
+    `TRUE_TRUE` = "Eligible and treated"
   )
   dplyr::bind_rows(lapply(names(labels), function(k) {
     ok <- as.character(status) == k

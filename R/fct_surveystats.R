@@ -250,9 +250,9 @@ welfare_poverty_lines <- function() {
 #'   `"Households"`; use `"Individuals"` or `"Firms"` when the selected
 #'   survey files are at those levels.
 #' @param palette Fill palette. The default `"sequential"` assigns each
-#'   economy its own colour series and orders colours from older to newer
-#'   survey waves within that economy. Other options are `"okabe_ito"`,
-#'   `"wise"`, and `"blue"`.
+#'   survey wave its colour from the shared wave palette (same series as the
+#'   weather and outcome distribution charts). Other options are
+#'   `"okabe_ito"`, `"wise"`, and `"blue"`.
 #' @param wave_labels Optional named character vector replacing wave labels.
 #'
 #' @return A `ggplot` object, or `NULL` invisibly when `plot_data` is
@@ -312,27 +312,13 @@ plot_interview_dates <- function(plot_data,
   plot_data$countryyear <- factor(plot_data$countryyear, levels = waves)
   wave_cols <- switch(
     palette,
-    sequential = {
-      series <- list(
-        c("#264A79", "#0071BC"), # navy to World Bank blue
-        c("#185C78", "#00A6C7"), # deep teal to bright cyan
-        c("#493B70", "#8667B3"), # indigo to violet
-        c("#79501F", "#C28C2C"), # brown to ochre
-        c("#713443", "#B85C6B")  # burgundy to muted red
-      )
-      economies <- unique(wave_info$economy)
-      out <- stats::setNames(character(length(waves)), waves)
-      for (i in seq_along(economies)) {
-        these <- wave_info$countryyear[wave_info$economy == economies[i]]
-        out[these] <- grDevices::colorRampPalette(
-          series[[((i - 1L) %% length(series)) + 1L]]
-        )(length(these))
-      }
-      out
-    },
-    okabe_ito = c("#0072B2", "#009E73", "#E69F00", "#56B4E9", "#CC79A7"),
-    wise      = c("#0071BC", "#00AB51", "#FDB714", "#009FDA", "#5B6B79"),
-    blue      = c("#003B5C", "#0071BC", "#2C9CCB", "#78C6D0", "#B6DDE2")
+    sequential = .wave_palette(waves),
+    okabe_ito = stats::setNames(
+      c("#0072B2", "#009E73", "#E69F00", "#56B4E9", "#CC79A7"), waves),
+    wise      = stats::setNames(
+      c("#0071BC", "#00AB51", "#FDB714", "#009FDA", "#5B6B79"), waves),
+    blue      = stats::setNames(
+      c("#003B5C", "#0071BC", "#2C9CCB", "#78C6D0", "#B6DDE2"), waves)
   )
   if (palette != "sequential") {
     wave_cols <- stats::setNames(rep(wave_cols, length.out = length(waves)), waves)
@@ -351,15 +337,14 @@ plot_interview_dates <- function(plot_data,
           size = 3, colour = "#1D2A35"
         ) +
         ggplot2::scale_x_discrete(drop = FALSE) +
-        ggplot2::scale_fill_gradient(
-          low = "#D9EFF8", high = "#0071BC",
+        ggplot2::scale_fill_gradientn(
+          colours = wise_seq_ramp(100),
           labels = scales::label_number(big.mark = ","),
           name = unit_label
         ) +
         ggplot2::labs(x = NULL, y = NULL) +
-        theme_wise(base_size = 12) +
+        theme_wise(base_size = 13) +
         ggplot2::theme(
-          axis.text.x = ggplot2::element_text(size = 10),
           panel.grid = ggplot2::element_blank(),
           legend.position = "top",
           legend.justification = "left",
@@ -398,17 +383,14 @@ plot_interview_dates <- function(plot_data,
       expand = ggplot2::expansion(mult = c(0, 0.08))
     ) +
     ggplot2::labs(x = NULL, y = unit_label) +
-    theme_wise(base_size = 12) +
+    theme_wise(base_size = 13) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(size = 10),
-      axis.text.y        = ggplot2::element_text(size = 10),
       axis.ticks.x       = ggplot2::element_line(colour = "#5B6B79"),
       panel.grid.major.x = ggplot2::element_blank(),
       panel.grid.minor.x = ggplot2::element_blank(),
       panel.grid.major.y = ggplot2::element_line(colour = "#E3E9EE"),
       panel.grid.minor.y = ggplot2::element_blank(),
       legend.position    = if (variant == "faceted") "none" else "top",
-      legend.text        = ggplot2::element_text(size = 11),
       legend.justification = "left",
       plot.margin = ggplot2::margin(4, 8, 4, 4)
     )
@@ -1041,7 +1023,8 @@ make_stats_dt <- function(survey_data, variable_list, flag_col = NULL,
         columnDefs = list(list(className = "dt-wrap", targets = "_all")),
         dom     = wise_csv_dom("lfrtip"),
         buttons = wise_csv_button(
-          paste0("summary_stats_", flag_col %||% "selected")
+          if (!is.null(vars)) "survey_summary_policy"
+          else paste0("survey_summary_", flag_col %||% "selected")
         )
       )
     )

@@ -18,14 +18,8 @@
 # ---- Internal colour / style helpers ---------------------------------------
 # Used by enhance_exceedance() and plot_pointrange_climate(). Not exported.
 
-# Canonical SSP keys must match what .normalise_ssp() returns.
-# Okabe-Ito hues (UI-04): bluish green (lower emissions), blue (mid),
-# vermillion (high) - distinguishable without red/green vision.
-.ssp_colours <- c(
-  "SSP2-4.5" = "#009E73",   # bluish green (lower emissions)
-  "SSP3-7.0" = "#0072B2",   # blue          (mid emissions)
-  "SSP5-8.5" = "#D55E00"    # vermillion    (high emissions)
-)
+# SSP scenario colours (.ssp_colours) live in utils_plot_theme.R together with
+# the rest of the shared colour system.
 
 
 

@@ -153,6 +153,10 @@ mod_3_05_education_server <- function(id,
       education_access_ui("postsec", "Post-secondary completion", "fa-graduation-cap")
     })
 
+    lapply(c("primary_ui", "secondary_ui", "postsec_ui"), function(out_id) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    })
+
     # ---- Return API -----------------------------------------------------
 
     list(

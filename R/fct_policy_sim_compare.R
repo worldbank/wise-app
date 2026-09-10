@@ -7,16 +7,9 @@
   policy_clean   <- policy_vals[!is.na(policy_vals)]
   all_vals       <- c(baseline_clean, policy_clean)
 
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 4, colour = "grey40") +
-      ggplot2::theme_void()
-  }
-
   if (length(all_vals) == 0) return(blank_plot("No data available"))
 
-  fill_vals <- c(Baseline = "#9e9e9e", `Policy-adjusted` = "#0072B2")
+  fill_vals <- c(Baseline = .wise_baseline, `Policy-adjusted` = .wise_policy)
   uniq_vals <- unique(all_vals)
   is_binary <- length(uniq_vals) <= 2 && all(uniq_vals %in% c(0, 1))
 
@@ -50,7 +43,7 @@
           y     = "Proportion",
           fill  = NULL
         ) +
-        theme_wise(base_size = 12) +
+        theme_wise(base_size = 13) +
         ggplot2::theme(
           legend.position    = "top",
           panel.grid.major.x = ggplot2::element_blank(),
@@ -100,7 +93,7 @@
       y     = "",
       fill  = NULL
     ) +
-    theme_wise(base_size = 12) +
+    theme_wise(base_size = 13) +
     ggplot2::theme(
       legend.position = "none"
     )
@@ -542,16 +535,16 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
 plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
                                    title = NULL, subtitle = NULL) {
   if (is.null(tbl) || !nrow(tbl)) {
-    return(ggplot2::ggplot() + ggplot2::labs(title = "Return-period outcomes are unavailable."))
+    return(blank_plot("Return-period outcomes are unavailable."))
   }
   scenario_levels <- c(
     "Historical",
     sort(unique(as.character(tbl$scenario[!tbl$is_historical])))
   )
   scenario_colours <- stats::setNames(vapply(scenario_levels, function(s) {
-    if (identical(s, "Historical")) return("#808080")
+    if (identical(s, "Historical")) return(.wise_history)
     ssp <- .normalise_ssp(s)
-    if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else "grey50"
+    if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else .wise_slate
   }, character(1L)), scenario_levels)
   tbl$scenario_key <- factor(
     ifelse(tbl$is_historical, "Historical", as.character(tbl$scenario)),
@@ -563,7 +556,7 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
     ggplot2::geom_segment(
       ggplot2::aes(x = .data$baseline_val, xend = .data$policy_val,
                    y = .data$rp_label, yend = .data$rp_label),
-      colour = "#9aa9b5", linewidth = 1.0, na.rm = TRUE
+      colour = .wise_slate, linewidth = 1.0, na.rm = TRUE
     ) +
     ggplot2::geom_segment(
       ggplot2::aes(x = .data$policy_lo, xend = .data$policy_hi,
@@ -579,12 +572,12 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
     ggplot2::geom_point(
       ggplot2::aes(x = .data$policy_val, y = .data$rp_label,
                    shape = .data$series, colour = .data$scenario_key),
-      fill = "#D55E00", stroke = 1.0,
+      fill = .wise_policy, stroke = 1.0,
       size = 3.6, na.rm = TRUE
     ) +
      ggplot2::scale_colour_manual(
        values = scenario_colours, breaks = scenario_levels,
-        labels = scenario_levels, name = "Climate scenario and period"
+        labels = scenario_levels, name = NULL
       ) +
     ggplot2::scale_shape_manual(values = c(Historical = 21, Future = 24),
                                  name = NULL,
@@ -592,7 +585,7 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
                                             Future = "Future scenario")) +
       ggplot2::scale_fill_manual(
         values = scenario_colours, breaks = scenario_levels,
-        labels = scenario_levels, name = "Climate scenario and period",
+        labels = scenario_levels, name = NULL,
         guide = "none"
       ) +
     ggplot2::labs(
@@ -605,7 +598,7 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
      ggplot2::guides(
        colour = ggplot2::guide_legend(order = 1),
        shape = ggplot2::guide_legend(order = 2,
-                                     override.aes = list(colour = "#526575"))
+                                     override.aes = list(colour = .wise_slate))
      )
 
   fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
@@ -1856,7 +1849,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
        title = NULL,
        plot_type = input$annual_distribution_type %||% "violin"
     )
-  }, height = 510)
+  })
   outputOptions(output, "annual_distribution_plot", suspendWhenHidden = TRUE)
 
   # ---- Section 2: Adverse weather years (tail protection) ------------------
@@ -1913,8 +1906,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     threshold_table_df()
   })
 
-  output$threshold_csv <- csv_download_handler("policy_return_period_outcomes", function() threshold_table_df())
-  output$decision_csv  <- csv_download_handler("policy_decision_summary", function() threshold_table_df())
+  output$threshold_csv <- csv_download_handler("policy_outcome_thresholds", function() threshold_table_df())
 
   step3_incidence_data <- reactive({
     res <- tryCatch(decomp_result(), error = function(e) NULL)
@@ -2108,20 +2100,33 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
   )
 
   wise_export_figure(
-    key = "policy_levels_dumbbell",
-    label = "Baseline and policy outcome levels",
+    key = "policy_exceedance_curve",
+    label = "Policy welfare exceedance probability",
     step = 3L,
     fun = function() {
-      req(baseline_agg_scenarios(), policy_agg_scenarios())
-      plot_policy_levels_dumbbell(
-        baseline_df = baseline_agg_scenarios(),
-        policy_df   = policy_agg_scenarios(),
-        x_label     = metric_axis_label(input$cmp_agg_method %||% "mean",
-                                        baseline_hist_sim()$so,
-                                        input$cmp_deviation %||% "none")
+      curves <- exceedance_curves_rv()
+      ah <- baseline_agg_hist()
+      if (is.null(curves) || is.null(ah)) return(NULL)
+      sel_spread <- input$exceedance_model_spread %||% "none"
+      ens_q <- if (identical(sel_spread, "none")) {
+        c(lo = 0.5, hi = 0.5)
+      } else {
+        resolve_band_q(sel_spread)
+      }
+      enhance_exceedance(
+        curves_tbl = curves,
+        x_label = agg_axis_label(),
+        return_period = TRUE,
+        n_sim_years = nrow(ah$out),
+        logit_x = TRUE,
+        band_q = NULL,
+        ensemble_band_q = ens_q
       )
     },
-    description = "Connected baseline and policy-adjusted outcome levels across climate scenarios and projection periods.",
+    description = paste(
+      "Annual probability of reaching an outcome level in the adverse",
+      "direction under baseline and policy across climate scenarios."
+    ),
     width = 10, height = 6.5
   )
 

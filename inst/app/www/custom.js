@@ -27,6 +27,19 @@
   });
 })();
 
+// Stop an automatic configuration run when its modal is dismissed via Escape
+// or the backdrop. The server cannot interrupt a synchronous stage, but it can
+// prevent later stages from starting.
+(function () {
+  var seq = 0;
+  document.addEventListener('hidden.bs.modal', function (e) {
+    if (!e.target || e.target.id !== 'shiny-modal') return;
+    if (!window.Shiny || !Shiny.setInputValue) return;
+    seq += 1;
+    Shiny.setInputValue('import_dismissed', seq, { priority: 'event' });
+  }, true);
+})();
+
 // Submit the overview connection form with Enter from a single-line field.
 // Scope this to the Data card so other module inputs keep their own behavior.
 (function () {

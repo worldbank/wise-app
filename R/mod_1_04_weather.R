@@ -184,6 +184,10 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
 
       tagList(do.call(tagList, ui_list))
     })
+    shiny::outputOptions(output, "weather_selector_ui",
+                         suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "weather_construction_ui",
+                         suspendWhenHidden = FALSE)
 
     # ---- Historical comparison config ---------------------------------------
     # The weather stats tab always draws each wave against its own climate

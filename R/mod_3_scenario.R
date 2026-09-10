@@ -112,10 +112,11 @@ mod_3_scenario_server <- function(id,
                                    analysis_unit   = reactive("hh"),
                                    skip_coef_draws = reactive(FALSE),
                                    residuals       = reactive("original"),
-                                   propagate_all_covariate_uncertainty =
-                                     reactive(FALSE),
-                                   survey_version  = reactive(0L),
-                                   sim_stale       = reactive(FALSE)) {
+                                    propagate_all_covariate_uncertainty =
+                                      reactive(FALSE),
+                                    survey_version  = reactive(0L),
+                                    sim_stale       = reactive(FALSE),
+                                    run_trigger     = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -193,7 +194,21 @@ mod_3_scenario_server <- function(id,
       "education",
       selected_model = selected_model,
       survey_data   = survey_data,
-      variable_list  = variable_list)
+       variable_list  = variable_list)
+
+    # Merge the dynamically rendered manual button with the root pipeline
+    # request. Initial action-button registration (0) is inert, and a request
+    # is consumed once so clearing it cannot replay the run.
+    policy_run_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$run_policy_sim, {
+      if (shiny::isTruthy(input$run_policy_sim)) {
+        policy_run_event(list(source = "manual", value = input$run_policy_sim))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) policy_run_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
     # ---- Policy adjustment module ----------------------------------------
 
@@ -216,10 +231,9 @@ mod_3_scenario_server <- function(id,
       propagate_all_covariate_uncertainty = propagate_all_covariate_uncertainty,
       survey_version    = survey_version,
       sim_stale         = sim_stale,
-      # REACT-09: fire the child's run trigger on button click. req() blocks
-      # the NULL/zero state of the dynamically rendered button, so the trigger
-      # only fires on real clicks.
-      run_trigger       = reactive({ req(input$run_policy_sim); input$run_policy_sim })
+       # REACT-09: merge the manual button with the root pipeline request.
+       # Initial registration of a dynamic action button is deliberately inert.
+        run_trigger       = policy_run_event
     )
 
     # ---- Results tabs: Baseline & Policy (both re-simulated) -------------
@@ -382,7 +396,9 @@ mod_3_scenario_server <- function(id,
       policy_saved_scenarios = s6$policy_saved_scenarios,
       # UI-47: consumed by the navbar step badge in app_server.
       stale                  = s6$stale,
-      sim_run_id             = s6$sim_run_id
+      sim_run_id             = s6$sim_run_id,
+      run_generation         = s6$run_generation,
+      run_status             = s6$run_status
     )
   })
 }

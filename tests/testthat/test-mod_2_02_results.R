@@ -545,6 +545,38 @@ test_that("adverse plot legend identifies projection periods", {
   expect_true("yr_lbl" %in% names(plot$facet$params$facets))
 })
 
+test_that("adverse dot plot offsets scenario dumbbells vertically", {
+  # Two future scenarios at the same return-period rows: without vertical
+  # dodging their dumbbells overlap and only one is readable.
+  threshold_tbl <- tibble::tibble(
+    scenario = rep(c("SSP2-4.5 / 2030-2040", "SSP5-8.5 / 2030-2040"), each = 4L),
+    Estimate = rep(c("Central (P50)", "Central (P50)",
+                     "Ensemble min", "Ensemble max"), 2L),
+    rp_name = rep(c("1:1", "1:5", "1:1", "1:5"), 2L),
+    value = rep(c(4.6, 4.4, 3.8, 5.0), 2L),
+    is_historical = FALSE,
+    n_obs = 30L
+  )
+  dot <- step2_adverse_dot_data(threshold_tbl, method = "mean")
+  plot <- plot_step2_adverse_dot(dot)
+
+  # The y aesthetic must be scenario-dependent within a return period, so
+  # dumbbells at the same rp_label get distinct vertical offsets.
+  seg_idx <- which(vapply(plot$layers, function(l) inherits(l$geom, "GeomSegment"),
+                          logical(1)))[1]
+  seg <- ggplot2::layer_data(plot, seg_idx)
+  expect_equal(nrow(seg), nrow(plot$data))
+
+  # Match rendered segment rows back to data rows via the rp_label y position
+  # pattern: currently both scenarios at the same rp_label share one y, so
+  # y values repeat across scenarios. With vertical dodging, scenarios at the
+  # same rp_label must have different rendered y values.
+  y_expected <- as.integer(plot$data$rp_label)
+  y1 <- seg$y[plot$data$scenario_key == "SSP2-4.5 / 2030-2040"]
+  y2 <- seg$y[plot$data$scenario_key == "SSP5-8.5 / 2030-2040"]
+  expect_false(isTRUE(all.equal(y1, y2)))
+})
+
 test_that("exceedance plot omits unsupported return-period warning annotation", {
   curves <- tibble::tibble(
     scenario = rep("SSP2-4.5 / 2030-2040", 30L),

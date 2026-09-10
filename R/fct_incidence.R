@@ -129,17 +129,17 @@ step3_incidence_by_decile <- function(decomp, svy, outcome) {
 
 plot_incidence_by_decile <- function(tbl, y_label = "Household-level simulated welfare effect") {
   if (is.null(tbl) || !nrow(tbl)) {
-    return(ggplot2::ggplot() + ggplot2::labs(title = "Distributional incidence is unavailable."))
+    return(blank_plot("Distributional incidence is unavailable."))
   }
   if (!"scenario" %in% names(tbl)) tbl$scenario <- "Effect"
   ggplot2::ggplot(tbl, ggplot2::aes(x = factor(.data$decile), y = .data$effect,
                                     fill = .data$scenario)) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
     ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.75), width = 0.65) +
-    ggplot2::scale_fill_brewer(palette = "Dark2", name = "Scenario") +
+    wise_scale_fill_cat(name = NULL) +
     ggplot2::labs(x = "Fixed observed baseline welfare decile (1 = poorest)",
                   y = y_label,
-                  subtitle = "Deciles use weighted observed baseline welfare and are not re-ranked under simulated conditions.") +
-    theme_wise(base_size = 12) +
+                  caption = "Deciles use weighted observed baseline welfare and are not re-ranked under simulated conditions.") +
+    theme_wise(base_size = 13) +
     ggplot2::theme(legend.position = "bottom")
 }

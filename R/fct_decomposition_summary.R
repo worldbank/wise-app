@@ -90,25 +90,31 @@ decomposition_reconciliation <- function(summary_df) {
 plot_decomposition_headline <- function(summary_df,
                                         y_label = "Policy effect (percent change)") {
   if (is.null(summary_df) || !nrow(summary_df)) {
-    return(ggplot2::ggplot() + ggplot2::labs(title = "Decomposition is unavailable."))
+    return(blank_plot("Decomposition is unavailable."))
   }
   ids <- c("level", "resilience", "total")
   df <- summary_df[summary_df$channel_id %in% ids, , drop = FALSE]
   df$channel <- factor(df$channel, levels = c("Main effect", "Resilience", "Total"))
   if (!"scenario" %in% names(df)) df$scenario <- "Historical"
   scenario_levels <- unique(as.character(df$scenario))
-  scenario_palette <- c("#7f8c99", "#009E73", "#56B4E9", "#D55E00", "#CC79A7")
-  scenario_colours <- stats::setNames(
-    rep(scenario_palette, length.out = length(scenario_levels)), scenario_levels
-  )
+  # Scenario colours follow the shared semantic mapping: grey for the
+  # historical baseline, fixed SSP hues for climate scenarios, then the
+  # categorical palette for anything else.
+  scenario_colours <- stats::setNames(vapply(scenario_levels, function(s) {
+    if (identical(s, "Historical")) return(.wise_history)
+    k <- .normalise_ssp(s)
+    if (!is.na(k) && k %in% names(.ssp_colours)) return(unname(.ssp_colours[[k]]))
+    idx <- match(s, scenario_levels)
+    unname(.wise_cat[idx])
+  }, character(1L)), scenario_levels)
   ggplot2::ggplot(df, ggplot2::aes(x = .data$channel, y = .data$percent,
                                    fill = .data$scenario)) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-    ggplot2::geom_col(width = 0.72, colour = "#243746",
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
+    ggplot2::geom_col(width = 0.72, colour = .wise_support,
                       position = ggplot2::position_dodge(width = 0.78)) +
-    ggplot2::scale_fill_manual(values = scenario_colours, name = "Scenario") +
+    ggplot2::scale_fill_manual(values = scenario_colours, name = NULL) +
     ggplot2::labs(x = NULL, y = y_label) +
-    theme_wise(base_size = 12)
+    theme_wise(base_size = 13)
 }
 
 decomposition_explanation <- function(is_rif) {
@@ -197,15 +203,7 @@ decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
 
 plot_decomposition_channels_by_decile <- function(tbl, is_rif = NULL) {
   if (is.null(tbl) || !nrow(tbl)) {
-    return(
-      ggplot2::ggplot() +
-        ggplot2::annotate(
-          "text", x = 0.5, y = 0.5,
-          label = "Decile decomposition is unavailable for this run.",
-          colour = "grey40", size = 4
-        ) +
-        ggplot2::theme_void()
-    )
+    return(blank_plot("Decile decomposition is unavailable for this run.", size = 4))
   }
   is_rif <- if (is.null(is_rif)) "repositioning_percent" %in% names(tbl) &&
     any(abs(tbl$repositioning_percent) > 1e-12, na.rm = TRUE) else isTRUE(is_rif)
@@ -228,25 +226,27 @@ plot_decomposition_channels_by_decile <- function(tbl, is_rif = NULL) {
   )
   long$channel <- factor(unname(channel_labels[long$channel]),
                          levels = unname(channel_labels[channel_cols]))
+  # Colorblind-safe quartet from the shared categorical palette; the total
+  # marker stays neutral dark so it cannot be confused with a channel.
   colours <- c(
-    "SP direct effect" = "#0072B2",
-    "Main effect (covariate shift)" = "#2166ac",
-    "Resilience - Repositioning effect" = "#d6604d",
-    "Resilience - Interaction effect" = "#f4a582"
+    "SP direct effect" = .wise_cat[[1]],
+    "Main effect (covariate shift)" = .wise_cat[[4]],
+    "Resilience - Repositioning effect" = .wise_cat[[3]],
+    "Resilience - Interaction effect" = .wise_cat[[6]]
   )
   ggplot2::ggplot(long, ggplot2::aes(x = factor(.data$decile), y = .data$effect,
                                      fill = .data$channel)) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
     ggplot2::geom_col(position = "stack", width = 0.62) +
     ggplot2::geom_point(data = tbl,
                         ggplot2::aes(x = factor(.data$decile), y = .data$total_percent),
-                        inherit.aes = FALSE, shape = 21, fill = "#009E73",
-                        colour = "#243746", size = 2.8) +
+                        inherit.aes = FALSE, shape = 21, fill = "white",
+                        colour = .wise_support, size = 2.8, stroke = 1.1) +
     ggplot2::scale_fill_manual(values = colours, drop = FALSE) +
     ggplot2::labs(x = "Fixed observed baseline welfare decile (1 = poorest)",
                   y = "Policy effect (percent change)", fill = "Channel",
                   subtitle = NULL) +
-    theme_wise(base_size = 12) + ggplot2::theme(legend.position = "bottom")
+    theme_wise(base_size = 13) + ggplot2::theme(legend.position = "bottom")
 }
 
 decomposition_decile_export <- function(tbl, is_rif = FALSE) {

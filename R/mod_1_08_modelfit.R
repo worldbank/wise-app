@@ -161,13 +161,15 @@ mod_1_08_modelfit_server <- function(id,
         ggplot2::ggplot(data.frame(y = y), ggplot2::aes(x = y)) +
           ggplot2::geom_histogram(
             ggplot2::aes(y = 100 * ggplot2::after_stat(count) / sum(ggplot2::after_stat(count))),
-            fill = "steelblue", alpha = 0.7, bins = 30
+            fill = .wise_blue, alpha = 0.7, bins = 30
           ) +
           ggplot2::geom_vline(data = q_df, ggplot2::aes(xintercept = value),
-                              linetype = "dashed", colour = "orange", linewidth = 0.5) +
+                              linetype = "dashed", colour = .wise_marker_alt,
+                              linewidth = 0.5) +
           ggplot2::geom_text(data = q_df,
                              ggplot2::aes(x = value, y = Inf, label = tau),
-                             vjust = 1.5, hjust = -0.1, size = 3, colour = "orange") +
+                             vjust = 1.5, hjust = -0.1, size = 3.2,
+                             colour = .wise_marker_alt) +
           ggplot2::labs(
             subtitle = "Welfare distribution with estimated quantiles",
             x = stringr::str_wrap(slf(snap$outcome$name), 40),
@@ -318,19 +320,32 @@ mod_1_08_modelfit_server <- function(id,
       width = 10, height = 5
     )
 
-    output$model_summary <- renderPrint({
+    model_summary_text <- function() {
       req(full_model())
       m <- rif_single_model()
-      if (identical(model_fit()$engine, "rif")) {
-        cat("Unconditional quantile regression (RIF) - Median quantile (tau = 0.5):\n\n")
-      }
+      prefix <- if (identical(model_fit()$engine, "rif"))
+        "Unconditional quantile regression (RIF) - Median quantile (tau = 0.5):\n"
+      else ""
       vcov_spec <- tryCatch(.fixest_vcov_spec(m), error = function(e) NULL)
-      if (is.null(vcov_spec)) {
-        summary(m)
-      } else {
-        summary(m, vcov = vcov_spec)
-      }
+      summary_text <- capture.output(
+        if (is.null(vcov_spec)) summary(m) else summary(m, vcov = vcov_spec)
+      )
+      c(prefix, summary_text)
+    }
+
+    output$model_summary <- renderPrint({
+      cat(model_summary_text(), sep = "\n")
     })
+    wise_export_table(
+      key = "model_summary",
+      label = "Raw model summary",
+      step = 1L,
+      fun = function() data.frame(
+        line = model_summary_text(),
+        stringsAsFactors = FALSE
+      ),
+      description = "Text-formatted native model summary shown in the expandable Model fit panel."
+    )
 
     # ---- Add tab (once) -----------------------------------------------------
 
@@ -428,7 +443,7 @@ mod_1_08_modelfit_server <- function(id,
               p(paste(
                 "Model residuals against each realised weather variable.",
                 "Grey points are individual residuals, orange marks are",
-                "bin means, and the red dotted line marks zero. Systematic",
+                "bin means, and the dashed line marks zero. Systematic",
                 "structure here means the fitted weather response \u2014 the",
                 "relationship the simulations build on \u2014 leaves patterns",
                 "unexplained."

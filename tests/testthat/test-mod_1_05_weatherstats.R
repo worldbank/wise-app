@@ -195,3 +195,23 @@ test_that("the map colour scale spans every wave, not just the one shown", {
     }
   )
 })
+
+test_that("an unmet weather prerequisite releases the load guard", {
+  selected <- shiny::reactiveVal(NULL)
+  args <- weatherstats_args(selected, NULL)
+  args$selected_weather <- selected
+
+  shiny::testServer(mod_1_05_weatherstats_server, args = args, {
+    session$setInputs(weather_stats = 0L)
+    session$setInputs(weather_stats = 1L)
+    session$flushReact()
+    expect_false(load_guard$is_running())
+    expect_equal(load_status(), "failure")
+
+    selected(make_selected_weather())
+    session$setInputs(weather_stats = 2L)
+    session$flushReact()
+    expect_false(load_guard$is_running())
+    expect_equal(load_done(), 2L)
+  })
+})

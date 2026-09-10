@@ -604,8 +604,8 @@ mod_3_01_sp_server <- function(id,
     # below silently fell back to the `%||%` defaults (including sp_type
     # "shock", which is no longer one of the offered choices). Render them
     # eagerly so an untouched panel still reports its real defaults.
-    lapply(c("sp_type_ui", "sp_budget_amount_ui",
-             "sp_targeting_ui", "sp_timing_ui"),
+    lapply(c("sp_type_ui", "sp_budget_amount_ui", "sp_targeting_ui",
+             "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui"),
            function(out_id) {
              shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
            })

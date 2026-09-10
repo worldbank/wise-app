@@ -1230,6 +1230,74 @@ table.dataTable td.dt-wrap {
   opacity: 0.3;
 }
 
+/* Configuration-pipeline progress. Keep the stage list compact because it
+   lives inside a modal, while making each state distinguishable without color
+   alone through its icon and text. */
+.pipeline-stages {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+}
+
+.pipeline-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 0;
+  font-size: 0.88rem;
+}
+
+.pipeline-stage > svg {
+  width: 1rem;
+  text-align: center;
+}
+
+.pipeline-pending,
+.pipeline-skipped {
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.pipeline-running {
+  color: var(--bs-primary, #0d6efd);
+}
+
+.pipeline-done {
+  color: var(--bs-success, #198754);
+}
+
+.pipeline-failed {
+  color: var(--bs-danger, #dc3545);
+}
+
+.pipeline-note {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+.import-prereq {
+  background: var(--bs-tertiary-bg, #f8f9fa);
+  border-left: 0.2rem solid var(--bs-primary, #0d6efd);
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.8rem;
+}
+
+.import-prereq-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.import-prereq-step,
+.import-prereq-note {
+  font-size: 0.82rem;
+  margin: 0.25rem 0 0;
+}
+
+.import-prereq-note,
+.import-lede {
+  color: var(--bs-secondary-color, #6c757d);
+}
+
 /* ---- Table CSV export (UI-45) -------------------------------------------
    One affordance for every table in the app: a small, quiet "Download CSV".
    `.wise-csv-btn` covers both the DataTables Buttons control and the

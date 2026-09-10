@@ -14,6 +14,15 @@ app_server <- function(input, output, session) {
 
   overview_api <- mod_0_overview_server(id = "overview")
 
+  # The import pipeline fires these request channels in order. Module-owned
+  # observers still handle real button clicks, so manual runs keep their
+  # existing behavior.
+  load_survey_trigger  <- shiny::reactiveVal(NULL)
+  load_weather_trigger <- shiny::reactiveVal(NULL)
+  run_step1_trigger    <- shiny::reactiveVal(NULL)
+  run_step2_trigger    <- shiny::reactiveVal(NULL)
+  run_step3_trigger    <- shiny::reactiveVal(NULL)
+
   # ---- Step 1: modelling ---------------------------------------------------
   # Pass reactives from overview_api
 
@@ -23,7 +32,10 @@ app_server <- function(input, output, session) {
     survey_list       = overview_api$survey_list,
     variable_list     = overview_api$variable_list,
     cpi_ppp           = overview_api$cpi_ppp,
-    pov_lines         = overview_api$pov_lines
+    pov_lines         = overview_api$pov_lines,
+    run_trigger         = run_step1_trigger,
+    load_survey_trigger = load_survey_trigger,
+    load_weather_trigger = load_weather_trigger
   )
 
   # ---- Step 2: simulation --------------------------------------------------
@@ -38,7 +50,8 @@ app_server <- function(input, output, session) {
     survey_weather    = step1_api$survey_weather,
     model_fit         = step1_api$model_fit,
     stored_breaks     = step1_api$stored_breaks,
-    survey_version    = step1_api$survey_version
+    survey_version    = step1_api$survey_version,
+    run_trigger       = run_step2_trigger
   )
 
   # ---- Step 3: policy scenarios --------------------------------------------
@@ -63,8 +76,34 @@ app_server <- function(input, output, session) {
     propagate_all_covariate_uncertainty =
       step2_api$propagate_all_covariate_uncertainty,
     survey_version    = step1_api$survey_version,
-    sim_stale         = step2_api$stale
+    sim_stale         = step2_api$stale,
+    run_trigger       = run_step3_trigger
   )
+
+  # Explicit completion contracts for the automatic configuration runner.
+  # Generations advance only after a stage has published a successful result;
+  # statuses distinguish failed attempts from unchanged cached state.
+  pipeline_triggers <- list(
+    load_survey  = load_survey_trigger,
+    load_weather = load_weather_trigger,
+    step1        = run_step1_trigger,
+    step2        = run_step2_trigger,
+    step3        = run_step3_trigger
+  )
+  pipeline_results <- list(
+    load_survey = list(generation = step1_api$survey_load_done,
+                       status = step1_api$survey_load_status),
+    load_weather = list(generation = step1_api$weather_load_done,
+                        status = step1_api$weather_load_status),
+    step1 = list(generation = step1_api$fit_generation,
+                 status = step1_api$fit_status),
+    step2 = list(generation = step2_api$run_generation,
+                 status = step2_api$run_status),
+    step3 = list(generation = step3_api$run_generation,
+                 status = step3_api$run_status)
+  )
+
+  config_imported <- shiny::reactiveVal(0L)
 
   # ---- Navbar step status badges (UI-47) -----------------------------------
   # Steps are freely navigable and results persist across tab switches, so the
@@ -76,19 +115,22 @@ app_server <- function(input, output, session) {
 
   output$step1_badge <- render_step_badge(
     has_result = step1_api$model_fit,
-    is_stale   = step1_api$fit_stale,
+    is_stale   = stale_after_import(step1_api$model_fit,
+                                    step1_api$fit_stale, config_imported),
     step_label = "Step 1 (model)"
   )
 
   output$step2_badge <- render_step_badge(
     has_result = step2_api$hist_sim,
-    is_stale   = step2_api$stale,
+    is_stale   = stale_after_import(step2_api$hist_sim,
+                                    step2_api$stale, config_imported),
     step_label = "Step 2 (climate scenarios)"
   )
 
   output$step3_badge <- render_step_badge(
     has_result = step3_api$policy_hist_sim,
-    is_stale   = step3_api$stale,
+    is_stale   = stale_after_import(step3_api$policy_hist_sim,
+                                    step3_api$stale, config_imported),
     step_label = "Step 3 (policy scenarios)"
   )
 
@@ -128,5 +170,10 @@ app_server <- function(input, output, session) {
 
   export_menu_server(input, output, session,
                      provenance = run_provenance,
-                     seed = WISEAPP_DEFAULT_SEED)
+                     seed = WISEAPP_DEFAULT_SEED,
+                     run_triggers = pipeline_triggers,
+                     step_results = pipeline_results,
+                     on_import = function() {
+                       config_imported(isolate(config_imported()) + 1L)
+                     })
 }

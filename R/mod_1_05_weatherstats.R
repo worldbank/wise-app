@@ -34,6 +34,7 @@ mod_1_05_weatherstats_ui <- function(id) {
 #' @param tabset_id        Character. `inputId` of the parent tabset panel.
 #' @param tabset_session   Shiny session for the parent tabset. Defaults to
 #'   `session$parent`.
+#' @param run_trigger      Optional reactive trigger for a programmatic load.
 #'
 #' @noRd
 mod_1_05_weatherstats_server <- function(
@@ -48,7 +49,8 @@ mod_1_05_weatherstats_server <- function(
     cell_data = NULL,
     survey_version = reactive(0L),
     tabset_id,
-    tabset_session = NULL
+    tabset_session = NULL,
+    run_trigger = shiny::reactive(NULL)
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -92,6 +94,9 @@ mod_1_05_weatherstats_server <- function(
     wx_spec_so  <- shiny::reactive({ req(wx_spec()); wx_spec()$so })
     # REACT-03: digest of the last successfully completed weather load.
     last_wx_load_sig <- reactiveVal(NULL)
+    # Completion generation used by the automatic configuration pipeline.
+    load_done   <- reactiveVal(0L)
+    load_status <- reactiveVal("idle")
 
     # INT-08: banner when the survey data behind the weather load was
     # reloaded after the button was last pressed.
@@ -108,10 +113,27 @@ mod_1_05_weatherstats_server <- function(
 
     # ---- Load and merge weather on button click ------------------------------
 
-    observeEvent(input$weather_stats, {
-      req(selected_weather(), selected_surveys(), survey_data())
+    weather_stats_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$weather_stats, {
+      if (shiny::isTruthy(input$weather_stats)) {
+        weather_stats_event(list(source = "manual", value = input$weather_stats))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) weather_stats_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    observeEvent(weather_stats_event(), {
       if (!load_guard$begin()) return(invisible(NULL))
       on.exit(load_guard$end(), add = TRUE)
+      load_done(load_done() + 1L)
+      load_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) load_status("failure")
+      }, add = TRUE)
+      req(selected_weather(), selected_surveys(), survey_data())
 
       sw  <- selected_weather()
       svy <- survey_data()
@@ -133,6 +155,8 @@ mod_1_05_weatherstats_server <- function(
       if (identical(sig, last_wx_load_sig())) {
         showNotification("Weather data is already loaded for this selection.",
                          duration = 3, type = "message")
+        load_status("success")
+        completed <- TRUE
         return(invisible(NULL))
       }
 
@@ -236,6 +260,8 @@ mod_1_05_weatherstats_server <- function(
                    survey_version = survey_version()))
 
       last_wx_load_sig(sig)
+      load_status("success")
+      completed <- TRUE
 
       showNotification("Weather data ready.", duration = 3, type = "message")
 
@@ -293,7 +319,7 @@ mod_1_05_weatherstats_server <- function(
                wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
             )
             if (is.null(p)) {
-              plot.new(); title(main = "Weather variable not configured")
+              blank_plot("Weather variable not configured")
               return(invisible(NULL))
             }
             p
@@ -343,7 +369,7 @@ mod_1_05_weatherstats_server <- function(
                wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
             )
             if (is.null(p)) {
-              plot.new(); title(main = "Continuous distribution unavailable")
+              blank_plot("Continuous distribution unavailable")
               return(invisible(NULL))
             }
             p
@@ -387,8 +413,7 @@ mod_1_05_weatherstats_server <- function(
             req(survey_weather(), wx_spec_so())
             p <- binscatter_fig(idx)()
             if (is.null(p)) {
-              plot.new()
-              title(main = "Weather variable not configured")
+              blank_plot("Weather variable not configured")
               return(invisible(NULL))
             }
             p
@@ -558,7 +583,7 @@ mod_1_05_weatherstats_server <- function(
         extensions = "Buttons",
         options    = list(dom = wise_csv_dom("t"), paging = FALSE,
                           searching = FALSE, info = FALSE,
-                          buttons = wise_csv_button("selected_weather")),
+                          buttons = wise_csv_button("weather_specification")),
         class      = "compact")
 
         # -- Append tab -------------------------------------------------------
@@ -1376,6 +1401,8 @@ mod_1_05_weatherstats_server <- function(
     # ---- Return API ---------------------------------------------------------
 
     list(survey_weather = survey_weather,
-         stored_breaks  = stored_breaks)
+         stored_breaks  = stored_breaks,
+         load_done      = load_done,
+         load_status    = load_status)
   })
 }

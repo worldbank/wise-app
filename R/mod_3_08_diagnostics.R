@@ -46,7 +46,7 @@
 .policy_treatment_explanation <- function(sp) {
   if (is.null(sp) || !is.list(sp)) {
     return(paste(
-      "Ideal eligibility is the selected targeting rule before targeting errors.",
+      "Eligibility is defined by the selected targeting rule before targeting errors.",
       "Realized treatment is a positive transfer after the targeting draw.",
       "The table therefore describes a counterfactual assignment, not observed cash receipt."
     ))
@@ -56,14 +56,14 @@
   targeting_text <- switch(
     targeting,
     exante_poor = paste0(
-      "Ideal eligibility is the bottom ", sp$targeting_threshold %||% 20,
+      "Eligibility is the bottom ", sp$targeting_threshold %||% 20,
       "% by baseline welfare before targeting errors."
     ),
     pmt = paste0(
-      "Ideal eligibility follows the selected proxy variable and cutoff before targeting errors."
+      "Eligibility follows the selected proxy variable and cutoff before targeting errors."
     ),
-    universal = "Universal targeting makes every baseline unit ideally eligible and applies no targeting errors.",
-    "Ideal eligibility follows the selected targeting rule before targeting errors."
+    universal = "Universal targeting makes every baseline unit eligible and applies no targeting errors.",
+    "Eligibility follows the selected targeting rule before targeting errors."
   )
 
   if (identical(targeting, "universal")) {
@@ -80,7 +80,7 @@
     targeting_text,
     paste0(
       "The run then applies the selected targeting errors: ", incl,
-      "% inclusion error can treat units outside the ideal group, and ", excl,
+      "% inclusion error can treat units outside the eligible group, and ", excl,
       "% exclusion error can miss units inside it."
     ),
     "Realized treatment is a positive transfer after that draw; this is a counterfactual assignment, not observed cash receipt."
@@ -131,7 +131,7 @@
         title = "Program scale and targeting",
         shiny::p(
           "Transfer totals are realized values in the policy-adjusted survey.",
-          "The treatment table compares ideal eligibility under the selected targeting",
+          "The treatment table compares eligibility under the selected targeting",
           "rule with realized positive-transfer treatment after targeting errors."
         ),
         docs = TRUE
@@ -144,9 +144,9 @@
                     "Social protection coverage is defined by positive transfers. Other policy rows show units whose modeled covariates changed; the overlap row counts units touched by both social protection and another policy. Only social protection has a monetary cost here."),
       DT::DTOutput(ns("transfer_summary_ui")),
       DT::DTOutput(ns("policy_component_table")),
-      shiny::h5("Ideal eligibility versus realized social-protection treatment"),
+      shiny::h5("Eligibility versus realized social-protection treatment"),
       shiny::tags$p(class = "diagnostic-note",
-                    "Ideal eligibility is the selected targeting rule before errors; realized treatment is a positive transfer after the targeting draw. The rows show how the specified targeting errors change the counterfactual assignment, not who already received cash."),
+                    "Eligibility is defined by the selected targeting rule before errors; realized treatment is a positive transfer after the targeting draw. The rows show how the specified targeting errors change the counterfactual assignment, not who already received cash."),
       shiny::uiOutput(ns("treatment_explanation_ui")),
       DT::DTOutput(ns("treatment_table"))
     ),
@@ -354,7 +354,7 @@ mod_3_08_diagnostics_server <- function(id,
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"), paging = FALSE,
                        ordering = TRUE,
-                       buttons = wise_csv_button("policy_diagnostics"))
+                        buttons = wise_csv_button("policy_input_diagnostics"))
       )
     })
 
@@ -560,7 +560,7 @@ mod_3_08_diagnostics_server <- function(id,
     })
     wise_export_table(
       key = "policy_treatment_assignment",
-      label = "Ideal eligibility versus realized treatment assignment",
+      label = "Eligibility versus realized treatment assignment",
       step = 3L,
       fun = function() {
         d <- diag_data(); if (is.null(d)) return(NULL)
@@ -575,8 +575,8 @@ mod_3_08_diagnostics_server <- function(id,
         )
       },
       description = paste(
-        "Weighted ideal eligibility versus realized positive-transfer treatment.",
-        "Ideal eligibility is measured before inclusion and exclusion errors;",
+        "Weighted eligibility versus realized positive-transfer treatment.",
+        "Eligibility is measured before inclusion and exclusion errors;",
         "realized treatment includes the selected targeting-error draw."
       )
     )

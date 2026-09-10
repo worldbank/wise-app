@@ -29,6 +29,7 @@ mod_1_02_surveystats_ui <- function(id) {
 #' @param cpi_ppp Reactive data frame of CPI/PPP deflators.
 #' @param tabset_id Character id of the parent tabset panel to append the tab to.
 #' @param tabset_session Shiny session for the parent tabset. Defaults to the parent session.
+#' @param run_trigger Optional reactive trigger for a programmatic load.
 #'
 #' @noRd
 mod_1_02_surveystats_server <- function(
@@ -40,7 +41,8 @@ mod_1_02_surveystats_server <- function(
     cpi_ppp,
     tabset_id,
     tabset_session = NULL,
-    analysis_unit  = NULL
+    analysis_unit  = NULL,
+    run_trigger    = shiny::reactive(NULL)
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -81,6 +83,10 @@ mod_1_02_surveystats_server <- function(
     # signatures include it so a reload invalidates fit/sim/policy results
     # even when the selection string is unchanged.
     survey_version <- shiny::reactiveVal(0L)
+    # Completion generation used by the automatic configuration pipeline.
+    # Cached requests count as successful completions; failed requests do not.
+    load_done   <- shiny::reactiveVal(0L)
+    load_status <- shiny::reactiveVal("idle")
     # Per-H3-cell counts behind the density map, recomputed for whichever
     # wave the picker is on. Cheap: it is a regrouping of data already in
     # memory, no round trip to the store.
@@ -143,10 +149,27 @@ mod_1_02_surveystats_server <- function(
 
     # ---- Load and prepare data on button click ------------------------------
 
-    observeEvent(input$survey_stats, {
-      req(nrow(selected_surveys()) > 0)
+    survey_stats_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$survey_stats, {
+      if (shiny::isTruthy(input$survey_stats)) {
+        survey_stats_event(list(source = "manual", value = input$survey_stats))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) survey_stats_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    observeEvent(survey_stats_event(), {
       if (!load_guard$begin()) return(invisible(NULL))
       on.exit(load_guard$end(), add = TRUE)
+      load_done(load_done() + 1L)
+      load_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) load_status("failure")
+      }, add = TRUE)
+      req(nrow(selected_surveys()) > 0)
 
       # REACT-03: an identical request to the last completed load is served
       # from state instead of re-running the full I/O pipeline. The signature
@@ -160,6 +183,8 @@ mod_1_02_surveystats_server <- function(
       if (identical(sig, last_load_sig())) {
         showNotification("Survey data is already loaded for this selection.",
                          duration = 3, type = "message")
+        load_status("success")
+        completed <- TRUE
         return(invisible(NULL))
       }
 
@@ -303,6 +328,11 @@ mod_1_02_surveystats_server <- function(
       }
 
       if (load_ok) last_load_sig(sig)
+      # H3 geometry or panel metadata can fail independently of the survey
+      # frame. Preserve the existing fallback behavior and publish the usable
+      # survey load so downstream stages can continue.
+      load_status("success")
+      completed <- TRUE
 
       notify(
         paste0("Loaded ", nrow(ss), " survey file(s) - ", nrow(df), " rows."),
@@ -715,7 +745,9 @@ mod_1_02_surveystats_server <- function(
     list(
       survey_data    = survey_data,
       cell_data      = cell_data,
-      survey_version = survey_version
+      survey_version = survey_version,
+      load_done      = load_done,
+      load_status    = load_status
     )
   })
 }

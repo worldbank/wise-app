@@ -73,6 +73,8 @@ mod_3_06_policy_sim_server <- function(id,
     sim_run_id          <- reactiveVal(0L)
     # REACT-02: TRUE while a policy simulation is executing.
     sim_running         <- reactiveVal(FALSE)
+    run_generation      <- reactiveVal(0L)
+    run_status          <- reactiveVal("idle")
     decomp_rv           <- reactiveVal(NULL)
     decomp_scenarios_rv <- reactiveVal(list())
     # INT-08: TRUE while the stored policy results' run signature no longer
@@ -160,6 +162,12 @@ mod_3_06_policy_sim_server <- function(id,
       if (isTRUE(sim_running())) return(invisible(NULL))
       sim_running(TRUE)
       on.exit(sim_running(FALSE), add = TRUE)
+      run_generation(run_generation() + 1L)
+      run_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) run_status("failure")
+      }, add = TRUE)
 
       sim_error(NULL)
 
@@ -428,7 +436,9 @@ mod_3_06_policy_sim_server <- function(id,
           decomp_scenarios_rv(decomp_sc)
           policy_stale(FALSE)
 
-          sim_run_id(isolate(sim_run_id()) + 1L)
+           sim_run_id(isolate(sim_run_id()) + 1L)
+           run_status("success")
+           completed <- TRUE
           if (length(decomp_sc_errors) > 0L) {
             shiny::showNotification(
               paste0(
@@ -476,6 +486,8 @@ mod_3_06_policy_sim_server <- function(id,
       baseline_svy             = baseline_svy_rv,
       policy_svy               = policy_svy_rv,
       sim_run_id               = sim_run_id,
+      run_generation          = run_generation,
+      run_status              = run_status,
       decomp_result            = decomp_rv,
       decomp_scenarios         = decomp_scenarios_rv,
       baseline_hist_sim        = baseline_hist_sim_rv,

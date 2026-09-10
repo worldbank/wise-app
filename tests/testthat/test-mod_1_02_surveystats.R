@@ -127,3 +127,31 @@ test_that("PERF-40: stats tables render from the shared union pass", {
     }
   )
 })
+
+test_that("an unmet survey prerequisite releases the load guard", {
+  selected <- shiny::reactiveVal(NULL)
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id                = "ss",
+      connection_params = shiny::reactiveVal(list()),
+      variable_list     = shiny::reactiveVal(data.frame()),
+      selected_surveys  = selected,
+      cpi_ppp           = shiny::reactiveVal(data.frame()),
+      tabset_id         = "step1_tabs"
+    ),
+    {
+      session$setInputs(survey_stats = 0L)
+      session$setInputs(survey_stats = 1L)
+      session$flushReact()
+      expect_false(load_guard$is_running())
+      expect_equal(load_status(), "failure")
+
+      selected(make_selected_surveys_fixture())
+      session$setInputs(survey_stats = 2L)
+      session$flushReact()
+      expect_false(load_guard$is_running())
+      expect_equal(load_done(), 2L)
+    }
+  )
+})

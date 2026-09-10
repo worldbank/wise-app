@@ -638,6 +638,20 @@ render_step_badge <- function(has_result, is_stale = NULL,
   shiny::renderUI(step_status_badge(status(), step_label))
 }
 
+# Treat any successful import as making existing results stale, even if an
+# imported value happens to equal the current control value.
+stale_after_import <- function(has_result, is_stale = NULL, imported = NULL) {
+  own <- is_stale %||% shiny::reactive(FALSE)
+  if (is.null(imported)) return(own)
+  seen <- shiny::reactiveVal(0L)
+  shiny::observeEvent(has_result(), {
+    seen(shiny::isolate(imported()))
+  }, ignoreInit = FALSE)
+  shiny::reactive(
+    isTRUE(own()) || isTRUE(imported() > seen())
+  )
+}
+
 
 # ---- Table CSV export (UI-45) ------------------------------------------------
 #

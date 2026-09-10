@@ -178,8 +178,8 @@
 
     sources    <- levels(all_df$source)
     colour_map <- vapply(sources, function(s) {
-      if (s == "Full historical")  return("#808080")
-      if (s == "Model support") return("#000000")
+      if (s == "Full historical")  return(.wise_history)
+      if (s == "Model support") return(.wise_support)
       ssp_key <- .normalise_ssp(s)
       if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours))
         .ssp_colours[ssp_key] else "#cccccc"
@@ -243,7 +243,7 @@
   } else numeric(0)
 
   if (length(hist_vals) == 0)
-    return(ggplot2::ggplot() + ggplot2::labs(title = "No finite values to plot."))
+    return(blank_plot("No finite values to plot."))
 
   # ---- SSP scenario overlays -------------------------------------------
   ssp_colour_map   <- character(0)
@@ -290,7 +290,7 @@
   colour_map   <- ssp_colour_map
   linetype_map <- ssp_linetype_map
   if (isTRUE(show_regression)) {
-    colour_map["Model support"]   <- "black"
+    colour_map["Model support"]   <- .wise_support
     linetype_map["Model support"] <- "dashed"
   }
 
@@ -325,7 +325,7 @@
     )
   }
 
-  fill_map_all <- c("Full historical" = "#808080")
+  fill_map_all <- c("Full historical" = .wise_history)
 
   p <- p +
     ggplot2::scale_fill_manual(

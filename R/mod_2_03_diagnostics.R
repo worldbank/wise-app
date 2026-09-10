@@ -409,6 +409,17 @@ mod_2_03_diagnostics_server <- function(id,
       )
     })
     outputOptions(output, "variance_share_table", suspendWhenHidden = FALSE)
+    wise_export_table(
+      key = "simulation_variance_shares",
+      label = "Simulation variance shares",
+      step = 2L,
+      fun = function() {
+        req(variance_breakdown())
+        if (!isTRUE(input$show_variance_shares)) return(NULL)
+        variance_component_data(variance_breakdown(), TRUE)
+      },
+      description = "Approximate shares of simulation uncertainty by variance component."
+    )
 
     output$timeseries_plot <- renderPlot({
       req(timeseries_curves)

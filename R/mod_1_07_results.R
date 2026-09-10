@@ -51,6 +51,8 @@ mod_1_07_results_server <- function(id,
     # INT-08: TRUE while the stored fit's run signature no longer matches the
     # current upstream inputs.
     stale             <- reactiveVal(FALSE)
+    fit_generation    <- reactiveVal(0L)
+    fit_status        <- reactiveVal("idle")
 
     # ---- Run signature (INT-08) ----------------------------------------------
     # Immutable snapshot of everything the fit depends on; recomputed from
@@ -133,6 +135,12 @@ mod_1_07_results_server <- function(id,
     # parameter wraps that button's input counter and fires here on click.
 
     observeEvent(run_model(), {
+      fit_generation(fit_generation() + 1L)
+      fit_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) fit_status("failure")
+      }, add = TRUE)
       req(selected_outcome(), selected_weather(), selected_model(), survey_weather())
       # REACT-02: honour the shared mod_1_06 guard; one fit at a time.
       if (!is.null(fit_guard)) {
@@ -188,6 +196,8 @@ mod_1_07_results_server <- function(id,
         fit_list$.sig <- .fit_sig_from_live()
         stale(FALSE)
         model_fit_val(fit_list)
+        fit_status("success")
+        completed <- TRUE
         shiny::showNotification("Models fitted successfully.",
                                 type = "message", duration = 3)
 
@@ -1000,6 +1010,9 @@ mod_1_07_results_server <- function(id,
 
     # ---- Return --------------------------------------------------------------
 
-    list(model_fit = model_fit_val, stale = stale)
+    list(model_fit = model_fit_val,
+         stale = stale,
+         fit_generation = fit_generation,
+         fit_status = fit_status)
   })
 }
