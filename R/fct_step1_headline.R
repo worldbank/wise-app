@@ -711,7 +711,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       f1 <- .s1_fmt_scaled(s1$estimate, s1$se, scale)
       f9 <- .s1_fmt_scaled(s9$estimate, s9$se, scale)
       bits_val <- c(bits_val, paste0(f1$value, " vs ", f9$value))
-      cmp_line <- paste0("poorest 10% (\u03c4 = 0.1) vs richest 10% (\u03c4 = 0.9)")
+      cmp_line <- "poorest 10% vs richest 10%"
       note_parts <- c(note_parts, cmp_line)
       html_parts <- c(html_parts, list(
         shiny::tags$div(style = "font-weight: 600;", cmp_line)))
@@ -721,7 +721,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
         "log-point approximations of % changes)."))
       p <- tryCatch(step1_rif_heterogeneity_p(mf, snap, var), error = function(e) NULL)
       if (!is.null(p) && is.finite(p)) {
-        p_line <- if (p < 0.001) "(p < 0.001)" else sprintf("(p = %.3f)", p)
+        p_line <- if (p < 0.001) "RIF distribution p < 0.001" else sprintf("RIF distribution p = %.3f", p)
         note_parts <- c(p_line, note_parts)
         html_parts <- c(list(shiny::tags$div(p_line)), html_parts)
         info_bits <- c(info_bits, paste0(
@@ -786,7 +786,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
         }
       }, error = function(e) NULL)
       if (!is.null(pdiff) && is.finite(pdiff)) {
-        p_line <- if (pdiff < 0.001) "(p < 0.001)" else sprintf("(p = %.3f)", pdiff)
+        p_line <- if (pdiff < 0.001) "Interaction p < 0.001" else sprintf("Interaction p = %.3f", pdiff)
         note_parts <- c(p_line, note_parts)
         html_parts <- c(list(shiny::tags$div(p_line)), html_parts)
       }
@@ -873,7 +873,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
   # The spec-comparison table is hidden for RIF, so the verdict points at the
   # full coefficient table instead and names the quantile it describes.
   rif_provenance <- if (identical(engine, "rif")) {
-    " (\u03c4 = 0.5 model; full coefficients in the table below)"
+    " The RIF coefficient comparison is at the median quantile (\u03c4 = 0.5); full coefficients are in the table below."
   } else ""
   stab_info <- paste0(
     "Compares the weather coefficient across the three nested specifications ",
@@ -883,20 +883,17 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
     "sign changes \u2014 interpret with caution.")
   if (sign_agree && ci_overlap) {
     list(label = lab, value = "Stable",
-         note = paste0("same sign and overlapping 95% CIs across specifications",
-                       rif_provenance),
-         info = stab_info)
+         note = "same sign and overlapping 95% CIs across specifications",
+         info = paste0(stab_info, rif_provenance))
   } else if (sign_agree) {
     list(label = lab, value = "Sensitive",
-         note = paste0("sign consistent, but the magnitude changes across specifications",
-                       rif_provenance),
-         info = stab_info,
+         note = "sign consistent, but the magnitude changes across specifications",
+         info = paste0(stab_info, rif_provenance),
          class = "neutral")
   } else {
     list(label = lab, value = "Unstable",
-         note = paste0("sign changes across specifications",
-                       rif_provenance, " \u2014 interpret with caution"),
-         info = stab_info,
+         note = "sign changes across specifications \u2014 interpret with caution",
+         info = paste0(stab_info, rif_provenance),
          class = "neutral")
   }
 }
