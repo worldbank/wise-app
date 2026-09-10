@@ -395,7 +395,7 @@ mod_2_03_diagnostics_server <- function(id,
         if (is.null(vb) || !nrow(vb)) return(NULL)
         out <- variance_component_data(vb, isTRUE(input$show_variance_shares))
         annotate_visualization_export(
-          out, hist_sim()$so$method %||% "mean", hist_sim()$so,
+          out, hist_sim()$agg_method %||% hist_sim()$method %||% "mean", hist_sim()$so,
           observation_unit = "scenario-level annual aggregate summary",
           aggregation_order = "weighted aggregate by model and weather-year; components retained separately",
           uncertainty = "coefficient, inter-annual, and inter-model components"

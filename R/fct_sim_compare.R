@@ -768,25 +768,6 @@ paired_adverse_effect_table <- function(effect_tbl,
     )
 }
 
-plot_paired_adverse_table <- function(tbl, x_label = "Policy effect (outcome units)") {
-  if (is.null(tbl) || !nrow(tbl)) {
-    return(ggplot2::ggplot() + ggplot2::labs(title = "Adverse-year effects are unavailable."))
-  }
-  tbl$period <- factor(tbl$period, levels = rev(c(
-    "Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20"
-  )))
-  ggplot2::ggplot(tbl, ggplot2::aes(x = .data$effect, y = .data$period)) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-    ggplot2::geom_segment(ggplot2::aes(x = .data$ensemble_lo,
-                                       xend = .data$ensemble_hi,
-                                       y = .data$period, yend = .data$period),
-                          linewidth = 4, colour = "#0072B2", alpha = 0.35) +
-    ggplot2::geom_point(shape = 21, fill = "#0072B2", colour = "#243746", size = 3) +
-    ggplot2::labs(x = x_label, y = NULL,
-                  subtitle = "Equal-probability policy quantile minus baseline quantile; unsupported tails are omitted.") +
-    theme_wise(base_size = 12)
-}
-
 #' Data behind the Step 2 return-period dot plot (Figure S2-4)
 #' @noRd
 step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {

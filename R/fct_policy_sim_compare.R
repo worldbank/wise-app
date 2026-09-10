@@ -1229,9 +1229,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     shiny::updateRadioButtons(session, "cmp_agg_method", choices = agg_choices, selected = cur_method)
   })
 
-  output$outcome_level_context_ui <- shiny::renderUI(NULL)
-  output$outcome_level_mode_ui <- shiny::renderUI(NULL)
-
   # Resolve the residuals choice captured by the Step 2 run. The live control
   # is only a fallback for older in-memory result objects.
   active_residuals <- function(hs) {
@@ -1871,15 +1868,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     )
   })
 
-  table_subtitle <- reactive({
-    req(baseline_agg_hist(), input$cmp_agg_method, input$cmp_deviation)
-    paste0(
-      agg_axis_label(), " - ",
-      label_agg_method(input$cmp_agg_method), " | ",
-      label_deviation(input$cmp_deviation)
-    )
-  })
-
   # Scenario filter grid: same compact SSP x period table as the Step 2
   # results tab (alignment). INT-01: the user's cell selection survives a
   # republish; a first render (or a fresh key set) starts fully checked.
@@ -1962,30 +1950,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     )
   })
 
-  output$summary_box_plot <- renderPlot({
-    if (identical(input$display_mode, "levels")) {
-      req(baseline_agg_scenarios(), policy_agg_scenarios())
-      return(plot_policy_levels_dumbbell(
-        baseline_df = baseline_agg_scenarios(),
-        policy_df   = policy_agg_scenarios(),
-        x_label     = metric_axis_label(input$cmp_agg_method %||% "mean",
-                                        baseline_hist_sim()$so,
-                                        input$cmp_deviation %||% "none")
-      ))
-    }
-    req(paired_effect_summary_rv())
-    tbl <- paired_effect_summary_rv()
-    if (!isTRUE(input$show_model_spread)) {
-      tbl$intermod_lo <- NA_real_
-      tbl$intermod_hi <- NA_real_
-    }
-    paired_effect_plot(tbl, metric_axis_label(
-      input$cmp_agg_method %||% "mean", baseline_hist_sim()$so,
-      input$cmp_deviation %||% "none"
-    ))
-  }, height = 600)
-  outputOptions(output, "summary_box_plot", suspendWhenHidden = TRUE)
-
   # ---- Section 1: Annual weather variation (baseline and policy) -----------
   output$annual_distribution_plot <- renderPlot({
     req(timeseries_curves_rv())
@@ -2000,18 +1964,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     )
   }, height = 440)
   outputOptions(output, "annual_distribution_plot", suspendWhenHidden = TRUE)
-
-  output$paired_annual_distribution_plot <- renderPlot({
-    req(paired_annual_effects_rv())
-    plot_annual_distribution(
-      paired_annual_effects_rv(),
-      x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
-                                  baseline_hist_sim()$so,
-                                  input$cmp_deviation %||% "none"),
-      title = "Distribution of annual policy effects across simulated weather years"
-    )
-  }, height = 460)
-  outputOptions(output, "paired_annual_distribution_plot", suspendWhenHidden = TRUE)
 
   # ---- Section 2: Adverse weather years (tail protection) ------------------
   adverse_dot_data_rv <- reactive({
@@ -2035,32 +1987,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     )
   }, height = 380)
   outputOptions(output, "adverse_dot_plot", suspendWhenHidden = TRUE)
-
-  output$paired_adverse_plot <- renderPlot({
-    req(paired_adverse_effects_rv())
-    plot_adverse_effects(
-      paired_adverse_effects_rv(),
-      x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
-                                  baseline_hist_sim()$so,
-                                  input$cmp_deviation %||% "none")
-    )
-  }, height = 420)
-  outputOptions(output, "paired_adverse_plot", suspendWhenHidden = TRUE)
-
-  output$paired_adverse_table <- DT::renderDT({
-    req(paired_adverse_table_rv())
-    df <- paired_adverse_table_rv()
-    if (!nrow(df)) {
-      return(DT::datatable(data.frame(Message = "Insufficient weather-year support"),
-                          rownames = FALSE, options = list(dom = "t")))
-    }
-    DT::datatable(
-      df, rownames = FALSE, class = "compact stripe", extensions = "Buttons",
-      options = list(dom = wise_csv_dom("tp"), pageLength = 20,
-                     buttons = wise_csv_button("policy_adverse_effects"))
-    )
-  })
-  outputOptions(output, "paired_adverse_table", suspendWhenHidden = FALSE)
 
   # ---- Section 4: Uncertainty decomposition --------------------------------
   step3_variance_breakdown_rv <- reactive({
@@ -2123,24 +2049,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     so_name <- bh$so$name %||% "welfare"
     step3_incidence_by_decile(res, bs, so_name)
   })
-  output$paired_incidence_plot <- renderPlot({
-    req(step3_incidence_data())
-    plot_incidence_by_decile(
-      step3_incidence_data(),
-      y_label = "Paired policy minus baseline effect"
-    )
-  }, height = 420)
-  outputOptions(output, "paired_incidence_plot", suspendWhenHidden = TRUE)
-  output$paired_incidence_table <- DT::renderDT({
-    req(step3_incidence_data())
-    DT::datatable(
-      step3_incidence_data(), rownames = FALSE, class = "compact stripe",
-      extensions = "Buttons",
-      options = list(dom = wise_csv_dom("tp"), pageLength = 10,
-                     buttons = wise_csv_button("policy_distributional_incidence"))
-    )
-  })
-  outputOptions(output, "paired_incidence_table", suspendWhenHidden = FALSE)
 
   wise_export_figure(
     key = "policy_distributional_incidence",
@@ -2306,32 +2214,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
   })
   outputOptions(output, "summary_threshold_table", suspendWhenHidden = TRUE)
 
-  output$threshold_table_header <- renderUI({
-    req(baseline_agg_hist())
-    tagList(
-      shiny::h4(
-        "Outcome value at return-period thresholds (both tails)",
-        info_popover(
-          title = "Return-period thresholds",
-          shiny::p("Low odds show the value exceeded in only 1-in-N years."),
-          shiny::p("High odds show the value reached in all but 1-in-N years."),
-          shiny::p("1:1 shows the median (50th percentile) simulated value."),
-          docs = TRUE
-        )
-      ),
-      shiny::tags$small(class = "text-muted", table_subtitle())
-    )
-  })
-
-  output$threshold_table_footer <- renderUI({
-    req(baseline_agg_hist())
-    shiny::tags$p(
-      style = "font-size:11px; color:#666; margin-top:6px;",
-      "Odds relative to a 1-in-N-year event - click ",
-      shiny::icon("circle-info"), " above for definitions."
-    )
-  })
-
   # UI-48: Step 3's baseline-vs-policy comparison figures.
   wise_export_figure(
     key   = "policy_outcome_distribution",
@@ -2394,32 +2276,6 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     )
   })
   outputOptions(output, "exceedance_plot", suspendWhenHidden = TRUE)
-
-  output$timeseries_plot <- renderPlot({
-    req(timeseries_curves_rv())
-    ens_q <- if (isTRUE(input$show_model_spread))
-      resolve_band_q(input$ensemble_band %||% "minmax")
-    else c(lo = 0.5, hi = 0.5)
-    plot_timeseries_spaghetti(
-      ts_tbl          = timeseries_curves_rv(),
-      x_label         = agg_axis_label(),
-      ensemble_band_q = ens_q
-    )
-  })
-  outputOptions(output, "timeseries_plot", suspendWhenHidden = TRUE)
-
-  output$exceedance_caption <- renderUI({
-    req(baseline_agg_hist())
-    axis_txt <- if (isTRUE(input$exceedance_logit_x))
-      "Probability axis is logit-scaled, giving equal visual weight to both tails."
-    else
-      "The curve shows the estimated annual exceedance probability for each outcome value."
-    shiny::tags$p(
-      style = "font-size:11px; color:#666; margin-top:6px;",
-      axis_txt,
-      " Grey line = baseline; red line = policy-adjusted ensemble median."
-    )
-  })
 
   # Invisibly expose the aggregation internals for regression tests
   # (test-policy-sim-compare-agg-cache.R).

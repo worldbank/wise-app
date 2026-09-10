@@ -868,7 +868,6 @@ resimulate_with_svy <- function(svy, sw, so, mf,
   pov_line   <- hist_sim_baseline$pov_line
   residuals  <- hist_sim_baseline$residuals %||%
                 hist_sim_baseline$pipeline$residuals %||% "none"
-  shared_context <- hist_sim_baseline$shared_context %||% list()
   # Canonical Cholesky-factor key is $chol_obj (matches Step 2 hist_sim and
   # the primary run_sim_pipeline parameter). Older Mod 3 outputs stored it
   # under $chol_Sigma; read that as a fallback so existing in-memory state

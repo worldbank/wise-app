@@ -357,7 +357,7 @@ mod_3_09_decomposition_server <- function(id,
       label = "Paired policy incidence data",
       step = 3L,
       fun = function() annotate_visualization_export(
-        incidence_data(), "mean", outcome,
+        incidence_data(), "mean", so(),
         observation_unit = "household-level paired policy-minus-baseline effect",
         aggregation_order = "fixed weighted observed baseline decile; weighted mean over households",
         uncertainty = "paired policy contrast"
@@ -528,63 +528,6 @@ mod_3_09_decomposition_server <- function(id,
 # ---------------------------------------------------------------------------- #
 # Plot helpers
 # ---------------------------------------------------------------------------- #
-
-#' @noRd
-.plot_decomp_bars <- function(decomp_df, is_rif, show_coef = TRUE) {
-  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
-  if (is.null(decomp_df) || nrow(decomp_df) == 0) return(NULL)
-
-  # Aggregate by decile (weighted mean) - point estimates only. Per-channel
-  # uncertainty is read off the summary table's +/- SE columns.
-  agg <- do.call(rbind, lapply(sort(unique(decomp_df$decile)), function(d) {
-    idx <- decomp_df$decile == d
-    w <- decomp_df$weight[idx]
-    if (length(w) == 0 || all(is.na(w))) return(NULL)
-    data.frame(
-      decile   = d,
-      pct_main = stats::weighted.mean(decomp_df$pct_main[idx], w, na.rm = TRUE),
-      pct_res1 = stats::weighted.mean(decomp_df$pct_res1[idx], w, na.rm = TRUE),
-      pct_res2 = stats::weighted.mean(decomp_df$pct_res2[idx], w, na.rm = TRUE)
-    )
-  }))
-  if (is.null(agg) || nrow(agg) == 0) return(NULL)
-
-  if (is_rif) {
-    long <- data.frame(
-      decile  = rep(agg$decile, 3),
-      channel = rep(c("Main effect", "Repositioning", "Interaction"),
-                    each = nrow(agg)),
-      value   = c(agg$pct_main, agg$pct_res1, agg$pct_res2)
-    )
-    long$channel <- factor(long$channel,
-                           levels = c("Interaction", "Repositioning", "Main effect"))
-  } else {
-    long <- data.frame(
-      decile  = rep(agg$decile, 2),
-      channel = rep(c("Main effect", "Interaction"), each = nrow(agg)),
-      value   = c(agg$pct_main, agg$pct_res2)
-    )
-    long$channel <- factor(long$channel,
-                           levels = c("Interaction", "Main effect"))
-  }
-
-  ggplot2::ggplot(long, ggplot2::aes(x = factor(decile), y = value, fill = channel)) +
-    ggplot2::geom_col(position = "stack", width = 0.7) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
-    ggplot2::scale_fill_manual(
-      values = c("Main effect" = "#2166ac",
-                 "Repositioning" = "#b2182b",
-                 "Interaction" = "#fdae61")
-    ) +
-    ggplot2::labs(
-      x = "Baseline welfare decile (1 = poorest)",
-      y = "Effect (% change in welfare)",
-      fill = "Channel"
-    ) +
-    theme_wise() +
-    ggplot2::theme(legend.position = "bottom")
-}
-
 
 #' @noRd
 .plot_decomp_scenario_range <- function(sc_df, is_rif = TRUE) {

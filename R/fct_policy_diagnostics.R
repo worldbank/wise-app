@@ -76,24 +76,33 @@ policy_covariate_support <- function(training, policy, vars = NULL,
   }))
 }
 
-policy_treatment_assignment <- policy_treatment_matrix
-
 policy_construction_summary <- function(baseline_svy, policy_svy, sp = NULL,
                                         analysis_unit = "hh", seed = WISEAPP_DEFAULT_SEED) {
   if (is.null(baseline_svy) || is.null(policy_svy)) return(data.frame())
   changed <- detect_manipulated_vars(baseline_svy, policy_svy)
   transfer <- if (SP_TRANSFER_COL %in% names(policy_svy)) policy_svy[[SP_TRANSFER_COL]] else rep(0, nrow(policy_svy))
+
+  changed_mask <- if (length(changed) > 0L) {
+    Reduce("|", lapply(changed, function(v) {
+      b_col <- baseline_svy[[v]]
+      p_col <- policy_svy[[v]]
+      (!is.na(b_col) & !is.na(p_col) & b_col != p_col) | (is.na(b_col) != is.na(p_col))
+    }))
+  } else {
+    rep(FALSE, nrow(baseline_svy))
+  }
+
+  w <- if ("weight" %in% names(baseline_svy)) baseline_svy$weight else rep(1, nrow(baseline_svy))
+  total_w <- sum(w, na.rm = TRUE)
+  w_share <- if (total_w > 0) sum(changed_mask * w, na.rm = TRUE) / total_w else 0
+
   data.frame(
     item = c("Active manipulated variables", "Changed row count", "Weighted changed share",
              "Realized transfer total", "Random seed", "Reconciliation"),
     value = c(
       paste(changed, collapse = ", "),
-      sum(vapply(seq_len(nrow(baseline_svy)), function(i) {
-        any(vapply(changed, function(v) !identical(baseline_svy[[v]][[i]], policy_svy[[v]][[i]]), logical(1)))
-      }, logical(1))),
-      mean(vapply(seq_len(nrow(baseline_svy)), function(i) {
-        any(vapply(changed, function(v) !identical(baseline_svy[[v]][[i]], policy_svy[[v]][[i]]), logical(1)))
-      }, logical(1))),
+      sum(changed_mask, na.rm = TRUE),
+      w_share,
       .sp_transfer_totals(policy_svy, analysis_unit)$total,
       seed,
       if (length(transfer) == nrow(policy_svy)) "Reconciled with realized policy frame" else "Unavailable"

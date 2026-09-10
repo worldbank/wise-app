@@ -1401,7 +1401,7 @@ mod_2_02_results_server <- function(id,
     }, height = 460)
 
     incidence_data_rv <- reactive({
-      req(hist_sim(), saved_scenarios(), input$cmp_agg_method)
+      req(hist_sim(), saved_scenarios(), shiny::isolate(input$cmp_agg_method))
       sc <- selected_scenario_names()
       if (!length(sc)) return(tibble::tibble())
       is_log <- identical(hist_sim()$so$transform, "log")
@@ -1430,7 +1430,7 @@ mod_2_02_results_server <- function(id,
                        buttons = wise_csv_button("climate_distributional_incidence"))
       )
     })
-    outputOptions(output, "incidence_table", suspendWhenHidden = FALSE)
+    outputOptions(output, "incidence_table", suspendWhenHidden = TRUE)
 
     wise_export_figure(
       key = "climate_distributional_incidence",

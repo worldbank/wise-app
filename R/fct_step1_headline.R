@@ -31,15 +31,6 @@
   "level"
 }
 
-.s1_outcome_phrase <- function(snap) {
-  so <- snap$outcome
-  if (identical(tolower(as.character(so$type[1])), "logical")) {
-    "poverty probability"
-  } else {
-    tolower(as.character(so$label[1]))
-  }
-}
-
 .s1_weather_label <- function(snap, var, label_fun = identity) {
   lab <- NULL
   w <- snap$weather

@@ -282,14 +282,6 @@ mod_1_07_results_server <- function(id,
       y_lab_lower <- tolower(as.character(outcome_snap$label[1]))
       has_int     <- length(mf$interaction_terms) > 0
 
-      y_effect_lab <- if (is_log_out) {
-        paste0("Effect on log ", y_lab_lower, " (log points)")
-      } else if (is_logit || is_lpm) {
-        paste0("Effect on ", y_lab_lower, " probability (pp)")
-      } else {
-        paste0("Effect on ", y_lab_lower)
-      }
-
       # Coefficient plots show model-scale coefficients, not translated
       # effects, so their axis carries the coefficient unit.
       coef_unit_lab <- if (is_logit) {
@@ -490,7 +482,9 @@ mod_1_07_results_server <- function(id,
             mode              = "moderated",
             is_logistic       = is_logistic_fit(mf),
             x_label           = axis_lab(i),
-            y_label           = effect_y_lab(i)
+            y_label           = effect_y_lab(i),
+            effect_scale      = effect_scale_arg(i),
+            profile_eta       = profile_eta0
           )
         }
       }
@@ -671,10 +665,6 @@ mod_1_07_results_server <- function(id,
         else "Per +1 SD uses the sample SD of each weather variable; see At a glance for the full contrast including interactions.",
         if (is_lpm) "Linear-probability model: predictions can fall outside 0\u20131." else NULL,
         if (is_rif) "RIF coefficients are effects on unconditional quantiles in log points; % translation is approximate." else NULL
-      )
-      scenarios_main <- tryCatch(
-        step1_scenarios(mf, snap, mf$weather_terms[1]),
-        error = function(e) NULL
       )
       # Per-variable scenario translations for the focused table (the +1 SD
       # contrast of each weather variable, polynomial-inclusive - the same
