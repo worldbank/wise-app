@@ -2036,8 +2036,9 @@ enhance_exceedance <- function(curves_tbl,
   p <- if (has_source) {
     p +
       ggplot2::geom_line(data = hist_df, colour = "black", na.rm = TRUE) +
-      # Baseline: dashed line with scenario colour.
-      ggplot2::geom_line(data = fut_baseline_df, linetype = "dashed",
+      # Baseline: solid line with scenario colour; labels distinguish it from
+      # the thicker policy line.
+      ggplot2::geom_line(data = fut_baseline_df, linetype = "solid",
                          alpha = 0.8, na.rm = TRUE) +
       ggplot2::geom_line(data = fut_policy_df, linetype = "solid",
                          colour = "#D55E00", linewidth = 1.5,
@@ -2111,7 +2112,7 @@ enhance_exceedance <- function(curves_tbl,
       data = endpoint_rows,
       ggplot2::aes(x = .data$central, y = label_prob, label = .data$curve_label,
                    colour = .data$line_key),
-      hjust = 0, size = 3.5, fontface = "bold", show.legend = FALSE,
+      hjust = 1.05, size = 3.5, fontface = "bold", show.legend = FALSE,
       inherit.aes = FALSE
     ) +
     ggplot2::labs(

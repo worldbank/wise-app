@@ -1053,7 +1053,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
         shiny::p(
           "Shows the annual probability of reaching or exceeding severe outcome",
           "thresholds across simulated weather years under baseline and policy.",
-          "Dashed curves mark baseline; solid curves mark policy.",
+          "Solid curves show baseline and policy; thicker orange curves show policy.",
           "Shaded ribbons depict climate-model disagreement under policy."
         ),
         docs = TRUE
@@ -1086,7 +1086,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-         "Read each curve as the annual probability of reaching an outcome level in the adverse direction. Dashed lines show baseline; solid lines show policy. Coloured lines are across-model medians, and shaded ribbons show selected climate-model disagreement for each future baseline and policy series. Return-period guides and ticks are limited to the available simulated years per climate model; unsupported periods are not extrapolated."
+         "Read each curve as the annual probability of reaching an outcome level in the adverse direction. Solid lines show baseline and policy; thicker orange lines show policy. Coloured lines are across-model medians, and shaded ribbons show selected climate-model disagreement for each future baseline and policy series. Return-period guides and ticks are limited to the available simulated years per climate model; unsupported periods are not extrapolated."
       )
     ),
 

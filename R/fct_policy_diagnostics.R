@@ -16,8 +16,12 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
   w <- if (weight_col %in% names(baseline_svy)) as.numeric(baseline_svy[[weight_col]]) else rep(1, nrow(baseline_svy))
   w[!is.finite(w) | w < 0] <- 0
   status <- interaction(b, p, drop = TRUE, sep = "_")
-  labels <- c(`FALSE_FALSE` = "Still uncovered", `FALSE_TRUE` = "Newly covered",
-              `TRUE_FALSE` = "Lost coverage", `TRUE_TRUE` = "Baseline covered")
+  labels <- c(
+    `FALSE_FALSE` = "Not ideally eligible, not treated",
+    `FALSE_TRUE` = "Inclusion error: not ideally eligible, treated",
+    `TRUE_FALSE` = "Exclusion error: ideally eligible, not treated",
+    `TRUE_TRUE` = "Ideal targeting: eligible and treated"
+  )
   dplyr::bind_rows(lapply(names(labels), function(k) {
     ok <- as.character(status) == k
     data.frame(

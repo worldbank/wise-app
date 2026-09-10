@@ -415,7 +415,7 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   }
 }
 
-.determine_sp_eligibility <- function(svy, sp) {
+.determine_sp_eligibility <- function(svy, sp, apply_errors = TRUE) {
   n         <- nrow(svy)
   targeting <- sp$targeting %||% "exante_poor"
 
@@ -447,8 +447,9 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
     eligible <- rep(FALSE, n)
   }
 
-  # Inclusion / exclusion errors (not applied for universal)
-  if (targeting != "universal") {
+  # Inclusion / exclusion errors (not applied for universal). Diagnostics can
+  # request the ideal targeting rule by leaving these errors unapplied.
+  if (isTRUE(apply_errors) && targeting != "universal") {
     incl_rate <- (sp$inclusion_error_pct %||% 0) / 100
     excl_rate <- (sp$exclusion_error_pct %||% 0) / 100
     non_elig  <- which(!eligible)

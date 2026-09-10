@@ -315,3 +315,47 @@ test_that("new export keys return valid figures or data frames", {
   expect_s3_class(wiseapp:::policy_treatment_matrix(df1, df2), "data.frame")
   expect_s3_class(wiseapp:::policy_covariate_support(df1, df2), "data.frame")
 })
+
+test_that("treatment diagnostics distinguish ideal eligibility from realized treatment", {
+  baseline <- data.frame(weight = c(1, 1, 1, 1))
+  policy <- data.frame(
+    weight = baseline$weight,
+    .sp_transfer = c(0, 10, 0, 10)
+  )
+  eligible <- c(TRUE, FALSE, TRUE, FALSE)
+
+  out <- wiseapp:::policy_treatment_matrix(baseline, policy, eligible)
+  expect_identical(
+    out$status,
+    c(
+      "Not ideally eligible, not treated",
+      "Inclusion error: not ideally eligible, treated",
+      "Exclusion error: ideally eligible, not treated",
+      "Ideal targeting: eligible and treated"
+    )
+  )
+
+  note <- wiseapp:::.policy_treatment_explanation(list(
+    targeting = "exante_poor", targeting_threshold = 20,
+    inclusion_error_pct = 10, exclusion_error_pct = 5
+  ))
+  expect_match(note, "bottom 20%", fixed = TRUE)
+  expect_match(note, "10% inclusion error", fixed = TRUE)
+  expect_match(note, "5% exclusion error", fixed = TRUE)
+  expect_match(note, "not observed cash receipt", fixed = TRUE)
+})
+
+test_that("ideal targeting eligibility omits inclusion and exclusion errors", {
+  svy <- data.frame(welfare = 1:10)
+  sp <- list(
+    targeting = "exante_poor", targeting_threshold = 20,
+    inclusion_error_pct = 100, exclusion_error_pct = 100
+  )
+
+  ideal <- wiseapp:::.determine_sp_eligibility(svy, sp, apply_errors = FALSE)
+  realized <- withr::with_seed(
+    1L, wiseapp:::.determine_sp_eligibility(svy, sp, apply_errors = TRUE)
+  )
+  expect_equal(sum(ideal), 2L)
+  expect_equal(sum(realized), 8L)
+})
