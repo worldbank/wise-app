@@ -827,10 +827,10 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
 #' Inputs and outputs are namespaced via \code{ns()}.
 #' @noRd
 .results_pane_ui <- function(ns, so, weather_var = NULL) {
-  so_name  <- if (!is.null(so) && !is.null(so$name)) as.character(so$name[1]) else "welfare"
-  so_type  <- if (!is.null(so) && !is.null(so$type)) as.character(so$type[1]) else "numeric"
-  so_label <- if (!is.null(so) && !is.null(so$label)) as.character(so$label[1]) else so_name
-  so_level <- if (!is.null(so) && !is.null(so$level)) as.character(so$level[1]) else ""
+  so_name  <- if (!is.null(so) && "name" %in% names(so) && !is.null(so[["name"]])) as.character(so[["name"]][1]) else "welfare"
+  so_type  <- if (!is.null(so) && "type" %in% names(so) && !is.null(so[["type"]])) as.character(so[["type"]][1]) else "numeric"
+  so_label <- if (!is.null(so) && "label" %in% names(so) && !is.null(so[["label"]])) as.character(so[["label"]][1]) else so_name
+  so_level <- if (!is.null(so) && "level" %in% names(so) && !is.null(so[["level"]])) as.character(so[["level"]][1]) else ""
 
   outcome_lbl <- tolower(so_label)
   unit_lbl <- switch(tolower(so_level),
@@ -839,21 +839,22 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     "households"
   )
   panel_title <- paste0("How to summarise ", outcome_lbl, " across ", unit_lbl, "?")
-  sec1_heading <- if (!is.null(weather_var) && nzchar(weather_var)) {
-    paste0("How does the policy shift ", outcome_lbl, " with ", weather_var, " across climate scenarios?")
+  wx_phrase <- format_weather_heading_phrase(weather_var)
+  sec1_heading <- if (nzchar(wx_phrase)) {
+    paste0("How does the policy shift ", outcome_lbl, " with ", wx_phrase, " across climate scenarios?")
   } else {
     paste0("How does the policy shift ", outcome_lbl, " across climate scenarios and weather years?")
   }
 
   agg_choices <- hist_aggregate_choices(so_type, so_name)
 
-  pov_units <- if (!is.null(so) && !is.null(so$units) && nzchar(as.character(so$units[1]))) {
-    as.character(so$units[1])
+  pov_units <- if (!is.null(so) && "units" %in% names(so) && !is.null(so[["units"]]) && nzchar(as.character(so[["units"]][1]))) {
+    as.character(so[["units"]][1])
   } else {
     "$/day, 2021 PPP"
   }
-  pov_val <- if (!is.null(so) && !is.null(so$povline) && is.finite(so$povline[1]) && so$povline[1] > 0) {
-    so$povline[1]
+  pov_val <- if (!is.null(so) && "povline" %in% names(so) && !is.null(so[["povline"]]) && is.finite(so[["povline"]][1]) && so[["povline"]][1] > 0) {
+    so[["povline"]][1]
   } else {
     3.00
   }

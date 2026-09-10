@@ -387,6 +387,40 @@ analysis_unit_label <- function(unit) {
   )
 }
 
+#' Format weather variable(s) into a concise phrase for card section headings
+#'
+#' @param weather_var String, character vector, data.frame (with label/name cols),
+#'   or NULL.
+#' @return Scalar character phrase suitable for "How is outcome predicted to vary with <phrase>..."
+#'   Returns empty string `""` if NULL, empty, or more than 2 variables.
+#' @noRd
+format_weather_heading_phrase <- function(weather_var) {
+  if (is.null(weather_var)) return("")
+  raw_labels <- if (is.data.frame(weather_var)) {
+    cols <- intersect(c("label", "name"), names(weather_var))
+    if (length(cols)) as.character(weather_var[[cols[1]]]) else character(0)
+  } else if (is.character(weather_var)) {
+    weather_var
+  } else if (is.list(weather_var)) {
+    cols <- intersect(c("label", "name"), names(weather_var))
+    if (length(cols)) as.character(weather_var[[cols[1]]]) else character(0)
+  } else {
+    character(0)
+  }
+  raw_labels <- raw_labels[!is.na(raw_labels) & nzchar(trimws(raw_labels))]
+  if (length(raw_labels) == 1 && grepl(",", raw_labels, fixed = TRUE)) {
+    raw_labels <- unlist(strsplit(raw_labels, ",\\s*"), use.names = FALSE)
+    raw_labels <- raw_labels[!is.na(raw_labels) & nzchar(trimws(raw_labels))]
+  }
+  if (length(raw_labels) == 1) {
+    tolower(trimws(raw_labels[1]))
+  } else if (length(raw_labels) == 2) {
+    paste(tolower(trimws(raw_labels[1])), "and", tolower(trimws(raw_labels[2])))
+  } else {
+    ""
+  }
+}
+
 # ---- Config flyout blocks (UI-02) ---------------------------------------------
 
 #' Accessible plot output (UI-36)

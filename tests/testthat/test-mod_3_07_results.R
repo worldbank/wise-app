@@ -176,3 +176,56 @@ test_that(".results_pane_ui renders aggregation panel and 5 question sections", 
   expect_match(html, "results3-decision_table_html", fixed = TRUE)
   expect_match(html, "results3-summary_threshold_table", fixed = TRUE)
 })
+
+test_that("format_weather_heading_phrase handles scalar, vector, data.frame, and length 12 safely", {
+  expect_identical(format_weather_heading_phrase(NULL), "")
+  expect_identical(format_weather_heading_phrase("Precipitation"), "precipitation")
+  expect_identical(format_weather_heading_phrase(c("Temperature", "Precipitation")), "temperature and precipitation")
+  expect_identical(format_weather_heading_phrase("Temperature, Precipitation"), "temperature and precipitation")
+
+  # 3+ variables / 12 months should yield empty string (no awkward 12-variable heading)
+  twelve_vars <- paste0("month_", 1:12)
+  expect_identical(format_weather_heading_phrase(twelve_vars), "")
+
+  # Comma-separated list of 12 variables
+  expect_identical(format_weather_heading_phrase(paste(twelve_vars, collapse = ", ")), "")
+
+  # Data frames (single row, two rows, 12 rows)
+  df_one <- data.frame(name = "temp", label = "Temperature", stringsAsFactors = FALSE)
+  expect_identical(format_weather_heading_phrase(df_one), "temperature")
+
+  df_two <- data.frame(name = c("temp", "precip"), label = c("Temperature", "Precipitation"), stringsAsFactors = FALSE)
+  expect_identical(format_weather_heading_phrase(df_two), "temperature and precipitation")
+
+  df_twelve <- data.frame(name = twelve_vars, label = paste("Month", 1:12), stringsAsFactors = FALSE)
+  expect_identical(format_weather_heading_phrase(df_twelve), "")
+})
+
+test_that(".results_pane_ui handles tibble so without level and 12-element weather_var without warnings or errors", {
+  # tibble without level column - must NOT emit 'Unknown or uninitialised column: level'
+  so_tbl <- tibble::tibble(
+    name  = "welfare",
+    type  = "numeric",
+    label = "Welfare",
+    units = "$/day"
+  )
+
+  # weather_var of length 12 (as from a 12-month simulation)
+  twelve_vars <- paste0("month_var_", 1:12)
+
+  # Run without warnings or errors
+  expect_no_warning({
+    ui <- .results_pane_ui(shiny::NS("results3"), so_tbl, weather_var = twelve_vars)
+  })
+
+  html <- as.character(htmltools::renderTags(ui)$html)
+  expect_match(html, "How does the policy shift welfare across climate scenarios and weather years?", fixed = TRUE)
+
+  # Also test with 12-row data frame
+  df_twelve <- data.frame(name = twelve_vars, label = paste("Month", 1:12), stringsAsFactors = FALSE)
+  expect_no_warning({
+    ui_df <- .results_pane_ui(shiny::NS("results3"), so_tbl, weather_var = df_twelve)
+  })
+  html_df <- as.character(htmltools::renderTags(ui_df)$html)
+  expect_match(html_df, "How does the policy shift welfare across climate scenarios and weather years?", fixed = TRUE)
+})
