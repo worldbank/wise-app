@@ -322,7 +322,7 @@ policy_summary_card <- function(selected_policies = NULL,
   policy_pills <- c(sp_label, policy_pills[policy_pills != "None"])
   if (!length(policy_pills)) policy_pills <- "None"
   selection_summary_card(
-    title = NULL,
+    title = "Selected Policy Scenarios",
     badge = NULL,
     rows = list(list(name = "Policies", sub = NULL, pills = policy_pills))
   )

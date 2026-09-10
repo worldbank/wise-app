@@ -592,7 +592,8 @@ plot_policy_levels_dumbbell <- function(baseline_df, policy_df,
 }
 
 plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
-                                      title = NULL, subtitle = NULL) {
+                                      title = NULL, subtitle = NULL,
+                                      plot_type = "violin") {
   if (is.null(tbl) || !nrow(tbl)) {
     return(ggplot2::ggplot() + ggplot2::labs(title = "No annual simulation results available."))
   }
@@ -623,6 +624,7 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
   } else NA_real_
 
   has_source <- "source" %in% names(df) && length(unique(df$source)) > 1L
+  plot_type <- match.arg(plot_type, c("violin", "boxplot"))
 
   if (has_source) {
     df$source <- factor(df$source, levels = c("Baseline", "Policy"))
@@ -633,20 +635,24 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                                    colour = "grey55", linewidth = 0.5)
     }
 
-    # Dodged boxplots and violins for Baseline (muted) vs Policy (highlighted)
-    p <- p +
+    # Show one distribution summary at a time to keep the chart readable.
+    distribution_layer <- if (identical(plot_type, "violin")) {
       ggplot2::geom_violin(
          ggplot2::aes(fill = .data$scenario_key, alpha = .data$source,
-                     group = interaction(.data$scenario, .data$source)),
+                      group = interaction(.data$scenario, .data$source)),
         position = ggplot2::position_dodge(width = 0.65),
         scale = "width", colour = NA, na.rm = TRUE
-      ) +
+      )
+    } else {
       ggplot2::geom_boxplot(
         ggplot2::aes(group = interaction(.data$scenario, .data$source),
                       fill = .data$scenario_key, alpha = .data$source),
         position = ggplot2::position_dodge(width = 0.65),
         width = 0.22, outlier.shape = NA, colour = "#243746", na.rm = TRUE
-      ) +
+      )
+    }
+
+    p <- p + distribution_layer +
       ggplot2::geom_point(
         ggplot2::aes(group = interaction(.data$scenario, .data$source),
                       colour = .data$scenario_key, alpha = .data$source),
@@ -686,6 +692,8 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
       ggplot2::labs(x = NULL, y = x_label, title = title, subtitle = subtitle) +
       theme_wise(base_size = 12) +
       ggplot2::theme(legend.position = "bottom",
+                     legend.box = "horizontal",
+                     plot.margin = ggplot2::margin(8, 8, 18, 8),
                      axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
 
     return(p)
@@ -699,11 +707,15 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                                  colour = "grey55", linewidth = 0.5)
   }
 
-  p <- p +
+  distribution_layer <- if (identical(plot_type, "violin")) {
     ggplot2::geom_violin(scale = "width", alpha = 0.25, colour = NA,
-                         na.rm = TRUE) +
-    ggplot2::geom_boxplot(width = 0.14, outlier.shape = NA, na.rm = TRUE,
-                          colour = "#243746", fill = "white") +
+                         na.rm = TRUE)
+  } else {
+    ggplot2::geom_boxplot(width = 0.22, outlier.shape = NA, na.rm = TRUE,
+                          colour = "#243746", fill = "white")
+  }
+
+  p <- p + distribution_layer +
      ggplot2::geom_point(ggplot2::aes(colour = .data$scenario_key),
                          position = ggplot2::position_jitter(width = 0.08),
                          alpha = 0.55, size = 1.2, na.rm = TRUE) +
@@ -717,6 +729,8 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                   subtitle = subtitle) +
     theme_wise(base_size = 12) +
     ggplot2::theme(legend.position = "bottom",
+                   legend.box = "horizontal",
+                   plot.margin = ggplot2::margin(8, 8, 18, 8),
                    axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
   p
 }
@@ -797,14 +811,24 @@ step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   if (!nrow(central)) return(tibble::tibble())
   central$rp_label <- names(rp_map)[match(central$rp_name, unname(rp_map))]
 
-  ens_lo <- tbl[grepl("^Ensemble ", tbl$Estimate) & grepl("(0%|5%|10%|2.5%|0.5%)", tbl$Estimate), , drop = FALSE]
-  ens_hi <- tbl[grepl("^Ensemble ", tbl$Estimate) & grepl("(100%|95%|90%|97.5%|99.5%)", tbl$Estimate), , drop = FALSE]
-  if (!nrow(ens_lo)) {
-    ens_rows <- tbl[grepl("^Ensemble ", tbl$Estimate), , drop = FALSE]
-    if (nrow(ens_rows)) {
-      ens_lo <- ens_rows[1L, , drop = FALSE]
-      ens_hi <- ens_rows[nrow(ens_rows), , drop = FALSE]
-    }
+  ens_rows <- tbl[grepl("^Ensemble ", tbl$Estimate), , drop = FALSE]
+  if (nrow(ens_rows)) {
+    # The displayed labels vary between min/max and Pxx. Within each
+    # scenario, threshold_table_rv creates the complete lower vector before
+    # the complete upper vector, so split by scenario before pairing RPs.
+    parts <- lapply(split(ens_rows, ens_rows$scenario), function(x) {
+      n_each <- nrow(x) %/% 2L
+      if (n_each < 1L || nrow(x) != 2L * n_each) return(NULL)
+      list(
+        lo = x[seq_len(n_each), , drop = FALSE],
+        hi = x[seq.int(n_each + 1L, nrow(x)), , drop = FALSE]
+      )
+    })
+    parts <- Filter(Negate(is.null), parts)
+    ens_lo <- dplyr::bind_rows(lapply(parts, `[[`, "lo"))
+    ens_hi <- dplyr::bind_rows(lapply(parts, `[[`, "hi"))
+  } else {
+    ens_lo <- ens_hi <- tbl[FALSE, , drop = FALSE]
   }
 
   central$intermod_lo <- NA_real_
@@ -834,14 +858,31 @@ plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
   if (is.null(tbl) || !nrow(tbl)) {
     return(ggplot2::ggplot() + ggplot2::labs(title = "Return-period outcomes are unavailable."))
   }
-  scen_colours <- c("Historical" = "#808080", .ssp_colours)
+  scenario_levels <- c(
+    "Historical",
+    sort(unique(as.character(tbl$scenario[!tbl$is_historical])))
+  )
+  scenario_colours <- stats::setNames(vapply(scenario_levels, function(s) {
+    if (identical(s, "Historical")) return("#808080")
+    ssp <- .normalise_ssp(s)
+    if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else "grey50"
+  }, character(1L)), scenario_levels)
+  tbl$scenario_key <- factor(
+    ifelse(tbl$is_historical, "Historical", as.character(tbl$scenario)),
+    levels = scenario_levels
+  )
   p <- ggplot2::ggplot(tbl, ggplot2::aes(y = .data$rp_label, x = .data$value,
-                                         colour = .data$ssp_key)) +
+                                         colour = .data$scenario_key)) +
     ggplot2::geom_segment(ggplot2::aes(x = .data$intermod_lo, xend = .data$intermod_hi,
                                        y = .data$rp_label, yend = .data$rp_label),
                           linewidth = 2.0, alpha = 0.65, na.rm = TRUE) +
     ggplot2::geom_point(size = 3.2, na.rm = TRUE) +
-    ggplot2::scale_colour_manual(values = scen_colours, name = "Climate scenario") +
+    ggplot2::scale_colour_manual(
+      values = scenario_colours,
+      breaks = scenario_levels,
+      labels = scenario_levels,
+      name = "Climate scenario and period"
+    ) +
     ggplot2::labs(
       x = x_label, y = NULL,
       title = title,
@@ -2007,8 +2048,9 @@ enhance_exceedance <- function(curves_tbl,
       reliable  <- is.null(n_sim_years) ||
         (!(nm == "1:20" && n_sim_years < 20) &&
          !(nm == "1:50" && n_sim_years < 50))
-      rp_label  <- if (reliable) nm else paste0(nm, "*")
-      label_col <- if (reliable) "grey40" else "grey65"
+      if (!reliable) next
+      rp_label  <- nm
+      label_col <- "grey40"
       p <- p +
         ggplot2::geom_hline(
           yintercept = prob, linetype = "dashed",
@@ -2018,13 +2060,6 @@ enhance_exceedance <- function(curves_tbl,
           "text", x = -Inf, y = prob, label = rp_label,
           hjust = -0.1, vjust = -0.3, size = 2.8, colour = label_col
         )
-    }
-    if (!is.null(n_sim_years) && n_sim_years < 50 && "1:50" %in% names(rp_all)) {
-      p <- p + ggplot2::annotate(
-        "text", x = Inf, y = 0.02,
-        label  = paste0("\u26a0 unreliable (n = ", n_sim_years, " yrs)"),
-        hjust  = 1.05, vjust = 1.5, size = 2.8, colour = "grey50"
-      )
     }
   }
 

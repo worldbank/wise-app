@@ -136,8 +136,8 @@ mod_2_02_results_ui <- function(id) {
       class = "results-section-card",
       shiny::div(
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
-        pill_toggle(
-          ns("cmp_deviation"),
+         pill_toggle(
+           ns("cmp_deviation"),
           label    = NULL,
           choices  = c(
             "Outcome level"                   = "none",
@@ -145,18 +145,25 @@ mod_2_02_results_ui <- function(id) {
             "Change from historical median"   = "median"
           ),
           selected = "none",
-          layout   = "horizontal"
-        )
-      ),
+           layout   = "horizontal"
+         ),
+         pill_toggle(
+           ns("annual_distribution_type"),
+           label    = NULL,
+           choices  = c("Violin" = "violin", "Boxplot" = "boxplot"),
+           selected = "violin",
+           layout   = "horizontal"
+         )
+       ),
        wise_plot_output(
         ns("annual_distribution_plot"),
         "Distribution of annual aggregates across simulated weather years by climate scenario",
-        height = "420px"
+        height = "470px"
       ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-        "Each dot is one simulated weather-year annual aggregate for the fixed baseline population. Boxes show interquartile ranges; diamonds show scenario means. This captures weather-year variability, not household inequality."
+       shiny::tags$p(
+         class = "text-muted small",
+         style = "margin-top: 8px; margin-bottom: 0;",
+         "Each dot is one simulated weather-year annual aggregate for the fixed baseline population. The selected violin or boxplot summarizes the distribution; diamonds show scenario means. This captures weather-year variability, not household inequality."
       )
     ),
 
@@ -184,7 +191,7 @@ mod_2_02_results_ui <- function(id) {
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
           pill_toggle(
            ns("ensemble_band"),
-           label    = NULL,
+           label    = "Climate model spread",
            choices  = c(
             "None"                 = "none",
              "Full ensemble spread" = "minmax",
@@ -252,7 +259,7 @@ mod_2_02_results_ui <- function(id) {
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-        "Curves depict annual probability of exceeding outcome levels in the adverse direction (0.50 AEP or less on log scale). Shaded regions capture disagreement across climate models."
+         "Read each curve as the annual probability of reaching an outcome level in the adverse direction: lower outcomes for higher-is-better measures and higher outcomes for lower-is-better measures. Coloured lines show the across-model median; shaded ribbons show climate-model disagreement. Return-period guides are shown only when supported by the number of simulated years."
       )
     ),
 
@@ -290,7 +297,12 @@ mod_2_02_results_ui <- function(id) {
         title = "Uncertainty sources",
         shiny::p(
           "Compares the absolute standard deviation contributed by each distinct source:",
-          "annual weather variability, climate-model disagreement, and econometric coefficient uncertainty."
+          "year-to-year weather variability, climate-model disagreement, and model-estimation uncertainty."
+        ),
+        shiny::p(
+          "Coefficient uncertainty is the analytic delta-method standard error from the fitted model's coefficient covariance matrix",
+          "(plus residual-draw variance when stochastic residuals are enabled). It is shown as one standard deviation, not a 95% confidence interval;",
+          "an approximate normal 95% interval would be estimate +/- 1.96 times this value."
         ),
         shiny::p(
           "Because standard deviations are not additive, bars are displayed side-by-side on a common scale."
@@ -309,7 +321,7 @@ mod_2_02_results_ui <- function(id) {
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-        "Separate standard deviations in outcome units. Annual weather variability reflects year-to-year swings; inter-model spread reflects CMIP6 model disagreement; coefficient uncertainty reflects econometric estimation precision."
+         "Bars are standard deviations in outcome units, not confidence intervals. Inter-annual variability is the within-model standard deviation across simulated weather years; inter-model spread is the standard deviation of model means across climate models; coefficient uncertainty is the analytic delta-method SE from the fitted model covariance (plus any enabled stochastic residual variance)."
       )
     )
   )
@@ -1266,10 +1278,11 @@ mod_2_02_results_server <- function(id,
           input$cmp_agg_method %||% "mean",
           hist_sim()$so,
           input$cmp_deviation %||% "none"
-        ),
-        title = "Distribution of annual outcome across simulated weather years"
+         ),
+         title = NULL,
+        plot_type = input$annual_distribution_type %||% "violin"
       )
-    }, height = 460)
+    }, height = 510)
 
     incidence_data_rv <- reactive({
       req(hist_sim(), saved_scenarios(), shiny::isolate(input$cmp_agg_method))
@@ -1346,7 +1359,8 @@ mod_2_02_results_server <- function(id,
           annual_distribution_curves_rv(),
           x_label = metric_axis_label(input$cmp_agg_method %||% "mean",
                                       hist_sim()$so,
-                                      input$cmp_deviation %||% "none")
+                                      input$cmp_deviation %||% "none"),
+          plot_type = input$annual_distribution_type %||% "violin"
         )
       },
       description = "Annual aggregate distribution for the fixed population; one observation is one model-weather-year draw.",

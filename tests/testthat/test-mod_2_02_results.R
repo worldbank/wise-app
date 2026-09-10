@@ -447,12 +447,90 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "results-exceedance_model_spread", fixed = TRUE)
   expect_match(html, "Climate model spread", fixed = TRUE)
   expect_match(html, "Full ensemble spread", fixed = TRUE)
+  expect_match(html, "results-ensemble_band", fixed = TRUE)
   expect_match(html, "What drives the uncertainty in these predictions?", fixed = TRUE)
   expect_match(html, "Detailed return-period outcomes and uncertainty", fixed = TRUE)
 
   # Verify distributional incidence is removed from this page
   expect_false(grepl("results-incidence_plot", html, fixed = TRUE))
   expect_false(grepl("results-incidence_table", html, fixed = TRUE))
+})
+
+test_that("annual distribution UI includes a plot type selector", {
+  so <- list(name = "welfare", type = "numeric", label = "Welfare")
+  html <- as.character(htmltools::renderTags(
+    wiseapp:::.results_content_ui(shiny::NS("results"), so)
+  )$html)
+
+  expect_match(html, "results-annual_distribution_type", fixed = TRUE)
+  expect_match(html, "Violin", fixed = TRUE)
+  expect_match(html, "Boxplot", fixed = TRUE)
+})
+
+test_that("adverse plot uses the selected climate-model spread", {
+  threshold_tbl <- tibble::tibble(
+    scenario = rep("SSP2-4.5 / 2030", 6L),
+    Estimate = c("Central (P50)", "Central (P50)",
+                 "Ensemble min", "Ensemble min", "Ensemble max", "Ensemble max"),
+    rp_name = c("1:1", "4:5", "1:1", "4:5", "1:1", "4:5"),
+    value = c(5, 5, 4, 3, 6, 7),
+    is_historical = FALSE,
+    n_obs = 30L
+  )
+
+  dot <- step2_adverse_dot_data(threshold_tbl, method = "mean")
+  expect_equal(dot$intermod_lo, c(4, 3))
+  expect_equal(dot$intermod_hi, c(6, 7))
+
+  plot <- plot_step2_adverse_dot(dot)
+  expect_equal(plot$data$intermod_lo, c(4, 3))
+  expect_equal(plot$data$intermod_hi, c(6, 7))
+})
+
+test_that("adverse plot legend identifies projection periods", {
+  threshold_tbl <- tibble::tibble(
+    scenario = c(rep("SSP2-4.5 / 2030-2040", 6L),
+                 rep("SSP2-4.5 / 2050-2060", 6L)),
+    Estimate = rep(c("Central (P50)", "Central (P50)",
+                     "Ensemble min", "Ensemble min",
+                     "Ensemble max", "Ensemble max"), 2L),
+    rp_name = rep(c("1:1", "4:5", "1:1", "4:5", "1:1", "4:5"), 2L),
+    value = rep(c(5, 5, 4, 3, 6, 7), 2L),
+    is_historical = FALSE,
+    n_obs = 30L
+  )
+
+  dot <- step2_adverse_dot_data(threshold_tbl, method = "mean")
+  plot <- plot_step2_adverse_dot(dot)
+  colour_scale <- plot$scales$get_scales("colour")
+
+  expect_identical(colour_scale$name, "Climate scenario and period")
+  expect_true(all(c("SSP2-4.5 / 2030-2040", "SSP2-4.5 / 2050-2060") %in%
+                  colour_scale$breaks))
+  expect_true("yr_lbl" %in% names(plot$facet$params$facets))
+})
+
+test_that("exceedance plot omits unsupported return-period warning annotation", {
+  curves <- tibble::tibble(
+    scenario = rep("SSP2-4.5 / 2030-2040", 30L),
+    model_id = rep(c("m1", "m2"), each = 15L),
+    rank = rep(seq_len(15L), 2L),
+    welfare_val = seq_len(30L),
+    coef_sd = 0,
+    exceed_prob = rep((seq_len(15L) - 0.5) / 30, 2L),
+    is_historical = FALSE
+  )
+
+  plot <- enhance_exceedance(
+    curves, x_label = "Outcome", n_sim_years = 30L,
+    logit_x = TRUE, band_q = NULL, ensemble_band_q = c(lo = 0, hi = 1)
+  )
+  labels <- vapply(plot$layers, function(layer) {
+    if (!inherits(layer$geom, "GeomText")) return("")
+    as.character(layer$stat_params$label %||% "")
+  }, character(1L))
+  expect_false(any(grepl("unreliable", labels, fixed = TRUE)))
+  expect_false(any(grepl("1:50", labels, fixed = TRUE)))
 })
 
 test_that("make_decision_table_html produces clean .wise-table HTML", {
