@@ -913,8 +913,11 @@ plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
                           linewidth = 2.0, alpha = 0.65, na.rm = TRUE) +
     ggplot2::geom_point(size = 3.4, stroke = 1.0, na.rm = TRUE) +
     ggplot2::annotate(
-      "text", x = -Inf, y = sort(unique(tbl$rp_y)), hjust = -0.08,
-      label = levels(tbl$rp_label), size = 3.6, fontface = "bold",
+      "text", x = -Inf,
+      y = sort(unique(tbl$rp_y)),
+      hjust = -0.08,
+      label = levels(droplevels(tbl$rp_label)),
+      size = 3.6, fontface = "bold",
       colour = .wise_slate
     ) +
     ggplot2::scale_colour_manual(
