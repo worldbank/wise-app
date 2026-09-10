@@ -557,6 +557,7 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
     ifelse(tbl$is_historical, "Historical", as.character(tbl$scenario)),
     levels = scenario_levels
   )
+  tbl$series <- ifelse(tbl$is_historical, "Historical", "Future")
 
   p <- ggplot2::ggplot(tbl, ggplot2::aes(y = .data$rp_label)) +
     ggplot2::geom_segment(
@@ -571,18 +572,24 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
       linewidth = 2.4, alpha = 0.55, na.rm = TRUE
     ) +
     ggplot2::geom_point(
-      ggplot2::aes(x = .data$baseline_val, y = .data$rp_label),
-      shape = 21, fill = "#ffffff", colour = "#526575", stroke = 1.1, size = 3.0, na.rm = TRUE
+      ggplot2::aes(x = .data$baseline_val, y = .data$rp_label,
+                   shape = .data$series, colour = .data$scenario_key),
+      fill = "#ffffff", stroke = 1.1, size = 3.0, na.rm = TRUE
     ) +
     ggplot2::geom_point(
-      ggplot2::aes(x = .data$policy_val, y = .data$rp_label),
-      shape = 21, fill = "#D55E00", colour = "#7F2704", stroke = 1.0,
+      ggplot2::aes(x = .data$policy_val, y = .data$rp_label,
+                   shape = .data$series, colour = .data$scenario_key),
+      fill = "#D55E00", stroke = 1.0,
       size = 3.6, na.rm = TRUE
     ) +
      ggplot2::scale_colour_manual(
        values = scenario_colours, breaks = scenario_levels,
-       labels = scenario_levels, name = "Climate scenario and period"
-     ) +
+        labels = scenario_levels, name = "Climate scenario and period"
+      ) +
+    ggplot2::scale_shape_manual(values = c(Historical = 21, Future = 24),
+                                 name = NULL,
+                                 labels = c(Historical = "Historical",
+                                            Future = "Future scenario")) +
       ggplot2::scale_fill_manual(
         values = scenario_colours, breaks = scenario_levels,
         labels = scenario_levels, name = "Climate scenario and period",
@@ -593,8 +600,13 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
       title = title,
       subtitle = subtitle
     ) +
-    theme_wise(base_size = 12) +
-    ggplot2::theme(legend.position = "bottom")
+     theme_wise() +
+     ggplot2::theme(legend.position = "bottom") +
+     ggplot2::guides(
+       colour = ggplot2::guide_legend(order = 1),
+       shape = ggplot2::guide_legend(order = 2,
+                                     override.aes = list(colour = "#526575"))
+     )
 
   fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
   if (length(fut_periods) > 1L) {
@@ -980,7 +992,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       ),
       shiny::tags$p(
         class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
+         style = "margin-top: 18px; margin-bottom: 0;",
          "Each dot is one simulated weather-year annual aggregate for the fixed population. The selected violin or boxplot summarizes the distribution; dodged pairs contrast baseline (muted) with policy (highlighted), and diamonds mark scenario means."
       )
     ),
@@ -1029,7 +1041,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-         "Open circles = baseline; filled circles = policy. Connecting lines show the policy buffer. Horizontal intervals show the selected climate-model spread under the policy."
+         "Open circles = baseline; filled circles = policy. Marker shape distinguishes historical and future scenarios. Connecting lines show the policy buffer. Horizontal intervals show the selected climate-model spread under the policy."
       )
     ),
 
@@ -1074,7 +1086,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-         "Read each curve as the annual probability of reaching an outcome level in the adverse direction. Dashed lines show baseline; solid lines show policy. Coloured lines are across-model medians, and shaded ribbons show selected climate-model disagreement."
+         "Read each curve as the annual probability of reaching an outcome level in the adverse direction. Dashed lines show baseline; solid lines show policy. Coloured lines are across-model medians, and shaded ribbons show selected climate-model disagreement for each future baseline and policy series. Return-period guides and ticks are limited to the available simulated years per climate model; unsupported periods are not extrapolated."
       )
     ),
 
@@ -1120,14 +1132,14 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
                                policy_hist_sim,
                                policy_saved_scenarios,
                                selected_hist,
-                               selected_policies = reactive(NULL),
-                               policy_scenarios = reactive(list()),
-                               sp_scenario = reactive(NULL),
-                               infra_scenario = reactive(NULL),
-                               digital_scenario = reactive(NULL),
-                               labor_scenario = reactive(NULL),
-                               education_scenario = reactive(NULL),
-                               residuals = reactive("original"),
+                                selected_policies = reactive(NULL),
+                                policy_scenarios = reactive(list()),
+                                sp_scenario = reactive(NULL),
+                                infra_scenario = reactive(NULL),
+                                digital_scenario = reactive(NULL),
+                                labor_scenario = reactive(NULL),
+                                education_scenario = reactive(NULL),
+                                residuals = reactive("original"),
                                stale = reactive(FALSE),
                                decomp_result = reactive(NULL),
                                baseline_svy = reactive(NULL),
@@ -1151,12 +1163,12 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       baseline_hist_sim      = bh,
       policy_saved_scenarios = policy_saved_scenarios(),
       selected_weather       = bh$sim_summary$weather %||% NULL,
-      sp_scenario             = sp_scenario(),
-      infra_scenario          = infra_scenario(),
-      digital_scenario        = digital_scenario(),
-      labor_scenario          = labor_scenario(),
-      education_scenario      = education_scenario(),
-      policy_scenarios        = policy_scenarios()
+       sp_scenario             = sp_scenario(),
+       infra_scenario          = infra_scenario(),
+       digital_scenario        = digital_scenario(),
+       labor_scenario          = labor_scenario(),
+       education_scenario      = education_scenario(),
+       policy_scenarios        = policy_scenarios()
     )
   })
 
@@ -1197,7 +1209,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     agg_choices <- hist_aggregate_choices(hs$so$type, hs$so$name)
     cur_method  <- isolate(input$cmp_agg_method) %||% "mean"
     if (!cur_method %in% agg_choices) cur_method <- agg_choices[[1L]]
-    shiny::updateRadioButtons(session, "cmp_agg_method", choices = agg_choices, selected = cur_method)
+    shiny::updateRadioButtons(session, "cmp_agg_method", choices = agg_choices,
+                              selected = cur_method, inline = TRUE)
   })
 
   # Resolve the residuals choice captured by the Step 2 run. The live control
@@ -1659,7 +1672,9 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
         }
         v_ord <- v[ord]
         s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
-        probs <- (seq_along(ord) - 0.5) / n_pts
+        # Use empirical plotting positions so the rarest point is exactly
+        # 1-in-n, rather than implying support beyond the simulated years.
+        probs <- seq_along(ord) / n_pts
 
         # Limit to adverse tail direction only: 0.50 AEP or less
         keep <- probs <= 0.50

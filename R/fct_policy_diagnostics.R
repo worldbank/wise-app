@@ -31,6 +31,40 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
   }))
 }
 
+policy_component_matrix <- function(baseline_svy, policy_svy,
+                                    weight_col = "weight", analysis_unit = "hh") {
+  if (is.null(baseline_svy) || is.null(policy_svy) ||
+      nrow(baseline_svy) != nrow(policy_svy)) return(data.frame())
+  w <- if (weight_col %in% names(baseline_svy)) as.numeric(baseline_svy[[weight_col]]) else rep(1, nrow(baseline_svy))
+  w[!is.finite(w) | w < 0] <- 0
+  total_w <- sum(w)
+  changed <- detect_manipulated_vars(baseline_svy, policy_svy)
+  non_sp_vars <- setdiff(changed, c("welfare", SP_TRANSFER_COL, weight_col, "sim_year", "year"))
+  changed_mask <- function(v) {
+    b <- baseline_svy[[v]]; p <- policy_svy[[v]]
+    (!is.na(b) & !is.na(p) & b != p) | (is.na(b) != is.na(p))
+  }
+  sp_mask <- if (SP_TRANSFER_COL %in% names(policy_svy))
+    is.finite(as.numeric(policy_svy[[SP_TRANSFER_COL]])) & as.numeric(policy_svy[[SP_TRANSFER_COL]]) > 0
+  else rep(FALSE, nrow(policy_svy))
+  other_mask <- if (length(non_sp_vars)) Reduce("|", lapply(non_sp_vars, changed_mask)) else rep(FALSE, nrow(policy_svy))
+  rows <- list()
+  add_row <- function(component, mask, cost = NA_real_) {
+    rows[[length(rows) + 1L]] <<- data.frame(
+      component = component, n_affected = sum(mask, na.rm = TRUE),
+      weighted_affected = sum(w[mask], na.rm = TRUE),
+      population_share = if (total_w > 0) sum(w[mask], na.rm = TRUE) / total_w else NA_real_,
+      realized_cost = cost, stringsAsFactors = FALSE
+    )
+  }
+  add_row("Social protection", sp_mask,
+          if (SP_TRANSFER_COL %in% names(policy_svy)) .sp_transfer_totals(policy_svy, analysis_unit)$total else NA_real_)
+  for (v in non_sp_vars) add_row(.policy_display_name(v), changed_mask(v))
+  if (length(non_sp_vars) > 1L) add_row("Other policy levers (combined)", other_mask)
+  if (any(sp_mask & other_mask)) add_row("Touched by both policy types", sp_mask & other_mask)
+  dplyr::bind_rows(rows)
+}
+
 policy_covariate_support <- function(training, policy, vars = NULL,
                                       rare_share = 0.01) {
   if (is.null(training) || is.null(policy) ||
@@ -98,14 +132,12 @@ policy_construction_summary <- function(baseline_svy, policy_svy, sp = NULL,
 
   data.frame(
     item = c("Active manipulated variables", "Changed row count", "Weighted changed share",
-             "Realized transfer total", "Random seed", "Reconciliation"),
+             "Realized transfer total"),
     value = c(
       paste(changed, collapse = ", "),
       sum(changed_mask, na.rm = TRUE),
       w_share,
-      .sp_transfer_totals(policy_svy, analysis_unit)$total,
-      seed,
-      if (length(transfer) == nrow(policy_svy)) "Reconciled with realized policy frame" else "Unavailable"
+      .sp_transfer_totals(policy_svy, analysis_unit)$total
     ), stringsAsFactors = FALSE
   )
 }

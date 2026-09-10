@@ -699,7 +699,7 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
       ggplot2::labs(x = NULL, y = x_label, title = title, subtitle = subtitle) +
       theme_wise() +
        ggplot2::theme(legend.position = "none",
-                      plot.margin = ggplot2::margin(8, 8, 18, 8),
+                      plot.margin = ggplot2::margin(8, 8, 72, 8),
                      axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
 
     return(p)
@@ -737,7 +737,7 @@ plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                   subtitle = subtitle) +
     theme_wise() +
      ggplot2::theme(legend.position = "none",
-                    plot.margin = ggplot2::margin(8, 8, 18, 8),
+                    plot.margin = ggplot2::margin(8, 8, 72, 8),
                    axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
   p
 }
@@ -881,25 +881,38 @@ plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
     ifelse(tbl$is_historical, "Historical", as.character(tbl$scenario)),
     levels = scenario_levels
   )
+  tbl$series <- ifelse(tbl$is_historical, "Historical", "Future")
+  tbl$point_shape <- ifelse(tbl$is_historical, 21, 24)
   p <- ggplot2::ggplot(tbl, ggplot2::aes(y = .data$rp_label, x = .data$value,
-                                         colour = .data$scenario_key)) +
+                                         colour = .data$scenario_key,
+                                         shape = .data$series,
+                                         fill = .data$scenario_key)) +
     ggplot2::geom_segment(ggplot2::aes(x = .data$intermod_lo, xend = .data$intermod_hi,
                                        y = .data$rp_label, yend = .data$rp_label),
                           linewidth = 2.0, alpha = 0.65, na.rm = TRUE) +
-    ggplot2::geom_point(size = 3.2, na.rm = TRUE) +
+    ggplot2::geom_point(size = 3.4, stroke = 1.0, na.rm = TRUE) +
     ggplot2::scale_colour_manual(
       values = scenario_colours,
       breaks = scenario_levels,
       labels = scenario_levels,
       name = "Climate scenario and period"
     ) +
+    ggplot2::scale_shape_manual(values = c(Historical = 21, Future = 24),
+                                 name = NULL,
+                                 labels = c(Historical = "Historical",
+                                            Future = "Future scenario")) +
+    ggplot2::scale_fill_manual(values = scenario_colours, guide = "none") +
     ggplot2::labs(
       x = x_label, y = NULL,
       title = title,
       subtitle = subtitle
     ) +
     theme_wise() +
-    ggplot2::theme(legend.position = "bottom")
+    ggplot2::theme(legend.position = "bottom") +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(order = 1),
+      shape = ggplot2::guide_legend(order = 2, override.aes = list(colour = "#526575"))
+    )
 
   fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
   if (length(fut_periods) > 1L) {
@@ -1958,24 +1971,32 @@ enhance_exceedance <- function(curves_tbl,
     )
   )
 
-  # Inter-model ribbon (futures only). When source is present, avoid overlaying
-  # baseline and policy ribbons by default (displaying policy spread).
+  # Inter-model ribbons for each future series. Baseline and policy are both
+  # simulated across climate models, so each has its own spread.
   show_ens_ribbon <- !is.null(ensemble_band_q) &&
     (ensemble_band_q[["hi"]] > ensemble_band_q[["lo"]])
   if (nrow(fut_mod_df) > 0L && isTRUE(show_ens_ribbon)) {
-    ribbon_df <- if (has_source) fut_policy_df else fut_mod_df
-    ribbon_aes <- if (has_source)
-      ggplot2::aes(y = .data$exceed_prob, xmin = .data$intermod_lo,
-                   xmax = .data$intermod_hi, fill = .data$ribbon_key,
-                   group = .data$line_id)
-    else
-      ggplot2::aes(y = .data$exceed_prob, xmin = .data$intermod_lo,
-                   xmax = .data$intermod_hi, fill = .data$ribbon_key,
-                   group = .data$line_id)
-    ribbon_layer <- ggplot2::geom_ribbon(
-      data = ribbon_df, mapping = ribbon_aes, alpha = 0.18, inherit.aes = FALSE
+    ribbon_aes <- ggplot2::aes(
+      y = .data$exceed_prob, xmin = .data$intermod_lo,
+      xmax = .data$intermod_hi, fill = .data$ribbon_key,
+      group = .data$line_id
     )
-    p <- p + ribbon_layer
+    if (has_source) {
+      p <- p +
+        ggplot2::geom_ribbon(
+          data = fut_baseline_df, mapping = ribbon_aes,
+          alpha = 0.10, inherit.aes = FALSE
+        ) +
+        ggplot2::geom_ribbon(
+          data = fut_policy_df, mapping = ribbon_aes,
+          alpha = 0.18, inherit.aes = FALSE
+        )
+    } else {
+      p <- p + ggplot2::geom_ribbon(
+        data = fut_mod_df, mapping = ribbon_aes,
+        alpha = 0.18, inherit.aes = FALSE
+      )
+    }
   }
 
   # Coefficient uncertainty band: drawn as a pair of dashed outline curves
@@ -2047,9 +2068,7 @@ enhance_exceedance <- function(curves_tbl,
       breaks = scenario_levels,
       labels = scenario_levels,
       name   = NULL,
-      guide  = ggplot2::guide_legend(
-        override.aes = list(linewidth = 0.9, linetype = "solid", alpha = 1)
-      )
+      guide  = "none"
     ) +
     ggplot2::scale_fill_manual(
       values   = ribbon_palette,
@@ -2059,7 +2078,8 @@ enhance_exceedance <- function(curves_tbl,
     ggplot2::scale_linetype_manual(
       values = scenario_linetype_map,
       breaks = scenario_levels,
-      name   = NULL
+      name   = NULL,
+      guide  = "none"
     )
   if (has_source) {
     p <- p +
@@ -2067,7 +2087,7 @@ enhance_exceedance <- function(curves_tbl,
         values = c(Baseline = 0.8, Policy = 1.5),
         breaks = c("Baseline", "Policy"),
          name   = NULL,
-         guide  = ggplot2::guide_legend(title = NULL)
+         guide  = "none"
       ) +
       ggplot2::scale_alpha_manual(
         # Keep both uncertainty bands transparent; policy's central line is
@@ -2077,26 +2097,53 @@ enhance_exceedance <- function(curves_tbl,
         guide  = "none"
     )
   }
+  endpoint_rows <- dplyr::bind_rows(lapply(split(agg_df, agg_df$line_id), function(x) {
+    x <- x[which.max(x$exceed_prob), , drop = FALSE]
+    x$curve_label <- if (has_source) {
+      paste(as.character(x$scenario_key), as.character(x$source), sep = " - ")
+    } else as.character(x$scenario_key)
+    x
+  }))
+  max_prob <- max(agg_df$exceed_prob, na.rm = TRUE)
+  label_prob <- if (max_prob <= 0.55) min(max_prob * 1.08, 0.535) else min(max_prob * 1.02, 0.985)
   p <- p +
+    ggplot2::geom_text(
+      data = endpoint_rows,
+      ggplot2::aes(x = .data$central, y = label_prob, label = .data$curve_label,
+                   colour = .data$line_key),
+      hjust = 0, size = 3.5, fontface = "bold", show.legend = FALSE,
+      inherit.aes = FALSE
+    ) +
     ggplot2::labs(
       x = x_label,
       y = if (max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55) "Annual adverse exceedance probability (AEP)" else "Annual exceedance probability"
     ) +
     theme_wise() +
     ggplot2::theme(
-         legend.position = "bottom"
+         legend.position = "none"
     ) +
     ggplot2::coord_flip()
 
   # ---- Return period lines -----------------------
   is_adverse_tail <- max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55
+  support_years <- if (!is.null(n_sim_years) && is.finite(n_sim_years)) {
+    max(2L, floor(n_sim_years))
+  } else {
+    NA_integer_
+  }
+  supported_rp <- function(x) {
+    if (!is.finite(support_years)) return(x)
+    denom <- suppressWarnings(as.numeric(sub(".*:", "", names(x))))
+    x[is.na(denom) | denom <= support_years]
+  }
   if (isTRUE(return_period)) {
     min_prob <- max(min(agg_df$exceed_prob, na.rm = TRUE), 0.005)
     rp_all <- if (is_adverse_tail) {
       rp_adv <- c("1:2" = 0.50, RP_LOW)
+      rp_adv <- supported_rp(rp_adv)
       rp_adv[rp_adv >= min_prob * 0.85]
     } else {
-      c(RP_LOW, RP_HIGH)
+      supported_rp(c(RP_LOW, RP_HIGH))
     }
     for (nm in names(rp_all)) {
       prob      <- rp_all[nm]
@@ -2120,9 +2167,13 @@ enhance_exceedance <- function(curves_tbl,
 
   # ---- Probability axis scaling ------------------------------------------
   if (is_adverse_tail) {
-    # Adverse tail: log scale covering all adverse-tail points up to 0.55
-    log_breaks <- c(0.50, 0.20, 0.10, 0.05, 0.02)
-    log_labels <- c("1:2 (50%)", "1:5 (20%)", "1:10 (10%)", "1:20 (5%)", "1:50 (2%)")
+    # Adverse tail: log scale covering only periods supported by the
+    # available simulated years. Do not imply a 1-in-50 estimate from 30 years.
+    log_rp <- c("1:2" = 0.50, RP_LOW)
+    log_rp <- supported_rp(log_rp)
+    log_rp <- log_rp[order(log_rp, decreasing = TRUE)]
+    log_breaks <- unname(log_rp)
+    log_labels <- paste0(names(log_rp), " (", scales::percent(log_rp, accuracy = 1), ")")
     min_prob <- max(min(agg_df$exceed_prob, na.rm = TRUE), 0.005)
     keep_b <- log_breaks >= min_prob * 0.9
     low_lim <- min(min_prob * 0.9, min(log_breaks[keep_b]) * 0.9)
@@ -2133,8 +2184,10 @@ enhance_exceedance <- function(curves_tbl,
       limits = c(low_lim, 0.55)
     )
   } else if (isTRUE(logit_x)) {
-    logit_breaks <- c(unname(RP_LOW), 0.50, rev(1 - unname(RP_LOW)))
-    logit_labels <- c(names(RP_LOW), "Median", rev(names(RP_HIGH)))
+    rp_low <- supported_rp(RP_LOW)
+    rp_high <- supported_rp(RP_HIGH)
+    logit_breaks <- c(unname(rp_low), 0.50, rev(1 - unname(rp_high)))
+    logit_labels <- c(names(rp_low), "Median", rev(names(rp_high)))
     p <- p + ggplot2::scale_y_continuous(
       trans  = scales::logit_trans(),
       breaks = logit_breaks,

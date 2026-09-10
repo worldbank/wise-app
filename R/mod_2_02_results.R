@@ -162,7 +162,7 @@ mod_2_02_results_ui <- function(id) {
       ),
        shiny::tags$p(
          class = "text-muted small",
-         style = "margin-top: 8px; margin-bottom: 0;",
+         style = "margin-top: 18px; margin-bottom: 0;",
          "Each dot is one simulated weather-year annual aggregate for the fixed baseline population. The selected violin or boxplot summarizes the distribution; diamonds show scenario means. This captures weather-year variability, not household inequality."
       )
     ),
@@ -259,7 +259,7 @@ mod_2_02_results_ui <- function(id) {
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-         "Read each curve as the annual probability of reaching an outcome level in the adverse direction: lower outcomes for higher-is-better measures and higher outcomes for lower-is-better measures. Coloured lines show the across-model median; shaded ribbons show climate-model disagreement. Return-period guides are shown only when supported by the number of simulated years."
+          "Read each curve as the annual probability of reaching an outcome level in the adverse direction: lower outcomes for higher-is-better measures and higher outcomes for lower-is-better measures. Coloured lines show the across-model median; shaded ribbons show climate-model disagreement for each future baseline and policy series. Return-period guides and ticks are limited to the available simulated years per climate model; unsupported periods are not extrapolated."
       )
     ),
 
@@ -1067,7 +1067,9 @@ mod_2_02_results_server <- function(id,
           }
           v_ord <- v[ord]
           s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
-          probs <- (seq_along(ord) - 0.5) / n_pts
+          # Use empirical plotting positions so the rarest point is exactly
+          # 1-in-n, rather than implying support beyond the simulated years.
+          probs <- seq_along(ord) / n_pts
 
           # Limit strictly to adverse tail: 0.50 AEP or less
           keep <- probs <= 0.50
@@ -1379,9 +1381,6 @@ mod_2_02_results_server <- function(id,
       tbl <- threshold_table_rv()
       if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
         return(NULL)
-      }
-      if (identical(input$ensemble_band %||% "none", "none")) {
-        tbl <- tbl[!grepl("^Ensemble |^Pooled ", tbl$Estimate), , drop = FALSE]
       }
       so_obj <- tryCatch(if (!is.null(hist_sim())) hist_sim()$so else NULL, error = function(e) NULL)
       n_h_yrs <- tryCatch({

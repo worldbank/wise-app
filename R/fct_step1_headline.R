@@ -699,6 +699,11 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
   note_parts <- character(0)   # plain text (CSV export)
   html_parts <- list()         # display: p-value line + bold comparison line
   info_bits <- character(0)
+  rif_p_line <- NULL
+  rif_cmp_line <- NULL
+  interaction_value_line <- NULL
+  interaction_p_line <- NULL
+  interaction_cmp_line <- NULL
 
   # Distribution sensitivity (RIF only)
   if (engine == "rif") {
@@ -712,9 +717,8 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       f9 <- .s1_fmt_scaled(s9$estimate, s9$se, scale)
       bits_val <- c(bits_val, paste0(f1$value, " vs ", f9$value))
       cmp_line <- "poorest 10% vs richest 10%"
+      rif_cmp_line <- cmp_line
       note_parts <- c(note_parts, cmp_line)
-      html_parts <- c(html_parts, list(
-        shiny::tags$div(style = "font-weight: 600;", cmp_line)))
       info_bits <- c(info_bits, paste0(
         "Compares the translated effect between the poorest 10% and the ",
         "richest 10% of households (RIF quantile estimates; values are ",
@@ -722,8 +726,8 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       p <- tryCatch(step1_rif_heterogeneity_p(mf, snap, var), error = function(e) NULL)
       if (!is.null(p) && is.finite(p)) {
         p_line <- if (p < 0.001) "RIF distribution p < 0.001" else sprintf("RIF distribution p = %.3f", p)
+        rif_p_line <- p_line
         note_parts <- c(p_line, note_parts)
-        html_parts <- c(list(shiny::tags$div(p_line)), html_parts)
         info_bits <- c(info_bits, paste0(
           "The p-value screens whether the effect differs across the welfare ",
           "distribution."))
@@ -733,7 +737,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
 
   # Moderator heterogeneity (any engine with interactions)
   modx_var <- .s1_modx_var(mf, var)
-  if (!is.null(modx_var) && engine != "ml") {
+  if (!is.null(modx_var) && engine != "ml" && engine != "rif") {
     sc <- if (engine == "rif") {
       rs <- .s1_rif_scenarios(mf, snap, var, taus = 0.5)
       if (!length(rs)) NULL else lapply(rs, function(x) if (length(x)) x[[1]] else NULL)
@@ -748,6 +752,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
                                                     ci = s$ci))
       imax <- which.max(abs(vapply(sc, function(s) s$estimate, numeric(1))))
       i_rng <- paste0(fmts[[1]]$value, " vs ", fmts[[length(sc)]]$value)
+      interaction_value_line <- i_rng
       ml <- .s1_modx_label(mf, snap, modx_var, label_fun)
       imax_lab <- sc[[imax]]$label %||% "extreme value"
       # Binary moderator levels are labelled yes/no; keep the separator
@@ -759,9 +764,8 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       lvlN <- sc[[length(sc)]]$label %||% ""
       cmp_line <- paste0(ml, lvl_sep(lvl1), lvl1, " vs ", ml,
                          lvl_sep(lvlN), lvlN)
+      interaction_cmp_line <- cmp_line
       note_parts <- c(note_parts, cmp_line)
-      html_parts <- c(html_parts, list(
-        shiny::tags$div(style = "font-weight: 600;", cmp_line)))
       if (length(sc) > 2) {
         largest_line <- paste0("largest for ", ml, lvl_sep(imax_lab), imax_lab)
         note_parts <- c(note_parts, largest_line)
@@ -787,8 +791,8 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       }, error = function(e) NULL)
       if (!is.null(pdiff) && is.finite(pdiff)) {
         p_line <- if (pdiff < 0.001) "Interaction p < 0.001" else sprintf("Interaction p = %.3f", pdiff)
+        interaction_p_line <- p_line
         note_parts <- c(p_line, note_parts)
-        html_parts <- c(list(shiny::tags$div(p_line)), html_parts)
       }
       info_bits <- c(info_bits, paste0(
         "Compares the translated effect between levels of ", ml,
@@ -809,6 +813,20 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
     return(list(label = "Who is most affected", value = "Uniform by design",
                 note = paste0("This specification applies one weather effect to all households;", extra),
                 class = "neutral"))
+  }
+
+  if (engine == "rif") {
+    html_parts <- list()
+    if (!is.null(rif_p_line)) {
+      html_parts <- c(html_parts, list(shiny::tags$div(
+        paste0("(", rif_p_line, ")")
+      )))
+    }
+    if (!is.null(rif_cmp_line)) {
+      html_parts <- c(html_parts, list(shiny::tags$div(
+        style = "font-weight: 600;", rif_cmp_line
+      )))
+    }
   }
 
   list(label = "Who is most affected", value = bits_val[1],

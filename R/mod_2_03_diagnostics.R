@@ -35,8 +35,7 @@ mod_2_03_diagnostics_ui <- function(id) {
       class = "results-section-card diagnostic-section-card",
       shiny::tags$div(
         style = "display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:8px;",
-        pill_toggle(ns("diag_weather_vars"), label = NULL,
-                    choices = c("Loading weather variables" = ""), selected = ""),
+        shiny::uiOutput(ns("diag_weather_vars_ui")),
         shiny::uiOutput(ns("diag_weather_scenario_ui"))
       ),
       wise_plot_output(ns("diag_weather_density"),
@@ -159,6 +158,23 @@ mod_2_03_diagnostics_server <- function(id,
     })
 
     # ---- renderUI / render* outputs ----------------------------------------
+
+    output$diag_weather_vars_ui <- shiny::renderUI({
+      sw <- if (!is.null(selected_weather)) selected_weather() else NULL
+      if (is.null(sw) || !"name" %in% names(sw) || !nrow(sw)) return(NULL)
+      choices <- if ("label" %in% names(sw)) setNames(sw$name, sw$label) else sw$name
+      current <- isolate(input$diag_weather_vars)
+      selected <- if (length(current) > 0 && current %in% unname(choices)) {
+        current
+      } else {
+        unname(choices)[[1L]]
+      }
+      pill_toggle(
+        ns("diag_weather_vars"), label = NULL,
+        choices = choices, selected = selected,
+        layout = "horizontal"
+      )
+    })
 
     output$diag_weather_scenario_ui <- shiny::renderUI({
       sc_all <- if (!is.null(saved_scenarios)) names(saved_scenarios()) else character(0)
@@ -434,14 +450,10 @@ mod_2_03_diagnostics_server <- function(id,
         return()
       }
 
-      sw      <- if (!is.null(selected_weather)) selected_weather() else NULL
-      choices <- if (!is.null(sw) && "name" %in% names(sw)) {
-        if ("label" %in% names(sw)) setNames(sw$name, sw$label) else sw$name
-      } else character(0)
-
       # UI-50: one Diagnostics tab, not one per Step 2 run. The tab's contents
       # are a module UI bound to fixed output ids, so an already-present tab
-      # needs no rebuild - only its weather choices refreshed below.
+      # needs no rebuild; the weather-variable pill re-renders itself from
+      # selected_weather().
       if (!diag_tab_added()) {
         shiny::appendTab(
           inputId = tabset_id,
@@ -455,29 +467,10 @@ mod_2_03_diagnostics_server <- function(id,
         )
         diag_tab_added(TRUE)
       }
-
-      selected <- if (length(choices)) choices[[1L]] else character(0)
-      shiny::updateRadioButtons(session, "diag_weather_vars",
-                                choices  = choices,
-                                selected = selected)
     }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
-    observeEvent(selected_weather(), {
-      sw      <- if (!is.null(selected_weather)) selected_weather() else NULL
-      choices <- if (!is.null(sw) && "name" %in% names(sw)) {
-        if ("label" %in% names(sw)) setNames(sw$name, sw$label) else sw$name
-      } else character(0)
-      current <- isolate(input$diag_weather_vars)
-      new_sel <- if (length(current) > 0) intersect(current, choices) else character(0)
-      if (length(new_sel) == 0) {
-        new_sel <- if (length(choices)) choices[[1L]] else character(0)
-      }
-      shiny::updateRadioButtons(session, "diag_weather_vars",
-                                choices  = choices,
-                                selected = new_sel)
-    }, ignoreInit = TRUE)
-
     # ---- Suspend outputs when Results tab is hidden ----------------------
+    outputOptions(output, "diag_weather_vars_ui",   suspendWhenHidden = TRUE)
     outputOptions(output, "diag_weather_scenario_ui", suspendWhenHidden = TRUE)
     outputOptions(output, "diag_weather_density",    suspendWhenHidden = TRUE)
     outputOptions(output, "variance_contribution_plot", suspendWhenHidden = TRUE)
