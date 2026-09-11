@@ -451,7 +451,7 @@ survey_wave_metadata <- function(df) {
 #' @param df Survey data used when the version is not cached.
 #' @param generation Survey-data publication generation.
 #'
-#' @return The value from [survey_wave_metadata()].
+#' @return The value from `survey_wave_metadata()`.
 #' @noRd
 cached_survey_wave_metadata <- function(session, df, generation) {
   cache <- session$userData$survey_wave_metadata
