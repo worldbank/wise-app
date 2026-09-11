@@ -320,6 +320,17 @@ mod_2_03_diagnostics_server <- function(id,
                       " has more than 5% of scenario values outside the reference support. Extrapolation may be required.")
     })
 
+    # The selected outcome frame has no `method` column, so a bare `$method`
+    # on the tibble warns "Unknown or uninitialised column" every time an
+    # export artefact is materialised. Read it only when it exists.
+    so_method <- function(so) {
+      if (is.data.frame(so) && "method" %in% names(so)) {
+        out <- as.character(so$method)[[1L]]
+        if (nzchar(out)) return(out)
+      }
+      "mean"
+    }
+
     # The uncertainty-source outputs remain available to the legacy server
     # path, but are not mounted in the current Diagnostics UI and therefore are
     # intentionally not registered as bundle artefacts.
@@ -354,7 +365,7 @@ mod_2_03_diagnostics_server <- function(id,
             survey_weather(), hist_sim()$weather_raw, vars,
             scenario_weather_data(), active_weather_scenarios(), TRUE
           ),
-          hist_sim()$so$method %||% "mean", hist_sim()$so,
+          so_method(hist_sim()$so), hist_sim()$so,
           observation_unit = "weather input value entering the simulation",
           aggregation_order = "raw weather inputs retained by source and scenario",
           uncertainty = "distributional comparison"
@@ -387,7 +398,7 @@ mod_2_03_diagnostics_server <- function(id,
       fun = function() {
         tc <- timeseries_curves(); req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
         annotate_visualization_export(model_robustness_data(tc$tbl),
-          hist_sim()$so$method %||% "mean", hist_sim()$so,
+          so_method(hist_sim()$so), hist_sim()$so,
           observation_unit = "climate-model mean across weather-year draws",
           aggregation_order = "annual aggregate by model and weather year, then model mean",
           uncertainty = "ensemble spread")
@@ -416,7 +427,7 @@ mod_2_03_diagnostics_server <- function(id,
         tc <- timeseries_curves()
         req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
         annotate_visualization_export(
-          tc$tbl, hist_sim()$so$method %||% "mean", hist_sim()$so,
+          tc$tbl, so_method(hist_sim()$so), hist_sim()$so,
           observation_unit = "annual aggregate for one climate model and weather-year draw",
           aggregation_order = "weighted aggregate retained by model, simulation year, and scenario",
           uncertainty = "inter-model spread shown separately from annual draws"
