@@ -95,6 +95,56 @@ test_that("merge_survey_weather returns NULL when join produces zero rows", {
   expect_null(merge_survey_weather(make_survey(), wd))
 })
 
+test_that("historical cell joins preserve duplicate-sensitive multiplicity", {
+  hist <- data.frame(
+    code = c("A", "A", "A", "A"),
+    year = 2020L,
+    survname = "S",
+    loc_id = "L1",
+    timestamp = as.Date(c("2018-01-01", "2018-01-01", "2018-02-01", "2018-01-01")),
+    tx = 1:4,
+    stringsAsFactors = FALSE
+  )
+  survey <- data.frame(
+    code = c("A", "A", "A", "A"),
+    year = 2020L,
+    survname = "S",
+    loc_id = "L1",
+    timestamp = as.Date(c("2020-01-01", "2020-01-01", "2020-02-01", NA)),
+    economy = "Alpha",
+    stringsAsFactors = FALSE
+  )
+
+  out <- join_hist_sample_cells(hist, survey)
+  expect_equal(nrow(out), 4L)
+  expect_equal(out$tx, 1:4)
+  expect_equal(out$n_hh, c(2L, 2L, 1L, 2L))
+  expect_equal(out$is_sample, rep(FALSE, 4L))
+  expect_equal(out$countryyear, rep("Alpha, 2020", 4L))
+})
+
+test_that("historical cell joins retain NA-key rows and exact sample dates", {
+  hist <- data.frame(
+    code = c(NA, "A", "A"), year = 2020L, survname = "S",
+    loc_id = "L1", timestamp = as.Date(c("2018-01-01", "2020-01-01", NA)),
+    tx = 1:3, stringsAsFactors = FALSE
+  )
+  survey <- data.frame(
+    code = c(NA, "A"), year = 2020L, survname = "S", loc_id = "L1",
+    timestamp = as.Date(c("2020-01-01", "2020-01-01")),
+    economy = c("Missing code", "Alpha"), stringsAsFactors = FALSE
+  )
+
+  out <- join_hist_sample_cells(hist, survey)
+  expect_equal(nrow(out), 2L)
+  expect_true(is.na(out$code[[1L]]))
+  expect_equal(out$economy, c("Missing code", "Alpha"))
+  expect_equal(out$is_sample, c(FALSE, TRUE))
+  expect_equal(out$n_hh, c(1L, 1L))
+  expect_type(out$timestamp, "double")
+  expect_s3_class(out$timestamp, "Date")
+})
+
 # ============================================================================ #
 # plot_weather_dist                                                            #
 # ============================================================================ #

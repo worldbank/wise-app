@@ -400,6 +400,18 @@ test_that("get_weather errors when ssp supplied but future_period missing", {
   )
 })
 
+test_that("bin breaks remain deterministic without the redundant pre-sort", {
+  ref <- data.frame(tx = c(20, 21, 22, 30, 31, 35))
+  selected <- sw_binned(method = "K-means", n_bins = 3)
+  first <- wiseapp:::.compute_breaks(ref, selected)
+  second <- wiseapp:::.compute_breaks(ref[c(6, 2, 4, 1, 5, 3), , drop = FALSE], selected)
+  expect_identical(first, second)
+  expect_equal(
+    cut(c(20, 21, 22, 30, 31, 35), breaks = first$tx, include.lowest = TRUE),
+    cut(c(20, 21, 22, 30, 31, 35), breaks = second$tx, include.lowest = TRUE)
+  )
+})
+
 test_that("get_weather errors when ssp supplied but perturbation_method missing", {
   expect_error(
     get_weather(

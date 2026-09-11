@@ -831,18 +831,31 @@ join_hist_sample_cells <- function(hist_df, survey_weather) {
   sw$int_month <- as.integer(format(sw$timestamp, "%m"))
   if (!"economy" %in% names(sw)) sw$economy <- sw$code
 
+  # The three survey-side indexes intentionally retain their duplicate rows,
+  # but do not carry the household-level weather columns through each scan.
+  # Keeping one normalized, narrow frame also makes the duplicate-sensitive
+  # join contract explicit: the joins below remain many-to-many where the old
+  # implementation was many-to-many.
+  survey_index <- sw |>
+    dplyr::select(
+      dplyr::all_of(c(
+        "code", "year", "survname", "loc_id", "timestamp", "int_month",
+        "economy"
+      ))
+    )
+
   # One row per wave x location x calendar month, weighted by the households
   # sampled there.
-  cells <- sw |>
+  cells <- survey_index |>
     dplyr::count(
       .data$code, .data$year, .data$survname, .data$loc_id, .data$int_month,
       name = "n_hh"
     )
 
-  waves <- sw |>
+  waves <- survey_index |>
     dplyr::distinct(.data$code, .data$year, .data$survname, .data$economy)
 
-  wave_dates <- sw |>
+  wave_dates <- survey_index |>
     dplyr::distinct(.data$code, .data$year, .data$survname, .data$timestamp) |>
     dplyr::mutate(is_sample = TRUE)
 

@@ -832,8 +832,6 @@ get_weather <- function(
       sort_cols <- intersect(c("code", "year", "survname", "loc_id", "timestamp"), names(result[["historical"]]))
       keep      <- unique(c(sort_cols, wx_cols))
       hist_ref  <- result[["historical"]][result[["historical"]]$timestamp %in% survey_timestamps, keep, drop = FALSE]
-      hist_ref  <- hist_ref[do.call(order, hist_ref[sort_cols]), ]
-
       stored_breaks <- .compute_breaks(hist_ref, selected_weather)
     }
 
