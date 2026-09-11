@@ -83,8 +83,8 @@ mod_3_06_policy_sim_server <- function(id,
     run_generation      <- reactiveVal(0L)
     run_status          <- reactiveVal("idle")
     decomp_bundle_rv    <- reactiveVal(list(result = NULL, context = NULL))
-    decomp_rv           <- reactive(function() decomp_bundle_rv()$result)
-    decomp_context_rv   <- reactive(function() decomp_bundle_rv()$context)
+    decomp_rv           <- reactive(decomp_bundle_rv()$result)
+    decomp_context_rv   <- reactive(decomp_bundle_rv()$context)
     decomp_scenarios_rv <- reactiveVal(list())
     diagnostic_summary_rv <- reactiveVal(NULL)
     # INT-08: TRUE while the stored policy results' run signature no longer
