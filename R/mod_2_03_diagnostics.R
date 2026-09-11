@@ -170,10 +170,14 @@ mod_2_03_diagnostics_server <- function(id,
       visible <- names(sc)
       if (!is.null(active)) visible <- intersect(visible, active)
       scenario_signature <- lapply(sc[visible], function(e) {
+        # Only reference descriptors carry file/schema; tibbles are lists and
+        # would otherwise warn on $file/$schema access.
+        wr <- e$weather_raw
+        is_ref <- is.list(wr) && !is.data.frame(wr)
         list(
           signature = e$weather_signature %||% e$signature %||% NULL,
-          file = if (is.list(e$weather_raw)) e$weather_raw$file else NULL,
-          schema = if (is.list(e$weather_raw)) e$weather_raw$schema else NULL
+          file = if (is_ref) wr$file else NULL,
+          schema = if (is_ref) wr$schema else NULL
         )
       })
       cache_key <- digest::digest(list(generation, visible, vars,

@@ -130,7 +130,11 @@ step2_weather_reference <- function(value, expected_signature = NULL) {
 }
 
 step2_resolve_weather <- function(value, owner = NULL) {
-  if (is.list(value) && identical(value$schema, 2L) &&
+  # Tibbles are lists, but ordinary weather frames are data, not shared-key
+  # descriptors; exclude them before touching $schema/$kind so the tibble
+  # `$` accessor cannot emit "Unknown or uninitialised column" warnings.
+  if (is.list(value) && !is.data.frame(value) &&
+      identical(value$schema, 2L) &&
       identical(value$kind, "shared-weather-member")) {
     return(step2_weather_resolve_shared(value, owner))
   }

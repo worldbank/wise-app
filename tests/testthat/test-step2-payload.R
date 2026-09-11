@@ -244,6 +244,18 @@ test_that("plain weather data frames pass through without schema warnings", {
   expect_identical(resolved, weather)
 })
 
+test_that("tibble weather frames pass through without schema warnings", {
+  # Weather frames are tibbles (dplyr::collect); tibbles are lists, so the
+  # shared-key descriptor check must not touch $schema/$kind on them.
+  weather <- tibble::as_tibble(phase4_weather()$historical)
+
+  expect_warning(
+    resolved <- step2_resolve_weather(weather),
+    NA
+  )
+  expect_identical(resolved, weather)
+})
+
 test_that("shared weather ownership validates keys and keeps member values", {
   keys <- data.frame(
     code = c("TST", "TST"), year = c(2020L, 2020L), survname = "SRV",
