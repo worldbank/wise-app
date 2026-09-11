@@ -726,15 +726,21 @@ csv_download_link <- function(output_id, label = "Download CSV") {
 #' @param filename_base Base name of the file, without extension.
 #' @param data_fun      Function of no arguments returning a data frame, or
 #'   NULL when there is nothing to export.
+#' @param stale         Optional reactive stale flag. Stale downloads fail
+#'   before writing a file.
 #'
 #' @return A shiny download handler.
 #' @noRd
-csv_download_handler <- function(filename_base, data_fun) {
+csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
   shiny::downloadHandler(
     filename = function() {
       paste0(filename_base, "_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
+      if (is.function(stale) && isTRUE(shiny::isolate(stale()))) {
+        if (file.exists(file)) unlink(file)
+        stop("Step 3 results are stale; rerun before downloading.", call. = FALSE)
+      }
       df <- tryCatch(data_fun(), error = function(e) NULL)
       if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) {
         df <- data.frame(Note = "No data available")

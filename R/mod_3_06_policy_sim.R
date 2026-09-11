@@ -143,20 +143,12 @@ mod_3_06_policy_sim_server <- function(id,
     # Step 3 lever never marked the policy results stale. Calling `react()`
     # inside the quoted expression re-establishes the dependency on every
     # invalidation.
-    .mark_stale_on_change <- function(react) {
-      shiny::observeEvent(react(), {
-        bh <- baseline_hist_sim_rv()
-        if (!is.null(bh) && !identical(.policy_sig_from_live(), bh$.sig))
-          policy_stale(TRUE)
-      }, ignoreInit = TRUE)
-    }
-    .mark_stale_on_change(hist_sim)
-    .mark_stale_on_change(sp_scenario)
-    .mark_stale_on_change(infra_scenario)
-    .mark_stale_on_change(digital_scenario)
-    .mark_stale_on_change(labor_scenario)
-    .mark_stale_on_change(education_scenario)
-    .mark_stale_on_change(survey_version)
+    policy_signature <- reactive(.policy_sig_from_live())
+    shiny::observeEvent(policy_signature(), {
+      bh <- baseline_hist_sim_rv()
+      if (!is.null(bh) && !identical(policy_signature(), bh$.sig))
+        policy_stale(TRUE)
+    }, ignoreInit = TRUE)
     # Cascade: when Step 2 is stale (inputs changed, not yet re-run) the
     # policy results built on it are stale too.
     shiny::observeEvent(sim_stale(), {

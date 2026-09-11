@@ -281,7 +281,8 @@ mod_3_scenario_server <- function(id,
        digital_scenario = s6$digital_scenario,
        labor_scenario = s6$labor_scenario,
        education_scenario = s6$education_scenario,
-       policy_saved_scenarios = s6$policy_saved_scenarios
+       policy_saved_scenarios = s6$policy_saved_scenarios,
+       stale = s6$stale
     )
 
     # ---- Decomposition tab: effect channels -----------------------------
@@ -304,7 +305,8 @@ mod_3_scenario_server <- function(id,
        labor_scenario = s6$labor_scenario,
        education_scenario = s6$education_scenario,
        policy_saved_scenarios = s6$policy_saved_scenarios,
-      so               = reactive({
+       stale = s6$stale,
+       so               = reactive({
         hs <- hist_sim()
         if (!is.null(hs)) hs$so else NULL
       }),
@@ -396,7 +398,7 @@ mod_3_scenario_server <- function(id,
 
     list(
       policy_hist_sim        = s6$policy_hist_sim,
-      policy_saved_scenarios = s6$policy_saved_scenarios,
+       policy_saved_scenarios = s6$policy_saved_scenarios,
       # UI-47: consumed by the navbar step badge in app_server.
       stale                  = s6$stale,
       sim_run_id             = s6$sim_run_id,

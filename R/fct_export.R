@@ -65,10 +65,14 @@
 wise_export_register <- function(key, label, step, kind, fun,
                                  description = NULL,
                                  width = 10, height = 6,
-                                 session = shiny::getDefaultReactiveDomain()) {
+                                 session = shiny::getDefaultReactiveDomain(),
+                                 stale = NULL) {
   store <- .export_store(session)
   if (is.null(store)) return(invisible(key))
   stopifnot(is.function(fun))
+  stale_ref <- if (identical(as.integer(step), 3L)) {
+    stale %||% if (!is.null(session)) session$userData$wise_step3_stale else NULL
+  } else NULL
   store$items[[key]] <- list(
     key         = key,
     label       = label,
@@ -77,7 +81,8 @@ wise_export_register <- function(key, label, step, kind, fun,
     fun         = fun,
     description = description %||% label,
     width       = width,
-    height      = height
+    height      = height,
+    stale       = stale_ref
   )
   invisible(key)
 }
@@ -85,18 +90,21 @@ wise_export_register <- function(key, label, step, kind, fun,
 #' @rdname wise_export_register
 #' @noRd
 wise_export_table <- function(key, label, step, fun, description = NULL,
-                              session = shiny::getDefaultReactiveDomain()) {
+                              session = shiny::getDefaultReactiveDomain(),
+                              stale = NULL) {
   wise_export_register(key, label, step, "table", fun, description,
-                       session = session)
+                       session = session, stale = stale)
 }
 
 #' @rdname wise_export_register
 #' @noRd
 wise_export_figure <- function(key, label, step, fun, description = NULL,
                                width = 10, height = 6,
-                               session = shiny::getDefaultReactiveDomain()) {
+                               session = shiny::getDefaultReactiveDomain(),
+                               stale = NULL) {
   wise_export_register(key, label, step, "figure", fun, description,
-                       width = width, height = height, session = session)
+                       width = width, height = height, session = session,
+                       stale = stale)
 }
 
 #' List registered artefacts, ordered for the bundle
@@ -672,6 +680,14 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
 
 .export_write_item <- function(item, dir, file) {
   fail <- function(msg) list(status = "error", note = msg)
+  path <- file.path(dir, file)
+
+  # Do not materialise a previous Step 3 result while the published run is stale.
+  if (identical(as.integer(item$step), 3L) && is.function(item$stale) &&
+      isTRUE(shiny::isolate(item$stale()))) {
+    if (file.exists(path)) unlink(path)
+    return(list(status = "skipped", note = "Step 3 results are stale."))
+  }
 
   value <- tryCatch(item$fun(), error = function(e) e)
   if (inherits(value, "error")) {
@@ -687,8 +703,6 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
   }
   if (is.null(value)) return(NULL)
 
-  path <- file.path(dir, file)
-
   if (identical(item$kind, "table")) {
     # The write itself is guarded, not just the builder. An unwritable table
     # used to propagate out of the download handler, so Shiny answered the
@@ -700,7 +714,10 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
       flat <- .export_flatten_df(value)
       utils::write.csv(flat, path, row.names = FALSE, na = "")
       list(status = "ok", rows = nrow(flat), cols = ncol(flat))
-    }, error = function(e) fail(conditionMessage(e))))
+    }, error = function(e) {
+      if (file.exists(path)) unlink(path)
+      fail(conditionMessage(e))
+    }))
   }
 
   # Figures: ggplot objects render through ggsave with the ragg AGG device -
@@ -716,7 +733,10 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
       return(NULL)
     }
     list(status = "ok", rows = NA_integer_, cols = NA_integer_)
-  }, error = function(e) fail(conditionMessage(e)))
+  }, error = function(e) {
+    if (file.exists(path)) unlink(path)
+    fail(conditionMessage(e))
+  })
 }
 
 #' Write the machine-readable manifest
@@ -1017,14 +1037,16 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
     if (is.function(progress)) progress(i, length(wanted), it$label)
     res  <- .export_write_item(it, stage, file)
     if (is.null(res)) next
-    if (identical(res$status, "error")) {
+    if (res$status %in% c("error", "skipped")) {
       # Recorded and reported in the README rather than dropped in silence -
       # a missing file with no explanation is worse than a named failure.
       skipped[[length(skipped) + 1L]] <- list(
         label = it$label, step_label = .export_step_label(it$step),
         note = res$note
       )
-      warning("[wise_export_bundle] skipping '", it$key, "': ", res$note)
+      if (identical(res$status, "error")) {
+        warning("[wise_export_bundle] skipping '", it$key, "': ", res$note)
+      }
       next
     }
     entries[[length(entries) + 1L]] <- list(

@@ -350,6 +350,56 @@ test_that("Step 3 agg cache: deviation changes reuse cache; method/pov-line key 
   )
 })
 
+test_that("Step 3 aggregation cache is bounded, LRU, and value-preserving", {
+  skip_if_not_installed("shiny")
+  bh <- shiny::reactiveVal(make_step3_hist_fixture())
+  ph <- shiny::reactiveVal(make_step3_hist_fixture())
+  bsc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  psc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  shiny::testServer(function(input, output, session) {
+    internals <<- .wire_results_pane(input, output, session, bh, bsc, ph, psc,
+      selected_hist = shiny::reactiveVal(NULL))
+  }, {
+    ws <- internals$agg_cache_ws()
+    keys <- paste0("direct-", seq_len(32L))
+    values <- lapply(seq_along(keys), function(i) list(value = i))
+    for (i in seq_along(keys)) internals$agg_cache_put(ws, keys[[i]], values[[i]])
+    expect_length(ls(envir = ws), 32L)
+    expect_identical(internals$agg_cache_get(ws, keys[[1L]]), values[[1L]])
+    internals$agg_cache_put(ws, "direct-33", list(value = 33L))
+    expect_length(ls(envir = ws), 32L)
+    expect_true(is.null(internals$agg_cache_get(ws, keys[[2L]])))
+    expect_identical(internals$agg_cache_get(ws, keys[[1L]]), values[[1L]])
+    expect_identical(internals$agg_cache_get(ws, "direct-33"), list(value = 33L))
+  })
+})
+
+test_that("historical matrix transforms use the canonical cache key and preserve values", {
+  skip_if_not_installed("shiny")
+  hist <- make_step3_hist_fixture()
+  hist$hist_label <- "Hist run 1991-2020"
+  bh <- shiny::reactiveVal(hist)
+  ph <- shiny::reactiveVal(make_step3_hist_fixture())
+  bsc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  psc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  internals <- NULL
+  shiny::testServer(function(input, output, session) {
+    internals <<- .wire_results_pane(input, output, session, bh, bsc, ph, psc,
+      selected_hist = shiny::reactiveVal(NULL), residuals = shiny::reactiveVal("none"))
+  }, {
+    session$flushReact()
+    cached <- internals$matrix_transforms()
+    key <- paste("Baseline", "Historical", sep = "\r")
+    expected <- by_model_matrix(internals$baseline_agg_hist()$out)
+    expect_true(key %in% names(cached))
+    expect_false(paste("Baseline", "Hist run 1991-2020", sep = "\r") %in% names(cached))
+    expect_identical(internals$matrix_transform(internals$baseline_agg_hist()$out,
+      "Baseline", "Historical"), cached[[key]])
+    expect_identical(cached[[key]]$vals, expected$vals)
+    expect_identical(cached[[key]]$sds, expected$sds)
+  })
+})
+
 test_that("switching directly to a poverty method always has a poverty line", {
   skip_if_not_installed("shiny")
 

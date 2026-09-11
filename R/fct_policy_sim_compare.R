@@ -1371,10 +1371,28 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
   agg_cache_ws <- reactive({
     baseline_hist_sim(); policy_hist_sim()
     baseline_saved_scenarios(); policy_saved_scenarios()
-    new.env(parent = emptyenv())
+    ws <- new.env(parent = emptyenv())
+    attr(ws, "keys") <- character(0)
+    attr(ws, "max_entries") <- 32L
+    ws
   })
   .agg_cache_key <- function(tag, method, pov_line) {
     paste(tag, method, format(pov_line), sep = "\r")
+  }
+  .agg_cache_get <- function(ws, key) {
+    hit <- get0(key, envir = ws)
+    if (!is.null(hit)) attr(ws, "keys") <- c(setdiff(attr(ws, "keys"), key), key)
+    hit
+  }
+  .agg_cache_put <- function(ws, key, value) {
+    assign(key, value, envir = ws)
+    attr(ws, "keys") <- c(setdiff(attr(ws, "keys"), key), key)
+    while (length(attr(ws, "keys")) > attr(ws, "max_entries")) {
+      evict <- attr(ws, "keys")[[1L]]
+      attr(ws, "keys") <- attr(ws, "keys")[-1L]
+      if (exists(evict, envir = ws, inherits = FALSE)) rm(list = evict, envir = ws)
+    }
+    invisible(value)
   }
 
   agg_axis_label <- reactive({
@@ -1402,7 +1420,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     if (method %in% poverty_methods && is.null(poverty_line)) poverty_line <- 3.00
 
     ws <- agg_cache_ws()
-    hit <- get0(.agg_cache_key(tag, method, poverty_line), envir = ws)
+    cache_key <- .agg_cache_key(tag, method, poverty_line)
+    hit <- .agg_cache_get(ws, cache_key)
     if (!is.null(hit)) return(hit)
 
     agg <- aggregate_pipeline_table(
@@ -1418,7 +1437,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       shared_context = hs$shared_context
     )
     res <- list(out = agg)
-    assign(.agg_cache_key(tag, method, poverty_line), res, envir = ws)
+    .agg_cache_put(ws, cache_key, res)
     res
   }
 
@@ -1461,7 +1480,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     use_w     <- TRUE
 
     ws <- agg_cache_ws()
-    hit <- get0(.agg_cache_key(tag, method, poverty_line), envir = ws)
+    cache_key <- .agg_cache_key(tag, method, poverty_line)
+    hit <- .agg_cache_get(ws, cache_key)
     if (!is.null(hit)) return(hit)
 
     failed <- character(0)
@@ -1495,7 +1515,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       })
     }), names(sc))
     .notify_agg_failures(failed, length(sc))
-    assign(.agg_cache_key(tag, method, poverty_line), res, envir = ws)
+    .agg_cache_put(ws, cache_key, res)
     res
   }
 
@@ -1519,6 +1539,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
                        "policy_scn")
   })
 
+  historical_matrix_key <- "Historical"
+
   baseline_all_series <- reactive({
     sc  <- baseline_agg_scenarios()
     sel <- selected_scenario_names()
@@ -1531,6 +1553,28 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     c(setNames(list(policy_agg_hist()), hist_label()),
       sc[intersect(sel, names(sc))])
   })
+
+  matrix_transforms_rv <- reactive({
+    out <- list()
+    add_scenarios <- function(series, source) {
+      for (nm in names(series)) {
+        out[[paste(source, nm, sep = "\r")]] <<- by_model_matrix(series[[nm]]$out)
+      }
+    }
+    add_hist <- function(aggregate, source) {
+      out[[paste(source, historical_matrix_key, sep = "\r")]] <<- by_model_matrix(aggregate$out)
+    }
+    add_hist(baseline_agg_hist(), "Baseline")
+    add_scenarios(baseline_agg_scenarios(), "Baseline")
+    add_hist(policy_agg_hist(), "Policy")
+    add_scenarios(policy_agg_scenarios(), "Policy")
+    out
+  })
+  matrix_transform <- function(tbl, source, scenario) {
+    cached <- matrix_transforms_rv()[[paste(source, scenario, sep = "\r")]]
+    if (identical(scenario, historical_matrix_key)) return(cached)
+    cached %||% by_model_matrix(tbl)
+  }
 
   # Canonical paired policy-minus-baseline summaries. Arms are aligned at the
   # model/year aggregate level and coefficient gradients are contrasted before
@@ -1621,7 +1665,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     z_hi <- stats::qnorm(bq_coef[["hi"]])
     one <- function(tbl, scenario_label, is_hist) {
       if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
-      mm <- by_model_matrix(tbl)
+      mm <- matrix_transform(tbl, source_label,
+                             if (is_hist) historical_matrix_key else scenario_label)
       if (is.null(mm)) return(NULL)
       vals <- mm$vals; sds <- mm$sds
       model_means <- rowMeans(vals, na.rm = TRUE)
@@ -1695,7 +1740,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
   .build_timeseries_rows <- function(agg_hist, agg_scn, hist_ref, source_label) {
     one <- function(tbl, scenario_label, is_hist) {
       if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
-      mm <- by_model_matrix(tbl)
+      mm <- matrix_transform(tbl, source_label,
+                             if (is_hist) historical_matrix_key else scenario_label)
       if (is.null(mm)) return(NULL)
       vals <- mm$vals
       dplyr::bind_rows(lapply(seq_len(nrow(vals)), function(i) {
@@ -1727,7 +1773,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
 
     one <- function(tbl, scenario_label, is_hist) {
       if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
-      mm <- by_model_matrix(tbl)
+      mm <- matrix_transform(tbl, source_label,
+                             if (is_hist) historical_matrix_key else scenario_label)
       if (is.null(mm)) return(NULL)
       vals <- mm$vals; sds <- mm$sds
       n_yrs <- ncol(vals)
@@ -1791,7 +1838,8 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     RPs <- c(RP_LOW, c("1:1" = 0.5), RP_HIGH)
     one <- function(tbl, scenario_label, is_hist) {
       if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
-      mm <- by_model_matrix(tbl)
+      mm <- matrix_transform(tbl, source_label,
+                             if (is_hist) historical_matrix_key else scenario_label)
       if (is.null(mm)) return(NULL)
       vals <- mm$vals; sds <- mm$sds
       n_yrs <- ncol(vals)
@@ -1991,7 +2039,9 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     threshold_table_df()
   })
 
-  output$threshold_csv <- csv_download_handler("policy_outcome_thresholds", function() threshold_table_df())
+  output$threshold_csv <- csv_download_handler(
+    "policy_outcome_thresholds", function() threshold_table_df(), stale = stale
+  )
 
   step3_incidence_data <- reactive({
     res <- tryCatch(decomp_result(), error = function(e) NULL)
@@ -2137,6 +2187,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
         uncertainty = "coefficient, ensemble, and pooled bands where supported"
       )
     },
+    stale = stale,
     description = "Technical baseline, policy, and threshold detail table behind the advanced risk view."
   )
 
@@ -2247,6 +2298,11 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
     policy_agg_hist        = policy_agg_hist,
     policy_agg_scenarios   = policy_agg_scenarios,
     agg_cache_ws           = agg_cache_ws,
+    agg_cache_keys         = reactive(attr(agg_cache_ws(), "keys")),
+    agg_cache_get          = .agg_cache_get,
+    agg_cache_put          = .agg_cache_put,
+    matrix_transforms      = matrix_transforms_rv,
+    matrix_transform       = matrix_transform,
     hist_label             = hist_label,
     threshold_table        = threshold_table_rv,
     selected_scenario_names = selected_scenario_names,

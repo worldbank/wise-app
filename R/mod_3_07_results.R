@@ -57,6 +57,7 @@ mod_3_07_results_server <- function(id,
                                      policy_svy     = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    session$userData$wise_step3_stale <- stale
     if (is.null(tabset_session)) {
       tabset_session <- session$parent %||% session
     }

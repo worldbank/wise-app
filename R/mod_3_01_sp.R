@@ -71,8 +71,8 @@ mod_3_01_sp_server <- function(id,
     # Helper: human-readable unit word ("individual" / "individuals" /
     # "Household" / "Households" / "Firm" / "Firms") driven by the user's
     # selection in mod_1_01_sample (`input$unit`).
-    unit_word <- function(plural = TRUE, capitalize = FALSE) {
-      au <- tryCatch(analysis_unit(), error = function(e) "hh")
+    unit_word <- function(plural = TRUE, capitalize = FALSE, au = NULL) {
+      au <- au %||% tryCatch(analysis_unit(), error = function(e) "hh")
       au <- if (is.null(au) || !nzchar(au)) "hh" else au
       word <- switch(au,
         ind  = if (plural) "individuals" else "individual",
@@ -662,19 +662,31 @@ mod_3_01_sp_server <- function(id,
     # tab's cost arithmetic - so this is the number the simulation will
     # produce, not a separate approximation of it.
 
+    sp_preview_inputs <- shiny::debounce(reactive({
+      hs  <- tryCatch(hist_sim(), error = function(e) NULL)
+      svy <- if (!is.null(hs$svy)) hs$svy else
+        tryCatch(survey_weather(), error = function(e) NULL)
+      list(
+        hs = hs, svy = svy, spec = sp_scenario_spec(),
+        analysis_unit = tryCatch(analysis_unit(), error = function(e) "hh"),
+        display_type = input$sp_type %||% "regular"
+      )
+    }), 250)
+
     sp_reach <- reactive({
       # The frame must be the one the policy run will use. Step 2 may have
       # filtered survey_weather() down to a single baseline round; estimating
       # over every round instead inflates both the eligible population and the
       # cost, and shifts the welfare quantile that defines "ex-ante poor".
       # This mirrors `svy <- hs$svy %||% survey_weather()` in mod_3_06.
-      hs  <- tryCatch(hist_sim(), error = function(e) NULL)
-      svy <- hs$svy %||% tryCatch(survey_weather(), error = function(e) NULL)
+      preview <- sp_preview_inputs()
+      hs <- preview$hs
+      svy <- preview$svy
       if (is.null(svy)) return(NULL)
       r <- .sp_scenario_reach(
         svy           = as.data.frame(svy),
-        sp            = sp_scenario_spec(),
-        analysis_unit = tryCatch(analysis_unit(), error = function(e) "hh")
+        sp            = preview$spec,
+        analysis_unit = preview$analysis_unit
       )
       if (is.null(r)) return(NULL)
       # Record which frame these figures describe. Before Step 2 has run there
@@ -682,14 +694,20 @@ mod_3_01_sp_server <- function(id,
       # round and will drop once Step 2 narrows it - worth saying, rather than
       # letting the number appear to change on its own.
       r$on_baseline <- !is.null(hs$svy)
+      r$preview_spec <- preview$spec
+      r$preview_analysis_unit <- preview$analysis_unit
+      r$preview_display_type <- preview$display_type
       r
     })
 
     output$sp_reach_ui <- renderUI({
+      preview <- sp_preview_inputs()
       r <- sp_reach()
-      unit_pl <- unit_word(plural = TRUE)
-      unit_sg <- unit_word(plural = FALSE)
-      program_label <- if (identical(input$sp_type, "shock")) {
+      preview_spec <- preview$spec
+      preview_unit <- preview$analysis_unit
+      unit_pl <- unit_word(plural = TRUE, au = preview_unit)
+      unit_sg <- unit_word(plural = FALSE, au = preview_unit)
+      program_label <- if (identical(preview$display_type, "shock")) {
         "Shock-responsive"
       } else {
         "Regular"
@@ -724,11 +742,11 @@ mod_3_01_sp_server <- function(id,
       cost_label <- if (isTRUE(r$budget_first))
         "Configured annual budget" else "Estimated annual cost"
 
-      targeting <- sp_scenario_spec()$targeting
+      targeting <- preview_spec$targeting
       targeting_info <- switch(
         targeting,
         exante_poor = paste(
-          "The bottom", sp_scenario_spec()$targeting_threshold,
+          "The bottom", preview_spec$targeting_threshold,
           "% is selected by sampled", unit_pl, "before inclusion and exclusion",
           "errors. The reached share is survey-weighted, so it can differ from",
           "the cutoff when sampled", unit_pl, "represent different population",
@@ -783,7 +801,9 @@ mod_3_01_sp_server <- function(id,
     # ---- Return API ----------------------------------------------------
 
     list(
-      sp_scenario = sp_scenario_spec
+      sp_scenario = sp_scenario_spec,
+      sp_preview_inputs = sp_preview_inputs,
+      sp_reach = sp_reach
     )
 
   })

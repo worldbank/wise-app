@@ -3505,3 +3505,42 @@ Wave 2 must start from this exact integrated revision. Because Agent Manager
 worktrees are created from committed Git state and do not inherit uncommitted
 workspace changes, create an explicit Wave 1 checkpoint commit before launching
 W2-A, W2-C, and W2-D as isolated worktrees.
+
+### Wave 2 - Integrated and Validated
+
+**Integrated on `dev`:** 2026-09-11
+**Checkpoints:** `612981d`, `ee9325f`, `7eba46f`, and `38944db`, followed by
+the W2-E integration changes.
+**Status:** Approved Wave 2 scope integrated; complete repository tests pass.
+
+Integrated findings:
+
+- W2-A: P6 and P11;
+- W2-B: S2-P4, S2-P5, S2-P8, and S2-P14;
+- W2-C: S2-P7 and S2-P10 only;
+- W2-D: S3-P4, S3-P7, S3-P10, and S3-P13;
+- W2-E: S3-P6, S3-P8, S3-P9, S3-P11, and S3-C1.
+
+W2-C S2-P6 and S2-P9 were intentionally excluded after review found that their
+module-level cache/failed-rerun tests and full Step 2/Step 3 reference-store
+lifecycle tests were simulated or incomplete. They remain proposed. W2-A P15
+was also excluded because the required browser-level camera/fullscreen/empty
+state evidence was unavailable. W2-D was integrated only after fixing empty
+interaction handling, strict context identity, resolved-reference hazard keys,
+propagated integrity errors, and observed benchmark hit counters.
+
+Wave 2 validation:
+
+- W2-A, W2-B, W2-C, W2-D, and W2-E focused suites passed;
+- the complete repository suite passed via
+  `Rscript -e 'devtools::test(reporter = "summary")'`;
+- `git diff --check` passed;
+- no production data was written and no new runtime dependency was added;
+- W2-B helper-level RSS measurements were recorded at approximately 419 MiB
+  before the final bounded path and 457 MiB after the bounded-path fixture,
+  with the configured 4 GiB guard not exceeded. These are not production-scale
+  RSS benchmarks and remain evidence for follow-up calibration only.
+
+The remaining approved work is Step 3 compact future decomposition retention
+(S3-P1). S2-P6/S2-P9 and W2-A P15 require separate approval/evidence before
+implementation. Deferred S3-P14-S3-P18 remain excluded.

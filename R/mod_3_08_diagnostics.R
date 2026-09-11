@@ -102,6 +102,7 @@
 
 .diagnostics_content_ui <- function(ns) {
   shiny::tagList(
+    shiny::uiOutput(ns("stale_banner_ui")),
     shiny::uiOutput(ns("policy_summary_ui")),
     shiny::h4(
       "Which variables changed?",
@@ -211,9 +212,18 @@ mod_3_08_diagnostics_server <- function(id,
                                          digital_scenario = reactive(NULL),
                                          labor_scenario = reactive(NULL),
                                          education_scenario = reactive(NULL),
-                                         policy_saved_scenarios = reactive(list())) {
+                                         policy_saved_scenarios = reactive(list()),
+                                         stale = reactive(FALSE)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    session$userData$wise_step3_stale <- stale
+
+    output$stale_banner_ui <- shiny::renderUI({
+      if (isTRUE(stale())) .stale_banner(
+        "Step 3 policy diagnostics",
+        note = "Interpretation and exports are disabled until then."
+      ) else NULL
+    })
 
     if (is.null(tabset_session)) {
       tabset_session <- session$parent %||% session
@@ -287,7 +297,7 @@ mod_3_08_diagnostics_server <- function(id,
         df, rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"), ordering = FALSE,
-                       buttons = wise_csv_button("policy_transfer_summary"))
+                       buttons = wise_csv_button("policy_transfer_summary", enabled = !isTRUE(stale())))
       )
     })
 
@@ -346,7 +356,7 @@ mod_3_08_diagnostics_server <- function(id,
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"), paging = FALSE,
                        ordering = TRUE,
-                        buttons = wise_csv_button("policy_input_diagnostics"))
+                        buttons = wise_csv_button("policy_input_diagnostics", enabled = !isTRUE(stale())))
       )
     })
 
@@ -517,7 +527,7 @@ mod_3_08_diagnostics_server <- function(id,
         rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"),
-                       buttons = wise_csv_button("policy_treatment_assignment"))
+                       buttons = wise_csv_button("policy_treatment_assignment", enabled = !isTRUE(stale())))
       )
     })
     output$treatment_explanation_ui <- shiny::renderUI({
@@ -535,7 +545,7 @@ mod_3_08_diagnostics_server <- function(id,
         rownames = FALSE, class = "compact stripe", extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"), paging = FALSE,
                        ordering = FALSE,
-                       buttons = wise_csv_button("policy_component_summary"))
+                       buttons = wise_csv_button("policy_component_summary", enabled = !isTRUE(stale())))
       )
     })
     wise_export_table(

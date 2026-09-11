@@ -76,6 +76,7 @@ select_decomp_weather_basis <- function(decomp_df, basis = "mean", so = NULL) {
 mod_3_09_decomposition_ui <- function(id) {
   ns <- NS(id)
   tagList(
+    shiny::uiOutput(ns("stale_banner_ui")),
     shiny::uiOutput(ns("policy_summary_ui")),
     shiny::h4(
       "What drives the total policy effect?",
@@ -174,9 +175,17 @@ mod_3_09_decomposition_server <- function(id,
                                             digital_scenario = reactive(NULL),
                                             labor_scenario = reactive(NULL),
                                             education_scenario = reactive(NULL),
-                                            policy_saved_scenarios = reactive(list())) {
+                                            policy_saved_scenarios = reactive(list()),
+                                            stale = reactive(FALSE)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    session$userData$wise_step3_stale <- stale
+    output$stale_banner_ui <- shiny::renderUI({
+      if (isTRUE(stale())) .stale_banner(
+        "Step 3 policy decomposition",
+        note = "Interpretation and exports are disabled until then."
+      ) else NULL
+    })
 
     is_rif <- reactive({
       mf <- model_fit()
@@ -345,7 +354,7 @@ mod_3_09_decomposition_server <- function(id,
         rownames = FALSE, class = "compact stripe",
         extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"),
-                       buttons = wise_csv_button("policy_decomposition_headline_data"))
+                       buttons = wise_csv_button("policy_decomposition_headline_data", enabled = !isTRUE(stale())))
       )
     })
     outputOptions(output, "headline_decomp_table", suspendWhenHidden = FALSE)
@@ -581,7 +590,7 @@ mod_3_09_decomposition_server <- function(id,
         rownames = FALSE, class = "compact stripe", extensions = "Buttons",
         options = list(
           dom = wise_csv_dom("t"), ordering = FALSE,
-          buttons = wise_csv_button("policy_decomposition_summary"),
+          buttons = wise_csv_button("policy_decomposition_summary", enabled = !isTRUE(stale())),
           columnDefs = list(list(className = "dt-right", targets = numeric_targets))
         )
       )
