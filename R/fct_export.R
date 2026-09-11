@@ -1147,8 +1147,7 @@ export_menu_ui <- function() {
                          shiny::icon("box-archive"), "Export all (.zip)"),
         note(paste(
           "The configuration, every table as a CSV, every figure as a PNG,",
-          "and a metadata document explaining each file name and its",
-          "contents."
+          "and a README documenting them."
         ))
       )
     )),
@@ -1171,7 +1170,7 @@ export_menu_ui <- function() {
       shiny::tagList(
         shiny::tags$span(class = "export-menu-title",
                          shiny::icon("table"), "Tables only (.zip)"),
-        note("Every table as a CSV, with the metadata document.")
+        note("Every table as a CSV, with a README.")
       )
     )),
 
@@ -1181,7 +1180,7 @@ export_menu_ui <- function() {
       shiny::tagList(
         shiny::tags$span(class = "export-menu-title",
                          shiny::icon("chart-line"), "Figures only (.zip)"),
-        note("Every figure as a PNG, with the metadata document.")
+        note("Every figure as a PNG, with the README.")
       )
     )),
 
@@ -1193,7 +1192,7 @@ export_menu_ui <- function() {
       shiny::tagList(
         shiny::tags$span(class = "export-menu-title",
                          shiny::icon("file-import"), "Import configuration..."),
-        note("Restore settings from a previously exported configuration.json.")
+        note("Restore analysis from a previously exported configuration.json.")
       )
     ))
   )
@@ -1300,23 +1299,14 @@ export_menu_server <- function(input, output, session,
       title = "Restore a saved analysis",
       shiny::p(
         class = "import-lede",
-        "Load a configuration you exported earlier and re-run the analysis ",
-        "from it. Your current work is untouched until you choose to start."
+        "Load an exported configuration to restore previous analysis."
       ),
       shiny::tags$div(
         class = "import-prereq",
         shiny::tags$div(class = "import-prereq-title", "Before you start"),
         shiny::tags$p(
           class = "import-prereq-step",
-          "Open ", shiny::tags$b("Overview"), " in the navigation bar at the ",
-          "top and connect to your data source."
-        ),
-        shiny::tags$p(
-          class = "import-prereq-note",
-          "Everything else is done for you: the sample and weather variables ",
-          "named in the file are loaded, then the model is fitted and both ",
-          "simulations run. The one thing this window cannot do is connect ",
-          "to data or enter credentials on your behalf."
+          "Ensure you have connected to a data source from" , shiny::tags$b("Overview")
         )
       ),
       shiny::fileInput("import_config_file",
@@ -1552,7 +1542,7 @@ export_menu_server <- function(input, output, session,
       )
     )
   })
-
+  
   output$import_action_ui <- shiny::renderUI({
     view <- pipeline_view()
     phase <- view$phase %||% "idle"
