@@ -50,9 +50,10 @@ mod_3_07_results_server <- function(id,
                                       labor_scenario = reactive(NULL),
                                       education_scenario = reactive(NULL),
                                       residuals      = reactive("original"),
-                                     stale          = reactive(FALSE),
-                                     decomp_result  = reactive(NULL),
-                                     baseline_svy   = reactive(NULL),
+                                      stale          = reactive(FALSE),
+                                      decomp_result  = reactive(NULL),
+                                      decomp_context = reactive(NULL),
+                                      baseline_svy   = reactive(NULL),
                                      policy_svy     = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -83,8 +84,9 @@ mod_3_07_results_server <- function(id,
        education_scenario       = education_scenario,
        residuals                = residuals,
       stale                    = stale,
-      decomp_result            = decomp_result,
-      baseline_svy             = baseline_svy,
+       decomp_result            = decomp_result,
+       decomp_context           = decomp_context,
+       baseline_svy             = baseline_svy,
       policy_svy               = policy_svy
     )
 

@@ -105,17 +105,19 @@
                                   rif_grid, taus, train_data,
                                   outcome, is_log,
                                   skip_coef = FALSE,
-                                  central_only = FALSE,
-                                  F_hat     = NULL) {
+                                   central_only = FALSE,
+                                   F_hat     = NULL,
+                                   context   = NULL) {
   n <- nrow(svy_baseline)
 
   # Only use model 3 coefficients
-  grid3 <- rif_grid[rif_grid$model == 3L, ]
+  grid3 <- context$grid3 %||% rif_grid[rif_grid$model == 3L, ]
   if (nrow(grid3) == 0) return(NULL)
-  all_terms <- unique(grid3$term)
+  all_terms <- context$all_terms %||% unique(grid3$term)
 
   # Beta curve interpolation helper
   beta_at <- function(term_name, tau_values) {
+    if (!is.null(context$beta_at)) return(context$beta_at(term_name, tau_values))
     rows <- grid3[grid3$term == term_name, ]
     if (nrow(rows) == 0) return(rep(0, length(tau_values)))
     stats::approx(x = rows$tau, y = rows$estimate, xout = tau_values, rule = 2)$y
@@ -131,14 +133,17 @@
   }
 
   # Baseline welfare in model scale
-  y_raw <- svy_baseline[[outcome]]
-  y_baseline <- if (is_log) log(pmax(y_raw, 1e-10)) else y_raw
+  y_baseline <- context$y_baseline %||% {
+    y_raw <- svy_baseline[[outcome]]
+    if (is_log) log(pmax(y_raw, 1e-10)) else y_raw
+  }
 
   # Baseline quantile position via ecdf of training outcome
   # PERF-22: reuse a caller-supplied ecdf when available - it depends only
   # on train_data and the outcome, never on weather or policy scenario.
-  F_hat <- F_hat %||% stats::ecdf(train_data[[outcome]])
-  tau_i_pre <- pmin(pmax(F_hat(y_baseline), min(taus)), max(taus))
+  F_hat <- F_hat %||% context$F_hat %||% stats::ecdf(train_data[[outcome]])
+  tau_i_pre <- context$tau_i_pre %||%
+    pmin(pmax(F_hat(y_baseline), min(taus)), max(taus))
 
   # --- Main effect: SP cash (log-scale) ---
   delta_sp <- if (is_log) {
@@ -153,10 +158,8 @@
   delta_main_covar <- rep(0, n)
   var_main <- if (isTRUE(central_only)) NULL else rep(0, n)
   for (v in names(deltas)) {
-    term_v <- if (v %in% all_terms) {
-      v
-    } else {
-      # Fuzzy match for factor-expanded names
+    .decomposition_context_counter_add(context, "term_map_reuses")
+    term_v <- context$rif_term_map[[v]] %||% if (v %in% all_terms) v else {
       matches <- grep(paste0("^", v), all_terms, value = TRUE)
       if (length(matches) > 0) matches[1] else NULL
     }
@@ -170,7 +173,7 @@
     }
   }
 
-  delta_main <- delta_sp + delta_main_covar
+  delta_main <- context$delta_main %||% (delta_sp + delta_main_covar)
   # delta_sp is a function of policy and observed welfare only - no beta
   # dependence - so it adds 0 to var_main.
 
@@ -183,7 +186,8 @@
   # F_hat keeps the link to the beta curve intact and makes delta_res1
   # identically zero whenever delta_main is zero.
   y_post_main <- y_baseline + delta_main
-  tau_i_post <- pmin(pmax(F_hat(y_post_main), min(taus)), max(taus))
+  tau_i_post <- context$tau_i_post %||%
+    pmin(pmax(F_hat(y_post_main), min(taus)), max(taus))
 
   delta_res1 <- rep(0, n)
   var_res1   <- if (isTRUE(central_only)) NULL else rep(0, n)
@@ -243,7 +247,14 @@
         for (lv in levels(haz_int)) {
           cand1 <- paste0(wv, lv, ":", v)
           cand2 <- paste0(v, ":", wv, lv)
-          it_name <- if (cand1 %in% all_terms) cand1 else if (cand2 %in% all_terms) cand2 else NULL
+           candidates <- if (!is.null(context)) {
+             context$rif_interaction_map[[wv]][[v]] %||% character(0)
+           } else {
+             .resolve_interaction_terms(all_terms, weather_vars, deltas)[[wv]][[v]] %||%
+               character(0)
+           }
+           matched <- c(cand1, cand2)[c(cand1, cand2) %in% candidates]
+           it_name <- if (length(matched)) matched[[1L]] else NULL
           if (is.null(it_name)) next
           has_interactions <- TRUE
           active <- !is.na(haz_int) & haz_int == lv
@@ -257,14 +268,14 @@
           }
         }
       } else {
-        int_term <- NULL
-        if      (paste0(wv, ":", v) %in% all_terms) int_term <- paste0(wv, ":", v)
-        else if (paste0(v, ":", wv) %in% all_terms) int_term <- paste0(v, ":", wv)
-        else {
-          pattern  <- paste0("^", wv, "[^:]*:", v, "|^", v, "[^:]*:", wv)
-          matches  <- grep(pattern, all_terms, value = TRUE)
-          if (length(matches) > 0) int_term <- matches[1]
+        .decomposition_context_counter_add(context, "term_map_reuses")
+        candidates <- if (!is.null(context)) {
+          context$rif_interaction_map[[wv]][[v]] %||% character(0)
+        } else {
+          .resolve_interaction_terms(all_terms, weather_vars, deltas)[[wv]][[v]] %||%
+            character(0)
         }
+        int_term <- if (length(candidates)) candidates[[1L]] else NULL
         if (!is.null(int_term)) {
           has_interactions <- TRUE
           beta_int <- beta_at(int_term, tau_i_post)
@@ -391,6 +402,288 @@
   hazard_values
 }
 
+.decomposition_context_signature <- function(svy_baseline, svy_policy,
+                                             model_fit, so, run_identity = NULL,
+                                             skip_coef = FALSE) {
+  model_signature <- tryCatch(.sig_plain(model_fit), error = function(e) {
+    list(
+      engine = model_fit$engine,
+      weather_terms = model_fit$weather_terms,
+      taus = model_fit$taus,
+      rif_grid = tryCatch(.sig_plain(model_fit$rif_grid), error = function(e) NULL),
+      train_shape = if (is.null(model_fit$train_data)) NULL else dim(model_fit$train_data)
+    )
+  })
+  digest::digest(list(
+    run_identity = run_identity, skip_coef = isTRUE(skip_coef),
+    baseline = list(dim = dim(svy_baseline), names = names(svy_baseline),
+                    values = .sig_plain(svy_baseline)),
+    policy = list(dim = dim(svy_policy), names = names(svy_policy),
+                  values = .sig_plain(svy_policy)),
+    model = model_signature, outcome = .sig_plain(so)
+  ), algo = "xxhash64")
+}
+
+.validate_decomposition_context <- function(context, svy_baseline, svy_policy,
+                                            model_fit, so, run_identity = NULL,
+                                            skip_coef = context$skip_coef) {
+  if (is.null(context) || !is.environment(context) ||
+      !isTRUE(context$context_version == 1L)) return(FALSE)
+  identical(context$run_identity, run_identity) &&
+    identical(context$signature,
+      .decomposition_context_signature(
+                svy_baseline, svy_policy, model_fit, so, run_identity,
+                skip_coef
+              ))
+}
+
+.decomposition_context_counter_add <- function(context, name, amount = 1L) {
+  counters <- if (!is.null(context) && is.environment(context)) {
+    context$reuse_counters
+  } else NULL
+  if (is.environment(counters)) {
+    counters[[name]] <- as.integer(counters[[name]] %||% 0L) + as.integer(amount)
+  }
+  invisible(NULL)
+}
+
+.decomposition_context_counter <- function(context, name, default = 0L) {
+  counters <- if (!is.null(context) && is.environment(context)) {
+    context$reuse_counters
+  } else NULL
+  if (is.environment(counters)) {
+    return(as.integer(counters[[name]] %||% default))
+  }
+  default
+}
+
+.decomposition_context_baseline_deciles <- function(context) {
+  if (is.null(context) || !is.environment(context)) return(NULL)
+  value <- context$baseline_deciles
+  if (!is.null(value)) {
+    .decomposition_context_counter_add(context, "fixed_decile_reuses")
+  }
+  value
+}
+
+.decomposition_context_adverse_basis <- function(context, basis) {
+  if (is.null(context) || !is.environment(context)) return(NULL)
+  value <- context$adverse_bases[[basis]]
+  if (!is.null(value)) {
+    .decomposition_context_counter_add(context, "adverse_basis_reuses")
+  }
+  value
+}
+
+.decomposition_context_adverse_result <- function(context, basis) {
+  if (is.null(context) || !is.environment(context)) return(NULL)
+  value <- context$adverse_decompositions[[basis]]
+  if (!is.null(value)) {
+    .decomposition_context_counter_add(context, "adverse_result_cache_hits")
+  }
+  value
+}
+
+.decomposition_context_hazard_values <- function(context, svy_baseline,
+                                                 weather_raw, weather_vars) {
+  weather_raw <- step2_resolve_weather(weather_raw)
+  key <- .weather_context_key(weather_raw)
+  if (!is.null(context) && is.environment(context)) {
+    cached <- context$hazard_products[[key]]
+    if (!is.null(cached)) {
+      .decomposition_context_counter_add(context, "hazard_cache_hits")
+      return(cached)
+    }
+    .decomposition_context_counter_add(context, "hazard_cache_misses")
+  }
+  .compute_hazard_values(svy_baseline, weather_raw, weather_vars)
+}
+
+.weather_context_key <- function(weather_raw) {
+  weather_raw <- step2_resolve_weather(weather_raw)
+  if (is.null(weather_raw)) return("<baseline>")
+  digest::digest(.sig_plain(weather_raw), algo = "xxhash64")
+}
+
+.resolve_interaction_terms <- function(coef_names, weather_vars, deltas) {
+  setNames(lapply(weather_vars, function(wv) {
+    setNames(lapply(names(deltas), function(v) {
+      pattern <- paste0("^", wv, "[^:]*:", v, "|^", v, "[^:]*:", wv)
+      unique(c(
+        intersect(c(paste0(wv, ":", v), paste0(v, ":", wv)), coef_names),
+        grep(pattern, coef_names, value = TRUE)
+      ))
+    }), names(deltas))
+  }), weather_vars)
+}
+
+
+#' Build the immutable state shared by all panels in one policy run
+#'
+#' Weather hazards are deliberately not part of this object: a historical
+#' mean, a future member, and each simulated year are different bases.  Every
+#' other decomposition input is fixed after the policy survey is published.
+#' Keeping this as a plain list also makes the run boundary explicit and
+#' prevents a reactive cache from being mutated by a later failed run.
+#' @keywords internal
+.build_decomposition_context <- function(svy_baseline, svy_policy, model_fit, so,
+                                         deltas = NULL, skip_coef = FALSE,
+                                         F_hat = NULL, baseline_deciles = NULL,
+                                         run_identity = NULL,
+                                         weather_panels = list(),
+                                         adverse_bases = list(),
+                                         adverse_decompositions = list()) {
+  if (is.null(svy_baseline) || is.null(svy_policy) || is.null(model_fit) ||
+      is.null(so)) return(NULL)
+  engine <- model_fit$engine
+  if (!engine %in% c("rif", "fixest")) return(NULL)
+  weather_vars <- model_fit$weather_terms %||% character(0)
+  if (!length(weather_vars) || !so$name %in% names(svy_baseline)) return(NULL)
+  weather_panels <- Filter(Negate(is.null), lapply(
+    weather_panels, step2_resolve_weather
+  ))
+
+  outcome <- so$name
+  is_log <- isTRUE(so$transform == "log")
+  n <- nrow(svy_baseline)
+  deltas <- deltas %||% .compute_policy_deltas(
+    svy_baseline, svy_policy, outcome, weather_vars
+  )
+  sp_transfer <- if (SP_TRANSFER_COL %in% names(svy_policy)) {
+    svy_policy[[SP_TRANSFER_COL]]
+  } else rep(0, n)
+  y_raw <- svy_baseline[[outcome]]
+  y_baseline <- if (is_log) log(pmax(y_raw, 1e-10)) else y_raw
+
+  reuse_counters <- new.env(parent = emptyenv())
+  for (counter in c(
+    "hazard_cache_hits", "hazard_cache_misses", "adverse_basis_reuses",
+    "adverse_result_cache_hits", "fixed_decile_reuses", "rif_invariant_reuses",
+    "term_map_reuses", "delta_reuses"
+  )) reuse_counters[[counter]] <- 0L
+  cache_entries <- new.env(parent = emptyenv())
+
+  ctx <- list(
+    context_version = 1L,
+    run_identity = run_identity,
+    signature = .decomposition_context_signature(
+      svy_baseline, svy_policy, model_fit, so, run_identity
+      , skip_coef = skip_coef
+    ),
+    engine = engine, outcome = outcome, is_log = is_log, n = n,
+    weather_vars = weather_vars, deltas = deltas,
+    sp_transfer = sp_transfer, y_baseline = y_baseline,
+    skip_coef = isTRUE(skip_coef), F_hat = F_hat,
+    baseline_deciles = baseline_deciles %||% if (exists("weighted_baseline_deciles",
+                                                         mode = "function")) {
+      weight_col <- if (exists("baseline_weight_column", mode = "function"))
+        baseline_weight_column(svy_baseline) else NULL
+      weighted_baseline_deciles(svy_baseline, outcome, weight_col)
+    } else NULL,
+    hazard_products = setNames(
+      lapply(weather_panels, function(panel)
+        .compute_hazard_values(svy_baseline, panel, weather_vars)),
+      vapply(weather_panels, .weather_context_key, character(1L))
+    ),
+    adverse_bases = adverse_bases,
+    adverse_decompositions = adverse_decompositions,
+    reuse_counters = reuse_counters,
+    cache_entries = cache_entries
+  )
+  ctx$cache_entries$hazard_prepared <- length(weather_panels)
+  ctx$cache_entries$hazard_cache_entries <- length(unique(vapply(
+    weather_panels, .weather_context_key, character(1L)
+  )))
+  ctx$cache_entries$adverse_basis_entries <- length(adverse_bases)
+  ctx$cache_entries$fixed_decile_entries <- 1L
+  ctx$cache_entries$rif_invariant_entries <- 0L
+  if (engine == "rif") {
+    ctx$rif_grid <- model_fit$rif_grid
+    ctx$taus <- model_fit$taus
+    ctx$train_data <- model_fit$train_data
+    if (is.null(ctx$F_hat) && !is.null(ctx$train_data) &&
+        outcome %in% names(ctx$train_data)) {
+      ctx$F_hat <- stats::ecdf(ctx$train_data[[outcome]])
+    }
+    ctx$grid3 <- if (is.null(ctx$rif_grid)) {
+      NULL
+    } else ctx$rif_grid[ctx$rif_grid$model == 3L, , drop = FALSE]
+    ctx$all_terms <- unique(ctx$grid3$term)
+    ctx$rif_term_map <- setNames(lapply(names(deltas), function(v) {
+      if (v %in% ctx$all_terms) v else {
+        hit <- grep(paste0("^", v), ctx$all_terms, value = TRUE)
+        if (length(hit)) hit[[1L]] else NULL
+      }
+    }), names(deltas))
+    ctx$rif_interaction_map <- .resolve_interaction_terms(
+      ctx$all_terms, weather_vars, deltas
+    )
+    beta_at <- function(term, tau) {
+      rows <- ctx$grid3[ctx$grid3$term == term, , drop = FALSE]
+      if (!nrow(rows)) return(rep(0, length(tau)))
+      if (nrow(rows) == 1L) return(rep(rows$estimate[[1L]], length(tau)))
+      stats::approx(rows$tau, rows$estimate, xout = tau, rule = 2)$y
+    }
+    ctx$beta_at <- beta_at
+    ctx$tau_i_pre <- pmin(pmax(ctx$F_hat(ctx$y_baseline), min(ctx$taus)), max(ctx$taus))
+    delta_sp <- if (is_log) log(pmax(exp(ctx$y_baseline) + sp_transfer, 1e-10)) -
+      ctx$y_baseline else sp_transfer
+    delta_cov <- rep(0, n)
+    for (v in names(deltas)) {
+      term <- ctx$rif_term_map[[v]]
+      if (!is.null(term)) delta_cov <- delta_cov + beta_at(term, ctx$tau_i_pre) * deltas[[v]]
+    }
+    ctx$delta_main <- delta_sp + delta_cov
+    ctx$tau_i_post <- pmin(pmax(ctx$F_hat(ctx$y_baseline + ctx$delta_main), min(ctx$taus)), max(ctx$taus))
+    ctx$cache_entries$rif_invariant_entries <- 1L
+  } else {
+    fit <- model_fit$fit3
+    ctx$coefs <- tryCatch(stats::coef(fit), error = function(e) NULL)
+    ctx$se_vec <- if (is.null(fit)) {
+      setNames(rep(0, length(ctx$coefs %||% numeric(0))), names(ctx$coefs))
+    } else {
+      vc <- tryCatch(stats::vcov(fit), error = function(e) NULL)
+      if (is.null(vc)) setNames(rep(0, length(ctx$coefs)), names(ctx$coefs)) else {
+        d <- diag(vc); d[d < 0 | is.na(d)] <- 0
+        setNames(sqrt(d), names(ctx$coefs))
+      }
+    }
+    ctx$coef_names <- names(ctx$coefs)
+    ctx$ols_term_map <- setNames(lapply(names(deltas), function(v) {
+      hit <- c(v, grep(paste0("^", v), ctx$coef_names, value = TRUE))
+      hit <- hit[hit %in% ctx$coef_names]
+      if (length(hit)) hit[[1L]] else NULL
+    }), names(deltas))
+    ctx$ols_interaction_map <- .resolve_interaction_terms(
+      ctx$coef_names, weather_vars, deltas
+    )
+    delta_sp <- if (is_log) log(pmax(exp(y_baseline) + sp_transfer, 1e-10)) -
+      y_baseline else sp_transfer
+    delta_cov <- rep(0, n)
+    for (v in names(deltas)) {
+      term <- ctx$ols_term_map[[v]]
+      if (!is.null(term)) delta_cov <- delta_cov + ctx$coefs[[term]] * deltas[[v]]
+    }
+    ctx$delta_main <- delta_sp + delta_cov
+  }
+  # A context belongs to one successful policy run.  Locking its bindings
+  # catches accidental cross-run reuse during development and keeps the
+  # cached representation observationally immutable to all consumers.
+  ctx <- list2env(ctx, parent = emptyenv())
+  lockEnvironment(ctx, bindings = TRUE)
+  ctx
+}
+
+.finalize_decomposition_context <- function(context, adverse_decompositions = list()) {
+  if (is.null(context) || !is.environment(context)) return(NULL)
+  values <- as.list(context, all.names = TRUE)
+  values$adverse_decompositions <- adverse_decompositions
+  values$cache_entries$adverse_result_entries <- length(adverse_decompositions)
+  out <- list2env(values, parent = emptyenv())
+  lockEnvironment(out, bindings = TRUE)
+  out
+}
+
 
 #' Compute the net policy effect on welfare level for RIF, in model scale
 #'
@@ -476,7 +769,8 @@
 #' @keywords internal
 .policy_central_delta <- function(svy_baseline, svy_policy, model_fit, so,
                                   weather_raw = NULL, deltas = NULL,
-                                  F_hat = NULL) {
+                                  F_hat = NULL, context = NULL,
+                                  run_identity = NULL) {
   if (is.null(svy_baseline) || is.null(svy_policy) || is.null(model_fit) ||
       is.null(so)) return(NULL)
 
@@ -501,6 +795,22 @@
     )
     return(NULL)
   }
+  context_reused <- !is.null(context)
+  if (!is.null(context)) {
+    if (is.null(run_identity))
+      stop("Current run identity is required when reusing a decomposition context.",
+           call. = FALSE)
+    if (!identical(context$run_identity, run_identity))
+      stop("Decomposition context run identity mismatch.", call. = FALSE)
+    if (!.validate_decomposition_context(
+      context, svy_baseline, svy_policy, model_fit, so, run_identity,
+      context$skip_coef
+    )) stop("Incompatible or stale decomposition context.", call. = FALSE)
+    .decomposition_context_counter_add(context, "delta_reuses")
+    if (identical(engine, "rif")) {
+      .decomposition_context_counter_add(context, "rif_invariant_reuses")
+    }
+  }
 
   n <- nrow(svy_baseline)
   deltas  <- deltas %||% .compute_policy_deltas(
@@ -512,8 +822,8 @@
   } else {
     rep(0, n)
   }
-  hazard_values <- .compute_hazard_values(
-    svy_baseline, weather_raw, weather_vars
+  hazard_values <- .decomposition_context_hazard_values(
+    context, svy_baseline, weather_raw, weather_vars
   )
 
   if (identical(engine, "rif")) {
@@ -530,7 +840,8 @@
       is_log        = is_log,
       skip_coef     = TRUE,
       central_only  = TRUE,
-      F_hat         = F_hat
+       F_hat         = F_hat,
+       context       = context
     )
     if (is.null(channels)) return(NULL)
     if (!channels$has_interactions && length(deltas) > 0L) {
@@ -546,7 +857,7 @@
 
   central <- .decompose_ols(
     svy_baseline, model_fit, so, deltas, sp_transfer,
-    hazard_values, weather_vars, n, central_only = TRUE
+    hazard_values, weather_vars, n, central_only = TRUE, context = context
   )
   if (is.null(central)) return(NULL)
   central$delta_total
@@ -593,17 +904,14 @@ decompose_policy_effect <- function(svy_baseline,
                                     weather_raw = NULL,
                                     skip_coef = FALSE,
                                     deltas    = NULL,
-                                    F_hat     = NULL) {
+                                    F_hat     = NULL,
+                                    context   = NULL,
+                                    hazard_values = NULL,
+                                    run_identity = NULL) {
   if (is.null(svy_baseline) || is.null(svy_policy) || is.null(model_fit)) {
     return(NULL)
   }
-
-  engine <- model_fit$engine
-  if (!engine %in% c("rif", "fixest")) return(NULL)
-
-  n <- nrow(svy_baseline)
   outcome <- so$name
-  is_log <- isTRUE(so$transform == "log")
 
   # Step 2 snapshots may omit the synthetic `poor` outcome even though the
   # fitted model and selected outcome metadata refer to it.
@@ -618,31 +926,60 @@ decompose_policy_effect <- function(svy_baseline,
     return(NULL)
   }
 
+  context_reused <- !is.null(context)
+  if (!is.null(context)) {
+    if (is.null(run_identity)) {
+      stop("Current run identity is required when reusing a decomposition context.",
+           call. = FALSE)
+    }
+    if (!identical(context$run_identity, run_identity)) {
+      stop("Decomposition context run identity mismatch.", call. = FALSE)
+    }
+    if (!.validate_decomposition_context(
+      context, svy_baseline, svy_policy, model_fit, so, run_identity, skip_coef
+    )) stop("Incompatible or stale decomposition context.", call. = FALSE)
+  }
+  context <- context %||% .build_decomposition_context(
+    svy_baseline, svy_policy, model_fit, so, deltas, skip_coef, F_hat,
+    run_identity = run_identity
+  )
+  if (is.null(context)) return(NULL)
+  engine <- context$engine
+  if (context_reused) {
+    .decomposition_context_counter_add(context, "delta_reuses")
+  }
+  if (context_reused && identical(engine, "rif")) {
+    .decomposition_context_counter_add(context, "rif_invariant_reuses")
+  }
+  if (!engine %in% c("rif", "fixest")) return(NULL)
+
+  n <- context$n
+  outcome <- context$outcome
+  is_log <- context$is_log
+
   # Identify weather hazard variable(s) and their realised values
-  weather_vars <- model_fit$weather_terms
+  weather_vars <- context$weather_vars
   if (is.null(weather_vars) || length(weather_vars) == 0) return(NULL)
 
-  hazard_values <- .compute_hazard_values(svy_baseline, weather_raw, weather_vars)
+  hazard_values <- hazard_values %||% .decomposition_context_hazard_values(
+    context, svy_baseline, weather_raw, weather_vars
+  )
 
   # Compute covariate deltas using shared helper
   # PERF-22: accept a caller-supplied, weather-independent delta list.
-  deltas <- deltas %||% .compute_policy_deltas(svy_baseline, svy_policy,
-                                               outcome, weather_vars)
+  deltas <- context$deltas
 
   # SP transfer component
-  sp_transfer <- if (SP_TRANSFER_COL %in% names(svy_policy)) {
-    svy_policy[[SP_TRANSFER_COL]]
-  } else {
-    rep(0, n)
-  }
+  sp_transfer <- context$sp_transfer
 
   if (engine == "rif") {
     .decompose_rif(svy_baseline, model_fit, so, deltas, sp_transfer,
                    hazard_values, weather_vars, n, skip_coef = skip_coef,
-                   F_hat = F_hat)
+                    F_hat = context$F_hat, context = context)
   } else {
     .decompose_ols(svy_baseline, model_fit, so, deltas, sp_transfer,
-                   hazard_values, weather_vars, n, skip_coef = skip_coef)
+                    hazard_values, weather_vars, n, skip_coef = skip_coef,
+                    context = context)
   }
 }
 
@@ -652,8 +989,8 @@ decompose_policy_effect <- function(svy_baseline,
 # ---------------------------------------------------------------------------- #
 
 .decompose_rif <- function(svy_baseline, model_fit, so, deltas, sp_transfer,
-                           hazard_values, weather_vars, n,
-                           skip_coef = FALSE, F_hat = NULL) {
+                            hazard_values, weather_vars, n,
+                            skip_coef = FALSE, F_hat = NULL, context = NULL) {
   outcome    <- so$name
   is_log     <- isTRUE(so$transform == "log")
   rif_grid   <- model_fit$rif_grid
@@ -675,7 +1012,8 @@ decompose_policy_effect <- function(svy_baseline,
     outcome       = outcome,
     is_log        = is_log,
     skip_coef     = skip_coef,
-    F_hat         = F_hat
+    F_hat         = F_hat,
+    context       = context
   )
   if (is.null(channels)) return(NULL)
 
@@ -724,20 +1062,23 @@ decompose_policy_effect <- function(svy_baseline,
 # ---------------------------------------------------------------------------- #
 
 .decompose_ols <- function(svy_baseline, model_fit, so, deltas, sp_transfer,
-                           hazard_values, weather_vars, n,
-                           skip_coef = FALSE, central_only = FALSE) {
+                            hazard_values, weather_vars, n,
+                            skip_coef = FALSE, central_only = FALSE,
+                            context = NULL) {
   outcome <- so$name
   is_log <- isTRUE(so$transform == "log")
   fit <- model_fit$fit3
 
   if (is.null(fit)) return(NULL)
 
-  coefs <- tryCatch(stats::coef(fit), error = function(e) NULL)
+  coefs <- context$coefs %||% tryCatch(stats::coef(fit), error = function(e) NULL)
   if (is.null(coefs)) return(NULL)
 
   # Per-coefficient SE under diagonal-Sigma approximation. Central-only calls
-  # bypass vcov extraction entirely.
-  se_vec <- if (!isTRUE(central_only) && !isTRUE(skip_coef)) {
+  # bypass vcov extraction entirely; a run context reuses the prepared vector.
+  se_vec <- if (isTRUE(central_only) || isTRUE(skip_coef)) {
+    setNames(rep(0, length(coefs)), names(coefs))
+  } else context$se_vec %||% {
     vc <- tryCatch(stats::vcov(fit), error = function(e) NULL)
     if (is.null(vc)) {
       setNames(rep(0, length(coefs)), names(coefs))
@@ -745,8 +1086,6 @@ decompose_policy_effect <- function(svy_baseline,
       d <- diag(vc); d[d < 0 | is.na(d)] <- 0
       setNames(sqrt(d), names(coefs))
     }
-  } else {
-    NULL
   }
   se_of <- if (isTRUE(central_only)) NULL else function(term) {
       if (isTRUE(skip_coef)) return(0)
@@ -755,8 +1094,10 @@ decompose_policy_effect <- function(svy_baseline,
     }
 
   # Baseline welfare
-  y_raw <- svy_baseline[[outcome]]
-  y_baseline <- if (is_log) log(pmax(y_raw, 1e-10)) else y_raw
+  y_baseline <- context$y_baseline %||% {
+    y_raw <- svy_baseline[[outcome]]
+    if (is_log) log(pmax(y_raw, 1e-10)) else y_raw
+  }
 
   # --- Main effect ---
   delta_sp <- if (is_log) {
@@ -769,15 +1110,13 @@ decompose_policy_effect <- function(svy_baseline,
 
   coef_names <- names(coefs)
   for (v in names(deltas)) {
-    term_used <- v
-    beta_v <- coefs[v]
-    if (is.na(beta_v)) {
+    .decomposition_context_counter_add(context, "term_map_reuses")
+    term_used <- context$ols_term_map[[v]] %||% v
+    if (!term_used %in% coef_names) {
       matches <- grep(paste0("^", v), coef_names, value = TRUE)
-      if (length(matches) > 0) {
-        beta_v    <- coefs[matches[1]]
-        term_used <- matches[1]
-      }
+      if (length(matches)) term_used <- matches[[1L]]
     }
+    beta_v <- coefs[term_used]
     if (!is.na(beta_v)) {
       delta_main_covar <- delta_main_covar + beta_v * deltas[[v]]
       if (!isTRUE(central_only)) {
@@ -785,7 +1124,7 @@ decompose_policy_effect <- function(svy_baseline,
       }
     }
   }
-  delta_main <- delta_sp + delta_main_covar
+  delta_main <- context$delta_main %||% (delta_sp + delta_main_covar)
 
   # --- Interaction (res2) --- OLS has no repositioning
   # Continuous weather: coef_int * haz_mean * delta_x
@@ -803,7 +1142,10 @@ decompose_policy_effect <- function(svy_baseline,
         for (lv in levels(haz_int)) {
           cand1 <- paste0(wv, lv, ":", v)
           cand2 <- paste0(v, ":", wv, lv)
-          it_name <- if (cand1 %in% coef_names) cand1 else if (cand2 %in% coef_names) cand2 else NULL
+           candidates <- context$ols_interaction_map[[wv]][[v]] %||% character(0)
+           matched <- c(cand1, cand2)[c(cand1, cand2) %in% candidates]
+           it_name <- if (length(matched)) matched[[1L]] else
+             if (cand1 %in% coef_names) cand1 else if (cand2 %in% coef_names) cand2 else NULL
           if (is.null(it_name)) next
           has_interactions <- TRUE
           active <- !is.na(haz_int) & haz_int == lv
@@ -815,13 +1157,18 @@ decompose_policy_effect <- function(svy_baseline,
           }
         }
       } else {
-        int_term <- NULL
-        if      (paste0(wv, ":", v) %in% coef_names) int_term <- paste0(wv, ":", v)
-        else if (paste0(v, ":", wv) %in% coef_names) int_term <- paste0(v, ":", wv)
-        else {
-          pattern <- paste0("^", wv, "[^:]*:", v, "|^", v, "[^:]*:", wv)
-          matches <- grep(pattern, coef_names, value = TRUE)
-          if (length(matches) > 0) int_term <- matches[1]
+        .decomposition_context_counter_add(context, "term_map_reuses")
+        candidates <- context$ols_interaction_map[[wv]][[v]] %||% character(0)
+        int_term <- if (length(candidates)) candidates[[1L]] else NULL
+        if (is.null(int_term)) {
+          exact <- c(paste0(wv, ":", v), paste0(v, ":", wv))
+          exact_matches <- exact[exact %in% coef_names]
+          int_term <- if (length(exact_matches)) exact_matches[[1L]] else NULL
+          if (is.null(int_term)) {
+            pattern <- paste0("^", wv, "[^:]*:", v, "|^", v, "[^:]*:", wv)
+            matches <- grep(pattern, coef_names, value = TRUE)
+            if (length(matches)) int_term <- matches[[1L]]
+          }
         }
         if (!is.null(int_term)) {
           has_interactions <- TRUE

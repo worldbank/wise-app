@@ -1212,8 +1212,9 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
                                 education_scenario = reactive(NULL),
                                 residuals = reactive("original"),
                                stale = reactive(FALSE),
-                               decomp_result = reactive(NULL),
-                               baseline_svy = reactive(NULL),
+                                decomp_result = reactive(NULL),
+                                decomp_context = reactive(NULL),
+                                baseline_svy = reactive(NULL),
                                policy_svy = reactive(NULL)) {
   ns <- session$ns
 
@@ -1996,7 +1997,11 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       return(tibble::tibble())
     }
     so_name <- bh$so$name %||% "welfare"
-    step3_incidence_by_decile(res, bs, so_name)
+    ctx <- tryCatch(decomp_context(), error = function(e) NULL)
+    step3_incidence_by_decile(
+      res, bs, so_name,
+      baseline_deciles = if (is.null(ctx)) NULL else ctx$baseline_deciles
+    )
   })
 
   wise_export_figure(

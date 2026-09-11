@@ -142,14 +142,17 @@ decomposition_explanation <- function(is_rif) {
 
 decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
                                               outcome = "welfare",
-                                              is_rif = NULL) {
+                                              is_rif = NULL,
+                                              baseline_deciles = NULL) {
   if (is.null(decomp_df) || !nrow(decomp_df)) return(tibble::tibble())
   is_rif <- if (is.null(is_rif)) {
     "delta_res1" %in% names(decomp_df) &&
       any(abs(decomp_df$delta_res1 %||% 0) > 1e-12, na.rm = TRUE)
   } else isTRUE(is_rif)
   if (!is.null(svy)) {
-    dec <- weighted_baseline_deciles(svy, outcome, baseline_weight_column(svy))
+    dec <- baseline_deciles %||% weighted_baseline_deciles(
+      svy, outcome, baseline_weight_column(svy)
+    )
     ids <- suppressWarnings(as.integer(decomp_df$id))
     mapped <- is.finite(ids) & ids >= 1L & ids <= length(dec)
     stored_deciles <- if ("decile" %in% names(decomp_df))

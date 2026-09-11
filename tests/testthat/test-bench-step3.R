@@ -81,6 +81,8 @@ test_that("smoke fixture runs active Step 3 path and emits stable metrics", {
   expect_equal(first$n_future_members, 1L)
   expect_equal(first$n_historical_decomposition_rows, 60L)
   expect_equal(first$n_future_decomposition_rows, 120L)
+  expect_gt(first$context_adverse_cache_hits, 0L)
+  expect_gt(first$context_fixed_decile_reuses, 0L)
 })
 
 test_that("runtime option metadata records every requested current option", {

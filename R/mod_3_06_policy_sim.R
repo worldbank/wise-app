@@ -1,3 +1,10 @@
+# Keep the last successful result/context pair intact until the next run has
+# completed all work. A failed run therefore has no publication side effect.
+.publish_decomposition_bundle <- function(previous, result, context, success) {
+  if (!isTRUE(success)) return(previous)
+  list(result = result, context = context)
+}
+
 #' 3_06_policy_sim UI Function
 #'
 #' @description A shiny Module. Renders status banner for policy adjustments.
@@ -75,7 +82,9 @@ mod_3_06_policy_sim_server <- function(id,
     sim_running         <- reactiveVal(FALSE)
     run_generation      <- reactiveVal(0L)
     run_status          <- reactiveVal("idle")
-    decomp_rv           <- reactiveVal(NULL)
+    decomp_bundle_rv    <- reactiveVal(list(result = NULL, context = NULL))
+    decomp_rv           <- reactive(function() decomp_bundle_rv()$result)
+    decomp_context_rv   <- reactive(function() decomp_bundle_rv()$context)
     decomp_scenarios_rv <- reactiveVal(list())
     diagnostic_summary_rv <- reactiveVal(NULL)
     # INT-08: TRUE while the stored policy results' run signature no longer
@@ -322,6 +331,35 @@ mod_3_06_policy_sim_server <- function(id,
                 stats::ecdf(mf$train_data[[hs$so$name]])
               } else NULL
 
+              adverse_bases_pre <- if (exists(".prepare_decomp_adverse_bases",
+                                             mode = "function")) {
+                .prepare_decomp_adverse_bases(hs$weather_raw, hs, hs$so)
+              } else list()
+
+              # W2-D: all decomposition calls in this published run share
+              # invariant survey/model state. Weather hazards remain supplied
+              # per panel so member-specific and year-specific weather cannot
+              # leak across bases.
+              decomp_context <- .build_decomposition_context(
+                svy_baseline = svy, svy_policy = svy_mod, model_fit = mf,
+                so = hs$so, deltas = deltas_pre,
+                skip_coef = skip_coef_val, F_hat = F_hat_pre,
+                run_identity = paste0("generation-", run_generation()),
+                weather_panels = Filter(Negate(is.null), c(
+                  list(step2_resolve_weather(hs$weather_raw, hs)),
+                  unlist(lapply(baseline_scenarios_out, function(x) {
+                    raw <- step2_resolve_weather(x$weather_raw, x)
+                    if (is.null(raw) || !"timestamp" %in% names(raw)) return(list(raw))
+                    split(raw, as.integer(format(raw$timestamp, "%Y")))
+                  }), recursive = FALSE),
+                  unname(adverse_bases_pre)
+                )),
+                adverse_bases = adverse_bases_pre
+              )
+              if (is.null(decomp_context)) {
+                stop("Unable to prepare policy decomposition context.", call. = FALSE)
+              }
+
               pol_out <- apply_policy_delta_to_baseline(
                 svy_baseline             = svy,
                 svy_policy               = svy_mod,
@@ -329,9 +367,11 @@ mod_3_06_policy_sim_server <- function(id,
                 so                       = hs$so,
                 hist_sim_baseline        = baseline_out,
                 saved_scenarios_baseline = baseline_scenarios_out,
-                skip_coef                = skip_coef_val,
-                deltas                   = deltas_pre,
-                F_hat                    = F_hat_pre
+                 skip_coef                = skip_coef_val,
+                 deltas                   = deltas_pre,
+                  F_hat                    = F_hat_pre,
+                  decomp_context           = decomp_context,
+                  run_identity             = decomp_context$run_identity
               )
               if (is.null(pol_out)) {
                 stop("Policy simulation produced no results.", call. = FALSE)
@@ -349,11 +389,26 @@ mod_3_06_policy_sim_server <- function(id,
                 weather_raw  = step2_resolve_weather(hs$weather_raw, hs),
                 skip_coef    = skip_coef_val,
                 deltas       = deltas_pre,
-                F_hat        = F_hat_pre
+                  F_hat        = F_hat_pre,
+                  context      = decomp_context,
+                  run_identity = decomp_context$run_identity
               )
               if (is.null(decomp)) {
                 stop("Effect decomposition produced no results.", call. = FALSE)
               }
+
+              adverse_decompositions <- lapply(names(decomp_context$adverse_bases),
+                function(basis) tryCatch(
+                  decompose_policy_effect(
+                    svy, svy_mod, mf, hs$so,
+                    weather_raw = decomp_context$adverse_bases[[basis]],
+                    skip_coef = skip_coef_val, deltas = deltas_pre,
+                    F_hat = F_hat_pre, context = decomp_context,
+                    run_identity = decomp_context$run_identity
+                  ), error = function(e) NULL
+                ))
+              names(adverse_decompositions) <- names(decomp_context$adverse_bases)
+              adverse_decompositions <- Filter(Negate(is.null), adverse_decompositions)
 
               # Decompose per saved scenario * sim_year for year-to-year
               # variation. Per-year failures are collected: if every attempt
@@ -394,9 +449,11 @@ mod_3_06_policy_sim_server <- function(id,
                       model_fit    = mf,
                       so           = hs$so,
                       weather_raw  = w_yr,
-                      skip_coef    = skip_coef_val,
-                      deltas       = deltas_pre,
-                      F_hat        = F_hat_pre
+                       skip_coef    = skip_coef_val,
+                       deltas       = deltas_pre,
+                       F_hat        = F_hat_pre,
+                       context      = decomp_context,
+                       run_identity = decomp_context$run_identity
                     ) |> dplyr::mutate(
                       scenario   = sc_label,
                       sim_year   = yr,
@@ -457,7 +514,12 @@ mod_3_06_policy_sim_server <- function(id,
            digital_scenario_rv(digital_cfg)
            labor_scenario_rv(labor_cfg)
            education_scenario_rv(education_cfg)
-          decomp_rv(decomp)
+           final_context <- .finalize_decomposition_context(
+             decomp_context, adverse_decompositions
+           )
+           decomp_bundle_rv(.publish_decomposition_bundle(
+             decomp_bundle_rv(), decomp, final_context, success = TRUE
+           ))
           decomp_scenarios_rv(decomp_sc)
           diagnostic_summary_rv(diagnostic_summary_out)
           policy_stale(FALSE)
@@ -515,6 +577,7 @@ mod_3_06_policy_sim_server <- function(id,
       run_generation          = run_generation,
       run_status              = run_status,
       decomp_result            = decomp_rv,
+      decomp_context           = decomp_context_rv,
       decomp_scenarios         = decomp_scenarios_rv,
       diagnostic_summary       = diagnostic_summary_rv,
       baseline_hist_sim        = baseline_hist_sim_rv,

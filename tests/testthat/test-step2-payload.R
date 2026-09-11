@@ -264,6 +264,30 @@ test_that("reference weather storage preserves member-specific payloads", {
   expect_identical(hi_weather$temp, 3)
 })
 
+test_that("reference-backed context preparation reuses resolved hazard panels", {
+  root <- withr::local_tempdir()
+  weather <- phase4_weather()$historical
+  store <- step2_weather_store_create("context-run", "sig-context", root = root)
+  ref <- step2_weather_store_put(store, "historical", weather)
+  owner <- list(weather_signature = "sig-context")
+  context <- wiseapp:::.build_decomposition_context(
+    data.frame(welfare = 1:2, temp = c(1, 2)),
+    data.frame(welfare = 1:2, temp = c(1, 2)),
+    list(engine = "fixest", fit3 = lm(welfare ~ temp,
+                                       data.frame(welfare = 1:2, temp = c(1, 2))),
+         weather_terms = "temp"),
+    list(name = "welfare", transform = "none"),
+    run_identity = "context-run", weather_panels = list(ref)
+  )
+  result <- wiseapp:::.decomposition_context_hazard_values(
+    context, data.frame(welfare = 1:2, temp = c(1, 2)),
+    step2_resolve_weather(ref, owner), "temp"
+  )
+  expect_equal(context$reuse_counters$hazard_cache_hits, 1L)
+  expect_equal(result$temp, c(1, 1))
+  step2_weather_store_cleanup(store)
+})
+
 test_that("experimental join cache preserves simulation outputs", {
   input <- phase4_input()
   input$svy$int_month <- 6L

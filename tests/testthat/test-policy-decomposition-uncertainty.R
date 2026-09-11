@@ -329,3 +329,116 @@ test_that("weather basis selects adverse years for future decompositions", {
   )
   expect_identical(selected$sim_year, 2025L)
 })
+
+test_that("one decomposition context preserves central values and schemas", {
+  fx <- make_ols_fixture()
+  ctx <- wiseapp:::.build_decomposition_context(
+    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so,
+    deltas = wiseapp:::.compute_policy_deltas(
+      fx$svy_base, fx$svy_policy, "welfare", "temp"
+    ), skip_coef = FALSE, run_identity = "ols-run-1"
+  )
+  fresh <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so
+  )
+  reused <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so, context = ctx,
+    run_identity = "ols-run-1"
+  )
+  expect_identical(names(fresh), names(reused))
+  expect_equal(fresh, reused, tolerance = 0)
+  expect_false(identical(ctx, NULL))
+  expect_error(
+    wiseapp::decompose_policy_effect(
+      fx$svy_base, fx$svy_policy, fx$model_fit, fx$so, context = ctx
+    ),
+    "Current run identity is required"
+  )
+})
+
+test_that("RIF context parity caches channels and rejects stale runs", {
+  fx <- make_ols_fixture(N = 120)
+  mf <- fx$model_fit
+  mf$engine <- "rif"
+  mf$taus <- c(0.25, 0.5, 0.75)
+  mf$rif_grid <- data.frame(
+    model = 3L,
+    term = rep(c("temp", "transfer", "temp:transfer"), each = 3L),
+    tau = rep(mf$taus, 3L),
+    estimate = rep(c(-0.02, -0.01, 0.0, 0.1, 0.1, 0.1, 0.02, 0.02, 0.02), each = 1L),
+    std.error = 0.01
+  )
+  ctx <- wiseapp:::.build_decomposition_context(
+    fx$svy_base, fx$svy_policy, mf, fx$so,
+    run_identity = "rif-run-1", weather_panels = list(fx$svy_base["temp"])
+  )
+  fresh <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, mf, fx$so,
+    weather_raw = fx$svy_base["temp"], run_identity = "rif-run-1"
+  )
+  reused <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, mf, fx$so,
+    weather_raw = fx$svy_base["temp"], context = ctx,
+    run_identity = "rif-run-1"
+  )
+  expect_equal(fresh, reused, tolerance = 0)
+  expect_gt(length(ctx$hazard_products), 0L)
+  expect_equal(ctx$cache_entries$hazard_cache_entries, 1L)
+  expect_equal(ctx$cache_entries$fixed_decile_entries, 1L)
+  expect_equal(ctx$cache_entries$rif_invariant_entries, 1L)
+  expect_gt(ctx$reuse_counters$hazard_cache_hits, 0L)
+  expect_gt(ctx$reuse_counters$rif_invariant_reuses, 0L)
+  expect_error(
+    wiseapp::decompose_policy_effect(
+      fx$svy_base, transform(fx$svy_policy, temp = temp + 1), mf, fx$so,
+      context = ctx, run_identity = "rif-run-1"
+    ),
+    "Incompatible or stale"
+  )
+  expect_error(
+    wiseapp::decompose_policy_effect(
+      fx$svy_base, fx$svy_policy, mf, fx$so,
+      context = ctx, run_identity = "rif-run-2"
+    ),
+    "run identity mismatch"
+  )
+  expect_error(
+    wiseapp::decompose_policy_effect(
+      fx$svy_base, fx$svy_policy, mf, fx$so,
+      context = ctx, run_identity = "rif-run-1", skip_coef = TRUE
+    ),
+    "Incompatible or stale"
+  )
+  expect_error(
+    wiseapp:::.policy_central_delta(
+      fx$svy_base, fx$svy_policy, mf, fx$so,
+      context = ctx
+    ),
+    "Current run identity is required"
+  )
+})
+
+test_that("decomposition summaries honor fixed cached deciles", {
+  fx <- make_ols_fixture(N = 40)
+  result <- wiseapp::decompose_policy_effect(
+    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so
+  )
+  cached <- rep(7L, nrow(result))
+  tbl <- wiseapp:::decomposition_channels_by_decile(
+    result, fx$svy_base, "welfare", is_rif = FALSE,
+    baseline_deciles = cached
+  )
+  expect_identical(unique(tbl$decile), 7L)
+})
+
+test_that("failed publication preserves the previous result and context", {
+  old <- list(result = data.frame(id = 1L), context = "run-1")
+  expect_identical(
+    wiseapp:::.publish_decomposition_bundle(old, data.frame(id = 2L), "run-2", FALSE),
+    old
+  )
+  expect_identical(
+    wiseapp:::.publish_decomposition_bundle(old, data.frame(id = 2L), "run-2", TRUE),
+    list(result = data.frame(id = 2L), context = "run-2")
+  )
+})

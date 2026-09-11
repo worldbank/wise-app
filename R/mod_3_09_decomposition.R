@@ -29,6 +29,39 @@ select_decomp_weather_basis <- function(decomp_df, basis = "mean", so = NULL) {
   decomp_df[as.character(decomp_df$sim_year) == selected_year, , drop = FALSE]
 }
 
+.prepare_decomp_adverse_bases <- function(weather_raw, hist_sim, so) {
+  raw <- step2_resolve_weather(weather_raw, hist_sim)
+  if (is.null(raw) || !nrow(raw)) return(list())
+  out <- list(mean = raw)
+  if (!"timestamp" %in% names(raw) || is.null(hist_sim$pipeline) ||
+      is.null(hist_sim$pipeline$y_point) || is.null(hist_sim$pipeline$sim_year)) {
+    return(out)
+  }
+  years <- as.integer(format(raw$timestamp, "%Y"))
+  year_values <- split(raw, years)
+  pipe <- hist_sim$pipeline
+  simulated_years <- split(seq_along(pipe$y_point), pipe$sim_year)
+  annual_values <- vapply(simulated_years, function(idx) {
+    vals <- as.numeric(pipe$y_point[idx])
+    weights <- if (!is.null(pipe$weight)) as.numeric(pipe$weight[idx]) else NULL
+    if (is.null(weights)) mean(vals, na.rm = TRUE) else
+      stats::weighted.mean(vals, weights, na.rm = TRUE)
+  }, numeric(1L))
+  agg <- annual_values[names(annual_values) %in% names(year_values)]
+  if (!length(agg)) return(out)
+  adverse_high <- identical(
+    outcome_direction(so$name %||% "welfare", so$type %||% "numeric"),
+    "lower_is_better"
+  )
+  ordered <- order(agg, decreasing = adverse_high)
+  probabilities <- c(adverse_5 = 0.20, adverse_10 = 0.10, adverse_20 = 0.05)
+  for (basis in names(probabilities)) {
+    take <- max(1L, min(length(ordered), round(length(ordered) * probabilities[[basis]])))
+    out[[basis]] <- year_values[[names(agg)[ordered[[take]]]]]
+  }
+  out
+}
+
 #' 3_09_decomposition UI Function
 #'
 #' @description A shiny Module. Renders the policy effect decomposition
@@ -123,8 +156,9 @@ mod_3_09_decomposition_ui <- function(id) {
 #'
 #' @noRd
 mod_3_09_decomposition_server <- function(id,
-                                           decomp_result     = reactive(NULL),
-                                           decomp_scenarios  = reactive(list()),
+                                            decomp_result     = reactive(NULL),
+                                            decomp_scenarios  = reactive(list()),
+                                            decomp_context    = reactive(NULL),
                                            model_fit         = reactive(NULL),
                                            variable_list     = reactive(NULL),
                                            so                = reactive(NULL),
@@ -147,6 +181,14 @@ mod_3_09_decomposition_server <- function(id,
     is_rif <- reactive({
       mf <- model_fit()
       !is.null(mf) && identical(tolower(as.character(mf$engine %||% "")), "rif")
+    })
+    baseline_deciles <- reactive({
+      ctx <- decomp_context()
+      if (is.null(ctx)) NULL else if (exists(
+        ".decomposition_context_baseline_deciles", mode = "function"
+      )) {
+        .decomposition_context_baseline_deciles(ctx)
+      } else ctx$baseline_deciles
     })
 
     output$policy_summary_ui <- shiny::renderUI({
@@ -183,6 +225,15 @@ mod_3_09_decomposition_server <- function(id,
     })
 
     historical_weather_basis_for_probability <- function(target_p) {
+      ctx <- decomp_context()
+      if (!is.null(ctx) && !is.null(ctx$adverse_bases)) {
+        key <- if (is.null(target_p)) "mean" else if (identical(target_p, 0.20)) "adverse_5" else if (identical(target_p, 0.10)) "adverse_10" else "adverse_20"
+        cached <- if (exists(".decomposition_context_adverse_basis",
+                            mode = "function")) {
+          .decomposition_context_adverse_basis(ctx, key)
+        } else ctx$adverse_bases[[key]]
+        if (!is.null(cached)) return(cached)
+      }
       hs <- baseline_hist_sim()
       if (is.null(hs) || is.null(hs$weather_raw)) return(NULL)
       raw <- step2_resolve_weather(hs$weather_raw, hs)
@@ -224,6 +275,14 @@ mod_3_09_decomposition_server <- function(id,
 
     decomp_for_basis <- function(basis) {
       if (identical(basis, "mean")) return(decomp_result())
+      ctx <- decomp_context()
+      cached_result <- if (!is.null(ctx)) {
+        key <- if (identical(basis, "adverse_10")) "adverse_10" else "adverse_20"
+        if (exists(".decomposition_context_adverse_result", mode = "function")) {
+          .decomposition_context_adverse_result(ctx, key)
+        } else ctx$adverse_decompositions[[key]]
+      } else NULL
+      if (!is.null(cached_result)) return(cached_result)
       hs <- baseline_hist_sim()
       svy_b <- baseline_svy(); svy_p <- policy_svy(); mf <- model_fit()
       if (is.null(hs) || is.null(svy_b) || is.null(svy_p) || is.null(mf)) return(decomp_result())
@@ -231,7 +290,9 @@ mod_3_09_decomposition_server <- function(id,
         decompose_policy_effect(
           svy_baseline = svy_b, svy_policy = svy_p, model_fit = mf,
           so = hs$so, weather_raw = historical_weather_for_basis(basis),
-          skip_coef = !isTRUE(show_coef_uncertainty())
+          skip_coef = !isTRUE(show_coef_uncertainty()),
+          context = decomp_context(),
+          run_identity = if (!is.null(decomp_context())) decomp_context()$run_identity else NULL
         ),
         error = function(e) decomp_result()
       )
@@ -324,7 +385,7 @@ mod_3_09_decomposition_server <- function(id,
         res <- selected_decomp_result()
         if (is.null(res) || !is.data.frame(res) || nrow(res) == 0) return(NULL)
           plot_decomposition_channels_by_decile(
-            decomposition_channels_by_decile(res, baseline_svy(), so()$name %||% "welfare", is_rif()),
+            decomposition_channels_by_decile(res, baseline_svy(), so()$name %||% "welfare", is_rif(), baseline_deciles()),
             is_rif()
         )
       },
@@ -340,7 +401,7 @@ mod_3_09_decomposition_server <- function(id,
       step = 3L,
        fun = function() decomposition_decile_export(
           decomposition_channels_by_decile(
-            selected_decomp_result(), baseline_svy(), so()$name %||% "welfare", is_rif()
+            selected_decomp_result(), baseline_svy(), so()$name %||% "welfare", is_rif(), baseline_deciles()
          ),
          is_rif()
        ),
@@ -376,7 +437,7 @@ mod_3_09_decomposition_server <- function(id,
       }
       if (is.null(res) || !is.data.frame(res) || !nrow(res)) return(tibble::tibble())
       decomposition_channels_by_decile(
-        res, baseline_svy(), outcome$name %||% "welfare", is_rif()
+        res, baseline_svy(), outcome$name %||% "welfare", is_rif(), baseline_deciles()
       )
     })
 
@@ -497,24 +558,15 @@ mod_3_09_decomposition_server <- function(id,
     technical_decomp_table <- reactive({
       bases <- list(
         `Mean weather` = decomp_result(),
-        `Adverse 1-in-5` = tryCatch(
-          decompose_policy_effect(
-            baseline_svy(), policy_svy(), model_fit(), baseline_hist_sim()$so,
-            weather_raw = historical_weather_basis_for_probability(0.20),
-            skip_coef = !isTRUE(show_coef_uncertainty())
-          ), error = function(e) NULL),
-        `Adverse 1-in-10` = tryCatch(
-          decompose_policy_effect(
-            baseline_svy(), policy_svy(), model_fit(), baseline_hist_sim()$so,
-            weather_raw = historical_weather_basis_for_probability(0.10),
-            skip_coef = !isTRUE(show_coef_uncertainty())
-          ), error = function(e) NULL),
-        `Adverse 1-in-20` = tryCatch(
-          decompose_policy_effect(
-            baseline_svy(), policy_svy(), model_fit(), baseline_hist_sim()$so,
-            weather_raw = historical_weather_basis_for_probability(0.05),
-            skip_coef = !isTRUE(show_coef_uncertainty())
-          ), error = function(e) NULL)
+        `Adverse 1-in-5` = .decomposition_context_adverse_result(
+          decomp_context(), "adverse_5"
+        ),
+        `Adverse 1-in-10` = .decomposition_context_adverse_result(
+          decomp_context(), "adverse_10"
+        ),
+        `Adverse 1-in-20` = .decomposition_context_adverse_result(
+          decomp_context(), "adverse_20"
+        )
       )
       .build_decomp_table_by_basis(bases, is_rif())
     })

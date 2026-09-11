@@ -352,3 +352,35 @@ test_that("central kernel preserves no-interaction warning and fallbacks", {
   )
   expect_identical(out$hist_sim$pipeline, pipe)
 })
+
+test_that("context identity failures propagate without returning unchanged pipelines", {
+  set.seed(1401)
+  n <- 20L
+  baseline <- data.frame(
+    hhid = seq_len(n), welfare = exp(rnorm(n)), temp = rnorm(n, 25),
+    electricity = rep(0:1, length.out = n)
+  )
+  policy <- baseline
+  policy$electricity <- 1L
+  fit <- lm(log(welfare) ~ temp * electricity, data = baseline)
+  model_fit <- list(
+    engine = "fixest", fit3 = fit, weather_terms = "temp",
+    train_data = baseline
+  )
+  so <- list(name = "welfare", transform = "log")
+  context <- .build_decomposition_context(
+    baseline, policy, model_fit, so, run_identity = "run-a"
+  )
+  pipe <- list(
+    y_point = unname(predict(fit)), svy_row_id = seq_len(n),
+    weather_raw = data.frame(temp = 25)
+  )
+  expect_error(
+    apply_policy_delta_to_baseline(
+      baseline, policy, model_fit, so,
+      hist_sim_baseline = list(pipeline = pipe),
+      decomp_context = context, run_identity = "run-b"
+    ),
+    "run identity mismatch"
+  )
+})

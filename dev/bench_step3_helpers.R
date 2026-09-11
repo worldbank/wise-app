@@ -88,7 +88,8 @@
 
 .bench_step3_decompose_future <- function(policy_result, svy_baseline,
                                           svy_policy, model_fit, so,
-                                          skip_coef, deltas, F_hat) {
+                                          skip_coef, deltas, F_hat, context,
+                                          run_identity) {
   rows <- list()
   for (scenario_name in names(policy_result$saved_scenarios)) {
     scenario <- policy_result$saved_scenarios[[scenario_name]]
@@ -111,7 +112,9 @@
         weather_raw = weather_slice,
         skip_coef = skip_coef,
         deltas = deltas,
-        F_hat = F_hat
+        F_hat = F_hat,
+        context = context,
+        run_identity = run_identity
       )
       if (is.null(value)) {
         stop("Future effect decomposition produced no results.", call. = FALSE)
@@ -178,6 +181,7 @@
   future_decomposition_seconds <- NA_real_
   results_aggregation_seconds <- NA_real_
   svy_policy <- policy_result <- historical_decomposition <- NULL
+  decomp_context <- NULL
   future_decomposition <- data.frame()
   aggregations <- list()
 
@@ -220,6 +224,20 @@
                  so$name %in% names(model_fit$train_data)) {
       stats::ecdf(model_fit$train_data[[so$name]])
     } else NULL
+    run_identity <- paste0("bench-generation-", identity$repetition)
+    decomp_context <- .build_decomposition_context(
+      svy_baseline, svy_policy, model_fit, so, deltas, skip_coef, F_hat,
+      run_identity = run_identity,
+      weather_panels = Filter(Negate(is.null), c(
+        list(step2_resolve_weather(hist_sim$weather_raw, hist_sim)),
+        unlist(lapply(saved_scenarios, function(x) {
+          raw <- step2_resolve_weather(x$weather_raw, x)
+          if (is.null(raw) || !"timestamp" %in% names(raw)) return(list(raw))
+          split(raw, as.integer(format(raw$timestamp, "%Y")))
+        }), recursive = FALSE)
+      )),
+      adverse_decompositions = list(adverse_10 = data.frame())
+    )
 
     t0 <- proc.time()[["elapsed"]]
     policy_result <- apply_policy_delta_to_baseline(
@@ -231,7 +249,9 @@
       saved_scenarios_baseline = saved_scenarios,
       skip_coef = skip_coef,
       deltas = deltas,
-      F_hat = F_hat
+      F_hat = F_hat,
+      decomp_context = decomp_context,
+      run_identity = run_identity
     )
     analytic_delta_seconds <- proc.time()[["elapsed"]] - t0
     if (is.null(policy_result)) {
@@ -247,8 +267,8 @@
       so = so,
       weather_raw = step2_resolve_weather(hist_sim$weather_raw, hist_sim),
       skip_coef = skip_coef,
-      deltas = deltas,
-      F_hat = F_hat
+      deltas = deltas, F_hat = F_hat,
+      context = decomp_context, run_identity = run_identity
     )
     historical_decomposition_seconds <- proc.time()[["elapsed"]] - t0
     if (is.null(historical_decomposition)) {
@@ -259,10 +279,18 @@
     t0 <- proc.time()[["elapsed"]]
     future_decomposition <- .bench_step3_decompose_future(
       policy_result, svy_baseline, svy_policy, model_fit, so, skip_coef,
-      deltas, F_hat
+      deltas, F_hat, decomp_context, run_identity
     )
     future_decomposition_seconds <- proc.time()[["elapsed"]] - t0
     rss_sample_fn(rss_state)
+
+    # Exercise the same cached consumers used by the decomposition and export
+    # panes so benchmark counters report observed accesses, not scenario shape.
+    if (!is.null(decomp_context)) {
+      .decomposition_context_baseline_deciles(decomp_context)
+      .decomposition_context_adverse_basis(decomp_context, "mean")
+      .decomposition_context_adverse_result(decomp_context, "adverse_10")
+    }
 
     t0 <- proc.time()[["elapsed"]]
     aggregations <- .bench_step3_aggregate(
@@ -354,6 +382,18 @@
       NA_integer_
     } else nrow(historical_decomposition),
     n_future_decomposition_rows = nrow(future_decomposition),
+    context_hazard_cache_hits = if (is.null(decomp_context)) NA_integer_ else
+      .decomposition_context_counter(decomp_context, "hazard_cache_hits", NA_integer_),
+    context_adverse_cache_hits = if (is.null(decomp_context)) NA_integer_ else
+      .decomposition_context_counter(decomp_context, "adverse_result_cache_hits", NA_integer_),
+    context_fixed_decile_reuses = if (is.null(decomp_context)) NA_integer_ else
+      .decomposition_context_counter(decomp_context, "fixed_decile_reuses", NA_integer_),
+    context_rif_invariant_reuses = if (is.null(decomp_context)) NA_integer_ else
+      .decomposition_context_counter(decomp_context, "rif_invariant_reuses", NA_integer_),
+    context_term_map_reuses = if (is.null(decomp_context)) NA_integer_ else
+      .decomposition_context_counter(decomp_context, "term_map_reuses", NA_integer_),
+    context_delta_reuses = if (is.null(decomp_context)) NA_integer_ else
+      .decomposition_context_counter(decomp_context, "delta_reuses", NA_integer_),
     output_fingerprint_sha256 = fingerprint,
     stringsAsFactors = FALSE
   )

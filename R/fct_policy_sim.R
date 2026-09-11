@@ -1351,10 +1351,14 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
                                             saved_scenarios_baseline = list(),
                                             skip_coef = FALSE,
                                             deltas    = NULL,
-                                            F_hat     = NULL) {
+                                            F_hat     = NULL,
+                                            decomp_context = NULL,
+                                            run_identity = NULL) {
   if (is.null(svy_baseline) || is.null(svy_policy) ||
       is.null(model_fit) || is.null(so) ||
       is.null(hist_sim_baseline)) return(NULL)
+  if (!is.null(decomp_context) && is.null(run_identity))
+    stop("Current run identity is required.", call. = FALSE)
 
   shared_context <- hist_sim_baseline$shared_context %||% list()
 
@@ -1373,17 +1377,25 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
   # needs only the central correction, not the full decomposition data frame
   # or channel uncertainty vectors.
   delta_for <- function(weather_raw) {
-    tryCatch(
-      .policy_central_delta(
+      tryCatch(
+        .policy_central_delta(
         svy_baseline = svy_baseline,
         svy_policy   = svy_policy,
         model_fit    = model_fit,
         so           = so,
         weather_raw  = weather_raw,
         deltas       = deltas,
-        F_hat        = F_hat
+        F_hat        = F_hat,
+          context      = decomp_context,
+          run_identity = run_identity
       ),
       error = function(e) {
+        if (grepl(
+          "Current run identity|run identity mismatch|decomposition context|Incompatible or stale",
+          conditionMessage(e), ignore.case = TRUE
+        )) {
+          stop(e)
+        }
         warning("[apply_policy_delta_to_baseline] central policy kernel ",
                 "failed: ", conditionMessage(e))
         NULL

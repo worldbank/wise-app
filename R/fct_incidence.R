@@ -107,10 +107,11 @@ step2_incidence_by_decile <- function(svy, outcome, hist_pipeline,
     )
 }
 
-step3_incidence_by_decile <- function(decomp, svy, outcome) {
+step3_incidence_by_decile <- function(decomp, svy, outcome,
+                                      baseline_deciles = NULL) {
   if (is.null(decomp) || !nrow(decomp) || is.null(svy)) return(data.frame())
   weight_col <- baseline_weight_column(svy)
-  deciles <- weighted_baseline_deciles(svy, outcome, weight_col)
+  deciles <- baseline_deciles %||% weighted_baseline_deciles(svy, outcome, weight_col)
   if (!"id" %in% names(decomp)) decomp$id <- seq_len(nrow(decomp))
   decomp$decile <- deciles[as.integer(decomp$id)]
   decomp$weight <- if ("weight" %in% names(decomp)) decomp$weight else
