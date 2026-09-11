@@ -97,11 +97,17 @@ test_that("compact mode preserves science and member-specific weather", {
   expect_identical(compact$n_keys_ok, legacy$n_keys_ok)
   expect_identical(compact$failures, legacy$failures)
   expect_identical(
-    compact$new_scenarios[[1L]]$pipelines$ensemble_mean$weather_raw$temp,
+    step2_resolve_weather(
+      compact$new_scenarios[[1L]]$pipelines$ensemble_mean$weather_raw,
+      compact$new_scenarios[[1L]]
+    )$temp,
     2
   )
   expect_identical(
-    compact$new_scenarios[[1L]]$pipelines$ensemble_hi$weather_raw$temp,
+    step2_resolve_weather(
+      compact$new_scenarios[[1L]]$pipelines$ensemble_hi$weather_raw,
+      compact$new_scenarios[[1L]]
+    )$temp,
     3
   )
 })
@@ -236,6 +242,53 @@ test_that("plain weather data frames pass through without schema warnings", {
     NA
   )
   expect_identical(resolved, weather)
+})
+
+test_that("shared weather ownership validates keys and keeps member values", {
+  keys <- data.frame(
+    code = c("TST", "TST"), year = c(2020L, 2020L), survname = "SRV",
+    loc_id = c("a", "b"), timestamp = as.POSIXct(c("2030-01-01", "2030-02-01")),
+    temp = c(1, 2), stringsAsFactors = FALSE
+  )
+  hi <- keys
+  hi$temp <- c(3, 4)
+  shared <- step2_weather_share_members(list(keys, hi))
+  owner <- list(weather_shared = shared$shared)
+  expect_identical(step2_weather_resolve_shared(shared$members[[1L]], owner)$temp, c(1, 2))
+  expect_identical(step2_weather_resolve_shared(shared$members[[2L]], owner)$temp, c(3, 4))
+  expect_error(step2_weather_resolve_shared(shared$members[[1L]]), "owning key")
+  changed <- hi
+  changed$loc_id[[2L]] <- "different"
+  expect_null(step2_weather_share_members(list(keys, changed))$shared)
+})
+
+test_that("weather collection policy falls back only when fast exceeds budget", {
+  withr::local_envvar(c(
+    WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB = "1",
+    WISEAPP_STEP2_WEATHER_RSS_MEASURE = "1"
+  ))
+  policy <- .wx_collection_policy(2 * 1024^2, "fast")
+  expect_identical(policy$effective, "bounded")
+  expect_true(policy$fallback)
+  expect_true(is.numeric(policy$external_rss_before))
+  expect_identical(.wx_collection_policy(2 * 1024^2, "bounded")$effective, "bounded")
+  withr::local_envvar(WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB = "4096")
+  expect_identical(.wx_collection_policy(2 * 1024^2, "fast")$effective, "fast")
+})
+
+test_that("observed RSS guard records bounded producer evidence", {
+  withr::local_envvar(WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB = "4096")
+  policy <- .wx_collection_policy(1, "fast")
+  guard <- .wx_collection_rss_guard(policy)
+  expect_true(is.numeric(guard$rss))
+  expect_false(guard$exceeded)
+})
+
+test_that("RSS guard activates when observed process-tree RSS exceeds budget", {
+  withr::local_envvar(WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB = "0.000001")
+  policy <- .wx_collection_policy(1, "fast")
+  guard <- .wx_collection_rss_guard(policy)
+  expect_true(guard$exceeded)
 })
 
 test_that("reference weather storage preserves member-specific payloads", {

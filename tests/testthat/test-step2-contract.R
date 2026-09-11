@@ -38,7 +38,8 @@ step2_contract_pipeline <- function(weather_raw, ...) {
   )
 }
 
-step2_contract_run <- function(weather_result = step2_contract_weather(), ...) {
+step2_contract_run <- function(weather_result = step2_contract_weather(),
+                               weather_fn = NULL, ...) {
   fct_run_simulation(
     sw = data.frame(name = "temp", stringsAsFactors = FALSE),
     so = data.frame(
@@ -65,11 +66,50 @@ step2_contract_run <- function(weather_result = step2_contract_weather(), ...) {
     stored_breaks = NULL,
     notify_fn = function(...) invisible(NULL),
     progress_fn = function(...) invisible(NULL),
-    weather_fn = function(...) weather_result,
+    weather_fn = weather_fn %||% function(...) weather_result,
     pipeline_fn = step2_contract_pipeline,
     ...
   )
 }
+
+test_that("callback weather consumption preserves producer order", {
+  frames <- step2_contract_weather()
+  loader <- function(weather_consumer, ...) {
+    for (key in names(frames)) weather_consumer(key, frames[[key]])
+    list()
+  }
+  result <- suppressWarnings(do.call(
+    step2_contract_run,
+    c(list(weather_result = frames), list(weather_fn = loader))
+  ))
+  expect_identical(result$n_keys, 3L)
+  expect_identical(names(result$new_scenarios[[1L]]$pipelines),
+                   c("ensemble_mean", "ensemble_hi"))
+})
+
+test_that("callback consumer receives one bounded member at a time", {
+  frames <- step2_contract_weather()
+  seen <- character(0)
+  metadata_seen <- list()
+  loader <- function(weather_consumer, ...) {
+    for (key in names(frames)) {
+      metadata <- list(order = length(seen) + 1L,
+                       collection = "bounded", buffered_members = 1L)
+      metadata_seen[[length(metadata_seen) + 1L]] <<- metadata
+      weather_consumer(key, frames[[key]], metadata)
+      seen <<- c(seen, key)
+    }
+    list()
+  }
+  result <- suppressWarnings(do.call(
+    step2_contract_run,
+    c(list(weather_result = frames), list(weather_fn = loader))
+  ))
+  expect_identical(result$n_keys, 3L)
+  expect_identical(seen, names(frames))
+  expect_identical(vapply(metadata_seen, `[[`, integer(1), "buffered_members"),
+                   rep.int(1L, 3L))
+})
 
 test_that("Step 2 top-level result contract is stable", {
   result <- suppressWarnings(step2_contract_run())
@@ -114,8 +154,9 @@ test_that("historical and scenario payload contracts preserve key fields", {
   expect_identical(
     names(scenario),
     c(
-      "pipelines", "weather_raw", "chol_obj", "so", "year_range",
-       "n_models", "n_models_requested", "residuals", "shared_context"
+       "pipelines", "weather_raw", "chol_obj", "so", "year_range",
+        "n_models", "n_models_requested", "residuals", "weather_shared",
+        "shared_context"
     )
   )
   expect_identical(scenario$year_range, c("2030", "2040"))
@@ -127,14 +168,19 @@ test_that("historical and scenario payload contracts preserve key fields", {
 test_that("scenario pipelines retain model-specific weather payloads", {
   result <- suppressWarnings(step2_contract_run())
   pipelines <- result$new_scenarios[["SSP2-4.5 / 2030-2040"]]$pipelines
+  scenario <- result$new_scenarios[["SSP2-4.5 / 2030-2040"]]
 
   expect_setequal(names(pipelines), c("ensemble_mean", "ensemble_hi"))
   expect_false(identical(
-    pipelines$ensemble_mean$weather_raw$temp,
-    pipelines$ensemble_hi$weather_raw$temp
+    step2_resolve_weather(pipelines$ensemble_mean$weather_raw, scenario)$temp,
+    step2_resolve_weather(pipelines$ensemble_hi$weather_raw, scenario)$temp
   ))
-  expect_identical(pipelines$ensemble_mean$weather_raw$temp, 2)
-  expect_identical(pipelines$ensemble_hi$weather_raw$temp, 3)
+  expect_identical(
+    step2_resolve_weather(pipelines$ensemble_mean$weather_raw, scenario)$temp, 2
+  )
+  expect_identical(
+    step2_resolve_weather(pipelines$ensemble_hi$weather_raw, scenario)$temp, 3
+  )
 })
 
 test_that("per-pipeline vector and row alignment contract is stable", {

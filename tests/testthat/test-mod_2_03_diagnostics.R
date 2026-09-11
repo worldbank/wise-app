@@ -39,3 +39,22 @@ test_that("diagnostics tab is appended, removed on clear, re-appended on rerun",
     }
   )
 })
+
+test_that("diagnostics accepts absent scenarios without eager forcing", {
+  skip_if_not_installed("shiny")
+  hist_sim <- shiny::reactiveVal(NULL)
+  shiny::testServer(
+    mod_2_03_diagnostics_server,
+    args = list(
+      id = "diagnostics", hist_sim = hist_sim, saved_scenarios = NULL,
+      survey_weather = shiny::reactiveVal(NULL),
+      selected_weather = shiny::reactiveVal(NULL), tabset_id = "tabs"
+    ),
+    {
+      session$flushReact()
+      expect_false(diag_tab_added())
+      hist_sim(list(run = 1L)); session$flushReact()
+      expect_true(diag_tab_added())
+    }
+  )
+})

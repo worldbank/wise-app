@@ -1,4 +1,69 @@
 # Phase 4 shared-context and compact-payload helpers.
+#
+# Weather ownership contract (W2-B): get_weather() owns production of one
+# canonical key in the order emitted; fct_run_simulation() owns consumption and
+# publishes either an ordinary data frame, a shared-key descriptor, or a signed
+# reference. Consumers call step2_resolve_weather() at their boundary. A shared
+# descriptor never owns the key frame itself: its owner (the scenario) owns
+# `weather_shared`, while the descriptor owns only member-specific values. This
+# keeps Step 3's per-member weather and failure/order ledger intact without
+# silently substituting a representative member.
+
+STEP2_WEATHER_KEY_COLUMNS <- c(
+  "code", "year", "survname", "loc_id", "timestamp"
+)
+
+step2_weather_share_members <- function(members,
+                                        key_columns = STEP2_WEATHER_KEY_COLUMNS) {
+  if (!is.list(members) || !length(members)) return(list(shared = NULL, members = members))
+  frames <- lapply(members, function(x) {
+    if (!is.data.frame(x)) return(NULL)
+    if (!all(key_columns %in% names(x))) return(NULL)
+    x[, key_columns, drop = FALSE]
+  })
+  if (any(vapply(frames, is.null, logical(1)))) {
+    return(list(shared = NULL, members = members))
+  }
+  same_keys <- all(vapply(frames[-1L], function(x) identical(x, frames[[1L]]),
+                          logical(1)))
+  if (!same_keys) return(list(shared = NULL, members = members))
+
+  shared <- frames[[1L]]
+  descriptors <- lapply(members, function(x) {
+    value_columns <- setdiff(names(x), key_columns)
+    list(
+      schema = 2L,
+      kind = "shared-weather-member",
+      value_columns = value_columns,
+      column_order = names(x),
+      values = x[, value_columns, drop = FALSE]
+    )
+  })
+  list(
+    shared = list(schema = 2L, kind = "shared-weather-keys",
+                  key_columns = key_columns, keys = shared),
+    members = descriptors
+  )
+}
+
+step2_weather_resolve_shared <- function(value, owner = NULL) {
+  if (!is.list(value) || !identical(value$schema, 2L) ||
+      !identical(value$kind, "shared-weather-member")) return(NULL)
+  shared <- owner$weather_shared %||% NULL
+  if (is.null(shared) || !identical(shared$schema, 2L) ||
+      !identical(shared$kind, "shared-weather-keys")) {
+    stop("Shared Step 2 weather member has no valid owning key frame.", call. = FALSE)
+  }
+  keys <- shared$keys
+  values <- value$values
+  if (!is.data.frame(keys) || !is.data.frame(values) ||
+      nrow(keys) != nrow(values)) {
+    stop("Shared Step 2 weather member has incompatible row counts.", call. = FALSE)
+  }
+  out <- cbind(keys, values[, setdiff(names(values), names(keys)), drop = FALSE])
+  column_order <- value$column_order %||% names(out)
+  out[, intersect(column_order, names(out)), drop = FALSE]
+}
 
 step2_weather_store_dir <- function(run_id, root = NULL) {
   root <- root %||% Sys.getenv("WISEAPP_STEP2_WEATHER_STORE_DIR")
@@ -65,6 +130,10 @@ step2_weather_reference <- function(value, expected_signature = NULL) {
 }
 
 step2_resolve_weather <- function(value, owner = NULL) {
+  if (is.list(value) && identical(value$schema, 2L) &&
+      identical(value$kind, "shared-weather-member")) {
+    return(step2_weather_resolve_shared(value, owner))
+  }
   signature <- owner$weather_signature %||% owner$signature %||% NULL
   step2_weather_reference(value, signature)
 }

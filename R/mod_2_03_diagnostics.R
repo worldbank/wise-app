@@ -119,7 +119,7 @@ mod_2_03_diagnostics_ui <- function(id) {
 #' @noRd
 mod_2_03_diagnostics_server <- function(id,
                                          hist_sim,
-                                         saved_scenarios,
+                                         saved_scenarios = NULL,
                                          selected_hist = NULL,
                                          survey_weather,
                                          selected_weather,
@@ -149,12 +149,50 @@ mod_2_03_diagnostics_server <- function(id,
 
     # ---- Reactive computations ---------------------------------------------
 
+    diagnostic_cache_key <- NULL
+    diagnostic_cache_value <- NULL
+    diagnostic_generation <- reactiveVal(0L)
+    if (is.function(hist_sim)) {
+      observeEvent(hist_sim(), {
+        diagnostic_cache_key <<- NULL
+        diagnostic_cache_value <<- NULL
+        diagnostic_generation(diagnostic_generation() + 1L)
+      }, ignoreInit = FALSE)
+    }
+    # saved_scenarios is intentionally read only when a diagnostic output is
+    # requested. This avoids forcing an optional reactive during module setup.
     scenario_weather_data <- reactive({
+      generation <- diagnostic_generation()
       sc <- if (!is.null(saved_scenarios)) saved_scenarios() else list()
       if (length(sc) == 0) return(NULL)
-      out <- lapply(sc, function(e) step2_resolve_weather(e$weather_raw, e))
+      vars <- input$diag_weather_vars %||% character(0)
+      active <- active_weather_scenarios()
+      visible <- names(sc)
+      if (!is.null(active)) visible <- intersect(visible, active)
+      scenario_signature <- lapply(sc[visible], function(e) {
+        list(
+          signature = e$weather_signature %||% e$signature %||% NULL,
+          file = if (is.list(e$weather_raw)) e$weather_raw$file else NULL,
+          schema = if (is.list(e$weather_raw)) e$weather_raw$schema else NULL
+        )
+      })
+      cache_key <- digest::digest(list(generation, visible, vars,
+                                       scenario_signature))
+      if (identical(cache_key, diagnostic_cache_key))
+        return(diagnostic_cache_value)
+      out <- lapply(sc[visible], function(e) {
+        raw <- step2_resolve_weather(e$weather_raw, e)
+        if (is.null(raw) || !is.data.frame(raw)) return(NULL)
+        keep <- unique(c(intersect(STEP2_WEATHER_KEY_COLUMNS, names(raw)),
+                         intersect(vars, names(raw))))
+        raw[, keep, drop = FALSE]
+      })
+      names(out) <- visible
       out <- Filter(Negate(is.null), out)
-      if (length(out) == 0) NULL else out
+      out <- if (length(out)) out else NULL
+      diagnostic_cache_key <<- cache_key
+      diagnostic_cache_value <<- out
+      out
     })
 
     # ---- renderUI / render* outputs ----------------------------------------

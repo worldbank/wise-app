@@ -37,6 +37,67 @@
 
 WISEAPP_WX_CACHE_VERSION <- "v1"
 
+# `rss` is deliberately measured through an external `ps` process. R's
+# `gc()`/object.size() do not include DuckDB children or allocator-retained
+# pages, so they are not safe gates for a deployment memory budget.
+.wx_process_tree_rss_bytes <- function(pid = Sys.getpid()) {
+  rows <- tryCatch(system2("ps", c("-axo", "pid=,ppid=,rss="), stdout = TRUE),
+                   error = function(e) character())
+  if (!length(rows)) return(NA_real_)
+  fields <- strsplit(trimws(rows), "[[:space:]]+")
+  tab <- do.call(rbind, lapply(fields, function(x) {
+    if (length(x) < 3L) return(c(NA, NA, NA))
+    as.numeric(x[1:3])
+  }))
+  tab <- tab[stats::complete.cases(tab), , drop = FALSE]
+  if (!nrow(tab)) return(NA_real_)
+  pids <- as.numeric(pid)
+  repeat {
+    children <- tab[tab[, 2L] %in% pids, 1L]
+    new <- setdiff(children, pids)
+    if (!length(new)) break
+    pids <- c(pids, new)
+  }
+  sum(tab[tab[, 1L] %in% pids, 3L], na.rm = TRUE) * 1024
+}
+
+.wx_estimate_weather_bytes <- function(survey_data, selected_weather, dates,
+                                       ssp = NULL, future_period = NULL) {
+  n_loc <- if ("loc_id" %in% names(survey_data))
+    length(unique(survey_data$loc_id[!is.na(survey_data$loc_id)])) else nrow(survey_data)
+  n_dates <- max(1L, length(unique(as.character(dates))))
+  n_periods <- if (is.null(future_period)) 0L else length(future_period)
+  n_members <- if (is.null(ssp)) 0L else max(1L, length(ssp)) * 16L
+  n_rows <- n_loc * n_dates * (1 + n_members * max(1L, n_periods))
+  n_cols <- length(unique(c(STEP2_WEATHER_KEY_COLUMNS, selected_weather$name)))
+  as.numeric(n_rows) * n_cols * 8 * 1.5
+}
+
+.wx_collection_policy <- function(estimated_bytes, requested = c("fast", "bounded")) {
+  requested <- match.arg(requested)
+  budget_mb <- suppressWarnings(as.numeric(Sys.getenv(
+    "WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB", "4096")))
+  if (!is.finite(budget_mb) || budget_mb <= 0) budget_mb <- 4096
+  budget <- budget_mb * 1024^2
+  fallback <- identical(requested, "fast") && is.finite(estimated_bytes) &&
+    estimated_bytes > budget
+  measure_rss <- isTRUE(Sys.getenv("WISEAPP_STEP2_WEATHER_RSS_MEASURE") %in%
+                          c("1", "true", "TRUE"))
+  list(requested = requested, effective = if (fallback) "bounded" else requested,
+       estimated_bytes = estimated_bytes, budget_bytes = budget,
+       fallback = fallback,
+       external_rss_before = if (measure_rss) .wx_process_tree_rss_bytes() else NULL)
+}
+
+.wx_collection_rss_guard <- function(policy) {
+  rss <- .wx_process_tree_rss_bytes()
+  list(
+    rss = rss,
+    exceeded = is.finite(rss) && is.finite(policy$budget_bytes) &&
+      rss > policy$budget_bytes
+  )
+}
+
 .weather_cache_dir <- function() {
   base <- Sys.getenv("WISEAPP_WEATHER_CACHE_DIR")
   if (!nzchar(base)) {
@@ -585,7 +646,8 @@ get_weather <- function(
   weather_source       = "era5land",
   proj_source          = "cmip6",
   stored_breaks        = NULL,
-  weather_collect      = c("fast", "bounded")
+  weather_collect      = c("fast", "bounded"),
+  weather_consumer     = NULL
 ) {
 
   # -- Pin DuckDB to single thread for floating-point determinism ------------
@@ -599,6 +661,32 @@ get_weather <- function(
   # -- Validate ---------------------------------------------------------------
   climate_scenario <- !is.null(ssp)
   weather_collect <- match.arg(weather_collect)
+  collection_policy <- .wx_collection_policy(
+    .wx_estimate_weather_bytes(survey_data, selected_weather, dates, ssp,
+                               future_period), weather_collect
+  )
+  weather_collect <- collection_policy$effective
+  if (is.function(weather_consumer)) {
+    # Callback consumers must never wait for a whole period to materialise.
+    # The legacy fast return path remains available when no consumer is used.
+    weather_collect <- "bounded"
+    collection_policy$effective <- "bounded"
+    collection_policy$consumer_bounded <- TRUE
+  } else {
+    collection_policy$consumer_bounded <- FALSE
+  }
+  collection_policy$rss_guard_activated <- FALSE
+  if (!is.null(collection_policy$external_rss_before) &&
+      is.finite(collection_policy$external_rss_before) &&
+      collection_policy$external_rss_before + collection_policy$estimated_bytes >
+        collection_policy$budget_bytes) {
+    weather_collect <- "bounded"
+    collection_policy$effective <- "bounded"
+    collection_policy$rss_guard_activated <- TRUE
+    collection_policy$fallback_reason <-
+      "observed_process_tree_rss_plus_estimate_exceeded_budget"
+  }
+  collection_policy$buffered_member_peak <- 0L
 
   if (climate_scenario) {
     stopifnot(
@@ -809,7 +897,6 @@ get_weather <- function(
     dplyr::filter(timestamp %in% !!dates) |>
     dplyr::arrange(code, year, survname, loc_id, timestamp) |>
     dplyr::collect()
-
   # -- Binning setup ----------------------------------------------------------
   # Determine whether any variables require binning.  Guard against
 
@@ -852,6 +939,13 @@ get_weather <- function(
 
     # Apply to historical slice immediately
     result[["historical"]] <- .apply_binning(result[["historical"]], stored_breaks)
+  }
+
+  emitted_order <- 0L
+  if (is.function(weather_consumer)) {
+    emitted_order <- emitted_order + 1L
+    weather_consumer("historical", result[["historical"]],
+                     list(order = emitted_order, is_historical = TRUE))
   }
 
   # -- Climate perturbation ---------------------------------------------------
@@ -1192,7 +1286,7 @@ get_weather <- function(
               ") models ORDER BY model"
             )
           )$model
-          model_out <- list()
+          model_out <- if (is.function(weather_consumer)) NULL else list()
           for (model_name in model_names) {
             model_df <- rolled |>
               dplyr::filter(model == !!model_name) |>
@@ -1204,12 +1298,45 @@ get_weather <- function(
               next
             }
             if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
-            model_out[[paste0(ssp_i, "_", fp_label, "_", make.names(model_name))]] <- model_df
-            rm(model_df)
+            member_key <- paste0(ssp_i, "_", fp_label, "_", make.names(model_name))
+            collection_policy$buffered_member_peak <- max(
+              collection_policy$buffered_member_peak, 1L
+            )
+            if (is.function(weather_consumer)) {
+              guard <- .wx_collection_rss_guard(collection_policy)
+              if (isTRUE(guard$exceeded)) {
+                collection_policy$rss_guard_activated <<- TRUE
+                collection_policy$effective <<- "bounded"
+                collection_policy$fallback_reason <<-
+                  "observed_process_tree_rss_exceeded_budget"
+              }
+              emitted_order <<- emitted_order + 1L
+              weather_consumer(
+                member_key, model_df,
+                list(order = emitted_order, is_historical = FALSE,
+                     ssp = ssp_i, period = fp_label,
+                     collection = "bounded",
+                     rss_bytes = guard$rss,
+                     budget_exceeded = guard$exceeded,
+                     buffered_members = 1L)
+              )
+              rm(model_df)
+              gc(verbose = FALSE)
+            } else {
+              model_out[[member_key]] <- model_df
+            }
           }
           model_out
         }
-        out <- c(out, period_out)
+        if (!is.function(weather_consumer)) out <- c(out, period_out)
+        if (is.function(weather_consumer) && length(period_out)) {
+          invisible(lapply(names(period_out), function(key) {
+            emitted_order <<- emitted_order + 1L
+            weather_consumer(key, period_out[[key]],
+                             list(order = emitted_order, is_historical = FALSE,
+                                  ssp = ssp_i, period = fp_label))
+          }))
+        }
 
         # All returned frames are now detached from the query intermediates.
         .drop_period_tables(tmp_delta_name, tmp_perturb_name, tmp_roll_name)
@@ -1251,6 +1378,10 @@ get_weather <- function(
   if (!is.null(continuous_hist)) {
     attr(result, "continuous_weather") <- continuous_hist
   }
+
+  if (!is.null(collection_policy$external_rss_before))
+    collection_policy$external_rss_after <- .wx_process_tree_rss_bytes()
+  attr(result, "weather_collection_policy") <- collection_policy
 
   result
 }
