@@ -630,34 +630,40 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
     ) +
     ggplot2::geom_point(
       ggplot2::aes(x = .data$baseline_val,
-                   shape = .data$series, colour = .data$scenario_key),
-      fill = "#ffffff", stroke = 1.1, size = 3.0, na.rm = TRUE
+                   shape = .data$series, colour = .data$scenario_key,
+                   fill = "Baseline"),
+      stroke = 1.1, size = 3.0, na.rm = TRUE
     ) +
     ggplot2::geom_point(
       ggplot2::aes(x = .data$policy_val,
-                   shape = .data$series, colour = .data$scenario_key),
-      fill = .wise_policy, stroke = 1.0,
+                   shape = .data$series, colour = .data$scenario_key,
+                   fill = "Policy"),
+      stroke = 1.0,
       size = 3.6, na.rm = TRUE
     ) +
      ggplot2::scale_colour_manual(
        values = scenario_colours, breaks = scenario_levels,
-        labels = scenario_levels, name = NULL
+        labels = scenario_levels, name = "Climate scenario and period"
       ) +
+    # Shape mirrors the colour legend (circle = historical, triangle = future),
+    # so its guide is suppressed to avoid a duplicate legend.
     ggplot2::scale_shape_manual(values = c(Historical = 21, Future = 24),
-                                 name = NULL,
-                                 labels = c(Historical = "Historical",
-                                            Future = "Future scenario")) +
+                                 guide = "none") +
       ggplot2::scale_fill_manual(
-        values = scenario_colours, breaks = scenario_levels,
-        labels = scenario_levels, name = NULL,
-        guide = "none"
+        values = c("Baseline" = "#ffffff", "Policy" = .wise_policy),
+        breaks = c("Baseline", "Policy"),
+        name = NULL,
+        guide = ggplot2::guide_legend(
+          order = 2,
+          override.aes = list(shape = 21, colour = .wise_slate, stroke = 1.0)
+        )
       ) +
     ggplot2::annotate(
       "text", x = -Inf,
       y = sort(unique(tbl$rp_y)),
       hjust = -0.08,
       label = levels(droplevels(tbl$rp_label)),
-      size = 3.6, fontface = "bold",
+      size = 4.8, fontface = "bold",
       colour = .wise_slate
     ) +
     ggplot2::labs(
@@ -674,9 +680,7 @@ plot_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
        axis.ticks.y = ggplot2::element_blank()
      ) +
      ggplot2::guides(
-       colour = ggplot2::guide_legend(order = 1),
-       shape = ggplot2::guide_legend(order = 2,
-                                     override.aes = list(colour = .wise_slate))
+       colour = ggplot2::guide_legend(order = 1)
      )
 
   fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
@@ -1112,7 +1116,7 @@ make_step3_decision_table_html <- function(df, subheader = NULL, footnotes = NUL
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-         "Open circles = baseline; filled circles = policy. Marker shape distinguishes historical and future scenarios. Connecting lines show the policy buffer. Horizontal intervals show the selected climate-model spread under the policy."
+         "Open circles = baseline (no policy); red filled circles = policy. Connecting lines show the policy buffer. Horizontal intervals show the selected climate-model spread under the policy."
       )
     ),
 

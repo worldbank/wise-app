@@ -917,7 +917,7 @@ plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
       y = sort(unique(tbl$rp_y)),
       hjust = -0.08,
       label = levels(droplevels(tbl$rp_label)),
-      size = 3.6, fontface = "bold",
+      size = 4.8, fontface = "bold",
       colour = .wise_slate
     ) +
     ggplot2::scale_colour_manual(
@@ -926,10 +926,10 @@ plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
       labels = scenario_levels,
       name = "Climate scenario and period"
     ) +
+    # Shape mirrors the colour legend (circle = historical, triangle = future),
+    # so its guide is suppressed to avoid a duplicate legend.
     ggplot2::scale_shape_manual(values = c(Historical = 21, Future = 24),
-                                 name = NULL,
-                                 labels = c(Historical = "Historical",
-                                            Future = "Future scenario")) +
+                                 guide = "none") +
     ggplot2::scale_fill_manual(values = scenario_colours, guide = "none") +
     ggplot2::labs(
       x = x_label, y = NULL,
@@ -945,8 +945,7 @@ plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
       axis.ticks.y = ggplot2::element_blank()
     ) +
     ggplot2::guides(
-      colour = ggplot2::guide_legend(order = 1),
-      shape = ggplot2::guide_legend(order = 2, override.aes = list(colour = .wise_slate))
+      colour = ggplot2::guide_legend(order = 1)
     )
 
   fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
