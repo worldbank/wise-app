@@ -519,14 +519,16 @@ mod_1_06_model_server <- function(id,
         # INT-01: restore prior force selections when the panel re-renders.
         prev_in  <- shiny::isolate(input[[paste0("force_in_",  role)]])
         prev_out <- shiny::isolate(input[[paste0("force_out_", role)]])
+        in_choices  <- choices[!choices %in% prev_out]
+        out_choices <- choices[!choices %in% prev_in]
 
         tagList(
           tags$strong(role_label),
           shiny::selectizeInput(
             ns(paste0("force_in_", role)),
             label    = "Force include",
-            choices  = choices,
-            selected = .restore_selection(prev_in, choices,
+            choices  = in_choices,
+            selected = .restore_selection(prev_in, in_choices,
                                           fallback = if (length(default_in) > 0) default_in else NULL),
             multiple = TRUE,
             options  = list(placeholder = "Select covariates to force in")
@@ -534,8 +536,8 @@ mod_1_06_model_server <- function(id,
           shiny::selectizeInput(
             ns(paste0("force_out_", role)),
             label    = "Force exclude",
-            choices  = choices,
-            selected = .restore_selection(prev_out, choices, fallback = NULL),
+            choices  = out_choices,
+            selected = .restore_selection(prev_out, out_choices, fallback = NULL),
             multiple = TRUE,
             options  = list(placeholder = "Select covariates to force out")
           ),
@@ -557,10 +559,13 @@ mod_1_06_model_server <- function(id,
 
     # ---- Mutual exclusion between force-include and force-exclude --------
     # When a var is selected as force-include, remove it from force-exclude
-    # choices, and vice versa. Updates run per level.
+    # choices, and vice versa. Target inputs are isolated and repeated target
+    # states are skipped, so an update cannot invalidate its own observer.
     lapply(c("ind", "hh", "firm", "area"), function(role) {
       in_id  <- paste0("force_in_",  role)
       out_id <- paste0("force_out_", role)
+      sent <- new.env(parent = emptyenv())
+      sent$include <- sent$exclude <- NULL
 
       observe({
         if (!show_level(role)) return()
@@ -568,11 +573,16 @@ mod_1_06_model_server <- function(id,
         choices   <- .level_choices(role)
         if (length(choices) == 0) return()
         out_choices <- choices[!choices %in% chosen_in]
-        shiny::updateSelectizeInput(
-          session, out_id,
+        target <- list(
           choices  = out_choices,
-          selected = intersect(input[[out_id]], out_choices)
+          selected = intersect(shiny::isolate(input[[out_id]]), out_choices)
         )
+        if (!identical(target, sent$exclude)) {
+          shiny::updateSelectizeInput(session, out_id,
+                                      choices = target$choices,
+                                      selected = target$selected)
+          sent$exclude <- target
+        }
       })
 
       observe({
@@ -581,11 +591,16 @@ mod_1_06_model_server <- function(id,
         choices    <- .level_choices(role)
         if (length(choices) == 0) return()
         in_choices <- choices[!choices %in% chosen_out]
-        shiny::updateSelectizeInput(
-          session, in_id,
+        target <- list(
           choices  = in_choices,
-          selected = intersect(input[[in_id]], in_choices)
+          selected = intersect(shiny::isolate(input[[in_id]]), in_choices)
         )
+        if (!identical(target, sent$include)) {
+          shiny::updateSelectizeInput(session, in_id,
+                                      choices = target$choices,
+                                      selected = target$selected)
+          sent$include <- target
+        }
       })
     })
 

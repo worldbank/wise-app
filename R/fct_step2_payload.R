@@ -97,6 +97,19 @@ step2_pipeline_context <- function(pipe, shared_context = NULL) {
   )
 }
 
+.compact_residual_context <- function(train_aug, id_col, residuals,
+                                      compact = TRUE) {
+  if (!isTRUE(compact)) return(train_aug)
+  if (is.null(train_aug) || identical(residuals, "none")) return(NULL)
+  if (!".resid" %in% names(train_aug)) return(train_aug)
+  keep <- ".resid"
+  if (identical(residuals, "original") && !is.null(id_col) &&
+      id_col %in% names(train_aug)) {
+    keep <- c(id_col, keep)
+  }
+  train_aug[, keep, drop = FALSE]
+}
+
 .compact_pipeline <- function(pipe) {
   if (is.null(pipe) || !is.list(pipe)) return(pipe)
   pipe$train_aug <- NULL

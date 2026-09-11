@@ -250,9 +250,8 @@ ENGINE_REGISTRY <- list(
       y_obs  <- y[is.finite(y)]
       bw_use <- tryCatch(stats::bw.SJ(y_obs), error = function(e) stats::bw.nrd0(y_obs))
       dens   <- stats::density(y_obs, bw = bw_use, n = 1024)
-      for (i in seq_along(taus)) {
-        df[[rif_cols[i]]] <- compute_rif(y, tau = taus[i], dens = dens)
-      }
+      rif_values <- compute_rif_multi(y, taus = taus, dens = dens)
+      for (i in seq_along(taus)) df[[rif_cols[i]]] <- rif_values[[i]]
       attr(df, "rif_taus") <- taus
       attr(df, "rif_cols") <- rif_cols
       df

@@ -83,25 +83,39 @@ mod_1_02_surveystats_server <- function(
     # signatures include it so a reload invalidates fit/sim/policy results
     # even when the selection string is unchanged.
     survey_version <- shiny::reactiveVal(0L)
+    # Internal generation for every newly loaded survey frame. Unlike
+    # survey_version, this also advances when downstream H3/panel work fails.
+    survey_data_generation <- shiny::reactiveVal(0L)
+    publish_new_survey_data <- function(value) {
+      survey_data(value)
+      survey_data_generation(
+        shiny::isolate(survey_data_generation()) + 1L
+      )
+    }
+    survey_wave_meta <- shiny::reactive({
+      cached_survey_wave_metadata(
+        session, shiny::isolate(survey_data()), survey_data_generation()
+      )
+    })
     # Completion generation used by the automatic configuration pipeline.
     # Cached requests count as successful completions; failed requests do not.
     load_done   <- shiny::reactiveVal(0L)
     load_status <- shiny::reactiveVal("idle")
-    # Per-H3-cell counts behind the density map, recomputed for whichever
-    # wave the picker is on. Cheap: it is a regrouping of data already in
-    # memory, no round trip to the store.
+    # Per-H3-cell counts and mapped-location count behind the density map,
+    # recomputed together for whichever wave the picker is on.
     density_cells <- function(wave = "all") {
       cd <- cell_data()
       df <- survey_data()
       if (is.null(cd) || is.null(df)) return(NULL)
 
-      alloc <- allocate_units_to_cells(
+      density <- .density_cell_summary(
         filter_by_wave(cd$map, wave), filter_by_wave(df, wave)
       )
-      if (is.null(alloc)) return(NULL)
+      if (is.null(density)) return(NULL)
 
-      dplyr::inner_join(cd$geom, alloc, by = "h3") |>
+      density$cells <- dplyr::inner_join(cd$geom, density$cells, by = "h3") |>
         dplyr::filter(!is.na(geom), nchar(geom) > 2)
+      density
     }
     # Cell geometry plus the location-to-cell mapping, shared with the outcome
     # and weather maps so they can merge overlapping locations onto cells.
@@ -219,7 +233,7 @@ mod_1_02_surveystats_server <- function(
         bottom_code_welfare(0.28) |>
         apply_policy_derivations()
 
-      survey_data(df)
+      publish_new_survey_data(df)
 
       # ---- H3 map data (computed once per button click) -------------------
       h3_fnames <- ss |>
@@ -310,7 +324,7 @@ mod_1_02_surveystats_server <- function(
               dplyr::left_join(loc_keys, panel_map, by = c("code", "year", "survname", "loc_id")),
               by = c("code", "year", "survname", "loc_id")
             )
-          survey_data(df)
+          publish_new_survey_data(df)
           survey_version(survey_version() + 1L)
         }, error = function(e) {
           # INT-06: loc_id_panel is not a cosmetic join - downstream VCV
@@ -358,7 +372,7 @@ mod_1_02_surveystats_server <- function(
             summarise_interview_dates(survey_data()),
             unit_label = unit_label,
             palette = "sequential",
-            wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
+            wave_labels = survey_wave_meta()$plot_labels
           )
         }
 
@@ -401,8 +415,9 @@ mod_1_02_surveystats_server <- function(
           cd   <- cell_data()
           wave <- input$map_wave %||% "all"
 
-          pl <- if (is.null(cd)) NULL else {
-            .density_hex_payload(density_cells(wave), unit_label())
+          density <- if (is.null(cd)) NULL else density_cells(wave)
+          pl <- if (is.null(density)) NULL else {
+            .density_hex_payload(density$cells, unit_label())
           }
           if (is.null(pl)) {
             hexmap_clear(session, ns, "density_map")
@@ -413,29 +428,13 @@ mod_1_02_surveystats_server <- function(
             hexmap_update(session, ns, "density_map", pl$payload)
             # PERF-36: refit only when a new map dataset has landed; wave
             # re-colours keep pan/zoom.
-            if (!identical(map_data_version(), density_key())) {
+            if (!identical(map_data_version(), shiny::isolate(density_key()))) {
               hexmap_fit(session, ns, "density_map", pl$payload$bounds)
               density_key(map_data_version())
             }
             density_lgd(pl$legend)
 
-            # Number of unique locations behind the map: the locations of the
-            # selected wave (summed across waves on "all") that carry sampled
-            # units AND have an H3 mapping - the same set the allocation
-            # draws from.
-            sd   <- survey_data()
-            cmap <- filter_by_wave(cd$map, wave)
-            locs <- dplyr::distinct(
-              filter_by_wave(sd, wave),
-              .data$code, .data$year, .data$survname, .data$loc_id
-            )
-            locs <- dplyr::inner_join(
-              locs,
-              dplyr::distinct(cmap, .data$code, .data$year, .data$survname,
-                              .data$loc_id),
-              by = c("code", "year", "survname", "loc_id")
-            )
-            density_nloc(nrow(locs))
+            density_nloc(density$n_locations)
           }
         })
 
@@ -464,7 +463,7 @@ mod_1_02_surveystats_server <- function(
 
         # Wave toggle slider, shown only when there is more than one wave to pick.
         output$map_wave_ui <- shiny::renderUI({
-          w <- survey_wave_list(survey_data())
+          w <- survey_wave_meta()$waves
           if (is.null(w) || nrow(w) < 2) return(NULL)
           choices <- wave_slider_choices(w, include_all = TRUE)
           selected <- shiny::isolate(input$map_wave) %||% "all"
@@ -746,6 +745,7 @@ mod_1_02_surveystats_server <- function(
       survey_data    = survey_data,
       cell_data      = cell_data,
       survey_version = survey_version,
+      survey_data_generation = survey_data_generation,
       load_done      = load_done,
       load_status    = load_status
     )

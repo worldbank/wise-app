@@ -77,6 +77,7 @@ mod_3_06_policy_sim_server <- function(id,
     run_status          <- reactiveVal("idle")
     decomp_rv           <- reactiveVal(NULL)
     decomp_scenarios_rv <- reactiveVal(list())
+    diagnostic_summary_rv <- reactiveVal(NULL)
     # INT-08: TRUE while the stored policy results' run signature no longer
     # matches the current Step 2 output / scenario inputs.
     policy_stale        <- reactiveVal(FALSE)
@@ -197,6 +198,7 @@ mod_3_06_policy_sim_server <- function(id,
       digital_cfg   <- .safe(digital_scenario())
       labor_cfg     <- .safe(labor_scenario())
       education_cfg <- .safe(education_scenario())
+      model_vars <- model_term_names(.safe(selected_model()))
 
       .fail <- function(msg) {
         sim_error(simpleError(msg))
@@ -234,14 +236,22 @@ mod_3_06_policy_sim_server <- function(id,
 
           svy_mod <- apply_policy_to_svy(
             svy,
-             infra         = infra_cfg,
-             sp            = sp_cfg,
-             digital       = digital_cfg,
-             labor         = labor_cfg,
-             education     = education_cfg,
-            model_vars    = model_term_names(.safe(selected_model())),
+            infra         = infra_cfg,
+            sp            = sp_cfg,
+            digital       = digital_cfg,
+            labor         = labor_cfg,
+            education     = education_cfg,
+            model_vars    = model_vars,
             analysis_unit = analysis_unit(),
             seed          = WISEAPP_DEFAULT_SEED
+          )
+
+          policy_candidates <- .policy_candidate_cols(
+            infra = infra_cfg,
+            digital = digital_cfg,
+            labor = labor_cfg,
+            education = education_cfg,
+            model_vars = model_vars
           )
 
           # A social-protection-only scenario changes nothing but the cash
@@ -250,7 +260,9 @@ mod_3_06_policy_sim_server <- function(id,
           # "nothing configured". What is worth flagging is a scenario that is
           # a literal no-op (every lever at its zero default): the run still
           # goes ahead, but the policy arm will equal the baseline.
-          if (!.scenario_has_effect(svy, svy_mod)) {
+          if (!.scenario_has_effect(
+            svy, svy_mod, candidates = policy_candidates
+          )) {
             shiny::showNotification(
               paste(
                 "No policy change is configured - every lever is at zero, so",
@@ -301,7 +313,8 @@ mod_3_06_policy_sim_server <- function(id,
               # effect() call below (historical + per scenario-year) would
               # otherwise rebuild both. Compute once, pass through.
               deltas_pre <- .compute_policy_deltas(
-                svy, svy_mod, hs$so$name, mf$weather_terms
+                svy, svy_mod, hs$so$name, mf$weather_terms,
+                candidate_cols = policy_candidates
               )
               F_hat_pre <- if (identical(mf$engine, "rif") &&
                                !is.null(mf$train_data) &&
@@ -410,6 +423,18 @@ mod_3_06_policy_sim_server <- function(id,
                 )
               }
 
+              diagnostic_summary_out <- .policy_diagnostics_snapshot(
+                svy_baseline = svy,
+                svy_policy   = svy_mod,
+                outcome      = hs$so$name,
+                analysis_unit = analysis_unit(),
+                candidates   = unique(c(policy_candidates, hs$so$name)),
+                sp           = sp_cfg
+              )
+              if (is.null(diagnostic_summary_out)) {
+                stop("Policy diagnostics produced no results.", call. = FALSE)
+              }
+
               shiny::setProgress(value = 1, detail = "Complete")
             }
           )
@@ -434,6 +459,7 @@ mod_3_06_policy_sim_server <- function(id,
            education_scenario_rv(education_cfg)
           decomp_rv(decomp)
           decomp_scenarios_rv(decomp_sc)
+          diagnostic_summary_rv(diagnostic_summary_out)
           policy_stale(FALSE)
 
            sim_run_id(isolate(sim_run_id()) + 1L)
@@ -490,6 +516,7 @@ mod_3_06_policy_sim_server <- function(id,
       run_status              = run_status,
       decomp_result            = decomp_rv,
       decomp_scenarios         = decomp_scenarios_rv,
+      diagnostic_summary       = diagnostic_summary_rv,
       baseline_hist_sim        = baseline_hist_sim_rv,
       baseline_saved_scenarios = baseline_saved_scenarios_rv,
       policy_hist_sim          = policy_hist_sim_rv,

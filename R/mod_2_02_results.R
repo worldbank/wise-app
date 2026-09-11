@@ -1477,8 +1477,8 @@ mod_2_02_results_server <- function(id,
     )
 
     output$summary_threshold_table <- DT::renderDT({
-      req(threshold_table_df())
       df <- threshold_table_df()
+      req(df)
       if (is.null(df) || nrow(df) == 0L) {
         return(DT::datatable(data.frame(Message = "Insufficient data"),
                              rownames = FALSE, class = "compact stripe",

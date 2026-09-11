@@ -126,14 +126,20 @@
 #' @param baseline_svy Data frame before \code{apply_policy_to_svy()}.
 #' @param policy_svy   Data frame after \code{apply_policy_to_svy()}.
 #'
+#' @param candidates Optional character vector restricting comparison to known
+#'   candidate columns. NULL retains the generic all-shared-columns behavior.
 #' @return Character vector of column names that changed.
 #' @export
-detect_manipulated_vars <- function(baseline_svy, policy_svy) {
+detect_manipulated_vars <- function(baseline_svy, policy_svy,
+                                    candidates = NULL) {
   if (is.null(baseline_svy) || is.null(policy_svy)) return(character(0))
   shared <- intersect(names(baseline_svy), names(policy_svy))
+  if (!is.null(candidates)) shared <- shared[shared %in% candidates]
   if (length(shared) == 0) return(character(0))
   if (nrow(baseline_svy) != nrow(policy_svy)) {
-    return(setdiff(union(names(baseline_svy), names(policy_svy)), character(0)))
+    all_cols <- union(names(baseline_svy), names(policy_svy))
+    if (!is.null(candidates)) all_cols <- all_cols[all_cols %in% candidates]
+    return(all_cols)
   }
   changed <- vapply(shared, function(v) {
     xb <- baseline_svy[[v]]

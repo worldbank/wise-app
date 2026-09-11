@@ -70,25 +70,11 @@ mod_1_07_results_server <- function(id,
       )
     }
 
-    observeEvent(survey_weather(), {
+    live_fit_sig <- shiny::reactive(.fit_sig_from_live())
+
+    observeEvent(live_fit_sig(), {
       mf <- model_fit_val()
-      if (!is.null(mf) && !identical(.fit_sig_from_live(), mf$.sig)) stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(selected_outcome(), {
-      mf <- model_fit_val()
-      if (!is.null(mf) && !identical(.fit_sig_from_live(), mf$.sig)) stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(selected_weather(), {
-      mf <- model_fit_val()
-      if (!is.null(mf) && !identical(.fit_sig_from_live(), mf$.sig)) stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(selected_model(), {
-      mf <- model_fit_val()
-      if (!is.null(mf) && !identical(.fit_sig_from_live(), mf$.sig)) stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(survey_version(), {
-      mf <- model_fit_val()
-      if (!is.null(mf) && !identical(.fit_sig_from_live(), mf$.sig)) stale(TRUE)
+      if (!is.null(mf) && !identical(live_fit_sig(), mf$.sig)) stale(TRUE)
     }, ignoreInit = TRUE)
 
     output$stale_banner <- renderUI({
@@ -292,6 +278,51 @@ mod_1_07_results_server <- function(id,
       y_lab_lower <- tolower(as.character(outcome_snap$label[1]))
       has_int     <- length(mf$interaction_terms) > 0
 
+      # P5: derive translations once for this completed fit. Everything below
+      # consumes these fit-time values, so stale live selections cannot trigger
+      # recomputation or change the displayed/exported results.
+      scenarios_by_var <- stats::setNames(
+        lapply(mf$weather_terms, function(v) {
+          tryCatch(step1_scenarios(mf, snap, v), error = function(e) NULL)
+        }),
+        mf$weather_terms
+      )
+      rif_scenarios <- if (is_rif) {
+        stats::setNames(
+          lapply(mf$weather_terms, function(v) {
+            tryCatch(.s1_rif_scenarios(mf, snap, v, taus = c(0.1, 0.9)),
+                     error = function(e) NULL)
+          }),
+          mf$weather_terms
+        )
+      } else {
+        NULL
+      }
+      rif_heterogeneity <- if (is_rif) {
+        stats::setNames(
+          lapply(mf$weather_terms, function(v) {
+            tryCatch(step1_rif_heterogeneity_p(mf, snap, v),
+                     error = function(e) NULL)
+          }),
+          mf$weather_terms
+        )
+      } else {
+        NULL
+      }
+      headline_res <- tryCatch(
+        step1_headline_cards(
+          mf, snap, label_fun = label_fun,
+          scenarios_list = scenarios_by_var,
+          rif_scenarios = rif_scenarios,
+          rif_heterogeneity = rif_heterogeneity
+        ),
+        error = function(e) NULL
+      )
+      headline_tbl <- tryCatch(
+        step1_headline_table(result = headline_res),
+        error = function(e) NULL
+      )
+
       # Coefficient plots show model-scale coefficients, not translated
       # effects, so their axis carries the coefficient unit.
       coef_unit_lab <- if (is_logit) {
@@ -320,9 +351,7 @@ mod_1_07_results_server <- function(id,
       # Reference-profile linear predictor for binary outcomes: the same map
       # the headline cards use, so binned-plot pp effects match the cards.
       profile_eta0 <- if (is_logit) {
-        pe <- tryCatch(
-          step1_scenarios(mf, snap, mf$weather_terms[1])$profile_eta,
-          error = function(e) NULL)
+        pe <- scenarios_by_var[[mf$weather_terms[1]]]$profile_eta
         if (length(pe) == 1 && is.finite(pe)) pe else NA_real_
       } else NA_real_
 
@@ -612,11 +641,6 @@ mod_1_07_results_server <- function(id,
       # affected, spec robustness, sample/fit). All values derive from the fit
       # snapshot (INT-05) through the single translation path in
       # fct_step1_headline.R, so cards, figures and the table cannot diverge.
-      headline_res <- tryCatch(
-        step1_headline_cards(mf, snap, label_fun = label_fun),
-        error = function(e) NULL
-      )
-
       output$headline_cards_ui <- renderUI({
         if (is.null(headline_res) || !length(headline_res$rows)) return(NULL)
         shiny::tagList(
@@ -633,10 +657,7 @@ mod_1_07_results_server <- function(id,
         key   = "step1_headline_summary",
         label = "Step 1 headline summary",
         step  = 1L,
-        fun   = function() {
-          tryCatch(step1_headline_table(mf, snap, label_fun = label_fun),
-                   error = function(e) NULL)
-        },
+        fun   = function() headline_tbl,
         description = paste(
           "At-a-glance summary per weather variable: translated effect, who",
           "is most affected, specification robustness, and sample/fit."
@@ -675,15 +696,6 @@ mod_1_07_results_server <- function(id,
         else "Per +1 SD uses the sample SD of each weather variable; see At a glance for the full contrast including interactions.",
         if (is_lpm) "Linear-probability model: predictions can fall outside 0\u20131." else NULL,
         if (is_rif) "RIF coefficients are effects on unconditional quantiles in log points; % translation is approximate." else NULL
-      )
-      # Per-variable scenario translations for the focused table (the +1 SD
-      # contrast of each weather variable, polynomial-inclusive - the same
-      # one-path numbers the At a glance cards show).
-      scenarios_by_var <- stats::setNames(
-        lapply(mf$weather_terms, function(v) {
-          tryCatch(step1_scenarios(mf, snap, v), error = function(e) NULL)
-        }),
-        mf$weather_terms
       )
       has_poly_terms <- any(grepl("^I\\(",
                                   names(stats::coef(native_fit(mf$fit3)))))

@@ -22,6 +22,9 @@
 #
 # Set WISEAPP_STEP2_PAYLOAD_MODE=compact to benchmark the opt-in compact result
 # payload. The default is legacy so existing baseline runs remain comparable.
+# Set WISEAPP_STEP2_INCLUDE_STEP3=1 to run deterministic Step 3 policy fixtures
+# after successful Step 2 cases. WISEAPP_STEP2_FIXTURE=smoke uses fabricated,
+# in-memory data for smoke testing only and is never production-path evidence.
 #
 # For process-tree RSS, use dev/run_step2_benchmark.sh. The R-side RSS values
 # are sampled at stage boundaries; /usr/bin/time -l remains the external peak
@@ -46,6 +49,8 @@ options(golem.app.prod = FALSE)
 )
 
 pkgload::load_all(.bench_repo_root, quiet = TRUE)
+source(file.path(.bench_repo_root, "dev", "bench_step2_helpers.R"), local = TRUE)
+source(file.path(.bench_repo_root, "dev", "bench_step3_helpers.R"), local = TRUE)
 
 .bench_env <- function(name, default = "") {
   value <- Sys.getenv(name, unset = default)
@@ -135,6 +140,10 @@ pkgload::load_all(.bench_repo_root, quiet = TRUE)
     ),
     force_cache   = .bench_env_flag("WISEAPP_STEP2_FORCE_CACHE", TRUE),
     include_step3 = .bench_env_flag("WISEAPP_STEP2_INCLUDE_STEP3", FALSE),
+    fixture_mode  = .bench_env("WISEAPP_STEP2_FIXTURE", "production"),
+    step3_policies = .bench_env_csv(
+      "WISEAPP_STEP3_POLICIES", c("covariate", "targeted_sp", "combined")
+    ),
     payload_mode  = .bench_env("WISEAPP_STEP2_PAYLOAD_MODE", "compact"),
     weather_storage = .bench_env("WISEAPP_STEP2_WEATHER_STORAGE", "memory"),
     weather_collect = .bench_env("WISEAPP_STEP2_WEATHER_COLLECT", "fast")
@@ -189,6 +198,12 @@ if (!cfg$weather_storage %in% c("memory", "reference")) {
 if (!cfg$weather_collect %in% c("fast", "bounded")) {
   stop("WISEAPP_STEP2_WEATHER_COLLECT must be fast or bounded.", call. = FALSE)
 }
+if (!cfg$fixture_mode %in% c("production", "smoke")) {
+  stop("WISEAPP_STEP2_FIXTURE must be production or smoke.", call. = FALSE)
+}
+if (cfg$include_step3) invisible(
+  .bench_step3_policy_fixtures(cfg$step3_policies)
+)
 
 set.seed(cfg$seed)
 RNGkind("Mersenne-Twister", "Inversion", "Rejection")
@@ -198,6 +213,7 @@ RNGkind("Mersenne-Twister", "Inversion", "Rejection")
 # -----------------------------------------------------------------------------
 
 .bench_connection <- function(config) {
+  if (identical(config$fixture_mode, "smoke")) return(NULL)
   if (nzchar(config$data_path)) {
     path <- normalizePath(path.expand(config$data_path), mustWork = TRUE)
     return(build_connection_params("local", path = path))
@@ -445,7 +461,11 @@ if (!is.null(connection_params)) {
   input
 }
 
-inputs_by_country <- if (nzchar(cfg$snapshot_rds)) {
+inputs_by_country <- if (identical(cfg$fixture_mode, "smoke")) {
+  setNames(lapply(cfg$countries, function(country) {
+    .bench_small_step3_input(country, seed = cfg$seed)
+  }), cfg$countries)
+} else if (nzchar(cfg$snapshot_rds)) {
   .bench_load_snapshots(cfg$snapshot_rds, cfg$countries)
 } else {
   setNames(lapply(cfg$countries, function(country) {
@@ -522,13 +542,13 @@ inputs_by_country <- setNames(
   state$pipeline_index <- 0L
   state$expected_keys <- character(0)
   state$pipeline_elapsed <- numeric(0)
-  state$design_matrix_elapsed <- 0
-  state$prediction_elapsed <- 0
-  state$factor_loading_elapsed <- 0
-  state$join_elapsed <- 0
-  state$cache_calls <- 0L
-  state$cache_hits <- 0L
-  state$cache_misses <- 0L
+  state$design_matrix_elapsed <- NA_real_
+  state$prediction_elapsed <- NA_real_
+  state$factor_loading_elapsed <- NA_real_
+  state$join_elapsed <- NA_real_
+  state$cache_calls <- NA_integer_
+  state$cache_hits <- NA_integer_
+  state$cache_misses <- NA_integer_
   state$cache_last_hit <- FALSE
   state$rss_parent_peak_kb <- 0
   state$rss_tree_peak_kb <- 0
@@ -550,7 +570,8 @@ inputs_by_country <- setNames(
       .s$cache_last_hit <- exists("path", inherits = FALSE) && file.exists(path)
     }) else substitute({
       .s <- get(".wiseapp_bench_trace_state", envir = .GlobalEnv)
-      .s[[slot]] <- (.s[[slot]] %||% 0) - proc.time()[["elapsed"]]
+      .s[[slot]] <- (if (is.finite(.s[[slot]])) .s[[slot]] else 0) -
+        proc.time()[["elapsed"]]
     }, list(slot = spec$slot))
     exit <- if (identical(spec$slot, "cache")) quote({
       .s <- get(".wiseapp_bench_trace_state", envir = .GlobalEnv)
@@ -570,7 +591,17 @@ inputs_by_country <- setNames(
               conditionMessage(e), call. = FALSE)
       FALSE
     })
-    if (ok) installed[[length(installed) + 1L]] <- spec
+    if (ok) {
+      installed[[length(installed) + 1L]] <- spec
+      state <- get(".wiseapp_bench_trace_state", envir = .GlobalEnv)
+      if (identical(spec$slot, "cache")) {
+        state$cache_calls <- 0L
+        state$cache_hits <- 0L
+        state$cache_misses <- 0L
+      } else {
+        state[[spec$slot]] <- 0
+      }
+    }
   }
   installed
 }
@@ -661,32 +692,24 @@ inputs_by_country <- setNames(
 
 .bench_run_aggregation <- function(result, input, case, config) {
   rows <- list()
-  pipes <- list(historical = result$hist_sim_result$pipeline)
-  for (scenario_name in names(result$new_scenarios %||% list())) {
-    scenario <- result$new_scenarios[[scenario_name]]
-    for (member_name in names(scenario$pipelines %||% list())) {
-      pipes[[paste(scenario_name, member_name, sep = " / ")]] <-
-        scenario$pipelines[[member_name]]
-    }
-  }
+  pipes <- .bench_aggregation_pipelines(result)
+  aggregation_metadata <- .bench_aggregation_metadata(pipes, case$residuals)
   for (method_label in config$aggregation) {
     pov_line <- if (method_label %in% c("headcount_ratio", "gap", "fgt2")) 3 else NULL
     started <- proc.time()[["elapsed"]]
     err <- NULL
     n_years <- NA_integer_
     tryCatch({
-      out <- lapply(pipes, function(pipe) {
-        aggregate_pipeline_per_year(
-          pipe = pipe,
-          method = method_label,
-          weighted = TRUE,
-          pov_line = pov_line,
-          residuals = case$residuals,
-          is_log = identical(input$so$transform, "log"),
-          skip_coef = isTRUE(case$skip_coef_draws),
-          seed = config$seed
-        )
-      })
+      out <- .bench_aggregate_pipelines(
+        pipelines = pipes,
+        method = method_label,
+        weighted = TRUE,
+        pov_line = pov_line,
+        residuals = case$residuals,
+        is_log = identical(input$so$transform, "log"),
+        skip_coef = isTRUE(case$skip_coef_draws),
+        seed = config$seed
+      )
       n_years <- sum(lengths(out))
     }, error = function(e) err <<- conditionMessage(e))
     rows[[length(rows) + 1L]] <- data.frame(
@@ -699,6 +722,9 @@ inputs_by_country <- setNames(
       cache = case$cache,
       repetition = case$repetition,
       method = method_label,
+      residuals_requested = aggregation_metadata$residuals_requested,
+      residuals_effective = aggregation_metadata$residuals_effective,
+      shared_context_available = aggregation_metadata$shared_context_available,
       elapsed_seconds = proc.time()[["elapsed"]] - started,
       n_pipelines = length(pipes),
       n_years = n_years,
@@ -712,8 +738,9 @@ inputs_by_country <- setNames(
 }
 
 .bench_run_case <- function(input, country, model_label, workload, cache_state,
-                            uncertainty, repetition, config, traces) {
+                             uncertainty, repetition, config, traces) {
   state <- .bench_state()
+  .bench_initialize_trace_state(state, traces)
   assign(".wiseapp_bench_trace_state", state, envir = .GlobalEnv)
   cache_dir <- .bench_prepare_cache(config, state, cache_state)
   case_config <- config
@@ -792,8 +819,19 @@ inputs_by_country <- setNames(
       pipeline_fn = pipeline_fn
     )
   )
-  result <- tryCatch(
-    do.call(fct_run_simulation, call_args),
+  evidence_class <- if (identical(config$fixture_mode, "smoke")) {
+    "smoke_only_not_production_evidence"
+  } else {
+    "production_path_read_only"
+  }
+  result <- if (identical(config$fixture_mode, "smoke")) {
+    value <- .bench_small_step2_result(input, model_label, workload)
+    value <- .bench_attach_runtime_metadata(value, args, evidence_class)
+    .bench_assert_runtime_options(value, args)
+    .bench_mark_traces_unavailable(state)
+    value
+  } else tryCatch(
+    .bench_execute_step2(call_args, evidence_class),
     error = function(e) {
       error_text <<- conditionMessage(e)
       NULL
@@ -810,15 +848,20 @@ inputs_by_country <- setNames(
 
   state$cache_files_after <- length(list.files(cache_dir, pattern = "\\.parquet$",
                                                recursive = TRUE))
-  state$cache_misses <- max(state$cache_misses, 0L)
   pipeline_sum <- sum(state$pipeline_elapsed, na.rm = TRUE)
   assembly <- max(0, elapsed_total - (state$weather_elapsed %||% 0) - pipeline_sum)
   summary <- data.frame(
     country = country,
     model = model_label,
     workload = workload,
+    evidence_class = evidence_class,
+    runtime_options_executed = result$benchmark_metadata$runtime_options_executed %||%
+      NA,
     payload_mode = case_config$payload_mode,
     weather_storage = case_config$weather_storage,
+    weather_collect = case_config$weather_collect,
+    join_cache = case_config$join_cache,
+    direct_rif_predictions = case_config$direct_rif_predictions,
     uncertainty = if (isTRUE(args$skip_coef_draws)) "disabled" else "enabled",
     cache = cache_state,
     repetition = repetition,
@@ -858,11 +901,12 @@ inputs_by_country <- setNames(
     stringsAsFactors = FALSE
   )
   per_key <- if (length(state$pipeline_rows)) do.call(rbind, state$pipeline_rows) else data.frame()
-  list(summary = summary, per_key = per_key, aggregation = aggregation)
+  list(summary = summary, per_key = per_key, aggregation = aggregation,
+       result = result)
 }
 
 .bench_write_checkpoint <- function(summary_rows, per_key_rows, aggregation_rows,
-                                    output_dir) {
+                                     step3_rows, output_dir) {
   summary_df <- if (length(summary_rows)) do.call(rbind, summary_rows) else data.frame()
   per_key_df <- if (length(per_key_rows)) do.call(rbind, per_key_rows) else data.frame()
   aggregation_df <- if (length(aggregation_rows)) {
@@ -871,6 +915,10 @@ inputs_by_country <- setNames(
   write.csv(summary_df, file.path(output_dir, "step2_summary.csv"), row.names = FALSE)
   write.csv(per_key_df, file.path(output_dir, "step2_per_key.csv"), row.names = FALSE)
   write.csv(aggregation_df, file.path(output_dir, "step2_aggregation.csv"), row.names = FALSE)
+  if (length(step3_rows)) {
+    write.csv(do.call(rbind, step3_rows),
+              file.path(output_dir, "step3_summary.csv"), row.names = FALSE)
+  }
   invisible(NULL)
 }
 
@@ -882,6 +930,7 @@ workloads <- cfg$workloads
 all_summary <- list()
 all_per_key <- list()
 all_aggregation <- list()
+all_step3 <- list()
 trace_state <- .bench_state()
 assign(".wiseapp_bench_trace_state", trace_state, envir = .GlobalEnv)
 traces <- .bench_install_traces()
@@ -919,8 +968,41 @@ for (country in names(inputs_by_country)) {
             all_summary[[length(all_summary) + 1L]] <- run$summary
             if (nrow(run$per_key)) all_per_key[[length(all_per_key) + 1L]] <- run$per_key
             if (nrow(run$aggregation)) all_aggregation[[length(all_aggregation) + 1L]] <- run$aggregation
+            if (cfg$include_step3 && !is.null(run$result)) {
+              fixtures <- .bench_step3_policy_fixtures(cfg$step3_policies)
+              identity <- list(
+                country = country, workload = workload,
+                payload_mode = cfg$payload_mode,
+                weather_storage = cfg$weather_storage,
+                weather_collect = cfg$weather_collect,
+                join_cache = cfg$join_cache,
+                direct_rif_predictions = cfg$direct_rif_predictions,
+                uncertainty = uncertainty, cache = cache_state,
+                repetition = repetition, fixture_mode = cfg$fixture_mode,
+                evidence_class = run$result$benchmark_metadata$evidence_class
+              )
+              for (policy_label in names(fixtures)) {
+                message(sprintf(
+                  "Benchmarking Step 3 %s / %s / %s / policy=%s",
+                  country, model_label, workload, policy_label
+                ))
+                all_step3[[length(all_step3) + 1L]] <- .bench_run_step3(
+                  baseline_result = run$result,
+                  input = input,
+                  model_label = model_label,
+                  policy_label = policy_label,
+                  policy_fixture = fixtures[[policy_label]],
+                  identity = identity,
+                  config = cfg,
+                  size_fn = .bench_size,
+                  rss_state_fn = .bench_state,
+                  rss_sample_fn = .bench_sample_rss
+                )
+              }
+            }
             .bench_write_checkpoint(
-              all_summary, all_per_key, all_aggregation, cfg$output_dir
+              all_summary, all_per_key, all_aggregation, all_step3,
+              cfg$output_dir
             )
             gc(verbose = FALSE)
           }
@@ -933,10 +1015,14 @@ for (country in names(inputs_by_country)) {
 summary_df <- if (length(all_summary)) do.call(rbind, all_summary) else data.frame()
 per_key_df <- if (length(all_per_key)) do.call(rbind, all_per_key) else data.frame()
 aggregation_df <- if (length(all_aggregation)) do.call(rbind, all_aggregation) else data.frame()
+step3_df <- if (length(all_step3)) do.call(rbind, all_step3) else data.frame()
 
 write.csv(summary_df, file.path(cfg$output_dir, "step2_summary.csv"), row.names = FALSE)
 write.csv(per_key_df, file.path(cfg$output_dir, "step2_per_key.csv"), row.names = FALSE)
 write.csv(aggregation_df, file.path(cfg$output_dir, "step2_aggregation.csv"), row.names = FALSE)
+if (cfg$include_step3) {
+  write.csv(step3_df, file.path(cfg$output_dir, "step3_summary.csv"), row.names = FALSE)
+}
 
 .bench_git_revision <- tryCatch(
   system2("git", c("-C", .bench_repo_root, "rev-parse", "HEAD"), stdout = TRUE),
@@ -967,7 +1053,20 @@ report_metadata <- list(
   input_summary = lapply(inputs_by_country, function(input) input$metadata %||% list()),
   notes = list(
     process_tree_rss = "The sampled values are diagnostic only. The external launcher records the complete R process tree peak.",
-    step3 = if (cfg$include_step3) "Requested but no policy fixture was supplied by this Phase 1 harness." else "Not configured; set WISEAPP_STEP2_INCLUDE_STEP3=1 only after adding a policy fixture.",
+    step3 = if (cfg$include_step3) paste(
+      "Enabled with deterministic policy fixtures:",
+      paste(cfg$step3_policies, collapse = ", ")
+    ) else "Disabled; set WISEAPP_STEP2_INCLUDE_STEP3=1 to opt in.",
+    evidence_class = if (identical(cfg$fixture_mode, "smoke")) {
+      "smoke_only_not_production_evidence"
+    } else {
+      "production_path_read_only"
+    },
+    fixture = if (identical(cfg$fixture_mode, "smoke")) {
+      "Fabricated in-memory smoke fixture. Never use its metrics as production-path evidence."
+    } else {
+      "Production or supplied snapshot inputs are read-only; artifacts are written only to the benchmark output directory."
+    },
     snapshot_contract = "Snapshot entries contain sw, so, svy, ss, cp, sim_dates, and mf or models; optional stored_breaks and metadata are accepted."
   )
 )
@@ -1018,6 +1117,8 @@ jsonlite::write_json(
     "- `step2_per_key.csv`: per-key timing, row counts, factor-loading dimensions, and retained weather sizes.",
     "- `step2_aggregation.csv`: display aggregation elapsed time by method.",
     "- `step2_metadata.json`: workload, environment, package, and input metadata.",
+    if (metadata$configuration$include_step3) "- `step3_summary.csv`: Step 3 stage runtimes, sizes, sampled RSS, workload identity, evidence classification, and SHA-256 fingerprint." else NULL,
+    "- `external_process_metrics.csv`: launcher-level maximum RSS from `/usr/bin/time -l` when supported.",
     "",
     "## Decision Inputs",
     "",

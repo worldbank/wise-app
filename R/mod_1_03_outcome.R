@@ -36,6 +36,7 @@ mod_1_03_outcome_ui <- function(id) {
 mod_1_03_outcome_server <- function(id, variable_list, survey_data,
                                     cell_data      = reactive(NULL),
                                     survey_version = reactive(0L),
+                                    survey_data_generation = survey_version,
                                     tabset_id      = NULL,
                                     tabset_session = NULL) {
   moduleServer(id, function(input, output, session) {
@@ -44,6 +45,12 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
     if (is.null(tabset_session)) {
       tabset_session <- session$parent %||% session
     }
+
+    survey_wave_meta <- shiny::reactive({
+      cached_survey_wave_metadata(
+        session, shiny::isolate(survey_data()), survey_data_generation()
+      )
+    })
 
     # INT-08: banner when the survey data behind these statistics was
     # reloaded after the button was last pressed.
@@ -299,7 +306,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
             outcome = as.character(inf$name[1]),
             label   = as.character(inf$label[1]),
             type    = as.character(inf$type[1]),
-            wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
+            wave_labels = survey_wave_meta()$plot_labels
           )
           if (is.null(p)) {
             blank_plot("Distribution unavailable")
@@ -364,7 +371,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
             key <- digest::digest(list(
               spec, wave, view, sort(unique(cmap$h3))
             ))
-            if (!identical(key, cov_key())) {
+            if (!identical(key, shiny::isolate(cov_key()))) {
               hexmap_fit(session, ns, "coverage_map", pl$payload$bounds)
               cov_key(key)
             }
@@ -426,7 +433,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
 
         # Wave toggle slider, shown only when there is more than one wave to pick.
         output$cov_wave_ui <- shiny::renderUI({
-          w <- survey_wave_list(survey_data())
+          w <- survey_wave_meta()$waves
           if (is.null(w) || nrow(w) < 2) return(NULL)
           choices <- wave_slider_choices(w, include_all = TRUE)
           selected <- shiny::isolate(input$cov_wave) %||% "all"
@@ -450,7 +457,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
         }, ignoreInit = TRUE, ignoreNULL = TRUE)
 
         output$summary_wave_ui <- shiny::renderUI({
-          w <- survey_wave_list(survey_data())
+          w <- survey_wave_meta()$waves
           if (is.null(w) || nrow(w) < 2) return(NULL)
           choices <- wave_slider_choices(w, include_all = TRUE)
           selected <- shiny::isolate(summary_wave_val())

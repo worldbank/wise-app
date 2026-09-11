@@ -275,6 +275,28 @@ test_that("all Module 2 summaries use the same complete scenario set", {
   )
 })
 
+test_that("formatted threshold table preserves output across repeated builds", {
+  skip_if_not_installed("shiny")
+  testServer(
+    mod_2_02_results_server,
+    args = list(
+      id = "results", hist_sim = reactiveVal(make_hist_sim_fixture()),
+      saved_scenarios = reactiveVal(list()), selected_hist = reactiveVal(NULL),
+      tabset_id = "step2_output_tabs"
+    ),
+    {
+      session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none",
+                        cmp_group_order = "scenario_x_year")
+      session$flushReact()
+      first <- threshold_table_df()
+      second <- threshold_table_df()
+      expect_identical(second, first)
+      expect_s3_class(first, "data.frame")
+      expect_gt(nrow(first), 0L)
+    }
+  )
+})
+
 # ---- Step 2 Headline Cards -------------------------------------------------
 
 test_that("step2_headline_cards returns 5 cards with mod_1 styling", {

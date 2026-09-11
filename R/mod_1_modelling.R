@@ -130,6 +130,7 @@ mod_1_modelling_server <- function(id,
       survey_data    = s2$survey_data,
       cell_data      = s2$cell_data,
       survey_version = s2$survey_version,
+      survey_data_generation = s2$survey_data_generation,
       tabset_id      = "step1_output_tabs",
       tabset_session = session
     )
@@ -156,6 +157,7 @@ mod_1_modelling_server <- function(id,
       survey_data       = s2$survey_data,
       cell_data         = s2$cell_data,
       survey_version    = s2$survey_version,
+      survey_data_generation = s2$survey_data_generation,
       tabset_id         = "step1_output_tabs",
       tabset_session    = session,
       run_trigger       = load_weather_trigger

@@ -1315,3 +1315,93 @@ test_that("loc_panel is identical on the lazy view and its local temp table", {
 
   expect_identical(direct, from_temp)
 })
+
+test_that("baseline-wave filtering removes unused weather rows with parity", {
+  fx <- .cached_weather_fixture("basic")
+  old <- fx$selected_surveys
+  old$year <- old$year - 1L
+  old$survname <- "OLD"
+  old_path <- file.path(
+    fx$connection_params$path, "microdata", "h3", old$code,
+    paste0(old$code, "_", old$year, "_", old$survname, "_",
+           old$source, "_h3.parquet")
+  )
+  current_path <- file.path(
+    fx$connection_params$path, "microdata", "h3", fx$selected_surveys$code,
+    paste0(fx$selected_surveys$code, "_", fx$selected_surveys$year, "_",
+           fx$selected_surveys$survname, "_", fx$selected_surveys$source,
+           "_h3.parquet")
+  )
+  file.copy(current_path, old_path, overwrite = TRUE)
+  old_h3 <- arrow::read_parquet(old_path)
+  old_h3$year <- old$year
+  old_h3$survname <- old$survname
+  arrow::write_parquet(old_h3, old_path)
+
+  run <- function(ss) get_weather(
+    survey_data = fx$survey_data, selected_surveys = ss,
+    selected_weather = sw_continuous("tx"), dates = fx$dates,
+    connection_params = fx$connection_params
+  )$historical
+  full <- run(rbind(old, fx$selected_surveys))
+  filtered <- run(fx$selected_surveys)
+  common <- full[full$year == fx$selected_surveys$year, , drop = FALSE]
+  rownames(common) <- NULL
+  rownames(filtered) <- NULL
+
+  expect_gt(nrow(full), nrow(filtered))
+  expect_equal(common, filtered, tolerance = 1e-12)
+  expect_identical(names(common), names(filtered))
+})
+
+test_that("baseline-wave filtering preserves historical and future keys across sources", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("duckdbfs")
+  skip_if_not_installed("bit64")
+  fx <- cached_weather_fixture("cross_res_cmip6")
+  current <- fx$selected_surveys
+  h3_dir <- file.path(fx$connection_params$path, "microdata", "h3", current$code)
+  current_path <- file.path(
+    h3_dir, paste0(current$code, "_", current$year, "_", current$survname,
+                   "_", current$source, "_h3.parquet")
+  )
+  base_h3 <- arrow::read_parquet(current_path)
+  add_mapping <- function(year, survname, source) {
+    mapped <- base_h3
+    mapped$year <- year
+    mapped$survname <- survname
+    arrow::write_parquet(mapped, file.path(
+      h3_dir, paste0(current$code, "_", year, "_", survname, "_", source,
+                     "_h3.parquet")
+    ))
+    data.frame(code = current$code, year = year, survname = survname,
+               source = source, stringsAsFactors = FALSE)
+  }
+  old <- add_mapping(current$year - 1L, "OLD_WAVE", "archive")
+  alternate <- add_mapping(current$year, "ALT_ROUND", "alternate_source")
+  baseline <- rbind(current, alternate)
+  selected <- rbind(old, baseline)
+  run <- function(ss) get_weather(
+    survey_data = fx$survey_data, selected_surveys = ss,
+    selected_weather = sw_continuous("tx"), dates = fx$dates,
+    connection_params = fx$connection_params, ssp = "ssp2_4_5",
+    future_period = c("2025-01-01", "2025-12-31"),
+    perturbation_method = c(tx = "additive")
+  )
+  full <- run(selected)
+  filtered <- run(baseline)
+  expect_identical(names(filtered), names(full))
+  expect_true("historical" %in% names(filtered))
+  expect_true(any(grepl("ssp2_4_5", names(filtered), fixed = TRUE)))
+  for (key in names(filtered)) {
+    common <- full[[key]][full[[key]]$year == current$year &
+      full[[key]]$survname %in% baseline$survname, , drop = FALSE]
+    rownames(common) <- NULL
+    actual <- filtered[[key]]
+    rownames(actual) <- NULL
+    expect_equal(actual, common, tolerance = 1e-12, info = key)
+    expect_identical(names(actual), names(common), info = key)
+    expect_setequal(unique(actual$survname), baseline$survname)
+  }
+})

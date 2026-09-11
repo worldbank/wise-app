@@ -181,6 +181,8 @@ mod_3_08_diagnostics_ui <- function(id) {
 #' @param id               Module id.
 #' @param baseline_svy     Reactive survey-weather df before adjustment.
 #' @param policy_svy       Reactive survey-weather df after adjustment.
+#' @param diagnostic_summary Reactive immutable summary snapshot published by
+#'   the policy runner after a successful run.
 #' @param selected_policies Reactive selected policy scenario keys.
 #' @param baseline_hist_sim Reactive Step 2-style baseline simulation result.
 #' @param selected_weather Reactive selected weather specification.
@@ -195,6 +197,7 @@ mod_3_08_diagnostics_ui <- function(id) {
 mod_3_08_diagnostics_server <- function(id,
                                          baseline_svy,
                                          policy_svy,
+                                         diagnostic_summary = reactive(NULL),
                                          sim_run_id = reactive(0L),
                                          tabset_id,
                                          tabset_session = NULL,
@@ -220,8 +223,8 @@ mod_3_08_diagnostics_server <- function(id,
 
     # Helper: human-readable unit word ("individual" / "individuals" /
     # "Household" / "Households" / "Firm" / "Firms") driven by analysis_unit().
-    unit_word <- function(plural = TRUE, capitalize = FALSE) {
-      au <- tryCatch(analysis_unit(), error = function(e) "hh")
+    unit_word <- function(plural = TRUE, capitalize = FALSE, au = NULL) {
+      au <- au %||% tryCatch(analysis_unit(), error = function(e) "hh")
       au <- if (is.null(au) || !nzchar(au)) "hh" else au
       word <- switch(au,
         ind  = if (plural) "individuals" else "individual",
@@ -238,32 +241,22 @@ mod_3_08_diagnostics_server <- function(id,
 
     # ---- Diagnostics data preparation ---------------------------------------
 
+    # One successful run publishes one complete snapshot. Failed runs leave
+    # this reactive value untouched, so renderers and exports keep the prior
+    # internally consistent diagnostics instead of rebuilding from live state.
     diag_data <- reactive({
       sim_run_id()
-      b <- baseline_svy()
-      p <- policy_svy()
-      if (is.null(b) || is.null(p)) return(NULL)
+      published <- diagnostic_summary()
+      if (!is.null(published)) return(published)
 
-      if (SP_TRANSFER_COL %in% names(p)) {
-        p$welfare <- p$welfare + p[[SP_TRANSFER_COL]]
-      }
-
-      # UI-32: this arithmetic now lives in `.sp_transfer_totals()`, which the
-      # Step 3 sidebar's reach preview also calls - the two showed different
-      # totals while each re-derived it, so there is one implementation.
-      totals        <- .sp_transfer_totals(p, analysis_unit())
-      transfer_sum  <- totals$total
-      transfer_unit <- totals$per_unit
-
-      vars <- detect_manipulated_vars(b, p)
-      if (length(vars) == 0) return(list(status = "no_change"))
-
-      list(
-        manipulated_vars = vars,
-        baseline_svy = b,
-        policy_svy = p,
-        transfer_sum = transfer_sum,
-        transfer_pp = transfer_unit
+      # Backward-compatible path for direct module callers that predate atomic
+      # publication. Production supplies `diagnostic_summary`, so successful
+      # runs never rescan the live survey frames here.
+      .policy_diagnostics_snapshot(
+        svy_baseline = baseline_svy(),
+        svy_policy = policy_svy(),
+        analysis_unit = analysis_unit(),
+        sp = sp_scenario()
       )
     })
 
@@ -283,8 +276,9 @@ mod_3_08_diagnostics_server <- function(id,
       df <- data.frame(
         Type  = c(
           "Total transfer $ amount (population-level)",
-          paste0("Per-", unit_word(plural = FALSE),
-                 " $ equivalent (eligible ", unit_word(plural = TRUE), ")")
+          paste0("Per-", unit_word(plural = FALSE, au = d$analysis_unit),
+                 " $ equivalent (eligible ",
+                 unit_word(plural = TRUE, au = d$analysis_unit), ")")
         ),
         Value = fmt_num(c(d$transfer_sum, d$transfer_pp), prefix = "$"),
         stringsAsFactors = FALSE
@@ -333,9 +327,7 @@ mod_3_08_diagnostics_server <- function(id,
         ))
       }
 
-      df <- policy_input_diagnostics(
-        d$baseline_svy, d$policy_svy, vars = vars
-      )
+      df <- d$input_summary
       if (is.null(df) || nrow(df) == 0) {
         return(DT::datatable(
           data.frame(Message = "No numeric variables to summarize."),
@@ -343,8 +335,8 @@ mod_3_08_diagnostics_server <- function(id,
         ))
       }
 
-      counts <- .policy_changed_counts(d$baseline_svy, d$policy_svy, df$variable)
-      count_label <- if (identical(analysis_unit(), "hh")) "Households changed" else "Observations changed"
+      counts <- d$changed_counts
+      count_label <- if (identical(d$analysis_unit, "hh")) "Households changed" else "Observations changed"
       df[[count_label]] <- unname(counts[df$variable])
       df <- df[, c("variable", count_label, setdiff(names(df), c("variable", count_label))), drop = FALSE]
       df <- .format_policy_input_table(df)
@@ -387,12 +379,10 @@ mod_3_08_diagnostics_server <- function(id,
       fun   = function() {
         d <- diag_data()
         if (is.null(d) || !is.null(d$status)) return(NULL)
-        vars <- d$manipulated_vars
-        if (!length(vars)) return(NULL)
-        df <- policy_input_diagnostics(d$baseline_svy, d$policy_svy, vars = vars)
+        df <- d$input_summary
         if (is.null(df) || nrow(df) == 0) return(NULL)
-        counts <- .policy_changed_counts(d$baseline_svy, d$policy_svy, df$variable)
-        count_label <- if (identical(analysis_unit(), "hh")) "Households changed" else "Observations changed"
+        counts <- d$changed_counts
+        count_label <- if (identical(d$analysis_unit, "hh")) "Households changed" else "Observations changed"
         df[[count_label]] <- unname(counts[df$variable])
         df <- df[, c("variable", count_label, setdiff(names(df), c("variable", count_label))), drop = FALSE]
         num <- setdiff(names(df), "variable")
@@ -452,8 +442,8 @@ mod_3_08_diagnostics_server <- function(id,
       for (var in vars) {
         local({
           var_name <- var
-          baseline_vals <- d$baseline_svy[[var_name]]
-          policy_vals <- d$policy_svy[[var_name]]
+          baseline_vals <- d$baseline_values[[var_name]]
+          policy_vals <- d$policy_values[[var_name]]
 
           output[[paste0("hist_", var_name)]] <- renderPlot({
             .make_before_after_hist(
@@ -520,16 +510,8 @@ mod_3_08_diagnostics_server <- function(id,
     })
 
     output$treatment_table <- DT::renderDT({
-      d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
-      df <- policy_treatment_matrix(
-        d$baseline_svy, d$policy_svy,
-        eligibility = tryCatch(
-          if (!is.null(sp_scenario())) .determine_sp_eligibility(
-            d$baseline_svy, sp_scenario(), apply_errors = FALSE
-          ) else NULL,
-          error = function(e) NULL
-        )
-      )
+      d <- diag_data(); req(d)
+      df <- d$treatment_matrix
       DT::datatable(
         .format_policy_treatment_table(df),
         rownames = FALSE, class = "compact stripe",
@@ -545,12 +527,10 @@ mod_3_08_diagnostics_server <- function(id,
       )
     })
     output$policy_component_table <- DT::renderDT({
-      d <- diag_data(); req(d, !is.null(d$baseline_svy), !is.null(d$policy_svy))
+      d <- diag_data(); req(d)
       DT::datatable(
         .format_policy_component_table(
-          policy_component_matrix(d$baseline_svy, d$policy_svy,
-                                  analysis_unit = analysis_unit()),
-          analysis_unit()
+          d$component_matrix, d$analysis_unit
         ),
         rownames = FALSE, class = "compact stripe", extensions = "Buttons",
         options = list(dom = wise_csv_dom("t"), paging = FALSE,
@@ -564,15 +544,7 @@ mod_3_08_diagnostics_server <- function(id,
       step = 3L,
       fun = function() {
         d <- diag_data(); if (is.null(d)) return(NULL)
-        policy_treatment_matrix(
-          d$baseline_svy, d$policy_svy,
-          eligibility = tryCatch(
-            if (!is.null(sp_scenario())) .determine_sp_eligibility(
-              d$baseline_svy, sp_scenario(), apply_errors = FALSE
-            ) else NULL,
-            error = function(e) NULL
-          )
-        )
+        d$treatment_matrix
       },
       description = paste(
         "Weighted eligibility versus realized positive-transfer treatment.",
@@ -586,8 +558,7 @@ mod_3_08_diagnostics_server <- function(id,
       step = 3L,
       fun = function() {
         d <- diag_data(); if (is.null(d)) return(NULL)
-        policy_component_matrix(d$baseline_svy, d$policy_svy,
-                                analysis_unit = analysis_unit())
+        d$component_matrix
       },
       description = "Population affected or covered by social protection and other modeled policy components, including overlap."
     )

@@ -143,6 +143,55 @@ build_direct_rif_metadata <- function(fits) {
 }
 
 
+#' Compute RIF outcomes for several quantiles with shared preparation
+#'
+#' This is the fit-time counterpart to \code{compute_rif()}. It preserves that
+#' function's per-quantile output while sharing the finite-value scan, type-7
+#' quantile calculation, and density interpolation across the quantile grid.
+#' Each RIF vector is still built separately to avoid an \code{N x K} logical
+#' comparison matrix.
+#'
+#' @param y Numeric outcome vector.
+#' @param taus Numeric vector of quantiles in the required output order.
+#' @param bw Optional bandwidth, as in \code{compute_rif()}.
+#' @param dens Optional pre-built density object, as in \code{compute_rif()}.
+#'
+#' @return An unnamed list of numeric vectors, one for each value of
+#'   \code{taus}, in the same order.
+#'
+#' @keywords internal
+compute_rif_multi <- function(y, taus, bw = NULL, dens = NULL) {
+  na_mask <- !is.finite(y)
+  y_obs   <- y[!na_mask]
+  q_taus  <- stats::quantile(y_obs, probs = taus, names = FALSE, type = 7)
+
+  if (is.null(dens)) {
+    bw_use <- bw
+    if (is.null(bw_use)) {
+      bw_use <- tryCatch(stats::bw.SJ(y_obs), error = function(e) stats::bw.nrd0(y_obs))
+    }
+    dens <- stats::density(y_obs, bw = bw_use, n = 1024)
+  }
+
+  f_taus   <- stats::approx(dens$x, dens$y, xout = q_taus)$y
+  dens_max <- max(dens$y)
+
+  lapply(seq_along(taus), function(i) {
+    f_q <- f_taus[i]
+    if (is.na(f_q) || f_q <= 0) {
+      f_q <- dens_max * 0.01
+      warning(sprintf("Density near zero at quantile %.2f; using floor.", taus[i]))
+    }
+    f_q <- max(f_q, dens_max * 0.001)
+
+    rif <- rep(NA_real_, length(y))
+    rif[!na_mask] <- q_taus[i] +
+      (taus[i] - as.numeric(y_obs <= q_taus[i])) / f_q
+    rif
+  })
+}
+
+
 # ---------------------------------------------------------------------------- #
 # Grid construction                                                             #
 # ---------------------------------------------------------------------------- #

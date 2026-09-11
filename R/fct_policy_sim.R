@@ -100,6 +100,104 @@ has_sp_change <- function(sp) {
 }
 
 
+#' Known survey columns that policy levers can modify
+#'
+#' Keep changed-column scans bounded to the columns the Step 3 policy
+#' application can actually mutate. Social protection is handled separately
+#' through `SP_TRANSFER_COL`; diagnostics optionally include the outcome after
+#' applying that transfer to a local copy.
+#'
+#' @param infra,digital,labor,education Optional policy scenario lists. When
+#'   none are supplied, all known policy covariates are returned.
+#' @param model_vars Optional model terms used to apply the same gating as
+#'   `apply_policy_to_svy()`.
+#' @param outcome Optional outcome column to include (diagnostics only).
+#' @return Character vector in stable policy-definition order.
+#' @keywords internal
+.policy_candidate_cols <- function(infra = NULL, digital = NULL, labor = NULL,
+                                   education = NULL, model_vars = NULL,
+                                   outcome = NULL) {
+  definition_vars <- unlist(
+    lapply(POLICY_DEFINITIONS, function(def) def$vars %||% character()),
+    use.names = FALSE
+  )
+  labor_vars <- c(
+    "employed", "selfemployed", "unemployed",
+    "agriculture", "industry", "services"
+  )
+  all_candidates <- unique(c(definition_vars, labor_vars))
+
+  scenarios_supplied <- !all(vapply(
+    list(infra, digital, labor, education), is.null, logical(1)
+  ))
+  if (!scenarios_supplied) return(unique(c(all_candidates, outcome)))
+
+  changed <- function(x) {
+    if (is.null(x) || length(x) != 1L || is.na(x)) return(FALSE)
+    if (is.logical(x)) isTRUE(x) else x != 0
+  }
+  candidates <- character()
+
+  if (!is.null(infra)) {
+    if (isTRUE(infra$elec_universal) || changed(infra$elec_access_change_pct))
+      candidates <- c(candidates, "electricity")
+    if (isTRUE(infra$water_universal) || changed(infra$water_access_change_pct))
+      candidates <- c(candidates, "imp_wat_rec")
+    if (isTRUE(infra$sanitation_universal) ||
+        changed(infra$sanitation_access_change_pct))
+      candidates <- c(candidates, "imp_san_rec")
+    if (changed(infra$health_travel_pct) ||
+        identical(infra$health_mode, "max"))
+      candidates <- c(candidates, "ttime_health")
+    if (isTRUE(infra$piped_universal) || changed(infra$piped_access_change_pct))
+      candidates <- c(candidates, "piped")
+    if (isTRUE(infra$piped_to_prem_universal) ||
+        changed(infra$piped_to_prem_access_change_pct))
+      candidates <- c(candidates, "piped_to_prem")
+    if (isTRUE(infra$imp_wat_san_universal) ||
+        changed(infra$imp_wat_san_access_change_pct))
+      candidates <- c(candidates, "imp_wat_san_rec")
+  }
+  if (!is.null(digital)) {
+    if (isTRUE(digital$internet_universal) ||
+        changed(digital$internet_access_change_pct))
+      candidates <- c(candidates, "internet")
+    if (isTRUE(digital$mobile_universal) ||
+        changed(digital$mobile_access_change_pct))
+      candidates <- c(candidates, "cellphone")
+  }
+  if (!is.null(education)) {
+    if (isTRUE(education$primary_universal) ||
+        changed(education$primary_access_change_pct))
+      candidates <- c(candidates, "educ_com1_hh")
+    if (isTRUE(education$secondary_universal) ||
+        changed(education$secondary_access_change_pct))
+      candidates <- c(candidates, "educ_com2_hh")
+    if (isTRUE(education$postsec_universal) ||
+        changed(education$postsec_access_change_pct))
+      candidates <- c(candidates, "educ_com3_hh")
+  }
+  if (!is.null(labor)) {
+    if (changed(labor$employment_change_pp)) {
+      candidates <- c(candidates, "employed", "selfemployed", "unemployed")
+    }
+    if (changed(labor$sector_manufacturing) || changed(labor$sector_services)) {
+      candidates <- c(candidates, "employed", "selfemployed",
+                      "agriculture", "industry", "services")
+    }
+  }
+
+  candidates <- unique(candidates)
+  if (!is.null(model_vars)) {
+    candidates <- Filter(
+      function(v) any(grepl(v, model_vars, ignore.case = TRUE)),
+      candidates
+    )
+  }
+  unique(c(candidates, outcome))
+}
+
+
 #' Population-level cost of an applied social-protection transfer
 #'
 #' The single implementation of the transfer arithmetic the Step 3 diagnostics
@@ -269,7 +367,8 @@ has_sp_change <- function(sp) {
 #' @param svy_policy   Policy-adjusted survey-weather data frame.
 #' @return Scalar logical.
 #' @keywords internal
-.scenario_has_effect <- function(svy_baseline, svy_policy) {
+.scenario_has_effect <- function(svy_baseline, svy_policy,
+                                 candidates = NULL) {
   if (is.null(svy_baseline) || is.null(svy_policy)) return(FALSE)
 
   # Social protection: any non-zero transfer is an effect on its own.
@@ -279,11 +378,10 @@ has_sp_change <- function(sp) {
     if (any(is.finite(sp) & abs(sp) > 1e-10)) return(TRUE)
   }
 
-  # Covariate levers: any column that moved between the two frames.
-  shared <- setdiff(
-    intersect(names(svy_baseline), names(svy_policy)),
-    SP_TRANSFER_COL
-  )
+  # Covariate levers: only columns apply_policy_to_svy() can mutate. Survey
+  # frames are wide, while this set is small and fixed by the policy schema.
+  shared <- intersect(names(svy_baseline), names(svy_policy))
+  if (!is.null(candidates)) shared <- shared[shared %in% candidates]
   for (col in shared) {
     b <- svy_baseline[[col]]
     p <- svy_policy[[col]]
@@ -296,6 +394,82 @@ has_sp_change <- function(sp) {
     }
   }
   FALSE
+}
+
+
+#' Build the immutable diagnostics snapshot for one successful policy run
+#'
+#' Computes changed-variable and numeric summaries once, before the policy run
+#' publishes any reactive state. The caller stores the returned ordinary R
+#' object in one reactive value so renderers and exports observe the same run.
+#'
+#' @param svy_baseline Baseline survey frame.
+#' @param svy_policy Policy-adjusted survey frame.
+#' @param outcome Outcome column whose post-transfer values are diagnosed.
+#' @param analysis_unit Analysis unit used for transfer totals.
+#' @param candidates Known columns that the active policy configuration can
+#'   modify, plus `outcome` when transfer-adjusted welfare should be shown.
+#' @param sp Social-protection scenario used to snapshot eligibility before
+#'   targeting errors.
+#' @return A diagnostics snapshot, or NULL when either frame is unavailable.
+#' @keywords internal
+.policy_diagnostics_snapshot <- function(svy_baseline, svy_policy,
+                                         outcome = "welfare",
+                                         analysis_unit = "hh",
+                                         candidates = .policy_candidate_cols(
+                                           outcome = outcome
+                                         ),
+                                         sp = NULL) {
+  if (is.null(svy_baseline) || is.null(svy_policy)) return(NULL)
+
+  policy_diag <- svy_policy
+  if (SP_TRANSFER_COL %in% names(policy_diag) &&
+      outcome %in% names(policy_diag)) {
+    policy_diag[[outcome]] <- policy_diag[[outcome]] +
+      policy_diag[[SP_TRANSFER_COL]]
+  }
+
+  totals <- .sp_transfer_totals(policy_diag, analysis_unit)
+  vars <- detect_manipulated_vars(
+    svy_baseline, policy_diag, candidates = candidates
+  )
+
+  input_summary <- if (length(vars) > 0L) {
+    policy_input_diagnostics(svy_baseline, policy_diag, vars = vars)
+  } else {
+    NULL
+  }
+  baseline_values <- lapply(vars, function(v) svy_baseline[[v]])
+  policy_values   <- lapply(vars, function(v) policy_diag[[v]])
+  names(baseline_values) <- names(policy_values) <- vars
+  changed_counts <- .policy_changed_counts(svy_baseline, policy_diag, vars)
+  eligibility <- tryCatch(
+    if (!is.null(sp)) {
+      .determine_sp_eligibility(svy_baseline, sp, apply_errors = FALSE)
+    } else {
+      NULL
+    },
+    error = function(e) NULL
+  )
+
+  list(
+    status           = if (length(vars) == 0L) "no_change" else NULL,
+    manipulated_vars = vars,
+    baseline_values  = baseline_values,
+    policy_values    = policy_values,
+    changed_counts   = changed_counts,
+    transfer_sum     = totals$total,
+    transfer_pp      = totals$per_unit,
+    input_summary    = input_summary,
+    analysis_unit    = analysis_unit,
+    treatment_matrix = policy_treatment_matrix(
+      svy_baseline, policy_diag, eligibility = eligibility
+    ),
+    component_matrix = policy_component_matrix(
+      svy_baseline, policy_diag, analysis_unit = analysis_unit,
+      candidates = unique(c(candidates, SP_TRANSFER_COL))
+    )
+  )
 }
 
 
@@ -1155,9 +1329,9 @@ resimulate_with_svy <- function(svy, sw, so, mf,
 #' @param so                     Selected-outcome metadata.
 #' @param hist_sim_baseline      Step 2 \code{hist_sim} list (verbatim).
 #' @param saved_scenarios_baseline Step 2 named \code{saved_scenarios} list.
-#' @param skip_coef              Logical. Forwarded to
-#'   \code{decompose_policy_effect()} - when TRUE, per-channel SEs are zeroed
-#'   but \code{delta_total} is still computed.
+#' @param skip_coef              Retained for API compatibility. The active
+#'   correction path computes central values only, so this value does not
+#'   affect the result.
 #' @param deltas                 Optional pre-computed covariate deltas from
 #'   \code{.compute_policy_deltas()} - weather-independent, so computed once
 #'   here and reused for every pipeline/scenario instead of per call
@@ -1195,29 +1369,26 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     stats::ecdf(model_fit$train_data[[so$name]])
   } else NULL)
 
-  # Per-HH delta_total for a given weather panel. Returns NULL when the
-  # decomposition is unavailable (engine outside {rif, fixest}, missing
-  # model bits, etc.) so the caller can fall back to resimulate_with_svy().
+  # Per-HH delta_total for a given weather panel. The active simulation path
+  # needs only the central correction, not the full decomposition data frame
+  # or channel uncertainty vectors.
   delta_for <- function(weather_raw) {
-    decomp <- tryCatch(
-      decompose_policy_effect(
+    tryCatch(
+      .policy_central_delta(
         svy_baseline = svy_baseline,
         svy_policy   = svy_policy,
         model_fit    = model_fit,
         so           = so,
         weather_raw  = weather_raw,
-        skip_coef    = skip_coef,
         deltas       = deltas,
         F_hat        = F_hat
       ),
       error = function(e) {
-        warning("[apply_policy_delta_to_baseline] decompose_policy_effect() ",
+        warning("[apply_policy_delta_to_baseline] central policy kernel ",
                 "failed: ", conditionMessage(e))
         NULL
       }
     )
-    if (is.null(decomp) || !"delta_total" %in% names(decomp)) return(NULL)
-    decomp$delta_total
   }
 
   apply_to_pipeline <- function(pipe, weather_raw_for_delta) {

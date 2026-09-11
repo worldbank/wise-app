@@ -643,12 +643,20 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
 # Cards                                                                         #
 # ---------------------------------------------------------------------------- #
 
-.s1_effect_card <- function(mf, snap, var, engine, scale, label_fun) {
+.s1_effect_card <- function(mf, snap, var, engine, scale, label_fun,
+                            scenario = NULL, scenario_cached = FALSE) {
   varlab <- .s1_weather_label(snap, var, label_fun)
   lab <- paste0("Effect of ", varlab)
   blank <- function(note) list(label = lab, value = "Unavailable",
                                note = note, class = "neutral")
-  if (engine == "rif") {
+  if (isTRUE(scenario_cached)) {
+    if (is.null(scenario) || !length(scenario$scenarios)) {
+      return(blank("the effect could not be translated for this configuration"))
+    }
+    s <- scenario$scenarios[[1]]
+    clab <- scenario$contrast_label
+    pnote <- scenario$profile_note
+  } else if (engine == "rif") {
     rs <- .s1_rif_scenarios(mf, snap, var, taus = 0.5)
     s <- .s1_scen_at(rs, 0.5)
     clab <- attr(rs, "contrast_label")
@@ -694,7 +702,10 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
        info = paste(info_bits, collapse = " "))
 }
 
-.s1_who_card <- function(mf, snap, var, engine, scale, label_fun) {
+.s1_who_card <- function(mf, snap, var, engine, scale, label_fun,
+                         scenario = NULL, scenario_cached = FALSE,
+                         rif_scenarios = NULL, rif_scenarios_cached = FALSE,
+                         rif_p = NULL, rif_p_cached = FALSE) {
   bits_val <- character(0)
   note_parts <- character(0)   # plain text (CSV export)
   html_parts <- list()         # display: p-value line + bold comparison line
@@ -707,7 +718,9 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
 
   # Distribution sensitivity (RIF only)
   if (engine == "rif") {
-    sc <- .s1_rif_scenarios(mf, snap, var, taus = c(0.1, 0.9))
+    sc <- if (isTRUE(rif_scenarios_cached)) rif_scenarios else {
+      .s1_rif_scenarios(mf, snap, var, taus = c(0.1, 0.9))
+    }
     s1 <- .s1_scen_at(sc, 0.1)
     s9 <- .s1_scen_at(sc, 0.9)
     if (!is.null(s1) && !is.null(s9) &&
@@ -723,7 +736,9 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
         "Compares the translated effect between the poorest 10% and the ",
         "richest 10% of households (RIF quantile estimates; values are ",
         "log-point approximations of % changes)."))
-      p <- tryCatch(step1_rif_heterogeneity_p(mf, snap, var), error = function(e) NULL)
+      p <- if (isTRUE(rif_p_cached)) rif_p else {
+        tryCatch(step1_rif_heterogeneity_p(mf, snap, var), error = function(e) NULL)
+      }
       if (!is.null(p) && is.finite(p)) {
         p_line <- if (p < 0.001) "RIF distribution p < 0.001" else sprintf("RIF distribution p = %.3f", p)
         rif_p_line <- p_line
@@ -738,9 +753,8 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
   # Moderator heterogeneity (any engine with interactions)
   modx_var <- .s1_modx_var(mf, var)
   if (!is.null(modx_var) && engine != "ml" && engine != "rif") {
-    sc <- if (engine == "rif") {
-      rs <- .s1_rif_scenarios(mf, snap, var, taus = 0.5)
-      if (!length(rs)) NULL else lapply(rs, function(x) if (length(x)) x[[1]] else NULL)
+    sc <- if (isTRUE(scenario_cached)) {
+      scenario$scenarios
     } else {
       ss <- .s1_fixest_scenarios(mf, snap, var)
       if (!length(ss)) NULL else if (is_logistic_fit(mf)) lapply(ss, .s1_to_pp) else ss
@@ -976,11 +990,22 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
   )
 }
 
-.s1_cards_model <- function(mf, snap, var, engine, label_fun) {
+.s1_cards_model <- function(mf, snap, var, engine, label_fun,
+                            scenario = NULL, scenario_cached = FALSE,
+                            rif_scenarios = NULL,
+                            rif_scenarios_cached = FALSE,
+                            rif_p = NULL, rif_p_cached = FALSE) {
   scale <- .s1_scale(mf, snap)
   list(
-    .s1_effect_card(mf, snap, var, engine, scale, label_fun),
-    .s1_who_card(mf, snap, var, engine, scale, label_fun),
+    .s1_effect_card(mf, snap, var, engine, scale, label_fun,
+                    scenario = scenario, scenario_cached = scenario_cached),
+    .s1_who_card(
+      mf, snap, var, engine, scale, label_fun,
+      scenario = scenario, scenario_cached = scenario_cached,
+      rif_scenarios = rif_scenarios,
+      rif_scenarios_cached = rif_scenarios_cached,
+      rif_p = rif_p, rif_p_cached = rif_p_cached
+    ),
     .s1_stability_card(mf, snap, var, engine),
     .s1_fit_card(mf, snap, engine)
   )
@@ -1001,11 +1026,20 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
 #' @param mf        Named list returned by `fit_model()` (with `.snap` attached).
 #' @param snap      The fit-time snapshot (`mf$.snap`).
 #' @param label_fun Function mapping variable names to readable labels.
+#' @param scenarios_list Optional named list of precomputed
+#'   \code{step1_scenarios()} results, keyed by weather variable.
+#' @param rif_scenarios Optional named list of precomputed tail RIF scenarios,
+#'   keyed by weather variable.
+#' @param rif_heterogeneity Optional named list of precomputed RIF
+#'   heterogeneity p-values, keyed by weather variable.
 #'
 #' @return List with `rows`, each row a list(var_label, cards), or NULL.
 #'
 #' @export
-step1_headline_cards <- function(mf, snap, label_fun = identity) {
+step1_headline_cards <- function(mf, snap, label_fun = identity,
+                                 scenarios_list = NULL,
+                                 rif_scenarios = NULL,
+                                 rif_heterogeneity = NULL) {
   tryCatch({
     if (is.null(mf) || is.null(snap)) return(NULL)
     engine <- .s1_engine(mf)
@@ -1015,7 +1049,15 @@ step1_headline_cards <- function(mf, snap, label_fun = identity) {
       cards <- if (engine == "ml") {
         .s1_cards_ml(mf, snap, var, label_fun)
       } else {
-        .s1_cards_model(mf, snap, var, engine, label_fun)
+        .s1_cards_model(
+          mf, snap, var, engine, label_fun,
+          scenario = scenarios_list[[var]],
+          scenario_cached = var %in% names(scenarios_list),
+          rif_scenarios = rif_scenarios[[var]],
+          rif_scenarios_cached = var %in% names(rif_scenarios),
+          rif_p = rif_heterogeneity[[var]],
+          rif_p_cached = var %in% names(rif_heterogeneity)
+        )
       }
       list(var_label = .s1_weather_label(snap, var, label_fun), cards = cards)
     })
@@ -1025,12 +1067,20 @@ step1_headline_cards <- function(mf, snap, label_fun = identity) {
 
 #' Tidy data frame behind the headline cards (export bundle / CSV)
 #'
+#' @param result Optional precomputed result from \code{step1_headline_cards()}.
+#'   When supplied, \code{mf}, \code{snap}, and \code{label_fun} are not used.
+#'
 #' @return A data frame with columns weather_variable, card, value, detail,
 #'   or NULL when no cards could be built.
 #'
 #' @export
-step1_headline_table <- function(mf, snap, label_fun = identity) {
-  res <- step1_headline_cards(mf, snap, label_fun = label_fun)
+step1_headline_table <- function(mf = NULL, snap = NULL, label_fun = identity,
+                                 result = NULL) {
+  res <- if (missing(result)) {
+    step1_headline_cards(mf, snap, label_fun = label_fun)
+  } else {
+    result
+  }
   if (is.null(res)) return(NULL)
   do.call(rbind, lapply(res$rows, function(r) {
     data.frame(

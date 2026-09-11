@@ -36,13 +36,16 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
 }
 
 policy_component_matrix <- function(baseline_svy, policy_svy,
-                                    weight_col = "weight", analysis_unit = "hh") {
+                                    weight_col = "weight", analysis_unit = "hh",
+                                    candidates = NULL) {
   if (is.null(baseline_svy) || is.null(policy_svy) ||
       nrow(baseline_svy) != nrow(policy_svy)) return(data.frame())
   w <- if (weight_col %in% names(baseline_svy)) as.numeric(baseline_svy[[weight_col]]) else rep(1, nrow(baseline_svy))
   w[!is.finite(w) | w < 0] <- 0
   total_w <- sum(w)
-  changed <- detect_manipulated_vars(baseline_svy, policy_svy)
+  changed <- detect_manipulated_vars(
+    baseline_svy, policy_svy, candidates = candidates
+  )
   non_sp_vars <- setdiff(changed, c("welfare", SP_TRANSFER_COL, weight_col, "sim_year", "year"))
   changed_mask <- function(v) {
     b <- baseline_svy[[v]]; p <- policy_svy[[v]]

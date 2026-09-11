@@ -29,6 +29,52 @@
        gk       = paste0(ssp_code, "_", period))
 }
 
+.step2_formula_vars <- function(x) {
+  if (is.null(x) || !length(x)) return(character(0))
+  fml <- tryCatch({
+    if (inherits(x, "formula")) x else {
+      text <- paste(as.character(x), collapse = " ")
+      if (!grepl("~", text, fixed = TRUE)) text <- paste("~", text)
+      stats::as.formula(text)
+    }
+  }, error = function(e) NULL)
+  if (is.null(fml)) character(0) else all.vars(fml)
+}
+
+.step2_survey_projection <- function(svy, mf, sw, so, id_col = NULL,
+                                     weight_cols = NULL) {
+  join_keys <- c("code", "year", "survname", "loc_id", "int_month")
+  full_frame <- function() {
+    svy[, setdiff(names(svy), c(sw$name, so$name)), drop = FALSE] |>
+      dplyr::mutate(year = as.character(year))
+  }
+  formula3 <- mf$formulas$formula3
+  formula_vars <- .step2_formula_vars(formula3)
+  fit_formula <- tryCatch(stats::formula(mf$fit3), error = function(e) NULL)
+  fit_vars <- .step2_formula_vars(fit_formula)
+  metadata_names <- c("weather_terms", "interaction_terms", "fe_terms")
+  metadata_complete <- !is.null(formula3) && length(formula_vars) > 0L &&
+    !is.null(fit_formula) && length(fit_vars) > 0L &&
+    setequal(formula_vars, fit_vars) && all(metadata_names %in% names(mf)) &&
+    !is.null(mf$weather_terms) && !is.null(mf$interaction_terms) &&
+    !is.null(mf$fe_terms)
+  if (!metadata_complete) return(full_frame())
+  weather_vars <- unique(c(sw$name, mf$weather_terms))
+  declared_vars <- unique(c(formula_vars,
+    .step2_formula_vars(mf$interaction_terms), mf$fe_terms, mf$weather_terms))
+  required_svy <- setdiff(unique(c(join_keys, declared_vars, id_col, weight_cols)),
+                          c(weather_vars, so$name))
+  weather_complete <- length(mf$weather_terms) > 0L &&
+    all(mf$weather_terms %in% sw$name) &&
+    all(intersect(formula_vars, sw$name) %in% mf$weather_terms)
+  if (!weather_complete || !all(required_svy %in% names(svy))) return(full_frame())
+  required <- setdiff(unique(c(join_keys, declared_vars, id_col, weight_cols)),
+                      c(weather_vars, so$name))
+  keep <- names(svy)[names(svy) %in% required]
+  svy[, keep, drop = FALSE] |>
+    dplyr::mutate(year = as.character(year))
+}
+
 #' Run the full welfare-weather simulation pipeline
 #'
 #' Pure function - no reactives. Extracts all business logic from
@@ -292,12 +338,11 @@ fct_run_simulation <- function(sw,
     tryCatch(build_direct_rif_metadata(fit_multi), error = function(e) NULL)
   } else NULL
 
-  # Survey-side join prep: drop weather/outcome columns and convert year once.
-  # Passed to run_sim_pipeline() so prepare_hist_weather() skips this per key.
-  drop_cols <- c(sw$name, so$name)
-  svy_prepared <- svy |>
-    dplyr::mutate(year = as.character(year)) |>
-    dplyr::select(-dplyr::any_of(drop_cols))
+  # Project the survey before the weather expansion. The full baseline remains
+  # retained separately in hist_sim_result$svy for Step 3 policy consumers.
+  svy_prepared <- .step2_survey_projection(
+    svy, mf, sw, so, id_col = shared_id_col, weight_cols = wt_detected
+  )
   weather_join_cache <- if (isTRUE(join_cache) &&
                             all(c("code", "year", "survname", "loc_id",
                                   "int_month") %in% names(svy_prepared))) {
@@ -498,7 +543,10 @@ fct_run_simulation <- function(sw,
     if (ki %% 10L == 0L) gc(verbose = FALSE)
   }
 
-  compact_train_aug <- precomputed_train_aug
+  compact_train_aug <- .compact_residual_context(
+    precomputed_train_aug, shared_id_col, residuals,
+    compact = identical(payload_mode, "compact")
+  )
   rm(weather_per_key, weather_result, weather_refs, precomputed_train_aug,
      svy_prepared, weather_join_cache, direct_rif_metadata)
   gc(verbose = FALSE)

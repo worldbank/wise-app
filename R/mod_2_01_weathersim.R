@@ -226,6 +226,18 @@ mod_2_01_weathersim_ui <- function(id) {
   )
 }
 
+.step2_filter_baseline_surveys <- function(selected_surveys,
+                                            baseline_selection) {
+  if (is.null(selected_surveys) || length(baseline_selection) == 0L) {
+    return(selected_surveys)
+  }
+  required <- c("code", "year")
+  if (!all(required %in% names(selected_surveys))) return(selected_surveys)
+  wave_key <- paste0(selected_surveys$code, "|",
+                     as.character(selected_surveys$year))
+  selected_surveys[wave_key %in% baseline_selection, , drop = FALSE]
+}
+
 
 #' 2_01_weathersim Server Functions
 #'
@@ -485,6 +497,16 @@ mod_2_01_weathersim_server <- function(id,
       svy[vals %in% sel, , drop = FALSE]
     })
 
+    # Keep weather retrieval on the same code/year waves as the baseline
+    # population. Retain every matching metadata row so same-year survey rounds
+    # and duplicate file references keep their existing filename semantics.
+    baseline_surveys <- reactive({
+      ss <- selected_surveys()
+      req(ss)
+      sel <- input$baseline_survey %||% baseline_default()
+      .step2_filter_baseline_surveys(ss, sel)
+    })
+
     selected_hist <- reactive({
       req(input$hist_years)
       data.frame(
@@ -616,6 +638,7 @@ mod_2_01_weathersim_server <- function(id,
         step           = "sim",
         fit_sig        = fit_sig,
         survey_version = survey_version(),
+        selected_surveys = .sig_plain(selected_surveys()),
         hist_years     = input$hist_years,
         climate        = input$climate,
         future_periods = future_periods(),
@@ -628,44 +651,22 @@ mod_2_01_weathersim_server <- function(id,
       )
     }
 
-    observeEvent(model_fit(), {
+    live_sim_sig <- reactive({
+      mf <- model_fit()
+      .sim_sig_from_live(mf$.sig %||% NULL)
+    })
+
+    stale_dependencies <- reactive(list(
+      model_fit(), survey_version(), selected_surveys(),
+      input$hist_years, input$climate,
+      input$baseline_survey, input$residuals, input$include_coef_uncertainty,
+      input$propagate_all_covariate_uncertainty,
+      input$fut_period_1, input$fut_period_2, input$fut_period_3
+    ))
+
+    observeEvent(stale_dependencies(), {
       hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$hist_years, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$climate, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$baseline_survey, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$residuals, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$include_coef_uncertainty, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$propagate_all_covariate_uncertainty, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(future_periods(), {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
+      if (!is.null(hs) && !identical(live_sim_sig(), hs$.sig))
         sim_stale(TRUE)
     }, ignoreInit = TRUE)
 
@@ -699,7 +700,7 @@ mod_2_01_weathersim_server <- function(id,
       so  <- selected_outcome()
       sh  <- selected_hist()
       svy <- baseline_svy()
-      ss  <- selected_surveys()
+      ss  <- baseline_surveys()
       req(ss)
       mf  <- model_fit()
       cp  <- connection_params()

@@ -188,3 +188,115 @@ test_that("multiple partial failures across groups all reach the ledger", {
   expect_identical(s2$n_models_requested, 3L)
   expect_true("ensemble_mean" %in% names(s2$pipelines))
 })
+
+test_that("survey projection preserves model inputs, types, row order, and duplicates", {
+  svy <- data.frame(
+    hhid = c("hh2", "hh1", "hh1"), code = "TST", year = 2020L,
+    survname = "SRV", loc_id = "loc01", int_month = c(2L, 1L, 1L),
+    welfare = c(2, 1, 1), temp = 0,
+    group = factor(c("b", "a", "a"), levels = c("b", "a", "unused")),
+    control = c(3, 2, 2), weight = c(2, 1, 1), unused = letters[1:3],
+    stringsAsFactors = FALSE
+  )
+  mf <- list(
+    fit3 = stats::lm(welfare ~ temp * group + control, data = svy),
+    formulas = list(formula3 = welfare ~ temp * group + control),
+    weather_terms = "temp", interaction_terms = "temp:group",
+    fe_terms = character(0)
+  )
+  projected <- .step2_survey_projection(
+    svy, mf, data.frame(name = "temp"), data.frame(name = "welfare"),
+    id_col = "hhid", weight_cols = "weight"
+  )
+  expect_identical(names(projected), c(
+    "hhid", "code", "year", "survname", "loc_id", "int_month",
+    "group", "control", "weight"
+  ))
+  expect_identical(projected$hhid, svy$hhid)
+  expect_identical(projected$group, svy$group)
+  expect_identical(projected$int_month, svy$int_month)
+  expect_identical(projected$year, rep("2020", 3L))
+})
+
+test_that("survey projection falls back when formula or metadata is incomplete", {
+  svy <- data.frame(
+    hhid = "hh1", code = "TST", year = 2020L, survname = "SRV",
+    loc_id = "loc01", int_month = 1L, welfare = 1, temp = 2,
+    moderator = "urban", control = 3, fe = "district", weight = 1,
+    unused = "retain", stringsAsFactors = FALSE
+  )
+  complete <- list(
+    formulas = list(formula3 = welfare ~ temp * moderator + control + fe),
+    weather_terms = "temp", interaction_terms = "temp:moderator", fe_terms = "fe"
+  )
+  expected <- transform(
+    svy[, setdiff(names(svy), c("temp", "welfare")), drop = FALSE],
+    year = as.character(year)
+  )
+  cases <- list(
+    missing_formula3 = within(complete, formulas <- list()),
+    missing_weather_metadata = complete[names(complete) != "weather_terms"],
+    missing_interaction_metadata = complete[names(complete) != "interaction_terms"],
+    missing_fe_metadata = complete[names(complete) != "fe_terms"],
+    missing_formula_covariate = within(complete, formulas <- list(
+      formula3 = welfare ~ temp * moderator + absent_control + fe)),
+    missing_moderator = within(complete, interaction_terms <- "temp:absent_mod"),
+    missing_fixed_effect = within(complete, fe_terms <- "absent_fe"),
+    mismatched_weather = within(complete, weather_terms <- "absent_weather")
+  )
+  for (case_name in names(cases)) {
+    out <- .step2_survey_projection(
+      svy, cases[[case_name]], data.frame(name = "temp"),
+      data.frame(name = "welfare"), id_col = "hhid", weight_cols = "weight"
+    )
+    expect_identical(out, expected, info = case_name)
+  }
+})
+
+test_that("survey projection falls back when required ID or weight is absent", {
+  svy <- data.frame(
+    code = "TST", year = 2020L, survname = "SRV", loc_id = "loc01",
+    int_month = 1L, welfare = 1, temp = 2, control = 3, unused = "retain",
+    stringsAsFactors = FALSE
+  )
+  mf <- list(formulas = list(formula3 = welfare ~ temp + control),
+             weather_terms = "temp", interaction_terms = character(0),
+             fe_terms = character(0))
+  expected <- transform(
+    svy[, setdiff(names(svy), c("temp", "welfare")), drop = FALSE],
+    year = as.character(year)
+  )
+  expect_identical(.step2_survey_projection(
+    svy, mf, data.frame(name = "temp"), data.frame(name = "welfare"),
+    id_col = "hhid"), expected)
+  expect_identical(.step2_survey_projection(
+    svy, mf, data.frame(name = "temp"), data.frame(name = "welfare"),
+    weight_cols = "weight"), expected)
+})
+
+test_that("weather retrieval receives selected survey metadata unchanged", {
+  captured <- NULL
+  wr <- make_ledger_weather_result(with_ssp5 = FALSE)
+  svy <- make_ledger_svy()
+  ss <- data.frame(code = c("TST", "TST"), year = c(2020L, 2020L),
+                   survname = c("SRV", "SRV_ALT"), source = c("src", "src_alt"),
+                   stringsAsFactors = FALSE)
+  suppressWarnings(fct_run_simulation(
+    sw = data.frame(name = "temp", stringsAsFactors = FALSE),
+    so = data.frame(name = "welfare", type = "numeric", transform = "log",
+                    stringsAsFactors = FALSE), svy = svy, ss = ss,
+    mf = list(fit3 = NULL, engine = "fixest", train_data = svy,
+              weather_terms = "temp"), cp = list(type = "local", path = tempdir()),
+    fp_list = list(c("2030-01-01", "2040-12-31")), ssps = "ssp2_4_5",
+    residuals = "none", skip_coef_draws = TRUE,
+    sim_dates = c("2020-01-01", "2020-12-31"), perturbation_method = NULL,
+    stored_breaks = NULL,
+    weather_fn = function(selected_surveys, ...) {
+      captured <<- selected_surveys
+      wr
+    }, pipeline_fn = make_ledger_pipeline_fn()
+  ))
+  expect_identical(captured, ss)
+  expect_identical(captured$survname, c("SRV", "SRV_ALT"))
+  expect_identical(captured$source, c("src", "src_alt"))
+})

@@ -14,6 +14,77 @@ test_that("interpolate_delta works correctly", {
   expect_equal(result2, tau_i2, tolerance = 1e-10)
 })
 
+legacy_compute_rif_multi <- function(y, taus, bw = NULL, dens = NULL) {
+  lapply(taus, function(tau) compute_rif(y, tau = tau, bw = bw, dens = dens))
+}
+
+test_that("multi-tau RIF preparation exactly preserves single-tau results", {
+  set.seed(20260911)
+  cases <- list(
+    tied = c(rep(1, 20), rep(2, 10), rep(5, 5)),
+    constant = rep(3, 20),
+    skewed = stats::rlnorm(500, meanlog = 2, sdlog = 1.2),
+    very_small = c(1, 2),
+    nonfinite = c(stats::rnorm(100), NA_real_, NaN, Inf, -Inf)
+  )
+  taus <- c(0.9, 0.1, 0.5, 0.25)
+
+  for (y in cases) {
+    y_obs <- y[is.finite(y)]
+    bw <- tryCatch(stats::bw.SJ(y_obs),
+                   error = function(e) stats::bw.nrd0(y_obs))
+    dens <- stats::density(y_obs, bw = bw, n = 1024)
+    expect_identical(
+      compute_rif_multi(y, taus, dens = dens),
+      legacy_compute_rif_multi(y, taus, dens = dens)
+    )
+  }
+})
+
+test_that("multi-tau preparation preserves density floors and warnings", {
+  y <- c(1, 2, NA_real_, Inf)
+  taus <- c(0.25, 0.75)
+  zero_density <- list(x = c(1, 2), y = c(0, 0))
+  capture_warnings <- function(expr) {
+    warnings <- character(0)
+    value <- withCallingHandlers(
+      expr,
+      warning = function(w) {
+        warnings <<- c(warnings, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    list(value = value, warnings = warnings)
+  }
+  actual <- capture_warnings(compute_rif_multi(y, taus, dens = zero_density))
+  expected <- capture_warnings(legacy_compute_rif_multi(y, taus, dens = zero_density))
+  expect_identical(actual, expected)
+})
+
+test_that("RIF engine preparation preserves tau order, schema, and factors", {
+  set.seed(42)
+  df <- data.frame(
+    y = c(stats::rnorm(100), NA_real_, NaN, Inf, -Inf),
+    group = factor(rep(c("b", "a"), 52), levels = c("b", "a", "unused"))
+  )
+  taus <- seq(0.1, 0.9, by = 0.1)
+  rif_cols <- paste0("rif_", formatC(taus * 100, format = "d"))
+  y_obs <- df$y[is.finite(df$y)]
+  bw <- tryCatch(stats::bw.SJ(y_obs),
+                 error = function(e) stats::bw.nrd0(y_obs))
+  dens <- stats::density(y_obs, bw = bw, n = 1024)
+  expected <- legacy_compute_rif_multi(df$y, taus, dens = dens)
+  actual <- ENGINE_REGISTRY$rif$prepare_outcome(df, "y", FALSE)
+
+  expect_identical(attr(actual, "rif_taus"), taus)
+  expect_identical(attr(actual, "rif_cols"), rif_cols)
+  expect_identical(names(actual), c("y", "group", rif_cols))
+  expect_identical(actual$group, df$group)
+  for (i in seq_along(rif_cols)) {
+    expect_identical(actual[[rif_cols[i]]], expected[[i]])
+  }
+})
+
 test_that("predict_rif returns correct structure", {
   skip_if_not_installed("fixest")
   set.seed(42)

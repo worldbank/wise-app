@@ -132,6 +132,46 @@ test_that("compact pipelines resolve shared residual metadata", {
   expect_identical(legacy_agg, compact_agg)
 })
 
+test_that("compact residual context retains only mode-required columns", {
+  train_aug <- data.frame(
+    hhid = c("b", "a", "a", "missing"),
+    covariate = factor(c("x", "y", "y", "z")), .fitted = 1:4,
+    .resid = c(-0.2, 0.1, 0.1, NA_real_), stringsAsFactors = FALSE
+  )
+  original <- .compact_residual_context(train_aug, "hhid", "original")
+  expect_identical(names(original), c("hhid", ".resid"))
+  expect_identical(original$hhid, train_aug$hhid)
+  expect_identical(original$.resid, train_aug$.resid)
+  for (mode in c("normal", "resample")) {
+    compact <- .compact_residual_context(train_aug, "hhid", mode)
+    expect_identical(names(compact), ".resid", info = mode)
+    expect_identical(compact$.resid, train_aug$.resid, info = mode)
+  }
+  expect_null(.compact_residual_context(train_aug, "hhid", "none"))
+  expect_null(.compact_residual_context(NULL, "hhid", "original"))
+  expect_identical(.compact_residual_context(
+    train_aug, "hhid", "original", compact = FALSE), train_aug)
+})
+
+test_that("compact residual context preserves ID alignment and deterministic RNG", {
+  train_aug <- data.frame(
+    hhid = c("b", "a", "a", "c"), extra = I(list(1, 2, 3, 4)),
+    .resid = c(-2, 1, 9, 3), stringsAsFactors = FALSE
+  )
+  compact <- .compact_residual_context(train_aug, "hhid", "original")
+  ids <- c("a", "missing", "a", "c")
+  for (mode in c("original", "normal", "resample")) {
+    set.seed(915L)
+    before <- .Random.seed
+    full <- draw_residuals_vec(mode, train_aug, length(ids), ids, "hhid", seed = 51L)
+    expect_identical(.Random.seed, before)
+    slim <- if (identical(mode, "original")) compact else
+      .compact_residual_context(train_aug, "hhid", mode)
+    reduced <- draw_residuals_vec(mode, slim, length(ids), ids, "hhid", seed = 51L)
+    expect_identical(reduced, full, info = mode)
+  }
+})
+
 test_that("compact payload is smaller while retaining required uncertainty slots", {
   legacy <- suppressWarnings(phase4_run("legacy"))
   compact <- suppressWarnings(phase4_run("compact"))

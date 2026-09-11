@@ -28,14 +28,21 @@
 #' @param svy_policy Policy-modified survey data frame.
 #' @param outcome Outcome variable name.
 #' @param weather_vars Weather variable names to exclude from deltas.
+#' @param candidate_cols Optional known policy candidate columns. NULL retains
+#'   the generic all-shared-columns behavior.
 #' @return Named list of numeric delta vectors for changed covariates.
 #' @keywords internal
-.compute_policy_deltas <- function(svy_baseline, svy_policy, outcome, weather_vars) {
+.compute_policy_deltas <- function(svy_baseline, svy_policy, outcome, weather_vars,
+                                   candidate_cols = NULL) {
   exclude_cols <- c(outcome, SP_TRANSFER_COL, ".svy_row_id", weather_vars,
                     "year", "sim_year", "int_month", "code", "survname", "loc_id",
                     grep("^weight$|^hhweight$|^wgt$|^pw$", names(svy_baseline),
                          value = TRUE, ignore.case = TRUE))
-  check_cols <- setdiff(intersect(names(svy_baseline), names(svy_policy)), exclude_cols)
+  check_cols <- intersect(names(svy_baseline), names(svy_policy))
+  if (!is.null(candidate_cols)) {
+    check_cols <- check_cols[check_cols %in% candidate_cols]
+  }
+  check_cols <- setdiff(check_cols, exclude_cols)
 
   deltas <- list()
   for (col in check_cols) {
@@ -82,19 +89,23 @@
 #' @param outcome Character, outcome variable name.
 #' @param is_log Logical, whether outcome is log-transformed.
 #' @param skip_coef Logical. When TRUE, all per-channel SEs are returned as 0.
+#' @param central_only Logical. When TRUE, omit all coefficient-SE work and
+#'   return only the channel values needed to form `delta_total`.
 #' @param F_hat Optional pre-built empirical CDF of the training outcome
 #'   (\code{stats::ecdf(train_data[[outcome]])}). The ecdf is weather- and
 #'   policy-independent, so per-year/per-scenario callers can build it once
 #'   and pass it in instead of rebuilding it on every call (PERF-22). When
 #'   NULL it is computed here (backward compatible).
 #' @return Named list with delta_* and sd_* vectors of length n, plus
-#'   tau_i_pre / tau_i_post / has_interactions. NULL if inputs invalid.
+#'   tau_i_pre / tau_i_post / has_interactions. In central-only mode, returns
+#'   only `delta_total` and `has_interactions`. NULL if inputs are invalid.
 #' @keywords internal
 .compute_rif_channels <- function(svy_baseline, deltas, sp_transfer,
                                   hazard_values, weather_vars,
                                   rif_grid, taus, train_data,
                                   outcome, is_log,
                                   skip_coef = FALSE,
+                                  central_only = FALSE,
                                   F_hat     = NULL) {
   n <- nrow(svy_baseline)
 
@@ -111,7 +122,9 @@
   }
   # SE curve interpolation helper (same shape; returns 0 if SE absent)
   se_at <- function(term_name, tau_values) {
-    if (isTRUE(skip_coef)) return(rep(0, length(tau_values)))
+    if (isTRUE(skip_coef) || isTRUE(central_only)) {
+      return(rep(0, length(tau_values)))
+    }
     rows <- grid3[grid3$term == term_name, ]
     if (nrow(rows) == 0 || is.null(rows$std.error)) return(rep(0, length(tau_values)))
     stats::approx(x = rows$tau, y = rows$std.error, xout = tau_values, rule = 2)$y
@@ -138,7 +151,7 @@
   # Accumulate per-channel variance in parallel under the diagonal-Sigma
   # approximation:  Var = Sigma_term (Deltax * SE_term(tau))^2
   delta_main_covar <- rep(0, n)
-  var_main <- rep(0, n)
+  var_main <- if (isTRUE(central_only)) NULL else rep(0, n)
   for (v in names(deltas)) {
     term_v <- if (v %in% all_terms) {
       v
@@ -149,9 +162,11 @@
     }
     if (!is.null(term_v)) {
       beta_v <- beta_at(term_v, tau_i_pre)
-      se_v   <- se_at(term_v, tau_i_pre)
       delta_main_covar <- delta_main_covar + beta_v * deltas[[v]]
-      var_main         <- var_main + (deltas[[v]] * se_v)^2
+      if (!isTRUE(central_only)) {
+        se_v <- se_at(term_v, tau_i_pre)
+        var_main <- var_main + (deltas[[v]] * se_v)^2
+      }
     }
   }
 
@@ -171,18 +186,20 @@
   tau_i_post <- pmin(pmax(F_hat(y_post_main), min(taus)), max(taus))
 
   delta_res1 <- rep(0, n)
-  var_res1   <- rep(0, n)
+  var_res1   <- if (isTRUE(central_only)) NULL else rep(0, n)
   for (wv in weather_vars) {
     haz <- hazard_values[[wv]]
     if (wv %in% all_terms) {
       # Continuous weather: repositioning via change in beta along the curve
       beta_pre  <- beta_at(wv, tau_i_pre)
       beta_post <- beta_at(wv, tau_i_post)
-      se_pre    <- se_at(wv, tau_i_pre)
-      se_post   <- se_at(wv, tau_i_post)
       delta_res1 <- delta_res1 + (beta_post - beta_pre) * haz
       # Independent-tau assumption: Var((beta_post - beta_pre) * haz) = haz^2 (SE_pre^2 + SE_post^2)
-      var_res1 <- var_res1 + (haz^2) * (se_pre^2 + se_post^2)
+      if (!isTRUE(central_only)) {
+        se_pre  <- se_at(wv, tau_i_pre)
+        se_post <- se_at(wv, tau_i_post)
+        var_res1 <- var_res1 + (haz^2) * (se_pre^2 + se_post^2)
+      }
     } else if (wv %in% names(svy_baseline) && is.factor(svy_baseline[[wv]])) {
       # Binned (factor) weather: use year-specific bin from hazard_values[[wv]],
       # derived from that year's weather_raw via loc_id join - this varies by year.
@@ -195,10 +212,13 @@
         if (!any(active)) next
         beta_pre_b  <- beta_at(term_name, tau_i_pre[active])
         beta_post_b <- beta_at(term_name, tau_i_post[active])
-        se_pre_b    <- se_at(term_name, tau_i_pre[active])
-        se_post_b   <- se_at(term_name, tau_i_post[active])
         delta_res1[active] <- delta_res1[active] + (beta_post_b - beta_pre_b)
-        var_res1[active]   <- var_res1[active]   + (se_pre_b^2 + se_post_b^2)
+        if (!isTRUE(central_only)) {
+          se_pre_b  <- se_at(term_name, tau_i_pre[active])
+          se_post_b <- se_at(term_name, tau_i_post[active])
+          var_res1[active] <- var_res1[active] +
+            (se_pre_b^2 + se_post_b^2)
+        }
       }
     }
   }
@@ -211,7 +231,7 @@
   # Continuous weather: beta_int(tau_post) * haz_mean * delta_x
   # Binned weather:     beta_int_bin_k(tau_post) * 1 * delta_x  (only for active bin)
   delta_res2 <- rep(0, n)
-  var_res2   <- rep(0, n)
+  var_res2   <- if (isTRUE(central_only)) NULL else rep(0, n)
   has_interactions <- FALSE
 
   for (wv in weather_vars) {
@@ -229,9 +249,12 @@
           active <- !is.na(haz_int) & haz_int == lv
           if (!any(active)) next
           beta_int <- beta_at(it_name, tau_i_post[active])
-          se_int   <- se_at(it_name, tau_i_post[active])
           delta_res2[active] <- delta_res2[active] + beta_int * deltas[[v]][active]
-          var_res2[active]   <- var_res2[active]   + (deltas[[v]][active] * se_int)^2
+          if (!isTRUE(central_only)) {
+            se_int <- se_at(it_name, tau_i_post[active])
+            var_res2[active] <- var_res2[active] +
+              (deltas[[v]][active] * se_int)^2
+          }
         }
       } else {
         int_term <- NULL
@@ -244,16 +267,26 @@
         }
         if (!is.null(int_term)) {
           has_interactions <- TRUE
-          beta_int   <- beta_at(int_term, tau_i_post)
-          se_int     <- se_at(int_term, tau_i_post)
+          beta_int <- beta_at(int_term, tau_i_post)
           delta_res2 <- delta_res2 + beta_int * haz_int * deltas[[v]]
-          var_res2   <- var_res2   + (haz_int * deltas[[v]] * se_int)^2
+          if (!isTRUE(central_only)) {
+            se_int <- se_at(int_term, tau_i_post)
+            var_res2 <- var_res2 +
+              (haz_int * deltas[[v]] * se_int)^2
+          }
         }
       }
     }
   }
 
   delta_total <- delta_main + delta_res1 + delta_res2
+
+  if (isTRUE(central_only)) {
+    return(list(
+      delta_total      = delta_total,
+      has_interactions = has_interactions
+    ))
+  }
 
   # Total variance under the channel-independence approximation. Holds exactly
   # when channels use disjoint (tau, term) sets (the common case once SP/cov
@@ -431,6 +464,95 @@
 }
 
 
+#' Compute the central-value policy correction without decomposition summaries
+#'
+#' This is the active analytic simulation kernel. It deliberately omits
+#' coefficient-uncertainty work and data-frame assembly while sharing the same
+#' channel helpers as `decompose_policy_effect()`, so `delta_total` remains
+#' exactly aligned with the full decomposition path.
+#'
+#' @return Numeric vector in baseline survey row order, or NULL when the model
+#'   cannot produce an analytic correction.
+#' @keywords internal
+.policy_central_delta <- function(svy_baseline, svy_policy, model_fit, so,
+                                  weather_raw = NULL, deltas = NULL,
+                                  F_hat = NULL) {
+  if (is.null(svy_baseline) || is.null(svy_policy) || is.null(model_fit) ||
+      is.null(so)) return(NULL)
+
+  engine <- model_fit$engine
+  if (!engine %in% c("rif", "fixest")) return(NULL)
+
+  weather_vars <- model_fit$weather_terms
+  if (is.null(weather_vars) || length(weather_vars) == 0L) return(NULL)
+
+  outcome <- so$name
+  is_log  <- isTRUE(so$transform == "log")
+
+  # Match the public decomposition path for Step 2 snapshots that omit a
+  # derivable outcome such as `poor`.
+  svy_baseline <- ensure_outcome_column(svy_baseline, so)
+  svy_policy <- ensure_outcome_column(svy_policy, so)
+  if (!outcome %in% names(svy_baseline) || !outcome %in% names(svy_policy)) {
+    warning(
+      "[decompose_policy_effect] Outcome column `", outcome,
+      "` is unavailable in the baseline or policy survey.",
+      call. = FALSE
+    )
+    return(NULL)
+  }
+
+  n <- nrow(svy_baseline)
+  deltas  <- deltas %||% .compute_policy_deltas(
+    svy_baseline, svy_policy, outcome, weather_vars
+  )
+
+  sp_transfer <- if (SP_TRANSFER_COL %in% names(svy_policy)) {
+    svy_policy[[SP_TRANSFER_COL]]
+  } else {
+    rep(0, n)
+  }
+  hazard_values <- .compute_hazard_values(
+    svy_baseline, weather_raw, weather_vars
+  )
+
+  if (identical(engine, "rif")) {
+    channels <- .compute_rif_channels(
+      svy_baseline  = svy_baseline,
+      deltas        = deltas,
+      sp_transfer   = sp_transfer,
+      hazard_values = hazard_values,
+      weather_vars  = weather_vars,
+      rif_grid      = model_fit$rif_grid,
+      taus          = model_fit$taus,
+      train_data    = model_fit$train_data,
+      outcome       = outcome,
+      is_log        = is_log,
+      skip_coef     = TRUE,
+      central_only  = TRUE,
+      F_hat         = F_hat
+    )
+    if (is.null(channels)) return(NULL)
+    if (!channels$has_interactions && length(deltas) > 0L) {
+      warning(
+        "[decompose_policy_effect] No weather\u00d7policy interaction terms found ",
+        "in the model. The interaction channel (res2) will be zero. ",
+        "Consider including interaction terms in Step 1 model specification.",
+        call. = FALSE
+      )
+    }
+    return(channels$delta_total)
+  }
+
+  central <- .decompose_ols(
+    svy_baseline, model_fit, so, deltas, sp_transfer,
+    hazard_values, weather_vars, n, central_only = TRUE
+  )
+  if (is.null(central)) return(NULL)
+  central$delta_total
+}
+
+
 # ---------------------------------------------------------------------------- #
 # Public API                                                                   #
 # ---------------------------------------------------------------------------- #
@@ -603,7 +725,7 @@ decompose_policy_effect <- function(svy_baseline,
 
 .decompose_ols <- function(svy_baseline, model_fit, so, deltas, sp_transfer,
                            hazard_values, weather_vars, n,
-                           skip_coef = FALSE) {
+                           skip_coef = FALSE, central_only = FALSE) {
   outcome <- so$name
   is_log <- isTRUE(so$transform == "log")
   fit <- model_fit$fit3
@@ -613,10 +735,9 @@ decompose_policy_effect <- function(svy_baseline,
   coefs <- tryCatch(stats::coef(fit), error = function(e) NULL)
   if (is.null(coefs)) return(NULL)
 
-  # Per-coefficient SE under diagonal-Sigma approximation.
-  se_vec <- if (isTRUE(skip_coef)) {
-    setNames(rep(0, length(coefs)), names(coefs))
-  } else {
+  # Per-coefficient SE under diagonal-Sigma approximation. Central-only calls
+  # bypass vcov extraction entirely.
+  se_vec <- if (!isTRUE(central_only) && !isTRUE(skip_coef)) {
     vc <- tryCatch(stats::vcov(fit), error = function(e) NULL)
     if (is.null(vc)) {
       setNames(rep(0, length(coefs)), names(coefs))
@@ -624,11 +745,14 @@ decompose_policy_effect <- function(svy_baseline,
       d <- diag(vc); d[d < 0 | is.na(d)] <- 0
       setNames(sqrt(d), names(coefs))
     }
+  } else {
+    NULL
   }
-  se_of <- function(term) {
-    s <- se_vec[term]
-    if (is.na(s)) 0 else as.numeric(s)
-  }
+  se_of <- if (isTRUE(central_only)) NULL else function(term) {
+      if (isTRUE(skip_coef)) return(0)
+      s <- se_vec[term]
+      if (is.na(s)) 0 else as.numeric(s)
+    }
 
   # Baseline welfare
   y_raw <- svy_baseline[[outcome]]
@@ -641,7 +765,7 @@ decompose_policy_effect <- function(svy_baseline,
     sp_transfer
   }
   delta_main_covar <- rep(0, n)
-  var_main         <- rep(0, n)
+  var_main         <- if (isTRUE(central_only)) NULL else rep(0, n)
 
   coef_names <- names(coefs)
   for (v in names(deltas)) {
@@ -656,7 +780,9 @@ decompose_policy_effect <- function(svy_baseline,
     }
     if (!is.na(beta_v)) {
       delta_main_covar <- delta_main_covar + beta_v * deltas[[v]]
-      var_main         <- var_main + (deltas[[v]] * se_of(term_used))^2
+      if (!isTRUE(central_only)) {
+        var_main <- var_main + (deltas[[v]] * se_of(term_used))^2
+      }
     }
   }
   delta_main <- delta_sp + delta_main_covar
@@ -665,7 +791,7 @@ decompose_policy_effect <- function(svy_baseline,
   # Continuous weather: coef_int * haz_mean * delta_x
   # Binned weather:     coef_int_bin_k * 1 * delta_x  (only for active bin)
   delta_res2 <- rep(0, n)
-  var_res2   <- rep(0, n)
+  var_res2   <- if (isTRUE(central_only)) NULL else rep(0, n)
   has_interactions <- FALSE
 
   for (wv in weather_vars) {
@@ -683,7 +809,10 @@ decompose_policy_effect <- function(svy_baseline,
           active <- !is.na(haz_int) & haz_int == lv
           if (!any(active)) next
           delta_res2[active] <- delta_res2[active] + coefs[it_name] * deltas[[v]][active]
-          var_res2[active]   <- var_res2[active]   + (deltas[[v]][active] * se_of(it_name))^2
+          if (!isTRUE(central_only)) {
+            var_res2[active] <- var_res2[active] +
+              (deltas[[v]][active] * se_of(it_name))^2
+          }
         }
       } else {
         int_term <- NULL
@@ -697,7 +826,10 @@ decompose_policy_effect <- function(svy_baseline,
         if (!is.null(int_term)) {
           has_interactions <- TRUE
           delta_res2 <- delta_res2 + coefs[int_term] * haz_int * deltas[[v]]
-          var_res2   <- var_res2   + (haz_int * deltas[[v]] * se_of(int_term))^2
+          if (!isTRUE(central_only)) {
+            var_res2 <- var_res2 +
+              (haz_int * deltas[[v]] * se_of(int_term))^2
+          }
         }
       }
     }
@@ -713,6 +845,12 @@ decompose_policy_effect <- function(svy_baseline,
   }
 
   delta_total <- delta_main + delta_res2
+  if (isTRUE(central_only)) {
+    return(list(
+      delta_total      = delta_total,
+      has_interactions = has_interactions
+    ))
+  }
   var_total   <- var_main + var_res2   # OLS has no res1 channel
 
   weight_col <- grep("^weight$|^hhweight$|^wgt$|^pw$",

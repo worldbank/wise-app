@@ -230,3 +230,41 @@ test_that("forced include/exclude still bind when the panel is closed", {
     expect_true("educ" %in% spec$ind_covariates)
   })
 })
+
+test_that("P14: force selector guards preserve choices and selections", {
+  updates <- list()
+  local_mocked_bindings(
+    updateSelectizeInput = function(session, inputId, label = NULL,
+                                    choices = NULL, selected = NULL,
+                                    options = list(), server = FALSE) {
+      updates[[length(updates) + 1L]] <<- list(
+        id = inputId, choices = choices, selected = selected
+      )
+      invisible(NULL)
+    },
+    .package = "shiny"
+  )
+  testServer(mod_1_06_model_server, args = model_args(), {
+    session$setInputs(model_type = "Linear regression", covariates = "Lasso")
+    session$setInputs(force_in_hh = character(0), force_out_hh = character(0))
+    session$flushReact()
+    updates <<- list()
+    session$setInputs(force_in_hh = "hhsize")
+    session$flushReact()
+    hh_updates <- Filter(function(x) x$id %in% c("force_in_hh", "force_out_hh"), updates)
+    expect_equal(length(hh_updates), 1L)
+    out_update <- hh_updates[[1]]
+    expect_equal(out_update$id, "force_out_hh")
+    expect_length(out_update$choices, 0L)
+    expect_length(out_update$selected, 0L)
+    session$flushReact(); session$flushReact()
+    hh_updates <- Filter(function(x) x$id %in% c("force_in_hh", "force_out_hh"), updates)
+    expect_equal(length(hh_updates), 1L)
+    session$setInputs(force_in_hh = character(0), force_out_hh = "hhsize")
+    session$flushReact()
+    in_update <- Filter(function(x) x$id == "force_in_hh", updates)
+    expect_length(in_update[[length(in_update)]]$choices, 0L)
+    expect_length(in_update[[length(in_update)]]$selected, 0L)
+    expect_equal(input$force_out_hh, "hhsize")
+  })
+})

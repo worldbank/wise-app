@@ -430,6 +430,44 @@ survey_wave_list <- function(df) {
 }
 
 
+#' Build survey-wave metadata used by controls and plots
+#'
+#' @param df Any frame accepted by [survey_wave_list()].
+#'
+#' @return A list containing the ordered wave data frame and its plot labels.
+#' @noRd
+survey_wave_metadata <- function(df) {
+  waves <- survey_wave_list(df)
+  list(
+    waves       = waves,
+    plot_labels = wave_plot_labels(waves)
+  )
+}
+
+
+#' Cache survey-wave metadata for one published survey generation
+#'
+#' @param session A Shiny session.
+#' @param df Survey data used when the version is not cached.
+#' @param generation Survey-data publication generation.
+#'
+#' @return The value from [survey_wave_metadata()].
+#' @noRd
+cached_survey_wave_metadata <- function(session, df, generation) {
+  cache <- session$userData$survey_wave_metadata
+  if (!is.null(cache) && identical(cache$generation, generation)) {
+    return(cache$value)
+  }
+
+  value <- survey_wave_metadata(df)
+  session$userData$survey_wave_metadata <- list(
+    generation = generation,
+    value = value
+  )
+  value
+}
+
+
 #' Restrict a data frame to one survey wave
 #'
 #' @param df  A frame with `code`, `year`, `survname`.
@@ -481,6 +519,13 @@ filter_by_wave <- function(df, key = "all") {
 #'
 #' @export
 allocate_units_to_cells <- function(cell_map, survey_data) {
+  out <- .density_cell_summary(cell_map, survey_data)
+  if (is.null(out)) NULL else out$cells
+}
+
+
+#' @noRd
+.density_cell_summary <- function(cell_map, survey_data) {
   keys <- c("code", "year", "survname", "loc_id")
   if (is.null(cell_map) || is.null(survey_data)) return(NULL)
   if (!all(c(keys, "h3") %in% names(cell_map))) return(NULL)
@@ -492,10 +537,12 @@ allocate_units_to_cells <- function(cell_map, survey_data) {
   sd <- survey_data
   sd$year <- as.character(sd$year)
 
-  # Sampled units per location.
-  n_loc <- sd |>
-    dplyr::count(.data$code, .data$year, .data$survname, .data$loc_id,
-                 name = "n_units")
+  # One location grouping supplies both the survey counts and stable IDs that
+  # survive the duplicate-sensitive join onto the mapping rows.
+  g_loc <- collapse::GRP(sd, by = keys, group.sizes = TRUE)
+  n_loc <- g_loc$groups
+  n_loc$n_units <- as.integer(g_loc$group.sizes)
+  n_loc$.loc_group <- seq_len(g_loc$N.groups)
 
   cm <- cm |>
     dplyr::inner_join(n_loc, by = keys)
@@ -506,27 +553,36 @@ allocate_units_to_cells <- function(cell_map, survey_data) {
   # location keeps most of its households. Locations without usable
   # weights (all NA / zero / negative) fall back to an even split.
   has_pop <- "pop_2020" %in% names(cm)
-  cm |>
-    dplyr::group_by(.data$code, .data$year, .data$survname, .data$loc_id) |>
-    dplyr::mutate(
-      .alloc = if (has_pop) {
-        .pop <- pmax(.data$pop_2020, 0, na.rm = TRUE)
-        .pop_sum <- sum(.pop)
-        if (.pop_sum > 0) {
-          .data$n_units * .pop / .pop_sum
-        } else {
-          .data$n_units / dplyr::n()
-        }
-      } else {
-        .data$n_units / dplyr::n()
-      }
-    ) |>
-    dplyr::ungroup() |>
-    dplyr::group_by(.data$h3) |>
-    dplyr::summarise(n_units = sum(.data$.alloc, na.rm = TRUE),
-                     .groups = "drop") |>
-    dplyr::filter(.data$n_units > 0) |>
-    as.data.frame()
+  loc_group <- cm$.loc_group
+  n_cells <- collapse::fsum(rep.int(1L, nrow(cm)), g = loc_group,
+                            TRA = "replace")
+  alloc <- if (has_pop) {
+    pop <- pmax(cm$pop_2020, 0, na.rm = TRUE)
+    pop_sum <- collapse::fsum(pop, g = loc_group, na.rm = TRUE,
+                              TRA = "replace")
+    use_pop <- pop_sum > 0
+    ifelse(use_pop, cm$n_units * pop / pop_sum, cm$n_units / n_cells)
+  } else {
+    cm$n_units / n_cells
+  }
+
+  g_h3 <- collapse::GRP(cm, by = "h3")
+  n_units <- collapse::fsum(alloc, g = g_h3, na.rm = TRUE)
+  # base::sum(..., na.rm = TRUE), used by the old summarise(), returns zero
+  # for groups containing only NA/NaN allocations; collapse returns NA.
+  n_units[is.na(n_units)] <- 0
+  cells <- data.frame(
+    h3 = g_h3$groups$h3,
+    n_units = as.numeric(n_units),
+    stringsAsFactors = FALSE
+  )
+  cells <- cells[cells$n_units > 0, , drop = FALSE]
+  rownames(cells) <- NULL
+
+  list(
+    cells = cells,
+    n_locations = length(unique(loc_group))
+  )
 }
 
 
