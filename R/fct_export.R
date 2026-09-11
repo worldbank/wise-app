@@ -1147,7 +1147,7 @@ export_menu_ui <- function() {
                          shiny::icon("box-archive"), "Export all (.zip)"),
         note(paste(
           "The configuration, every table as a CSV, every figure as a PNG,",
-          "and a README documenting them."
+          "and a README documenting them"
         ))
       )
     )),
@@ -1160,7 +1160,7 @@ export_menu_ui <- function() {
       shiny::tagList(
         shiny::tags$span(class = "export-menu-title",
                          shiny::icon("gear"), "Configuration only (.json)"),
-        note("Every setting, the random seed and each run's provenance.")
+        note("Every setting, the random seed and each run's provenance")
       )
     )),
 
@@ -1170,7 +1170,7 @@ export_menu_ui <- function() {
       shiny::tagList(
         shiny::tags$span(class = "export-menu-title",
                          shiny::icon("table"), "Tables only (.zip)"),
-        note("Every table as a CSV, with a README.")
+        note("Every table as a CSV")
       )
     )),
 
@@ -1180,7 +1180,7 @@ export_menu_ui <- function() {
       shiny::tagList(
         shiny::tags$span(class = "export-menu-title",
                          shiny::icon("chart-line"), "Figures only (.zip)"),
-        note("Every figure as a PNG, with the README.")
+        note("Every figure as a PNG")
       )
     )),
 
@@ -1542,7 +1542,7 @@ export_menu_server <- function(input, output, session,
       )
     )
   })
-  
+
   output$import_action_ui <- shiny::renderUI({
     view <- pipeline_view()
     phase <- view$phase %||% "idle"
