@@ -190,6 +190,26 @@ test_that("compact payload is smaller while retaining required uncertainty slots
   expect_true("F_loading" %in% names(compact$hist_sim_result$pipeline))
   expect_true("weather_raw" %in% names(compact$hist_sim_result$pipeline))
   expect_true("svy_row_id" %in% names(compact$hist_sim_result$pipeline))
+  expect_null(compact$hist_sim_result$train_data)
+  expect_null(compact$hist_sim_result$cluster_counts)
+})
+
+test_that("compact payload retains non-null coefficient uncertainty", {
+  legacy <- suppressWarnings(phase4_run("legacy"))
+  beta <- c(`(Intercept)` = 1, temp = 0.5)
+  legacy$hist_sim_result$chol_obj <- list(L = diag(2), beta = beta)
+  legacy$hist_sim_result$pipeline$F_loading <- matrix(
+    c(1, 0.5, 1, 1), nrow = 2, byrow = TRUE
+  )
+  compact <- compact_step2_result(
+    legacy, phase4_train_aug(), "hhid", "original",
+    legacy$hist_sim_result$chol_obj, legacy$hist_sim_result$so,
+    phase4_input()$mf$train_data
+  )
+  expect_true(is.list(compact$hist_sim_result$chol_obj))
+  expect_true(is.matrix(compact$hist_sim_result$pipeline$F_loading))
+  expect_null(compact$hist_sim_result$train_data)
+  expect_null(compact$hist_sim_result$cluster_counts)
 })
 
 test_that("weather references round-trip and reject stale signatures", {

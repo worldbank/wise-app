@@ -100,8 +100,8 @@ test_that("historical and scenario payload contracts preserve key fields", {
   expect_identical(
     names(historical),
     c(
-      "pipeline", "chol_obj", "so", "has_weights", "weather_raw",
-       "train_data", "cluster_counts", "svy", "residuals", "shared_context"
+       "pipeline", "chol_obj", "so", "has_weights", "weather_raw",
+        "svy", "residuals", "shared_context"
     )
   )
   expect_identical(

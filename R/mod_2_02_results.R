@@ -705,6 +705,49 @@ mod_2_02_results_server <- function(id,
       tbl
     }
 
+    # One immutable derived frame per published run/control state. Every
+    # Results consumer below resolves its model/year matrix from this frame,
+    # avoiding repeated reshaping and preserving identical canonical ordering.
+    derived_results_frame_rv <- reactive({
+      req(hist_agg_rv())
+      wk <- weight_key()
+      method <- input$cmp_agg_method %||% "mean"
+      deviation <- input$cmp_deviation %||% "none"
+      F_ref <- hist_F_agg_ref()
+      entries <- list()
+      add_entry <- function(tbl, label, historical) {
+        if (is.null(tbl) || !nrow(tbl)) return(invisible(NULL))
+        tbl <- .apply_contrast_sd(tbl, F_ref)
+        key <- digest::digest(tbl, serialize = TRUE)
+        entry <- new.env(parent = emptyenv())
+        entry$table <- tbl
+        entry$matrix <- by_model_matrix(tbl)
+        entry$scenario <- label
+        entry$is_historical <- historical
+        entry$key <- key
+        lockEnvironment(entry, bindings = TRUE)
+        entries[[label]] <<- entry
+        invisible(NULL)
+      }
+      add_entry(hist_agg_rv()[[wk]][[method]], "Historical", TRUE)
+      sa <- scenario_agg_rv()
+      if (!is.null(sa)) {
+        for (label in names(sa))
+          add_entry(sa[[label]][[wk]][[method]], label, FALSE)
+      }
+      frame <- new.env(parent = emptyenv())
+      frame$method <- method
+      frame$deviation <- deviation
+      frame$weight <- wk
+      frame$.entries <- entries
+      frame$.matrices <- stats::setNames(
+        lapply(entries, `[[`, "matrix"),
+        vapply(entries, `[[`, character(1L), "key")
+      )
+      lockEnvironment(frame, bindings = TRUE)
+      frame
+    })
+
 
         # ---- Coefficient draws availability -----------------------------------
     has_draws <- reactive({
@@ -822,7 +865,13 @@ mod_2_02_results_server <- function(id,
     # Helpers are now defined in R/fct_uncertainty_helpers.R as package-internal
     # functions so Module 3 can call the same code path. Aliases keep the
     # existing inline call sites below readable.
-    .by_model_matrix <- by_model_matrix
+    .by_model_matrix <- function(tbl) {
+      frame <- derived_results_frame_rv()
+      key <- digest::digest(tbl, serialize = TRUE)
+      hit <- .results_frame_matrix(frame, key)
+      if (!is.null(hit)) return(hit)
+      by_model_matrix(tbl)
+    }
     .pct_label       <- pct_label
     .rank_interp     <- rank_interp
 
@@ -983,12 +1032,14 @@ mod_2_02_results_server <- function(id,
     # Aggregates the per-(sim_year) var_within / var_across columns to scalars
     # and re-computes var_coef from the per-(model, year) SD list-column.
     variance_breakdown_rv <- reactive({
-      req(hist_agg_rv())
-      wk     <- weight_key()
-      method <- input$cmp_agg_method %||% "mean"
+      req(derived_results_frame_rv())
+      frame <- derived_results_frame_rv()
 
-      one_scenario <- function(tbl, scenario_label, is_hist) {
-        if (is.null(tbl) || nrow(tbl) == 0L) return(NULL)
+      one_scenario <- function(entry) {
+        if (is.null(entry)) return(NULL)
+        tbl <- entry$table
+        scenario_label <- entry$scenario
+        is_hist <- entry$is_historical
         sds_flat <- as.numeric(unlist(tbl$value_all_sd))
         var_coef <- if (length(sds_flat))
           mean(sds_flat^2, na.rm = TRUE) else 0
@@ -998,7 +1049,7 @@ mod_2_02_results_server <- function(id,
         # band, this decomposition panel intentionally includes
         # var_within - its purpose is to show the share of every source,
         # including year-to-year spread.)
-        mm <- by_model_matrix(tbl)
+        mm <- .results_frame_matrix(frame, entry$key)
         vals <- if (is.null(mm)) NULL else mm$vals
         var_within <- if (!is.null(vals) && ncol(vals) > 1L) {
           v <- mean(apply(vals, 1L, stats::var, na.rm = TRUE), na.rm = TRUE)
@@ -1017,15 +1068,13 @@ mod_2_02_results_server <- function(id,
         )
       }
 
-      rows <- list(one_scenario(.apply_contrast_sd(hist_agg_rv()[[wk]][[method]], hist_F_agg_ref()),
-                                "Historical", TRUE))
-      sa <- scenario_agg_rv()
-      if (!is.null(sa) && length(sa) > 0L) {
-        for (dk in names(sa)) {
-          if (!dk %in% selected_scenario_names()) next
-          rows[[length(rows) + 1L]] <- one_scenario(.apply_contrast_sd(sa[[dk]][[wk]][[method]], hist_F_agg_ref()),
-                                                    dk, FALSE)
-        }
+      labels <- names(frame$.entries)
+      rows <- list(one_scenario(.results_frame_entry(frame, "Historical")))
+      for (dk in setdiff(labels, "Historical")) {
+        if (!dk %in% selected_scenario_names()) next
+        rows[[length(rows) + 1L]] <- one_scenario(
+          .results_frame_entry(frame, dk)
+        )
       }
       dplyr::bind_rows(Filter(Negate(is.null), rows))
     })
@@ -1658,6 +1707,7 @@ mod_2_02_results_server <- function(id,
     list(
       variance_breakdown = variance_breakdown_rv,
       results_tab_added  = results_tab_added,
+      derived_results_frame = derived_results_frame_rv,
       timeseries_curves  = reactive({
         req(timeseries_curves_rv())
         ens_q <- if (!identical(input$ensemble_band %||% "none", "none"))

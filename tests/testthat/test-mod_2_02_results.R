@@ -51,6 +51,36 @@ make_hist_sim_fixture <- function() {
   )
 }
 
+test_that("Results frame is immutable and scoped to method/deviation", {
+  skip_if_not_installed("shiny")
+  hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
+  stale <- shiny::reactiveVal(FALSE)
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id = "results", hist_sim = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist = shiny::reactiveVal(NULL),
+      tabset_id = "step2_output_tabs", stale = stale
+    ),
+    {
+      session$flushReact()
+      frame <- derived_results_frame_rv()
+      expect_true(is.environment(frame))
+      expect_false("entries" %in% ls(frame, all.names = TRUE))
+      expect_identical(frame$method, "mean")
+      expect_identical(frame$deviation, "none")
+      entry <- .results_frame_entry(frame, "Historical")
+      expect_true(is.list(entry$matrix))
+      key <- entry$key
+      copy <- .results_frame_matrix(frame, key)
+      original <- .results_frame_matrix(frame, key)$vals[1L, 1L]
+      copy$vals[1L, 1L] <- copy$vals[1L, 1L] + 100
+      expect_identical(.results_frame_matrix(frame, key)$vals[1L, 1L], original)
+    }
+  )
+})
+
 test_that("agg cache: display-only controls do not invalidate unaffected methods", {
   skip_if_not_installed("shiny")
 

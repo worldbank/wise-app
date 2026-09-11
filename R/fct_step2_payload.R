@@ -139,6 +139,8 @@ compact_step2_result <- function(result,
     result$hist_sim_result$pipeline <- .compact_pipeline(
       result$hist_sim_result$pipeline
     )
+    result$hist_sim_result$train_data <- NULL
+    result$hist_sim_result$cluster_counts <- NULL
   }
   result$new_scenarios <- lapply(result$new_scenarios %||% list(), function(s) {
     s$shared_context <- context
@@ -147,4 +149,17 @@ compact_step2_result <- function(result,
   })
   result$payload_mode <- "compact"
   result
+}
+
+.results_defensive_copy <- function(value) {
+  if (is.null(value)) return(NULL)
+  unserialize(serialize(value, connection = NULL, version = 3L))
+}
+
+.results_frame_matrix <- function(frame, key) {
+  .results_defensive_copy(frame$.matrices[[key]])
+}
+
+.results_frame_entry <- function(frame, label) {
+  .results_defensive_copy(frame$.entries[[label]])
 }
