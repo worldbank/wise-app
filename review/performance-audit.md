@@ -1,6 +1,6 @@
 # Performance Audit — Remaining Work
 
-**Audit revision:** `aa42136` | **Dev head:** Wave 3 W3-B (`7766333`, following W3-A) | **Date:** 2026-09-12
+**Audit revision:** `aa42136` | **Dev head:** S2-P9 (`df7d31b`, following S2-P6) | **Date:** 2026-09-12
 
 ---
 
@@ -16,13 +16,15 @@
 | 1 | W1-E | S3-P2, S3-P3, S3-P5 | Integrated |
 | 2 | W2-A | P6, P11 | Integrated |
 | 2 | W2-B | S2-P4, S2-P5, S2-P8, S2-P14 | Integrated |
-| 2 | W2-C | S2-P7, S2-P10 | Integrated; S2-P6 and S2-P9 dropped — see §2 |
+| 2 | W2-C | S2-P7, S2-P10 | Integrated |
 | 2 | W2-D | S3-P4, S3-P7, S3-P10, S3-P13 | Integrated |
 | 2 | W2-E | S3-P6, S3-P8, S3-P9, S3-P11, S3-C1 | Integrated |
 | **3** | **W3-A** | **S2-P21, S2-P22** | **Integrated** |
 | **3** | **W3-B** | **S3-P1** | **Integrated** |
+| **3** | **S2-P6** | **Bounded Results aggregation cache** | **Integrated** |
+| **3** | **S2-P9** | **Reference-weather store ownership** | **Integrated** |
 
-Three authorized findings also require separate approval: **S2-P6**, **S2-P9**, **P15** — see §2.
+The previously blocked S2-P6 and S2-P9 findings are integrated. P15 is removed from the authorized scope and is not required for this delivery.
 
 ---
 
@@ -103,49 +105,33 @@ The scenario/year loop row-binds a full 21-column household frame into `decomp_s
 
 ## 2. Authorized but Blocked
 
-These were authorized in the delivery plan but excluded from Wave 2 for insufficient test coverage. W3-A and W3-B are now integrated; the items below remain the next approved work and should be addressed only after completing their listed lifecycle/browser evidence.
+These were authorized in the delivery plan but excluded from Wave 2 for insufficient test coverage. S2-P6 and S2-P9 are now integrated. No remaining item in this section is approved or required for this delivery.
 
-### Recommended Next Order
+### Scope Decision
 
-1. **S2-P6 — Bounded Results Aggregation Cache:** highest priority because it is the remaining Step 2 cache lifecycle gap and was the explicit dependency for W3-A. Complete the full eviction, stale-result, export, and reference-store lifecycle tests before changing cache ownership or eviction behavior.
-2. **S2-P9 — Reference-Weather Store Ownership:** address next if Step 3 reruns, partial failures, or superseded weather references remain a memory/lifecycle risk. Establish the run-level ownership and historical-only cleanup contracts before implementation.
-3. **P15 — Stable Weather Map Surfaces:** address after S2-P6/S2-P9 unless browser-level evidence is available sooner. This is UI-stability work with no demonstrated server-side performance gate yet; obtain the required browser instrumentation first.
-
-No item in Section 3 is approved for implementation by this recommendation.
+P15 — Stable Weather Map Surfaces — is removed from the authorized scope. It is not required or approved for implementation in this delivery.
 
 ### S2-P6 — Bounded Results Aggregation Cache
 
 `R/mod_2_02_results.R`, `R/fct_aggregation.R`
 
-**Blocked because:** module-level cache and full Step 2/3 reference-store lifecycle tests were incomplete at W2-C.
+**Status:** Integrated in `6553bab` (`Complete bounded Results cache lifecycle`).
 
-**To unblock:** complete tests for method switching, poverty-line/bandwidth changes, export after eviction, stale-result display, and the full reference-store lifecycle (success, partial failure, total failure, rerun, clear, session end). Confirm eviction never alters active output and recomputed values match cached values.
+**Validation:** bounded LRU, method switching, poverty-line/bandwidth changes, export after eviction, stale-result display, recomputation parity, clear, and session-end lifecycle tests pass.
 
 **Change:** Bounded LRU or current-plus-default cache; evict older poverty-line/bandwidth variants; expose object-size instrumentation in the benchmark harness.
 
-**Note:** W3-A depends on this. See §1.
+**Note:** W3-A dependency is resolved.
 
 ### S2-P9 — Reference-Weather Store Ownership
 
 `R/fct_run_simulation.R`, `R/mod_2_01_weathersim.R`, `R/mod_2_simulation.R`
 
-**Blocked because:** lifecycle tests were incomplete at W2-C.
+**Status:** Integrated in `df7d31b` (`Complete reference weather store ownership`).
 
-**To unblock:** full lifecycle suite (success, partial failure, total failure, rerun, clear, session end, historical-only and future runs). Confirm no weather referenced by Step 3 is ever removed.
+**Validation:** success, partial/total failure, rerun replacement, clear/session cleanup, historical-only behavior, and leased Step 3-style references are covered. A referenced store cannot be removed until all leases are released.
 
 **Change:** One run-level store owner with explicit references from every published result. Clean the superseded store on atomic replacement only when Step 3 holds no reference. Historical-only runs must avoid creating an orphaned store or retain it for cleanup.
-
-### P15 — Stable Weather Map Surfaces
-
-`R/mod_1_05_weatherstats.R`
-
-**Blocked because:** browser-level camera/fullscreen/empty-state evidence was unavailable at W2-A.
-
-**To unblock:** browser-level tests or instrumentation (R-only is insufficient) confirming that card headers, layout, full-screen behavior, and all IDs survive wave/month/view changes; camera position and full-screen state are preserved; no-data and historical-view messages are unchanged.
-
-**Change:** Keep map surface and card structure stable after weather data loads; update only dynamic header text and payload/legend outputs.
-
----
 
 ## 3. Not Authorized
 
@@ -203,10 +189,10 @@ The coordinator integrates only passing batches, reruns cross-step contracts aft
 
 Complete when:
 
-- every authorized ID is implemented or recorded as gate-failed with evidence;
+- every remaining authorized ID is implemented or recorded as gate-failed with evidence;
 - `git diff --check` and the full test suite pass;
 - cold/warm Step 2 and Step 3 benchmarks record elapsed time, allocation, retained/serialized size, and external process-tree RSS;
 - coverage includes: small and large country, OLS and RIF, historical-only and future scenarios, compact and reference weather, uncertainty on and off;
 - production data is read-only; no benchmark artifact enters the production source;
-- Step 1 UI snapshots, Step 2 payload/replay, Step 3 Results/Diagnostics/Decomposition/stale state/exports all pass end-to-end;
+- Step 2 payload/replay, Step 3 Results/Diagnostics/Decomposition/stale state/exports all pass end-to-end;
 - no unauthorized item, new runtime dependency, or unrelated refactor is included.
