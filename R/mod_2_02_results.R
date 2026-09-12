@@ -459,12 +459,16 @@ mod_2_02_results_server <- function(id,
     # that consume them (see .pl_bw_key).
     agg_workspace <- reactive({
       req(hist_sim())
+      cache_order <- new.env(parent = emptyenv())
+      cache_order$keys <- character(0)
       list(
         hs       = hist_sim(),
         sc       = saved_scenarios(),
         res      = hist_sim()$residuals %||% residuals() %||% "original",
         skip     = isTRUE(skip_coef_draws()),
-        cache    = new.env(parent = emptyenv())
+        cache    = new.env(parent = emptyenv()),
+        cache_order = cache_order,
+        prep_cache = .new_aggregation_preparation_cache(max_entries = 32L)
       )
     })
 
@@ -477,6 +481,62 @@ mod_2_02_results_server <- function(id,
       if (method %in% .BANDWIDTH_METHODS) parts <- c(parts, format(bw))
       if (length(parts) == 0L) "" else paste0("_", paste(parts, collapse = "_"))
     }
+
+    .new_lazy_aggregation_method_list <- function(builder, method) {
+      state <- new.env(parent = emptyenv())
+      state$builder <- builder
+      state$value <- NULL
+      state$built <- FALSE
+      structure(
+        setNames(list(NULL), method),
+        class = c("wise_lazy_aggregation_method_list", "list"),
+        state = state
+      )
+    }
+
+    .build_lazy_aggregation_method <- function(builder, method) {
+      .new_lazy_aggregation_method_list(builder, method)
+    }
+
+    .force_lazy_aggregation_method <- function(x) {
+      if (!inherits(x, "wise_lazy_aggregation_method_list")) return(x)
+      state <- attr(x, "state", exact = TRUE)
+      if (!isTRUE(state$built)) {
+        state$value <- state$builder()
+        state$built <- TRUE
+      }
+      x
+    }
+
+    .lazy_aggregation_value <- function(x) {
+      if (inherits(x, "wise_lazy_aggregation_method_list")) {
+        state <- attr(x, "state", exact = TRUE)
+        if (!isTRUE(state$built)) .force_lazy_aggregation_method(x)
+        return(state$value)
+      }
+      x
+    }
+
+    .lazy_aggregation_table <- function(x, method) {
+      value <- .lazy_aggregation_value(x)
+      if (is.list(value) && !is.null(value[[method]])) value[[method]] else value
+    }
+
+    `[[.wise_lazy_aggregation_method_list` <- function(x, i, ...) {
+      x <- .force_lazy_aggregation_method(x)
+      attr(x, "state", exact = TRUE)$value[[i]]
+    }
+
+    `$.wise_lazy_aggregation_method_list` <- function(x, name) {
+      x <- .force_lazy_aggregation_method(x)
+      attr(x, "state", exact = TRUE)$value[[name]]
+    }
+
+    names.wise_lazy_aggregation_method_list <- function(x) {
+      names(unclass(x))
+    }
+
+    length.wise_lazy_aggregation_method_list <- function(x) 1L
 
     .build_hist_for_method <- function(ws, method, pl_v) {
       pl   <- ws$hs$pipeline
@@ -492,17 +552,23 @@ mod_2_02_results_server <- function(id,
           is_log       = is_log,
           band_q       = bq,
           skip_coef    = ws$skip,
-          bandwidth_p0 = bandwidth_p0(),
-          model_ids    = "Historical",
+            bandwidth_p0 = bandwidth_p0(),
+            model_ids    = "Historical",
             scenario     = "Historical",
-            shared_context = ws$hs$shared_context
+            shared_context = ws$hs$shared_context,
+            preparation_cache = ws$prep_cache
         )
-        setNames(list(out), method)
+          setNames(list(out), method)
       }
       has_w <- !is.null(pl$weight)
       list(
-        unweighted = build_for(FALSE),
-        weighted   = if (has_w) build_for(TRUE) else build_for(FALSE)
+        unweighted = .build_lazy_aggregation_method(
+          function() build_for(FALSE), method
+        ),
+        weighted = .build_lazy_aggregation_method(
+          if (has_w) function() build_for(TRUE) else function() build_for(FALSE),
+          method
+        )
       )
     }
 
@@ -526,13 +592,19 @@ mod_2_02_results_server <- function(id,
             skip_coef    = ws$skip,
             bandwidth_p0 = bandwidth_p0(),
             model_ids    = names(pipes) %||% paste0("m", seq_along(pipes)),
-            shared_context = s$shared_context
+            shared_context = s$shared_context,
+            preparation_cache = ws$prep_cache
           )
-          setNames(list(out), method)
+           setNames(list(out), method)
         }
         list(
-          unweighted = build_for(FALSE),
-          weighted   = if (has_w) build_for(TRUE) else build_for(FALSE)
+          unweighted = .build_lazy_aggregation_method(
+            function() build_for(FALSE), method
+          ),
+          weighted = .build_lazy_aggregation_method(
+            if (has_w) function() build_for(TRUE) else function() build_for(FALSE),
+            method
+          )
         )
       }), names(sc))
     }
@@ -544,7 +616,15 @@ mod_2_02_results_server <- function(id,
       key <- paste0("h_", method, .pl_bw_key(method, pl_v, bw))
       if (!exists(key, envir = ws$cache, inherits = FALSE)) {
         assign(key, .build_hist_for_method(ws, method, pl_v), envir = ws$cache)
+        ws$cache_order$keys <- c(ws$cache_order$keys, key)
+        while (length(ws$cache_order$keys) > 8L) {
+          old <- ws$cache_order$keys[[1L]]
+          ws$cache_order$keys <- ws$cache_order$keys[-1L]
+          if (exists(old, envir = ws$cache, inherits = FALSE))
+            rm(list = old, envir = ws$cache)
+        }
       }
+      ws$cache_order$keys <- c(setdiff(ws$cache_order$keys, key), key)
       get(key, envir = ws$cache, inherits = FALSE)
     }
 
@@ -555,21 +635,17 @@ mod_2_02_results_server <- function(id,
       key <- paste0("s_", method, .pl_bw_key(method, pl_v, bw))
       if (!exists(key, envir = ws$cache, inherits = FALSE)) {
         assign(key, .build_scn_for_method(ws, method, pl_v), envir = ws$cache)
+        ws$cache_order$keys <- c(ws$cache_order$keys, key)
+        while (length(ws$cache_order$keys) > 8L) {
+          old <- ws$cache_order$keys[[1L]]
+          ws$cache_order$keys <- ws$cache_order$keys[-1L]
+          if (exists(old, envir = ws$cache, inherits = FALSE))
+            rm(list = old, envir = ws$cache)
+        }
       }
+      ws$cache_order$keys <- c(setdiff(ws$cache_order$keys, key), key)
       get(key, envir = ws$cache, inherits = FALSE)
     }
-
-    # Eagerly pre-compute the default ("mean") aggregation as soon as the
-    # simulation finishes, so the Results tab renders immediately when the
-    # user opens it. Subsequent method changes are computed on-demand and
-    # cached within the current workspace.
-    observeEvent(agg_workspace(), {
-      req(agg_workspace())
-      isolate({
-        .get_hist_agg("mean")
-        if (length(agg_workspace()$sc) > 0L) .get_scn_agg("mean")
-      })
-    }, priority = 100, ignoreInit = FALSE)
 
     hist_agg_rv <- reactive({
       method <- input$cmp_agg_method %||% "mean"
@@ -716,6 +792,7 @@ mod_2_02_results_server <- function(id,
       F_ref <- hist_F_agg_ref()
       entries <- list()
       add_entry <- function(tbl, label, historical) {
+        tbl <- .lazy_aggregation_table(tbl, method)
         if (is.null(tbl) || !nrow(tbl)) return(invisible(NULL))
         tbl <- .apply_contrast_sd(tbl, F_ref)
         key <- digest::digest(tbl, serialize = TRUE)

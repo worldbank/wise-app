@@ -773,7 +773,8 @@ aggregate_pipeline_table <- function(pipelines,
                                      model_ids    = NULL,
                                      method_label = method,
                                      scenario     = NULL,
-                                     shared_context = NULL) {
+                                     shared_context = NULL,
+                                     preparation_cache = NULL) {
   if (is.null(pipelines)) return(tibble::tibble())
   if (!is.null(pipelines$y_point)) pipelines <- list(pipelines)
   if (!is.list(pipelines) || length(pipelines) == 0L)
@@ -783,6 +784,9 @@ aggregate_pipeline_table <- function(pipelines,
   if (is.null(model_ids)) model_ids <- character(0)
   if (length(model_ids) != length(pipelines) || any(!nzchar(model_ids)))
     model_ids <- paste0("model_", seq_along(pipelines))
+
+  if (is.null(preparation_cache))
+    preparation_cache <- .new_aggregation_preparation_cache()
 
   per_model <- lapply(pipelines, function(pipe) {
     aggregate_pipeline_per_year(
@@ -794,10 +798,11 @@ aggregate_pipeline_table <- function(pipelines,
       is_log       = is_log,
       band_q       = band_q,
       skip_coef    = skip_coef,
-      bandwidth_p0 = bandwidth_p0,
-      seed         = seed,
-      shared_context = shared_context
-    )
+       bandwidth_p0 = bandwidth_p0,
+       seed         = seed,
+       shared_context = shared_context,
+       preparation_cache = preparation_cache
+     )
   })
 
   # The first pipeline defines the simulation-year grid, matching the
