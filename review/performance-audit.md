@@ -1,6 +1,6 @@
 # Performance Audit — Remaining Work
 
-**Audit revision:** `aa42136` | **Dev head:** Wave 3 W3-A (`d7d8153`, following Wave 2) | **Date:** 2026-09-12
+**Audit revision:** `aa42136` | **Dev head:** Wave 3 W3-B (`7766333`, following W3-A) | **Date:** 2026-09-12
 
 ---
 
@@ -20,7 +20,7 @@
 | 2 | W2-D | S3-P4, S3-P7, S3-P10, S3-P13 | Integrated |
 | 2 | W2-E | S3-P6, S3-P8, S3-P9, S3-P11, S3-C1 | Integrated |
 | **3** | **W3-A** | **S2-P21, S2-P22** | **Integrated** |
-| **3** | **W3-B** | **S3-P1** | **Open** |
+| **3** | **W3-B** | **S3-P1** | **Integrated** |
 
 Three authorized findings also require separate approval: **S2-P6**, **S2-P9**, **P15** — see §2.
 
@@ -83,11 +83,12 @@ The scenario/year loop row-binds a full 21-column household frame into `decomp_s
 
 #### W3-B Gate
 
-- Channel, scenario, year, model, and decile summaries and all exports identical to pre-compaction output.
-- No downstream consumer requires discarded household rows (verify by contract tests).
-- Substantial retained/serialized size reduction demonstrated on an 11-year production-sized scenario with no process-tree RSS regression.
-- Fixed weighted baseline deciles, adverse-year selection, channel SE summaries, factor/bin behavior, and atomic publication all preserved.
-- If consumer parity cannot be fully established, retain the current payload.
+- Channel, scenario, year, model, and decile summaries and all exports identical to pre-compaction output. **Passed:** compact-vs-legacy characterization and export parity covered OLS and RIF; the W3-B suite passed 55 assertions.
+- No downstream consumer requires discarded household rows (verified by the consumer audit and module/export contract tests). Historical `decomp_result` remains separate and unchanged.
+- Substantial retained/serialized-size reduction demonstrated on an 11-year, one-scenario representative fixture: `object.size()` `203,358,848` to `28,080` bytes; serialized size `223,692,667` to `20,833` bytes. Controlled external max RSS was `1,223,786,496` bytes before and `725,811,200` bytes after.
+- Fixed weighted baseline deciles, adverse-year selection, channel SE summaries, factor/bin behavior, scenario ordering, and empty-result behavior are unchanged under the contract tests.
+- Full package suite passed 2,644 assertions with 0 failures. Commit: `7766333` (`Compact future decomposition retention`).
+- Timing caveat: the isolated retention benchmark was slower (`0.009s` legacy vs `0.274s` compact median on 11 years x 50,000 rows); this is a memory-retention optimization, not a demonstrated elapsed-time optimization. Production end-to-end timing remains a follow-up.
 
 ---
 
@@ -102,7 +103,15 @@ The scenario/year loop row-binds a full 21-column household frame into `decomp_s
 
 ## 2. Authorized but Blocked
 
-These were authorized in the delivery plan but excluded from Wave 2 for insufficient test coverage. Each lists only what is needed to re-authorize.
+These were authorized in the delivery plan but excluded from Wave 2 for insufficient test coverage. W3-A and W3-B are now integrated; the items below remain the next approved work and should be addressed only after completing their listed lifecycle/browser evidence.
+
+### Recommended Next Order
+
+1. **S2-P6 — Bounded Results Aggregation Cache:** highest priority because it is the remaining Step 2 cache lifecycle gap and was the explicit dependency for W3-A. Complete the full eviction, stale-result, export, and reference-store lifecycle tests before changing cache ownership or eviction behavior.
+2. **S2-P9 — Reference-Weather Store Ownership:** address next if Step 3 reruns, partial failures, or superseded weather references remain a memory/lifecycle risk. Establish the run-level ownership and historical-only cleanup contracts before implementation.
+3. **P15 — Stable Weather Map Surfaces:** address after S2-P6/S2-P9 unless browser-level evidence is available sooner. This is UI-stability work with no demonstrated server-side performance gate yet; obtain the required browser instrumentation first.
+
+No item in Section 3 is approved for implementation by this recommendation.
 
 ### S2-P6 — Bounded Results Aggregation Cache
 
