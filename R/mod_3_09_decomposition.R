@@ -29,6 +29,243 @@ select_decomp_weather_basis <- function(decomp_df, basis = "mean", so = NULL) {
   decomp_df[as.character(decomp_df$sim_year) == selected_year, , drop = FALSE]
 }
 
+.compact_decomp_channels <- c(
+  "delta_total", "delta_main", "delta_sp", "delta_main_covar",
+  "delta_res", "delta_res1", "delta_res2"
+)
+
+.compact_decomp_stat <- function(values, weights) {
+  values <- suppressWarnings(as.numeric(values))
+  weights <- suppressWarnings(as.numeric(weights))
+  ok <- is.finite(values) & is.finite(weights) & weights > 0
+  if (!any(ok)) {
+    return(c(sum = NA_real_, weight = NA_real_))
+  }
+  c(
+    sum = sum(values[ok] * weights[ok]),
+    weight = sum(weights[ok])
+  )
+}
+
+.compact_decomp_values <- function(decomp_df, is_rif = FALSE) {
+  n <- nrow(decomp_df)
+  zero <- rep(0, n)
+  main <- decomp_df$delta_main %||% zero
+  direct <- decomp_df$delta_sp %||% zero
+  covariate <- decomp_df$delta_main_covar %||% (main - direct)
+  res1 <- decomp_df$delta_res1 %||% zero
+  res2 <- decomp_df$delta_res2 %||% zero
+  total <- decomp_df$delta_total %||% (main + res1 + res2)
+  list(
+    delta_total = total,
+    delta_main = main,
+    delta_sp = direct,
+    delta_main_covar = covariate,
+    delta_res = res1 + res2,
+    delta_res1 = res1,
+    delta_res2 = res2
+  )
+}
+
+.compact_decomp_stats <- function(values, weights, prefix = "") {
+  out <- lapply(values, .compact_decomp_stat, weights = weights)
+  out <- unlist(out, use.names = TRUE)
+  names(out) <- unlist(lapply(names(values), function(name) {
+    c(paste0(prefix, "sum_", name), paste0(prefix, "weight_", name))
+  }))
+  out
+}
+
+.compact_decomp_deciles <- function(decomp_df, baseline_deciles) {
+  ids <- suppressWarnings(as.integer(decomp_df$id))
+  deciles <- if (!is.null(baseline_deciles) && length(baseline_deciles)) {
+    mapped <- rep(NA_integer_, nrow(decomp_df))
+    ok <- is.finite(ids) & ids >= 1L & ids <= length(baseline_deciles)
+    mapped[ok] <- suppressWarnings(as.integer(baseline_deciles[ids[ok]]))
+    mapped
+  } else rep(NA_integer_, nrow(decomp_df))
+  if (!any(is.finite(deciles)) && "decile" %in% names(decomp_df)) {
+    deciles <- suppressWarnings(as.integer(decomp_df$decile))
+  }
+  deciles
+}
+
+.compact_future_decomposition <- function(decomp_df, scenario, sim_year,
+                                          year_start = NA_integer_,
+                                          year_end = NA_integer_,
+                                          baseline_deciles = NULL,
+                                          is_rif = FALSE, engine = NULL) {
+  if (is.null(decomp_df) || !is.data.frame(decomp_df) || !nrow(decomp_df)) {
+    return(NULL)
+  }
+  weights <- if ("weight" %in% names(decomp_df)) {
+    suppressWarnings(as.numeric(decomp_df$weight))
+  } else rep(1, nrow(decomp_df))
+  weights[!is.finite(weights) | weights < 0] <- NA_real_
+  values <- .compact_decomp_values(decomp_df, is_rif = is_rif)
+  metadata <- list(
+    scenario = as.character(scenario),
+    sim_year = sim_year,
+    year_start = year_start,
+    year_end = year_end
+  )
+  channel <- as.data.frame(c(metadata, .compact_decomp_stats(values, weights)),
+                           stringsAsFactors = FALSE)
+  channel$engine <- engine %||% if (isTRUE(is_rif)) "rif" else "fixest"
+  channel$is_rif <- isTRUE(is_rif)
+
+  deciles <- .compact_decomp_deciles(decomp_df, baseline_deciles)
+  decile_rows <- lapply(sort(unique(deciles[is.finite(deciles)])), function(d) {
+    ok <- deciles == d
+    row <- c(metadata, list(
+      decile = as.integer(d),
+      n_households = sum(ok, na.rm = TRUE),
+      weighted_population = sum(weights[ok], na.rm = TRUE)
+    ))
+    row <- c(row, .compact_decomp_stats(
+      lapply(values, `[`, ok), weights[ok]
+    ))
+    as.data.frame(row, stringsAsFactors = FALSE)
+  })
+  deciles_out <- if (length(decile_rows)) dplyr::bind_rows(decile_rows) else
+    data.frame()
+  if (nrow(deciles_out)) {
+    deciles_out$decile <- as.integer(deciles_out$decile)
+    deciles_out$n_households <- as.integer(deciles_out$n_households)
+    deciles_out$weighted_population <- as.numeric(deciles_out$weighted_population)
+  }
+
+  list(
+    channel = channel,
+    decile = deciles_out,
+    metadata = metadata,
+    engine = channel$engine[[1L]],
+    is_rif = isTRUE(is_rif)
+  )
+}
+
+.bind_compact_future_decompositions <- function(parts, engine = NULL,
+                                                is_rif = FALSE) {
+  parts <- Filter(Negate(is.null), parts)
+  if (!length(parts)) {
+    return(structure(list(
+      channel_summary = data.frame(),
+      decile_summary = data.frame(),
+      scenario_metadata = data.frame(),
+      engine = engine %||% if (isTRUE(is_rif)) "rif" else "fixest",
+      is_rif = isTRUE(is_rif),
+      scenario_order = character(0)
+    ), class = c("wise_compact_decomp_scenarios", "list")))
+  }
+  channel <- dplyr::bind_rows(lapply(parts, `[[`, "channel"))
+  decile <- dplyr::bind_rows(lapply(parts, `[[`, "decile"))
+  scenario_order <- unique(vapply(parts, function(x) x$metadata$scenario, character(1L)))
+  metadata <- unique(channel[, c("scenario", "year_start", "year_end", "engine", "is_rif"),
+                             drop = FALSE])
+  structure(list(
+    channel_summary = channel,
+    decile_summary = decile,
+    scenario_metadata = metadata,
+    engine = engine %||% parts[[1L]]$engine,
+    is_rif = isTRUE(is_rif),
+    scenario_order = scenario_order
+  ), class = c("wise_compact_decomp_scenarios", "list"))
+}
+
+.is_compact_decomp_scenarios <- function(x) {
+  inherits(x, "wise_compact_decomp_scenarios")
+}
+
+.compact_future_scenarios <- function(x) {
+  if (!.is_compact_decomp_scenarios(x)) return(character(0))
+  x$scenario_order %||% unique(as.character(x$channel_summary$scenario))
+}
+
+.compact_future_year <- function(x, scenario, basis = "mean", so = NULL) {
+  rows <- x$channel_summary[
+    as.character(x$channel_summary$scenario) == as.character(scenario),
+    , drop = FALSE
+  ]
+  if (!nrow(rows) || identical(basis, "mean")) return(rows)
+  annual <- rows
+  total <- annual$sum_delta_total / annual$weight_delta_total
+  annual <- annual[is.finite(total), , drop = FALSE]
+  total <- total[is.finite(total)]
+  if (!nrow(annual) || !length(total)) return(rows)
+  adverse_high <- identical(
+    outcome_direction(so$name %||% "welfare", so$type %||% "numeric"),
+    "lower_is_better"
+  )
+  ordered <- order(total, decreasing = adverse_high)
+  take <- max(1L, min(length(ordered), round(length(ordered) *
+    if (identical(basis, "adverse_10")) 0.10 else 0.05)))
+  annual[ordered[[take]], , drop = FALSE]
+}
+
+.compact_future_combine <- function(rows, prefix = "") {
+  if (is.null(rows) || !nrow(rows)) return(setNames(numeric(0), character(0)))
+  out <- setNames(numeric(length(.compact_decomp_channels)), .compact_decomp_channels)
+  for (name in .compact_decomp_channels) {
+    sums <- rows[[paste0(prefix, "sum_", name)]]
+    weights <- rows[[paste0(prefix, "weight_", name)]]
+    ok <- is.finite(sums) & is.finite(weights) & weights > 0
+    out[[name]] <- if (any(ok)) sum(sums[ok]) / sum(weights[ok]) else NA_real_
+  }
+  out
+}
+
+.compact_future_as_decomp <- function(rows, is_rif = FALSE) {
+  if (is.null(rows) || !nrow(rows)) return(data.frame())
+  values <- .compact_future_combine(rows)
+  out <- as.data.frame(as.list(values), stringsAsFactors = FALSE)
+  out$weight <- 1
+  out$delta_res1 <- values[["delta_res1"]]
+  out
+}
+
+.compact_future_summary <- function(x, scenario, basis = "mean", so = NULL,
+                                    is_rif = x$is_rif) {
+  rows <- .compact_future_year(x, scenario, basis, so)
+  if (!nrow(rows)) return(decomposition_summary_data(NULL, is_rif))
+  decomposition_summary_data(
+    .compact_future_as_decomp(rows, is_rif = is_rif), is_rif = is_rif
+  )
+}
+
+.compact_future_decile_summary <- function(x, scenario, basis = "mean",
+                                           so = NULL, is_rif = x$is_rif) {
+  rows <- x$decile_summary[
+    as.character(x$decile_summary$scenario) == as.character(scenario),
+    , drop = FALSE
+  ]
+  selected <- .compact_future_year(x, scenario, basis, so)
+  if (nrow(selected) && !identical(basis, "mean")) {
+    rows <- rows[rows$sim_year %in% selected$sim_year, , drop = FALSE]
+  }
+  if (!nrow(rows)) return(tibble::tibble())
+  out <- dplyr::bind_rows(lapply(sort(unique(rows$decile)), function(d) {
+    group <- rows[rows$decile == d, , drop = FALSE]
+    values <- .compact_future_combine(group)
+    tibble::tibble(
+      decile = as.integer(d),
+      level_log = values[["delta_main"]],
+      resilience_log = values[["delta_res"]],
+      total_log = values[["delta_total"]],
+      level_percent = log_effect_to_percent(values[["delta_main"]]),
+      resilience_percent = log_effect_to_percent(values[["delta_res"]]),
+      main_percent = log_effect_to_percent(values[["delta_main"]]),
+      cash_transfer_percent = log_effect_to_percent(values[["delta_sp"]]),
+      covariate_shift_percent = log_effect_to_percent(values[["delta_main_covar"]]),
+      repositioning_percent = log_effect_to_percent(values[["delta_res1"]]),
+      interaction_percent = log_effect_to_percent(values[["delta_res2"]]),
+      total_percent = log_effect_to_percent(values[["delta_total"]]),
+      n_households = sum(group$n_households),
+      weighted_population = sum(group$weighted_population)
+    )
+  }))
+  out
+}
+
 .prepare_decomp_adverse_bases <- function(weather_raw, hist_sim, so) {
   raw <- step2_resolve_weather(weather_raw, hist_sim)
   if (is.null(raw) || !nrow(raw)) return(list())
@@ -145,7 +382,7 @@ mod_3_09_decomposition_ui <- function(id) {
 #'
 #' @param id Module id.
 #' @param decomp_result Reactive data frame from decompose_policy_effect().
-#' @param decomp_scenarios Reactive data frame: per-scenario decompositions.
+#' @param decomp_scenarios Reactive compact future decomposition payload.
 #' @param model_fit Reactive model fit list (for rif_grid / engine detection).
 #' @param so Reactive selected outcome metadata.
 #' @param selected_policies Reactive selected policy scenario keys.
@@ -316,13 +553,23 @@ mod_3_09_decomposition_server <- function(id,
       hist <- decomposition_summary_data(selected_decomp_result(), is_rif())
       hist$scenario <- "Historical"
       sc <- decomp_scenarios()
-      if (is.null(sc) || !is.data.frame(sc) || !nrow(sc)) return(hist)
-      future <- dplyr::bind_rows(lapply(split(sc, sc$scenario), function(x) {
-        x <- select_decomp_weather_basis(x, basis, outcome)
-        out <- decomposition_summary_data(x, is_rif())
-        out$scenario <- as.character(x$scenario[[1L]])
-        out
-      }))
+      if (.is_compact_decomp_scenarios(sc)) {
+        scenarios <- .compact_future_scenarios(sc)
+        if (!length(scenarios)) return(hist)
+        future <- dplyr::bind_rows(lapply(sort(scenarios), function(scenario) {
+          out <- .compact_future_summary(sc, scenario, basis, outcome, is_rif())
+          out$scenario <- scenario
+          out
+        }))
+      } else {
+        if (is.null(sc) || !is.data.frame(sc) || !nrow(sc)) return(hist)
+        future <- dplyr::bind_rows(lapply(split(sc, sc$scenario), function(x) {
+          x <- select_decomp_weather_basis(x, basis, outcome)
+          out <- decomposition_summary_data(x, is_rif())
+          out$scenario <- as.character(x$scenario[[1L]])
+          out
+        }))
+      }
       dplyr::bind_rows(hist, future)
     })
     output$headline_decomp_note_ui <- renderUI({
@@ -420,7 +667,10 @@ mod_3_09_decomposition_server <- function(id,
     output$decile_scenario_ui <- shiny::renderUI({
       sc <- decomp_scenarios()
       choices <- c("Historical" = "Historical")
-      if (is.data.frame(sc) && nrow(sc) && "scenario" %in% names(sc)) {
+      if (.is_compact_decomp_scenarios(sc)) {
+        future <- .compact_future_scenarios(sc)
+        choices <- c(choices, stats::setNames(future, future))
+      } else if (is.data.frame(sc) && nrow(sc) && "scenario" %in% names(sc)) {
         future <- unique(as.character(sc$scenario))
         choices <- c(choices, stats::setNames(future, future))
       }
@@ -438,6 +688,10 @@ mod_3_09_decomposition_server <- function(id,
       basis <- input$decile_weather_basis %||% "mean"
       if (identical(scenario, "Historical")) {
         res <- decomp_for_basis(basis)
+      } else if (.is_compact_decomp_scenarios(decomp_scenarios())) {
+        return(.compact_future_decile_summary(
+          decomp_scenarios(), scenario, basis, outcome, is_rif()
+        ))
       } else {
         sc <- decomp_scenarios()
         res <- if (is.data.frame(sc) && nrow(sc))

@@ -409,7 +409,7 @@ mod_3_06_policy_sim_server <- function(id,
               shiny::setProgress(value = 0.90, detail = "Decomposing scenario effects...")
               sc_list <- pol_out$saved_scenarios %||% list()
               decomp_sc_errors <- character(0)
-              decomp_sc <- lapply(seq_along(sc_list), function(i) {
+              decomp_sc_parts <- lapply(seq_along(sc_list), function(i) {
                 sc       <- sc_list[[i]]
                 w_raw    <- step2_resolve_weather(sc$weather_raw, sc)
                 if (is.null(w_raw)) return(NULL)
@@ -434,8 +434,8 @@ mod_3_06_policy_sim_server <- function(id,
                   } else {
                     w_raw
                   }
-                  tryCatch(
-                    decompose_policy_effect(
+                  tryCatch({
+                    decomp_year <- decompose_policy_effect(
                       svy_baseline = svy,
                       svy_policy   = svy_mod,
                       model_fit    = mf,
@@ -446,31 +446,41 @@ mod_3_06_policy_sim_server <- function(id,
                        F_hat        = F_hat_pre,
                        context      = decomp_context,
                        run_identity = decomp_context$run_identity
-                    ) |> dplyr::mutate(
-                      scenario   = sc_label,
-                      sim_year   = yr,
+                    )
+                    .compact_future_decomposition(
+                      decomp_year,
+                      scenario = sc_label,
+                      sim_year = yr,
                       year_start = sc$year_range[[1]] %||% NA_integer_,
-                      year_end   = sc$year_range[[2]] %||% NA_integer_
-                    ),
-                    error = function(e) {
-                      decomp_sc_errors <<- c(decomp_sc_errors, paste0(
-                        sc_label, if (!is.na(yr)) paste0(" (", yr, ")"), ": ",
-                        conditionMessage(e)
-                      ))
-                      NULL
-                    }
-                  )
+                      year_end = sc$year_range[[2]] %||% NA_integer_,
+                      baseline_deciles = decomp_context$baseline_deciles,
+                      is_rif = identical(mf$engine, "rif"),
+                      engine = mf$engine
+                    )
+                  }, error = function(e) {
+                    decomp_sc_errors <<- c(decomp_sc_errors, paste0(
+                      sc_label, if (!is.na(yr)) paste0(" (", yr, ")"), ": ",
+                      conditionMessage(e)
+                    ))
+                    NULL
+                  })
                 })
-                dplyr::bind_rows(Filter(Negate(is.null), year_results))
+                Filter(Negate(is.null), year_results)
               })
-              decomp_sc <- dplyr::bind_rows(Filter(Negate(is.null), decomp_sc))
-              if (length(decomp_sc_errors) > 0L && nrow(decomp_sc) == 0L) {
+              decomp_sc_parts <- unlist(decomp_sc_parts, recursive = FALSE)
+              decomp_sc_parts <- Filter(Negate(is.null), decomp_sc_parts)
+              if (length(decomp_sc_errors) > 0L && !length(decomp_sc_parts)) {
                 stop(
                   "All scenario decompositions failed. First error: ",
                   decomp_sc_errors[[1]],
                   call. = FALSE
                 )
               }
+              decomp_sc <- .bind_compact_future_decompositions(
+                decomp_sc_parts,
+                engine = mf$engine,
+                is_rif = identical(mf$engine, "rif")
+              )
 
               diagnostic_summary_out <- .policy_diagnostics_snapshot(
                 svy_baseline = svy,
