@@ -184,7 +184,7 @@ fct_run_simulation <- function(sw,
   has_future <- length(fp_list) > 0 && length(ssps) > 0
   weather_store <- NULL
   weather_store_published <- FALSE
-  if (identical(weather_storage, "reference")) {
+  if (identical(weather_storage, "reference") && isTRUE(has_future)) {
     run_id <- paste0(format(Sys.time(), "%Y%m%dT%H%M%OS3"), "-",
                      substr(digest::digest(list(Sys.getpid(), Sys.time())), 1L, 12L))
     weather_store <- step2_weather_store_create(
@@ -361,9 +361,6 @@ fct_run_simulation <- function(sw,
                                    year_range = key_group$yr_parts)
       }
     }
-    if (identical(weather_storage, "reference") && !is_hist) {
-      weather_refs[[key]] <<- step2_weather_store_put(weather_store, key, weather_input)
-    }
     key_err <- NULL
     out <- tryCatch(
       pipeline_fn(
@@ -389,6 +386,9 @@ fct_run_simulation <- function(sw,
         is_hist = is_hist, error = key_err
       )
       return(invisible(NULL))
+    }
+    if (identical(weather_storage, "reference") && !is_hist) {
+      weather_refs[[key]] <<- step2_weather_store_put(weather_store, key, weather_input)
     }
     if (is_hist) {
       n_hist_yrs <<- length(unique(format(weather_input$timestamp, "%Y")))
@@ -455,6 +455,8 @@ fct_run_simulation <- function(sw,
     precomputed_train_aug, shared_id_col, residuals,
     compact = identical(payload_mode, "compact")
   )
+  has_weather_references <- identical(weather_storage, "reference") &&
+    length(weather_refs) > 0L
   rm(weather_result, weather_refs, precomputed_train_aug,
      svy_prepared, weather_join_cache, direct_rif_metadata)
   gc(verbose = FALSE)
@@ -586,6 +588,14 @@ fct_run_simulation <- function(sw,
       )
     )
   }
-  weather_store_published <- TRUE
+  if (has_weather_references) {
+    result$weather_store_lease <- step2_weather_store_acquire(weather_store)
+  } else if (identical(weather_storage, "reference") && !is.null(weather_store)) {
+    # A total future-group failure has no published consumer. Do not retain an
+    # empty run store merely because the requested configuration had a future
+    # period.
+    step2_weather_store_cleanup(weather_store)
+  }
+  weather_store_published <- has_weather_references
   result
 }

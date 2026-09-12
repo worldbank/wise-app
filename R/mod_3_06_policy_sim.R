@@ -95,6 +95,7 @@ mod_3_06_policy_sim_server <- function(id,
     baseline_saved_scenarios_rv <- reactiveVal(list())
     policy_hist_sim_rv          <- reactiveVal(NULL)
     policy_saved_scenarios_rv   <- reactiveVal(list())
+    weather_store_lease_rv      <- reactiveVal(NULL)
     sp_scenario_rv              <- reactiveVal(NULL)
     # Snapshot all policy domains with the run so summary surfaces describe
     # the configuration that produced the results.
@@ -102,6 +103,12 @@ mod_3_06_policy_sim_server <- function(id,
     digital_scenario_rv         <- reactiveVal(NULL)
     labor_scenario_rv           <- reactiveVal(NULL)
     education_scenario_rv       <- reactiveVal(NULL)
+
+    cleanup_weather_stores <- function() {
+      step2_weather_store_release(shiny::isolate(weather_store_lease_rv()))
+      weather_store_lease_rv(NULL)
+    }
+    session$onSessionEnded(cleanup_weather_stores)
 
     output$sim_status_ui <- shiny::renderUI({
       err <- sim_error()
@@ -498,19 +505,26 @@ mod_3_06_policy_sim_server <- function(id,
             }
           )
 
-          # -- Atomic publish (INT-09) -----------------------------------------
+           # -- Atomic publish (INT-09) -----------------------------------------
           # Every reactive value is written only now that the complete run
           # (simulation + decomposition) succeeded, so a failure anywhere
           # above leaves the previous results, diagnostics, and run ID intact.
           # INT-08: the policy run signature is stored with both result arms.
           baseline_out$.sig <- policy_sig
           if (!is.null(pol_out$hist_sim)) pol_out$hist_sim$.sig <- policy_sig
-          baseline_svy_rv(svy)
-          policy_svy_rv(svy_mod)
+           new_weather_lease <- step2_weather_store_acquire_scenarios(c(
+             baseline_scenarios_out,
+             pol_out$saved_scenarios %||% list()
+           ))
+           old_weather_lease <- weather_store_lease_rv()
+           baseline_svy_rv(svy)
+           policy_svy_rv(svy_mod)
           baseline_hist_sim_rv(baseline_out)
           baseline_saved_scenarios_rv(baseline_scenarios_out)
            policy_hist_sim_rv(pol_out$hist_sim)
            policy_saved_scenarios_rv(pol_out$saved_scenarios)
+           weather_store_lease_rv(new_weather_lease)
+           step2_weather_store_release(old_weather_lease)
            sp_scenario_rv(sp_cfg)
            infra_scenario_rv(infra_cfg)
            digital_scenario_rv(digital_cfg)
@@ -591,6 +605,7 @@ mod_3_06_policy_sim_server <- function(id,
       digital_scenario         = digital_scenario_rv,
       labor_scenario           = labor_scenario_rv,
       education_scenario       = education_scenario_rv,
+      clear_weather_stores     = cleanup_weather_stores,
       policy_scenarios         = reactive(list(
         A = infra_scenario() %||% list(), B = infra_scenario() %||% list(),
         C = infra_scenario() %||% list(), D = infra_scenario() %||% list(),

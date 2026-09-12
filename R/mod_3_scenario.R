@@ -403,7 +403,8 @@ mod_3_scenario_server <- function(id,
       stale                  = s6$stale,
       sim_run_id             = s6$sim_run_id,
       run_generation         = s6$run_generation,
-      run_status             = s6$run_status
+      run_status             = s6$run_status,
+      clear_weather_stores   = s6$clear_weather_stores
     )
   })
 }

@@ -278,15 +278,14 @@ mod_2_01_weathersim_server <- function(id,
     sim_stale       <- reactiveVal(FALSE)
     run_generation  <- reactiveVal(0L)
     run_status      <- reactiveVal("idle")
+    weather_store_lease <- reactiveVal(NULL)
 
     cleanup_weather_stores <- function() {
       # Session-end callbacks are not reactive consumers. Isolate the final
       # state read so cleanup does not try to register a dependency after the
       # session's reactive graph has been torn down.
-      scenarios <- shiny::isolate(saved_scenarios())
-      stores <- lapply(scenarios, function(s) s$weather_store %||% NULL)
-      stores <- Filter(Negate(is.null), stores)
-      invisible(lapply(stores, step2_weather_store_cleanup))
+      step2_weather_store_release(shiny::isolate(weather_store_lease()))
+      weather_store_lease(NULL)
     }
     session$onSessionEnded(cleanup_weather_stores)
 
@@ -802,8 +801,13 @@ mod_2_01_weathersim_server <- function(id,
         # Step 3 can detect that it is consuming a superseded simulation.
         result$hist_sim_result$.sig <- .sim_sig_from_live(mf$.sig %||% NULL)
         sim_stale(FALSE)
+        old_lease <- weather_store_lease()
+        weather_store_lease(result$weather_store_lease %||% NULL)
+        result$hist_sim_result$weather_store_lease <-
+          result$weather_store_lease %||% NULL
         hist_sim(result$hist_sim_result)
         saved_scenarios(result$new_scenarios)
+        step2_weather_store_release(old_lease)
         run_status("success")
         completed <- TRUE
 
@@ -873,7 +877,8 @@ mod_2_01_weathersim_server <- function(id,
         reactive(isTRUE(input$propagate_all_covariate_uncertainty)),
       stale           = sim_stale,
       run_generation  = run_generation,
-      run_status      = run_status
+      run_status      = run_status,
+      clear_weather_stores = cleanup_weather_stores
     )
   })
 }

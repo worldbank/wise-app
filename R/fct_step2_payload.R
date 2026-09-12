@@ -83,8 +83,124 @@ step2_weather_store_create <- function(run_id, signature, root = NULL) {
     created_at_utc = format(Sys.time(), tz = "UTC", usetz = TRUE)
   )
   saveRDS(manifest, file.path(dir, "manifest.rds"))
-  list(schema = manifest$schema, run_id = run_id, signature = signature,
-       dir = dir, manifest = file.path(dir, "manifest.rds"))
+  store <- list(schema = manifest$schema, run_id = run_id, signature = signature,
+                dir = dir, manifest = file.path(dir, "manifest.rds"))
+  .step2_weather_store_register(store)
+  store
+}
+
+.step2_weather_store_registry <- local({
+  registry <- new.env(parent = emptyenv())
+  registry$stores <- new.env(parent = emptyenv())
+  registry$refs <- new.env(parent = emptyenv())
+  registry$leases <- new.env(parent = emptyenv())
+  registry
+})
+
+.step2_weather_store_key <- function(store) {
+  dir <- if (is.list(store)) store$dir else as.character(store)[1L]
+  if (length(dir) != 1L || !nzchar(dir)) return(NA_character_)
+  normalizePath(dir, winslash = "/", mustWork = FALSE)
+}
+
+.step2_weather_store_register <- function(store) {
+  key <- .step2_weather_store_key(store)
+  if (is.na(key)) return(invisible(NULL))
+  assign(key, store, envir = .step2_weather_store_registry$stores)
+  if (!exists(key, envir = .step2_weather_store_registry$refs, inherits = FALSE))
+    assign(key, 0L, envir = .step2_weather_store_registry$refs)
+  invisible(NULL)
+}
+
+.step2_weather_store_unlink <- function(key) {
+  if (!is.na(key) && exists(key, envir = .step2_weather_store_registry$stores,
+                            inherits = FALSE)) {
+    store <- get(key, envir = .step2_weather_store_registry$stores,
+                 inherits = FALSE)
+    dir <- store$dir
+    if (length(dir) && nzchar(dir) && dir.exists(dir))
+      unlink(dir, recursive = TRUE)
+    rm(list = key, envir = .step2_weather_store_registry$stores)
+  }
+  if (!is.na(key) && exists(key, envir = .step2_weather_store_registry$refs,
+                            inherits = FALSE))
+    rm(list = key, envir = .step2_weather_store_registry$refs)
+  lease_ids <- ls(envir = .step2_weather_store_registry$leases, all.names = TRUE)
+  for (lease_id in lease_ids) {
+    lease_keys <- get(lease_id, envir = .step2_weather_store_registry$leases,
+                      inherits = FALSE)
+    if (key %in% lease_keys)
+      rm(list = lease_id, envir = .step2_weather_store_registry$leases)
+  }
+  invisible(NULL)
+}
+
+step2_weather_store_acquire <- function(stores) {
+  if (is.null(stores)) return(NULL)
+  if (is.list(stores) && !is.null(stores$dir)) stores <- list(stores)
+  if (!is.list(stores) || !length(stores)) return(NULL)
+  keys <- unique(Filter(function(key) !is.na(key),
+                        vapply(stores, .step2_weather_store_key, character(1))))
+  if (!length(keys)) return(NULL)
+  for (key in keys) {
+    if (!exists(key, envir = .step2_weather_store_registry$stores,
+                inherits = FALSE)) {
+      store <- stores[[which(vapply(stores, .step2_weather_store_key,
+                                    character(1)) == key)[1L]]]
+      .step2_weather_store_register(store)
+    }
+    refs <- if (exists(key, envir = .step2_weather_store_registry$refs,
+                       inherits = FALSE)) {
+      get(key, envir = .step2_weather_store_registry$refs, inherits = FALSE)
+    } else 0L
+    assign(key, refs + 1L, envir = .step2_weather_store_registry$refs)
+  }
+  lease_id <- paste0("lease-", substr(digest::digest(list(Sys.time(), keys,
+                                                           runif(1L))), 1L, 20L))
+  lease <- list(schema = 1L, kind = "step2-weather-store-lease",
+                lease_id = lease_id, dirs = keys)
+  assign(lease_id, keys, envir = .step2_weather_store_registry$leases)
+  lease
+}
+
+step2_weather_store_release <- function(lease) {
+  if (is.null(lease)) return(invisible(NULL))
+  lease_id <- if (is.list(lease)) lease$lease_id else as.character(lease)[1L]
+  if (length(lease_id) != 1L || !nzchar(lease_id) ||
+      !exists(lease_id, envir = .step2_weather_store_registry$leases,
+              inherits = FALSE)) return(invisible(NULL))
+  keys <- get(lease_id, envir = .step2_weather_store_registry$leases,
+              inherits = FALSE)
+  rm(list = lease_id, envir = .step2_weather_store_registry$leases)
+  for (key in keys) {
+    if (!exists(key, envir = .step2_weather_store_registry$refs,
+                inherits = FALSE)) next
+    refs <- get(key, envir = .step2_weather_store_registry$refs,
+                inherits = FALSE) - 1L
+    if (refs <= 0L) .step2_weather_store_unlink(key)
+    else assign(key, refs, envir = .step2_weather_store_registry$refs)
+  }
+  invisible(NULL)
+}
+
+step2_weather_store_acquire_scenarios <- function(scenarios) {
+  if (!is.list(scenarios) || !length(scenarios)) return(NULL)
+  stores <- lapply(scenarios, function(s) s$weather_store %||% NULL)
+  stores <- Filter(Negate(is.null), stores)
+  step2_weather_store_acquire(stores)
+}
+
+step2_weather_store_registry_snapshot <- function() {
+  keys <- ls(envir = .step2_weather_store_registry$refs, all.names = TRUE)
+  list(
+    stores = keys,
+    refs = if (length(keys)) {
+      stats::setNames(vapply(keys, get, integer(1L),
+                             envir = .step2_weather_store_registry$refs,
+                             inherits = FALSE), keys)
+    } else integer(0),
+    leases = ls(envir = .step2_weather_store_registry$leases, all.names = TRUE)
+  )
 }
 
 step2_weather_store_put <- function(store, key, weather_raw) {
@@ -116,8 +232,16 @@ step2_weather_store_get <- function(reference, expected_signature = NULL) {
 }
 
 step2_weather_store_cleanup <- function(store) {
-  dir <- if (is.list(store)) store$dir else as.character(store)[1L]
-  if (length(dir) && nzchar(dir) && dir.exists(dir)) unlink(dir, recursive = TRUE)
+  key <- .step2_weather_store_key(store)
+  if (!is.na(key) && exists(key, envir = .step2_weather_store_registry$refs,
+                            inherits = FALSE) &&
+      get(key, envir = .step2_weather_store_registry$refs,
+          inherits = FALSE) > 0L) {
+    warning("Step 2 weather store is still referenced; use its lease to release it.",
+            call. = FALSE)
+    return(invisible(NULL))
+  }
+  .step2_weather_store_unlink(key)
   invisible(NULL)
 }
 

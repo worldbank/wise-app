@@ -329,6 +329,107 @@ test_that("reference weather storage preserves member-specific payloads", {
   expect_identical(hi_weather$temp, 3)
 })
 
+test_that("reference storage does not create a future store for historical-only runs", {
+  root <- withr::local_tempdir()
+  input <- phase4_input()
+  input$fp_list <- list()
+  input$ssps <- character(0)
+  result <- suppressWarnings(do.call(fct_run_simulation, c(input, list(
+    weather_storage = "reference", weather_store_root = root,
+    notify_fn = function(...) invisible(NULL),
+    progress_fn = function(...) invisible(NULL),
+    weather_fn = function(...) list(historical = phase4_weather()$historical),
+    pipeline_fn = phase4_pipeline
+  ))))
+
+  expect_null(result$weather_store)
+  expect_null(result$weather_store_lease)
+  expect_length(list.files(root, recursive = TRUE), 0L)
+})
+
+test_that("reference stores are retained by a lease and released on replacement", {
+  root <- withr::local_tempdir()
+  input <- phase4_input()
+  first <- suppressWarnings(do.call(fct_run_simulation, c(input, list(
+    weather_storage = "reference", weather_store_root = root,
+    notify_fn = function(...) invisible(NULL),
+    progress_fn = function(...) invisible(NULL),
+    weather_fn = function(...) phase4_weather(),
+    pipeline_fn = phase4_pipeline
+  ))))
+  first_dir <- first$weather_store$dir
+  expect_true(dir.exists(first_dir))
+  expect_true(dir.exists(first$weather_store$dir))
+  expect_true(length(first$weather_store_lease$lease_id) == 1L)
+  first_key <- normalizePath(first_dir, winslash = "/", mustWork = FALSE)
+  expect_equal(step2_weather_store_registry_snapshot()$refs[[first_key]], 1L)
+
+  second <- suppressWarnings(do.call(fct_run_simulation, c(input, list(
+    weather_storage = "reference", weather_store_root = root,
+    notify_fn = function(...) invisible(NULL),
+    progress_fn = function(...) invisible(NULL),
+    weather_fn = function(...) phase4_weather(),
+    pipeline_fn = phase4_pipeline
+  ))))
+  expect_true(dir.exists(second$weather_store$dir))
+  step2_weather_store_release(first$weather_store_lease)
+  expect_false(dir.exists(first_dir))
+  step2_weather_store_release(second$weather_store_lease)
+  expect_false(dir.exists(second$weather_store$dir))
+})
+
+test_that("failed reference runs release stores and do not publish failed members", {
+  root <- withr::local_tempdir()
+  input <- phase4_input()
+  weather <- phase4_weather()
+  attr(weather$ssp2_4_5_2030_2040_ensemble_hi, "fail") <- TRUE
+  pipeline <- function(weather_raw, ...) {
+    if (isTRUE(attr(weather_raw, "fail"))) stop("injected failure")
+    phase4_pipeline(weather_raw, ...)
+  }
+  result <- suppressWarnings(do.call(fct_run_simulation, c(input, list(
+    weather_storage = "reference", weather_store_root = root,
+    notify_fn = function(...) invisible(NULL),
+    progress_fn = function(...) invisible(NULL),
+    weather_fn = function(...) weather,
+    pipeline_fn = pipeline
+  ))))
+  on.exit(step2_weather_store_release(result$weather_store_lease), add = TRUE)
+
+  expect_length(result$failures, 1L)
+  expect_length(list.files(result$weather_store$dir, pattern = "\\.rds$"), 2L)
+  expect_true(all(vapply(result$new_scenarios, function(s) {
+    !any(vapply(s$pipelines, function(p)
+      identical(p$weather_raw$key, "ssp2_4_5_2030_2040_ensemble_hi"), logical(1)))
+  }, logical(1))))
+})
+
+test_that("a published policy-style lease protects Step 2 weather on replacement", {
+  root <- withr::local_tempdir()
+  first <- step2_weather_store_create("step2-run", "sig-a", root)
+  second <- step2_weather_store_create("step3-run", "sig-b", root)
+  step2_weather_store_put(first, "member-a", phase4_weather()$historical)
+  step2_weather_store_put(second, "member-b", phase4_weather()$historical)
+  step2_lease <- step2_weather_store_acquire(first)
+  policy_lease <- step2_weather_store_acquire_scenarios(
+    list(list(weather_store = first), list(weather_store = second))
+  )
+  on.exit({
+    step2_weather_store_release(step2_lease)
+    step2_weather_store_release(policy_lease)
+  }, add = TRUE)
+
+  expect_warning(step2_weather_store_cleanup(first), "still referenced")
+  expect_true(dir.exists(first$dir))
+  step2_weather_store_release(step2_lease)
+  expect_true(dir.exists(first$dir))
+  expect_true(dir.exists(second$dir))
+
+  step2_weather_store_release(policy_lease)
+  expect_false(dir.exists(first$dir))
+  expect_false(dir.exists(second$dir))
+})
+
 test_that("reference-backed context preparation reuses resolved hazard panels", {
   root <- withr::local_tempdir()
   weather <- phase4_weather()$historical
