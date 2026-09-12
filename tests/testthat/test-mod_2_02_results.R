@@ -146,6 +146,187 @@ test_that("agg cache: display-only controls do not invalidate unaffected methods
   )
 })
 
+test_that("agg cache is bounded, observable, and recomputes evicted values", {
+  skip_if_not_installed("shiny")
+
+  hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs"
+    ),
+    {
+      session$flushReact()
+      mean_before <- .get_hist_agg("mean")
+      methods <- unname(hist_aggregate_choices("numeric", "welfare"))
+      for (method in methods) .get_hist_agg(method)
+
+      state <- aggregation_cache()
+      expect_equal(state$max_entries, 8L)
+      expect_lte(state$n_entries, state$max_entries)
+      expect_gt(length(state$evictions), 0L)
+      expect_equal(state$n_entries, length(state$keys))
+      expect_gt(state$object_bytes, 0)
+      expect_gt(state$serialized_bytes, 0)
+
+      # The oldest entry is evicted, but recomputation remains byte-identical.
+      mean_after <- .get_hist_agg("mean")
+      expect_identical(mean_after$weighted$mean, mean_before$weighted$mean)
+      expect_lte(aggregation_cache()$n_entries, 8L)
+
+      # Export builders resolve the active method again after eviction rather
+      # than depending on an unbounded retained result entry.
+      exported <- threshold_table_df()
+      expect_s3_class(exported, "data.frame")
+      expect_gt(nrow(exported), 0L)
+    }
+  )
+})
+
+test_that("agg cache clears with the published Results lifecycle", {
+  skip_if_not_installed("shiny")
+
+  hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs"
+    ),
+    {
+      session$flushReact()
+      .get_hist_agg("mean")
+      expect_gt(aggregation_cache()$n_entries, 0L)
+
+      hist_sim(NULL)
+      session$flushReact()
+      state <- aggregation_cache()
+      expect_equal(state$n_entries, 0L)
+      expect_length(state$keys, 0L)
+      expect_equal(state$object_bytes, 0)
+      expect_equal(state$serialized_bytes, 0)
+    }
+  )
+})
+
+test_that("agg cache preserves the active result while reruns become stale", {
+  skip_if_not_installed("shiny")
+
+  first <- make_hist_sim_fixture()
+  second <- make_hist_sim_fixture()
+  second$pipeline$y_point <- second$pipeline$y_point + 0.25
+  hist_sim <- shiny::reactiveVal(first)
+  stale <- shiny::reactiveVal(FALSE)
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs",
+      stale           = stale
+    ),
+    {
+      session$flushReact()
+      old <- .get_hist_agg("mean")
+      stale(TRUE)
+      session$flushReact()
+
+      # Staleness is presentation state; it must not discard the last valid
+      # result or make its cache entry disappear.
+      expect_true(stale())
+      expect_identical(.get_hist_agg("mean"), old)
+      expect_gt(aggregation_cache()$n_entries, 0L)
+
+      # A completed rerun publishes a new workspace and releases the old one.
+      hist_sim(second)
+      stale(FALSE)
+      session$flushReact()
+      new <- .get_hist_agg("mean")
+      expect_false(identical(new$weighted$mean, old$weighted$mean))
+      expect_equal(aggregation_cache()$n_entries, 1L)
+      expect_equal(aggregation_cache()$evictions, character(0))
+    }
+  )
+})
+
+test_that("agg cache records hits, misses, and value-affecting key changes", {
+  skip_if_not_installed("shiny")
+
+  hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs"
+    ),
+    {
+      session$flushReact()
+      baseline <- aggregation_cache()
+      .get_hist_agg("gap")
+      first <- aggregation_cache()
+      expect_equal(first$misses - baseline$misses, 1L)
+
+      .get_hist_agg("gap")
+      second <- aggregation_cache()
+      expect_equal(second$hits, 1L)
+      expect_equal(second$n_entries, first$n_entries)
+
+      session$setInputs(pov_line = 7.25)
+      session$elapse(500)
+      session$flushReact()
+      .get_hist_agg("gap")
+      third <- aggregation_cache()
+      expect_equal(third$misses - second$misses, 1L)
+      expect_equal(third$n_entries, second$n_entries + 1L)
+      expect_length(third$entry_object_bytes, third$n_entries)
+    }
+  )
+})
+
+test_that("session end releases aggregation cache entries", {
+  skip_if_not_installed("shiny")
+
+  hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
+  cache_state <- NULL
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs"
+    ),
+    {
+      session$flushReact()
+      .get_hist_agg("mean")
+      cache_state <<- agg_workspace()
+      expect_length(ls(cache_state$cache, all.names = TRUE), 1L)
+      session$close()
+    }
+  )
+
+  expect_length(ls(cache_state$cache, all.names = TRUE), 0L)
+  expect_length(cache_state$cache_order$keys, 0L)
+})
+
 # ---- INT-08: stale banner on the Step 2 results pane ------------------------
 
 test_that("Step 2 results pane shows the stale banner while stale", {

@@ -457,11 +457,111 @@ mod_2_02_results_server <- function(id,
     # used to destroy the whole cache. Instead they are read at cache-lookup
     # time and folded into the per-method cache key for exactly the methods
     # that consume them (see .pl_bw_key).
+    cache_workspace_ref <- new.env(parent = emptyenv())
+    cache_workspace_ref$current <- NULL
+
+    .clear_aggregation_cache <- function(ws = cache_workspace_ref$current) {
+      if (is.null(ws)) return(invisible(NULL))
+      if (is.environment(ws$cache)) {
+        cached <- ls(ws$cache, all.names = TRUE)
+        if (length(cached)) rm(list = cached, envir = ws$cache)
+      }
+      if (is.environment(ws$cache_order)) {
+        ws$cache_order$keys <- character(0)
+        ws$cache_order$hits <- 0L
+        ws$cache_order$misses <- 0L
+        ws$cache_order$evictions <- character(0)
+      }
+      if (is.environment(ws$prep_cache)) {
+        ws$prep_cache$entries <- list()
+        ws$prep_cache$keys <- character(0)
+      }
+      if (identical(ws, cache_workspace_ref$current))
+        cache_workspace_ref$current <- NULL
+      invisible(NULL)
+    }
+
+    .cache_touch <- function(ws, key) {
+      order <- ws$cache_order
+      order$keys <- c(setdiff(order$keys, key), key)
+      invisible(NULL)
+    }
+
+    .cache_get <- function(ws, key) {
+      if (!exists(key, envir = ws$cache, inherits = FALSE)) {
+        ws$cache_order$misses <- ws$cache_order$misses + 1L
+        return(list(found = FALSE, value = NULL))
+      }
+      ws$cache_order$hits <- ws$cache_order$hits + 1L
+      .cache_touch(ws, key)
+      list(found = TRUE, value = get(key, envir = ws$cache, inherits = FALSE))
+    }
+
+    .cache_put <- function(ws, key, value) {
+      assign(key, value, envir = ws$cache)
+      .cache_touch(ws, key)
+      while (length(ws$cache_order$keys) > ws$cache_order$max_entries) {
+        old <- ws$cache_order$keys[[1L]]
+        ws$cache_order$keys <- ws$cache_order$keys[-1L]
+        if (exists(old, envir = ws$cache, inherits = FALSE)) {
+          rm(list = old, envir = ws$cache)
+          ws$cache_order$evictions <- c(ws$cache_order$evictions, old)
+        }
+      }
+      invisible(value)
+    }
+
+    .cache_snapshot <- function(ws = cache_workspace_ref$current) {
+      if (is.null(ws)) {
+        return(list(keys = character(0), n_entries = 0L, max_entries = 0L,
+                    hits = 0L, misses = 0L, evictions = character(0),
+                    object_bytes = 0, serialized_bytes = 0,
+                    entry_object_bytes = numeric(0)))
+      }
+      keys <- ws$cache_order$keys
+      values <- if (length(keys)) {
+        lapply(keys, get, envir = ws$cache, inherits = FALSE)
+      } else list()
+      object_bytes <- if (length(values)) {
+        sum(vapply(values, function(x) as.numeric(utils::object.size(x)), numeric(1)))
+      } else 0
+      serialized_bytes <- tryCatch(
+        length(serialize(values, NULL, version = 3L)),
+        error = function(e) NA_real_
+      )
+      list(
+        keys = keys,
+        n_entries = length(keys),
+        max_entries = ws$cache_order$max_entries,
+        hits = ws$cache_order$hits,
+        misses = ws$cache_order$misses,
+        evictions = ws$cache_order$evictions,
+        object_bytes = object_bytes,
+        serialized_bytes = serialized_bytes,
+        entry_object_bytes = if (length(values)) {
+          stats::setNames(
+            vapply(values, function(x) as.numeric(utils::object.size(x)), numeric(1)),
+            keys
+          )
+        } else numeric(0)
+      )
+    }
+    aggregation_cache <- function() {
+      published <- tryCatch(shiny::isolate(hist_sim()), error = function(e) NULL)
+      if (is.null(published)) return(.cache_snapshot(NULL))
+      .cache_snapshot()
+    }
+
     agg_workspace <- reactive({
       req(hist_sim())
+      .clear_aggregation_cache()
       cache_order <- new.env(parent = emptyenv())
       cache_order$keys <- character(0)
-      list(
+      cache_order$max_entries <- 8L
+      cache_order$hits <- 0L
+      cache_order$misses <- 0L
+      cache_order$evictions <- character(0)
+      ws <- list(
         hs       = hist_sim(),
         sc       = saved_scenarios(),
         res      = hist_sim()$residuals %||% residuals() %||% "original",
@@ -470,7 +570,14 @@ mod_2_02_results_server <- function(id,
         cache_order = cache_order,
         prep_cache = .new_aggregation_preparation_cache(max_entries = 32L)
       )
+      cache_workspace_ref$current <- ws
+      ws
     })
+
+    session$onSessionEnded(function() .clear_aggregation_cache())
+    observeEvent(hist_sim(), {
+      if (is.null(hist_sim())) .clear_aggregation_cache()
+    }, ignoreInit = FALSE)
 
     # Cache-key suffix for the poverty line / bandwidth values a method reads.
     # Methods that ignore them get a constant key so moving the poverty-line
@@ -614,18 +721,14 @@ mod_2_02_results_server <- function(id,
       pl_v <- pov_line_val()
       bw   <- bandwidth_p0()
       key <- paste0("h_", method, .pl_bw_key(method, pl_v, bw))
-      if (!exists(key, envir = ws$cache, inherits = FALSE)) {
-        assign(key, .build_hist_for_method(ws, method, pl_v), envir = ws$cache)
-        ws$cache_order$keys <- c(ws$cache_order$keys, key)
-        while (length(ws$cache_order$keys) > 8L) {
-          old <- ws$cache_order$keys[[1L]]
-          ws$cache_order$keys <- ws$cache_order$keys[-1L]
-          if (exists(old, envir = ws$cache, inherits = FALSE))
-            rm(list = old, envir = ws$cache)
-        }
+      cached <- .cache_get(ws, key)
+      if (!isTRUE(cached$found)) {
+        value <- .build_hist_for_method(ws, method, pl_v)
+        .cache_put(ws, key, value)
+      } else {
+        value <- cached$value
       }
-      ws$cache_order$keys <- c(setdiff(ws$cache_order$keys, key), key)
-      get(key, envir = ws$cache, inherits = FALSE)
+      value
     }
 
     .get_scn_agg <- function(method) {
@@ -633,18 +736,14 @@ mod_2_02_results_server <- function(id,
       pl_v <- pov_line_val()
       bw   <- bandwidth_p0()
       key <- paste0("s_", method, .pl_bw_key(method, pl_v, bw))
-      if (!exists(key, envir = ws$cache, inherits = FALSE)) {
-        assign(key, .build_scn_for_method(ws, method, pl_v), envir = ws$cache)
-        ws$cache_order$keys <- c(ws$cache_order$keys, key)
-        while (length(ws$cache_order$keys) > 8L) {
-          old <- ws$cache_order$keys[[1L]]
-          ws$cache_order$keys <- ws$cache_order$keys[-1L]
-          if (exists(old, envir = ws$cache, inherits = FALSE))
-            rm(list = old, envir = ws$cache)
-        }
+      cached <- .cache_get(ws, key)
+      if (!isTRUE(cached$found)) {
+        value <- .build_scn_for_method(ws, method, pl_v)
+        .cache_put(ws, key, value)
+      } else {
+        value <- cached$value
       }
-      ws$cache_order$keys <- c(setdiff(ws$cache_order$keys, key), key)
-      get(key, envir = ws$cache, inherits = FALSE)
+      value
     }
 
     hist_agg_rv <- reactive({
@@ -1784,6 +1883,7 @@ mod_2_02_results_server <- function(id,
     list(
       variance_breakdown = variance_breakdown_rv,
       results_tab_added  = results_tab_added,
+      aggregation_cache  = aggregation_cache,
       derived_results_frame = derived_results_frame_rv,
       timeseries_curves  = reactive({
         req(timeseries_curves_rv())
