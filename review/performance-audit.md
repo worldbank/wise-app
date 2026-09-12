@@ -1,6 +1,6 @@
 # Performance Audit — Remaining Work
 
-**Audit revision:** `aa42136` | **Dev head:** Wave 2 (`612981d`, `ee9325f`, `7eba46f`, `38944db` + W2-E) | **Date:** 2026-09-12
+**Audit revision:** `aa42136` | **Dev head:** Wave 3 W3-A (`d7d8153`, following Wave 2) | **Date:** 2026-09-12
 
 ---
 
@@ -19,7 +19,7 @@
 | 2 | W2-C | S2-P7, S2-P10 | Integrated; S2-P6 and S2-P9 dropped — see §2 |
 | 2 | W2-D | S3-P4, S3-P7, S3-P10, S3-P13 | Integrated |
 | 2 | W2-E | S3-P6, S3-P8, S3-P9, S3-P11, S3-C1 | Integrated |
-| **3** | **W3-A** | **S2-P21, S2-P22** | **Open** |
+| **3** | **W3-A** | **S2-P21, S2-P22** | **Integrated** |
 | **3** | **W3-B** | **S3-P1** | **Open** |
 
 Three authorized findings also require separate approval: **S2-P6**, **S2-P9**, **P15** — see §2.
@@ -58,8 +58,10 @@ Each method and arm independently repeats year grouping, row slicing, validity f
 
 #### W3-A Gate
 
-- Both weighting arms available on demand; values, gradients, residual pairing, and per-year RNG preserved exactly across all methods and residual modes for Steps 2 and 3.
-- Preparation cache stays O(N) per pipeline and bounded.
+- Both weighting arms available on demand; values, gradients, residual pairing, and per-year RNG preserved exactly across all methods and residual modes for Steps 2 and 3. **Passed:** strict parity covered 72 method/arm/residual cases; the focused W3-A characterization suite passed 42 assertions.
+- Preparation cache stays O(N) per pipeline and bounded. **Passed:** the shared preparation cache is bounded at 32 entries and the Results cache at 8 entries; cache-bound and lazy-arm tests are included in the characterization suite.
+- Full package test suite passed: 2,589 assertions, 0 failures. Results tests passed 149 assertions, and aggregation-delta tests passed 37 assertions.
+- Commit: `d7d8153` (`Optimize Step 2 aggregation caching`).
 
 ---
 
@@ -199,4 +201,3 @@ Complete when:
 - production data is read-only; no benchmark artifact enters the production source;
 - Step 1 UI snapshots, Step 2 payload/replay, Step 3 Results/Diagnostics/Decomposition/stale state/exports all pass end-to-end;
 - no unauthorized item, new runtime dependency, or unrelated refactor is included.
-
