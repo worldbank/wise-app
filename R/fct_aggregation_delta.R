@@ -444,6 +444,22 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
   prepared
 }
 
+#' Aggregate one prediction pipeline by simulation year
+#'
+#' @param pipe Prediction pipeline containing point predictions and metadata.
+#' @param method Aggregation method.
+#' @param weighted Logical; whether to use pipeline weights.
+#' @param pov_line Optional poverty line for poverty measures.
+#' @param residuals Residual mode.
+#' @param is_log Logical; whether predictions are on the log scale.
+#' @param band_q Quantile band for uncertainty output.
+#' @param skip_coef Logical; skip coefficient uncertainty calculations.
+#' @param bandwidth_p0 Bandwidth for poverty smoothing.
+#' @param seed Seed for deterministic residual draws.
+#' @param shared_context Optional shared pipeline context.
+#' @param preparation_cache Optional bounded preparation cache.
+#' @return A list of per-year aggregation results.
+#' @export
 aggregate_pipeline_per_year <- function(pipe,
                                          method,
                                          weighted    = TRUE,
