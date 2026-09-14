@@ -1,6 +1,6 @@
 # Performance Audit — Remaining Work
 
-**Audit revision:** `aa42136` | **Dev head:** S2-P9 (`df7d31b`, following S2-P6) | **Date:** 2026-09-12
+**Audit revision:** `aa42136` | **Dev head:** S2-P9 (`df7d31b`, following S2-P6) | **Date:** 2026-09-14
 
 ---
 
@@ -23,8 +23,9 @@
 | **3** | **W3-B** | **S3-P1** | **Integrated** |
 | **3** | **S2-P6** | **Bounded Results aggregation cache** | **Integrated** |
 | **3** | **S2-P9** | **Reference-weather store ownership** | **Integrated** |
+| **3** | **S2-P20** | **Shared RIF design and FE indexing** | **Implemented; validation passed** |
 
-The previously blocked S2-P6 and S2-P9 findings are integrated. P15 is removed from the authorized scope and is not required for this delivery.
+S2-P6 and S2-P9 are integrated. P15 is removed from the authorized scope and is not required for this delivery. S2-P20 is authorized for implementation now. S2-P17 is authorized for a future batch. S2-P16 is authorized conditionally on a rounding-based determinism design and characterization; it is not part of the current implementation batch.
 
 ---
 
@@ -132,6 +133,40 @@ P15 — Stable Weather Map Surfaces — is removed from the authorized scope. It
 **Validation:** success, partial/total failure, rerun replacement, clear/session cleanup, historical-only behavior, and leased Step 3-style references are covered. A referenced store cannot be removed until all leases are released.
 
 **Change:** One run-level store owner with explicit references from every published result. Clean the superseded store on atomic replacement only when Step 3 holds no reference. Historical-only runs must avoid creating an orphaned store or retain it for cleanup.
+
+### S2-P20 — Shared RIF Design and FE Indexing
+
+`R/fct_rif_sim.R`, RIF prediction tests, and the Step 2 benchmark harness
+
+**Status:** Implemented in the current working tree; commit pending.
+
+**Investigation:** The current direct RIF path repeats fixed-effect matching, coefficient-column selection, and lazy design construction across nine quantiles. Controlled benchmarks showed approximately 1.9x lower per-key elapsed time and 48% lower allocation with shared FE indices/designs; tested outputs were bit-identical. Existing shared RIF preparation already improves 300k-row preparation by about 1.5x and roughly halves allocation versus repeated preparation.
+
+**Implementation scope:** Add characterization tests first, then use a shared FE index and shared non-FE design where supported. Preserve the current fallback for unsupported fixest structures, public payloads, quantile ordering, and coefficient uncertainty behavior. Do not use the diagnostic stacked-dgemm variant unless parity and memory gates require it.
+
+**Validation gate:** Bit-identical parity for all nine quantiles and both baseline/scenario designs; unsupported-model fallback coverage; focused RIF tests; full package suite; and a production-sized Colombia RIF Step 2 benchmark reporting end-to-end timing separately from weather-loading time, allocations, and RSS.
+
+**Validation results:** Focused RIF, cross-step aggregation, and full package suites passed. A 50,000-row fixed-effect comparison measured `41.5 ms` and `94.2 MB` allocation for the prior repeated-design path versus `16.5 ms` and `50.4 MB` for the shared path, with exact output parity. The production Colombia RIF benchmark reached the real weather workload but exceeded the available run window before completion; weather loading dominated the observed end-to-end run, so production-scale end-to-end speedup and RSS remain a follow-up gate.
+
+### S2-P17 — Materialized Location-Month Weather
+
+`R/fct_get_weather.R`
+
+**Status:** Authorized for a future implementation batch; do not implement in the current S2-P20 batch.
+
+**Investigation:** Historical `loc_monthly` and per-SSP location-month delta relations remain lazy and are re-executed across future periods. A 3-SSP x 3-period workload can repeat the spatial aggregation roughly 10 times for historical weather and 18 times for CMIP6 delta construction/completeness evaluation. Controlled local probes support an estimated 2–4x weather-query reduction for the full 3x3 workload, with a possible 60–120 MB longer-lived DuckDB footprint.
+
+**Future gate:** Confirm plans with `EXPLAIN ANALYZE`, materialize once per call/SSP with bounded cleanup, prove bit-level parity, and measure local/remote elapsed time and process-tree RSS.
+
+### S2-P16 — Bounded DuckDB Thread Scaling
+
+`R/fct_get_weather.R`
+
+**Status:** Authorized conditionally for a future implementation batch; do not implement in the current S2-P20 batch.
+
+**Investigation:** On a local IND workload, weather aggregation medians were 16.1s at one thread, 9.8s at two, 7.7s at four, and 6.0s at eight. Peak RSS increased from 1.66 GB at one thread to 2.36 GB at four and 2.47 GB at eight. Multi-threaded output differed from the one-thread baseline by approximately 1e-13 in final floating-point bits.
+
+**Condition:** Introduce and characterize a documented rounding policy at the weather-output boundary so parallel aggregation can preserve deterministic published outputs. The implementation must use a bounded thread setting, deployment CPU/RSS gates, and tests proving rounded output parity, cache behavior, and no unacceptable scientific distortion. Until that design passes, production remains pinned to one thread.
 
 ## 3. Not Authorized
 

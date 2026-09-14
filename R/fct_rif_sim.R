@@ -103,43 +103,79 @@ build_direct_rif_metadata <- function(fits) {
   list(X = X, data = data)
 }
 
-.direct_rif_prediction_pair <- function(fits, base, scenario,
-                                        metadata = NULL) {
-  if (!length(fits)) return(NULL)
-  metadata <- metadata %||% build_direct_rif_metadata(fits)
-  if (is.null(metadata) || length(metadata) != length(fits)) return(NULL)
+.direct_rif_design_cache <- function(fits, metadata, base, scenario) {
+  if (!length(fits) || !length(metadata)) return(NULL)
   base_design <- .direct_fixest_design(fits[[1L]], base)
   scen_design <- .direct_fixest_design(fits[[1L]], scenario)
   if (is.null(base_design) || is.null(scen_design) ||
       !identical(colnames(base_design$X), colnames(scen_design$X))) return(NULL)
 
-  add_fixed_effects <- function(design, meta) {
-    fe_values <- numeric(nrow(design$data))
-    if (!length(meta$fe_vars)) return(fe_values)
-    for (i in seq_along(meta$fe_vars)) {
-      var <- meta$fe_names[[i]][[1L]]
-      idx <- match(as.character(design$data[[var]]), names(meta$fixefs[[meta$fe_vars[[i]]]]))
-      if (anyNA(idx)) return(NULL)
-      fe_values <- fe_values + as.numeric(meta$fixefs[[meta$fe_vars[[i]]]][idx])
-    }
-    fe_values
-  }
+  fe_vars <- metadata[[1L]]$fe_vars %||% character()
+  fe_names <- metadata[[1L]]$fe_names %||% list()
+  if (length(fe_vars) != length(fe_names)) return(NULL)
 
-  direct_one <- function(meta, design) {
-    beta <- meta$beta
-    if (!all(names(beta) %in% colnames(design$X))) return(NULL)
-    fe_values <- add_fixed_effects(design, meta)
-    if (is.null(fe_values)) return(NULL)
-    as.numeric(design$X[, names(beta), drop = FALSE] %*% beta) + fe_values
-  }
-
-  out <- lapply(metadata, function(meta) {
-    base_pred <- direct_one(meta, base_design)
-    scen_pred <- direct_one(meta, scen_design)
-    if (is.null(base_pred) || is.null(scen_pred)) return(NULL)
-    list(base = base_pred, scenario = scen_pred)
+  # Encode each FE column once. Quantile-specific fixed-effect values are
+  # looked up by these shared level indices instead of matching N rows per tau.
+  level_values <- lapply(seq_along(fe_vars), function(i) {
+    var <- fe_names[[i]][[1L]]
+    if (!var %in% names(base) || !var %in% names(scenario)) return(NULL)
+    names(metadata[[1L]]$fixefs[[fe_vars[[i]]]])
   })
-  if (any(vapply(out, is.null, logical(1L)))) NULL else out
+  if (length(level_values) && any(vapply(level_values, is.null, logical(1))))
+    return(NULL)
+  level_index <- function(data, i) {
+    if (!length(level_values)) return(integer(nrow(data)))
+    match(as.character(data[[fe_names[[i]][[1L]]]]), level_values[[i]])
+  }
+  base_fe_index <- lapply(seq_along(fe_vars), function(i) level_index(base, i))
+  scen_fe_index <- lapply(seq_along(fe_vars), function(i) level_index(scenario, i))
+  if (any(vapply(c(base_fe_index, scen_fe_index), anyNA, logical(1)))) return(NULL)
+
+  beta_columns <- lapply(metadata, function(meta) {
+    match(names(meta$beta), colnames(base_design$X))
+  })
+  if (any(vapply(beta_columns, function(x) anyNA(x), logical(1)))) return(NULL)
+
+  list(
+    base_X = base_design$X,
+    scenario_X = scen_design$X,
+    beta_columns = beta_columns,
+    fe_indices = list(base = base_fe_index, scenario = scen_fe_index),
+    fe_levels = level_values
+  )
+}
+
+.direct_rif_prediction_pair <- function(fits, base, scenario,
+                                        metadata = NULL) {
+  if (!length(fits)) return(NULL)
+  metadata <- metadata %||% build_direct_rif_metadata(fits)
+  if (is.null(metadata) || length(metadata) != length(fits)) return(NULL)
+  design_cache <- .direct_rif_design_cache(fits, metadata, base, scenario)
+  if (is.null(design_cache)) return(NULL)
+
+  direct_one <- function(meta, k) {
+    beta <- meta$beta
+    add_fixed_effects <- function(which, n) {
+      if (!length(meta$fe_vars)) return(numeric(n))
+      indices <- design_cache$fe_indices[[which]]
+      Reduce(`+`, lapply(seq_along(meta$fe_vars), function(i) {
+        values <- meta$fixefs[[meta$fe_vars[[i]]]]
+        values <- as.numeric(values[match(design_cache$fe_levels[[i]], names(values))])
+        values[indices[[i]]]
+      }))
+    }
+    base_fe <- add_fixed_effects("base", nrow(design_cache$base_X))
+    scen_fe <- add_fixed_effects("scenario", nrow(design_cache$scenario_X))
+    list(
+      base = as.numeric(design_cache$base_X[, design_cache$beta_columns[[k]], drop = FALSE] %*% beta) + base_fe,
+      scenario = as.numeric(design_cache$scenario_X[, design_cache$beta_columns[[k]], drop = FALSE] %*% beta) + scen_fe
+    )
+  }
+
+  out <- lapply(seq_along(metadata), function(k) direct_one(metadata[[k]], k))
+  if (any(vapply(out, is.null, logical(1L)))) return(NULL)
+  attr(out, "design_cache") <- design_cache
+  out
 }
 
 
@@ -400,7 +436,10 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
   # given rows only - model.matrix() on a row subset of newdata_scen.
   if (compute_loading) {
     active_mask <- attr(chol_list, "active_mask")
-    X_scen_fn <- function(k, rows) {
+    direct_design_cache <- attr(direct_pairs, "design_cache")
+    X_scen_fn <- if (!is.null(direct_design_cache)) {
+      function(k, rows) direct_design_cache$scenario_X[rows, , drop = FALSE]
+    } else function(k, rows) {
       stats::model.matrix(fit_multi[[k]], data = newdata_scen[rows, , drop = FALSE],
                           type = "rhs")
     }
