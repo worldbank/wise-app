@@ -839,6 +839,13 @@ get_weather <- function(
     dplyr::inner_join(h3_slim, by = c("h3" = "h3_weather")) |>
     dplyr::group_by(code, year, survname, loc_id, timestamp) |>
     .pop_weighted_mean(weather_vars)
+  # Materialise location-month weather once. The same relation is consumed by
+  # the historical result and every future SSP/period batch.
+  tmp_loc_monthly_name <- basename(tempfile(pattern = "lw_loc_monthly_"))
+  tmp_tables <- c(tmp_tables, tmp_loc_monthly_name)
+  loc_monthly <- dplyr::compute(
+    loc_monthly, name = tmp_loc_monthly_name, temporary = TRUE
+  )
 
   # -- Rolling window expressions --------------------------------------------
   agg_fn_map <- c(
@@ -1089,6 +1096,17 @@ get_weather <- function(
     # CMIP6 historical baseline - shared across all SSPs (same files)
     h3_hist_raw <- .cmip6_h3_monthly(cmip6_hist_raw_lazy, baseline_start, baseline_end)
 
+    period_specs <- lapply(seq_along(future_period), function(i) {
+      fp <- future_period[[i]]
+      list(
+        id = i,
+        start = as.Date(fp[1]),
+        end = as.Date(fp[2]),
+        label = paste0(format(as.Date(fp[1]), "%Y"), "_",
+                       format(as.Date(fp[2]), "%Y"))
+      )
+    })
+
     # -- Per-SSP worker -------------------------------------------------------
     # Processes all models * all future periods.  The CMIP6 historical
     # baseline and SSP baseline-period data are loaded once and shared
@@ -1132,6 +1150,60 @@ get_weather <- function(
           .groups = "drop"
         )
 
+      # Aggregate every requested period once, then join the combined relation
+      # to h3_slim once. This removes the repeated location-level spatial join
+      # from the period loop while retaining a period key for exact semantics.
+      h3_fut_by_period <- lapply(period_specs, function(spec) {
+        .cmip6_h3_monthly(ssp_raw_lazy, spec$start, spec$end) |>
+          dplyr::mutate(period_id = spec$id)
+      })
+      h3_fut_all <- Reduce(dplyr::union_all, h3_fut_by_period)
+      h3_deltas_all <- dplyr::inner_join(
+        h3_hist, h3_fut_all,
+        by = c("model", "h3", "month"),
+        suffix = c("_hist", "_fut")
+      ) |>
+        dplyr::mutate(!!!delta_exprs_h3) |>
+        dplyr::select(period_id, model, h3, month, dplyr::all_of(delta_vars))
+
+      loc_deltas_all <- h3_deltas_all |>
+        dplyr::inner_join(h3_slim, by = c("h3" = "h3_cmip6")) |>
+        dplyr::group_by(period_id, model, code, year, survname, loc_id, month) |>
+        .pop_weighted_mean(delta_vars)
+
+      complete_model_tbl <- loc_deltas_all |>
+        dplyr::group_by(period_id, model) |>
+        dplyr::summarise(
+          n_complete = sum(
+            dplyr::if_all(dplyr::all_of(delta_vars), ~ !is.na(.x)),
+            na.rm = TRUE
+          ),
+          .groups = "drop"
+        ) |>
+        dplyr::collect()
+
+      complete_keys <- complete_model_tbl |>
+        dplyr::filter(n_complete > 0L) |>
+        dplyr::select(period_id, model)
+      if (!nrow(complete_keys)) return(list())
+
+      complete_predicates <- vapply(seq_len(nrow(complete_keys)), function(i) {
+        sprintf(
+          "(period_id = %d AND model = %s)",
+          complete_keys$period_id[[i]],
+          DBI::dbQuoteString(con, complete_keys$model[[i]])
+        )
+      }, character(1L))
+      loc_deltas_complete <- loc_deltas_all |>
+        dplyr::filter(!!dbplyr::sql(paste(complete_predicates, collapse = " OR ")))
+      tmp_delta_all_name <- basename(tempfile(pattern = "lw_delta_all_"))
+      tmp_tables <<- c(tmp_tables, tmp_delta_all_name)
+      loc_deltas_complete <- dplyr::compute(
+        loc_deltas_complete,
+        name = tmp_delta_all_name,
+        temporary = TRUE
+      )
+
       # -- Loop over future periods ------------------------------------------
       out <- list()
       tmp_delta_tables <- character(0L)
@@ -1151,45 +1223,15 @@ get_weather <- function(
         invisible(NULL)
       }
 
-      for (fp in future_period) {
-        fp_start <- as.Date(fp[1])
-        fp_end   <- as.Date(fp[2])
-        fp_label <- paste0(
-          format(fp_start, "%Y"), "_", format(fp_end, "%Y")
-        )
+      for (spec in period_specs) {
+        fp_start <- spec$start
+        fp_end   <- spec$end
+        fp_label <- spec$label
+        current_period_id <- spec$id
 
-        h3_fut <- .cmip6_h3_monthly(ssp_raw_lazy, fp_start, fp_end)
-
-        # Lazy per-model H3-level delta table
-        h3_deltas <- dplyr::inner_join(
-          h3_hist, h3_fut,
-          by     = c("model", "h3", "month"),
-          suffix = c("_hist", "_fut")
-        ) |>
-          dplyr::mutate(!!!delta_exprs_h3) |>
-          dplyr::select(model, h3, month, dplyr::all_of(delta_vars))
-
-        # Population-weighted loc-level deltas
-        loc_deltas_by_model <- h3_deltas |>
-          dplyr::inner_join(h3_slim, by = c("h3" = "h3_cmip6")) |>
-          dplyr::group_by(model, code, year, survname, loc_id, month) |>
-          .pop_weighted_mean(delta_vars)
-
-
-        # Filter incomplete models in DuckDB before materialising the delta
-        # relation. Only the small model-completeness summary crosses into R.
-        complete_model_tbl <- loc_deltas_by_model |>
-          dplyr::group_by(model) |>
-          dplyr::summarise(
-            n_complete = sum(
-              dplyr::if_all(dplyr::all_of(delta_vars), ~ !is.na(.x)),
-              na.rm = TRUE
-            ),
-            .groups = "drop"
-          ) |>
-          dplyr::collect()
-
-        incomplete_models <- complete_model_tbl$model[complete_model_tbl$n_complete == 0L]
+        complete_for_period <- complete_model_tbl |>
+          dplyr::filter(period_id == !!current_period_id)
+        incomplete_models <- complete_for_period$model[complete_for_period$n_complete == 0L]
         if (length(incomplete_models) > 0L) {
           warning(sprintf(
             "%s / %s: %d model(s) excluded due to missing variables (%s): %s",
@@ -1199,18 +1241,22 @@ get_weather <- function(
           ), call. = FALSE)
         }
 
-        complete_models <- complete_model_tbl$model[complete_model_tbl$n_complete > 0L]
+        complete_models <- complete_for_period$model[complete_for_period$n_complete > 0L]
         if (length(complete_models) == 0L) next
 
-        loc_deltas_by_model <- loc_deltas_by_model |>
-          dplyr::filter(model %in% complete_models)
+        loc_deltas_by_model <- loc_deltas_complete |>
+          dplyr::filter(
+            period_id == !!current_period_id,
+            model %in% complete_models
+          )
 
         # Materialise the filtered delta table - lets DuckDB plan a hash join in
         # the batch query without retaining rows for incomplete models.
         tmp_delta_name <- basename(tempfile(pattern = "lw_delta_"))
         tmp_tables <<- c(tmp_tables, tmp_delta_name)
         loc_deltas_by_model <- dplyr::compute(
-          loc_deltas_by_model,
+          loc_deltas_by_model |>
+            dplyr::select(-period_id),
           name      = tmp_delta_name,
           temporary = TRUE
         )
@@ -1340,7 +1386,7 @@ get_weather <- function(
 
         # All returned frames are now detached from the query intermediates.
         .drop_period_tables(tmp_delta_name, tmp_perturb_name, tmp_roll_name)
-        rm(h3_fut, h3_deltas, loc_deltas_by_model, perturbed, rolled_lazy,
+        rm(perturbed, rolled_lazy,
            rolled, period_out)
         if (exists("batch", inherits = FALSE)) rm(batch)
         if (exists("model_list", inherits = FALSE)) rm(model_list)
@@ -1348,6 +1394,9 @@ get_weather <- function(
         if (exists("model_out", inherits = FALSE)) rm(model_out)
         gc(verbose = FALSE)
       }
+
+      try(DBI::dbRemoveTable(con, tmp_delta_all_name), silent = TRUE)
+      tmp_tables <<- setdiff(tmp_tables, tmp_delta_all_name)
 
       # Cleanup all materialised delta temp tables (best-effort, early release;
       # the on.exit ledger still covers any that fail to drop here)

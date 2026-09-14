@@ -25,7 +25,7 @@
 | **3** | **S2-P9** | **Reference-weather store ownership** | **Integrated** |
 | **3** | **S2-P20** | **Shared RIF design and FE indexing** | **Integrated** |
 
-S2-P6, S2-P9, and S2-P20 are integrated. P15 is removed from the authorized scope and is not required for this delivery. S2-P17 is authorized for the current batch. S2-P16 is authorized conditionally on a rounding-based determinism design and characterization; it is not part of the current implementation batch.
+S2-P6, S2-P9, S2-P20, and S2-P17 are integrated. P15 is removed from the authorized scope and is not required for this delivery. S2-P16 is authorized conditionally on a rounding-based determinism design and characterization; it is not part of the current implementation batch.
 
 ---
 
@@ -152,11 +152,13 @@ P15 — Stable Weather Map Surfaces — is removed from the authorized scope. It
 
 `R/fct_get_weather.R`
 
-**Status:** Authorized for implementation in the current batch.
+**Status:** Implemented in the current working tree; commit pending.
 
 **Investigation:** Historical `loc_monthly` and per-SSP location-month delta relations remain lazy and are re-executed across future periods. A 3-SSP x 3-period workload can repeat the spatial aggregation roughly 10 times for historical weather and 18 times for CMIP6 delta construction/completeness evaluation. Controlled local probes support an estimated 2–4x weather-query reduction for the full 3x3 workload, with a possible 60–120 MB longer-lived DuckDB footprint.
 
 **Implementation gate:** Confirm plans with `EXPLAIN ANALYZE`, materialize once per call/SSP with bounded cleanup, prove bit-level parity, and measure local/remote elapsed time and process-tree RSS before treating the optimization as passed.
+
+**Validation results:** Multi-period weather tests and the full package suite passed. Historical location-month weather and each SSP's complete period-tagged location-month delta relation are materialized once, with per-period intermediates cleaned up after collection. A controlled Colombia parquet experiment reduced repeated three-period spatial aggregation from `0.826s` to `0.315s` at one thread (`2.62x`), `0.484s` to `0.218s` at two threads (`2.22x`), and `0.366s` to `0.193s` at four threads (`1.90x`). Exact production-scale end-to-end RSS and remote-I/O measurements remain follow-up gates.
 
 ### S2-P16 — Bounded DuckDB Thread Scaling
 

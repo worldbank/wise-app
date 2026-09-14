@@ -1200,6 +1200,49 @@ test_that("fast and bounded future collection preserve the weather contract", {
   }
 })
 
+test_that("materialized multi-period future deltas preserve each period", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("duckdbfs")
+  skip_if_not_installed("bit64")
+
+  fx <- cached_weather_fixture("cross_res_cmip6")
+  proj_path <- file.path(
+    fx$connection_params$path, "hazard", "weather", "projections",
+    fx$selected_surveys$code,
+    paste0(fx$selected_surveys$code, "_cmip6_ssp245.parquet")
+  )
+  projection <- arrow::read_parquet(proj_path)
+  future_2025 <- projection[projection$timestamp >= as.Date("2025-01-01"), , drop = FALSE]
+  future_2026 <- future_2025
+  future_2026$timestamp <- as.Date(paste0("2026-", format(future_2025$timestamp, "%m"), "-01"))
+  arrow::write_parquet(rbind(projection, future_2026), proj_path)
+  run <- function(periods) get_weather(
+    survey_data = fx$survey_data,
+    selected_surveys = fx$selected_surveys,
+    selected_weather = sw_continuous("tx"),
+    dates = fx$dates,
+    connection_params = fx$connection_params,
+    ssp = "ssp2_4_5",
+    future_period = periods,
+    perturbation_method = c(tx = "additive")
+  )
+  first <- run(list(c("2025-01-01", "2025-12-31")))
+  both <- run(list(
+    c("2025-01-01", "2025-12-31"),
+    c("2026-01-01", "2026-12-31")
+  ))
+  first_key <- grep("2025_2025", names(first), value = TRUE)
+  second_key <- grep("2026_2026", names(both), value = TRUE)
+  expect_length(first_key, 1L)
+  expect_length(second_key, 1L)
+  expect_identical(first$historical, both$historical)
+  expect_identical(first[[first_key]], both[[first_key]])
+  # Output timestamps are the survey dates; the future-period window selects
+  # the projection source, not the returned survey timestamp.
+  expect_gt(nrow(both[[second_key]]), 0L)
+})
+
 test_that("SSP perturbation with equal-frequency bins is deterministic", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("duckdb")
