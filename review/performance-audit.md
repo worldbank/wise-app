@@ -23,9 +23,9 @@
 | **3** | **W3-B** | **S3-P1** | **Integrated** |
 | **3** | **S2-P6** | **Bounded Results aggregation cache** | **Integrated** |
 | **3** | **S2-P9** | **Reference-weather store ownership** | **Integrated** |
-| **3** | **S2-P20** | **Shared RIF design and FE indexing** | **Implemented; validation passed** |
+| **3** | **S2-P20** | **Shared RIF design and FE indexing** | **Integrated** |
 
-S2-P6 and S2-P9 are integrated. P15 is removed from the authorized scope and is not required for this delivery. S2-P20 is authorized for implementation now. S2-P17 is authorized for a future batch. S2-P16 is authorized conditionally on a rounding-based determinism design and characterization; it is not part of the current implementation batch.
+S2-P6, S2-P9, and S2-P20 are integrated. P15 is removed from the authorized scope and is not required for this delivery. S2-P17 is authorized for the current batch. S2-P16 is authorized conditionally on a rounding-based determinism design and characterization; it is not part of the current implementation batch.
 
 ---
 
@@ -138,7 +138,7 @@ P15 — Stable Weather Map Surfaces — is removed from the authorized scope. It
 
 `R/fct_rif_sim.R`, RIF prediction tests, and the Step 2 benchmark harness
 
-**Status:** Implemented in the current working tree; commit pending.
+**Status:** Integrated in `237a433` (`Optimize shared RIF prediction design`).
 
 **Investigation:** The current direct RIF path repeats fixed-effect matching, coefficient-column selection, and lazy design construction across nine quantiles. Controlled benchmarks showed approximately 1.9x lower per-key elapsed time and 48% lower allocation with shared FE indices/designs; tested outputs were bit-identical. Existing shared RIF preparation already improves 300k-row preparation by about 1.5x and roughly halves allocation versus repeated preparation.
 
@@ -152,11 +152,11 @@ P15 — Stable Weather Map Surfaces — is removed from the authorized scope. It
 
 `R/fct_get_weather.R`
 
-**Status:** Authorized for a future implementation batch; do not implement in the current S2-P20 batch.
+**Status:** Authorized for implementation in the current batch.
 
 **Investigation:** Historical `loc_monthly` and per-SSP location-month delta relations remain lazy and are re-executed across future periods. A 3-SSP x 3-period workload can repeat the spatial aggregation roughly 10 times for historical weather and 18 times for CMIP6 delta construction/completeness evaluation. Controlled local probes support an estimated 2–4x weather-query reduction for the full 3x3 workload, with a possible 60–120 MB longer-lived DuckDB footprint.
 
-**Future gate:** Confirm plans with `EXPLAIN ANALYZE`, materialize once per call/SSP with bounded cleanup, prove bit-level parity, and measure local/remote elapsed time and process-tree RSS.
+**Implementation gate:** Confirm plans with `EXPLAIN ANALYZE`, materialize once per call/SSP with bounded cleanup, prove bit-level parity, and measure local/remote elapsed time and process-tree RSS before treating the optimization as passed.
 
 ### S2-P16 — Bounded DuckDB Thread Scaling
 
