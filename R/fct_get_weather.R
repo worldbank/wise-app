@@ -36,7 +36,7 @@
 # ---------------------------------------------------------------------------- #
 
 WISEAPP_WX_CACHE_VERSION <- "v1"
-WISEAPP_WX_ROUND_DIGITS <- 12L
+WISEAPP_WX_ROUND_DIGITS <- 5L
 
 .wx_env_flag <- function(name, default = FALSE) {
   value <- Sys.getenv(name, unset = if (default) "1" else "0")
@@ -723,7 +723,7 @@ WISEAPP_WX_ROUND_DIGITS <- 12L
 #' @param weather_threads   DuckDB weather-query thread mode: `"auto"` (the
 #'   default), `"1"`, or `"2"`. Automatic selection is conservative and remains
 #'   pinned to one thread until `WISEAPP_WEATHER_THREADS_AUTO_ENABLE=1` is set.
-#'   All returned finite weather values use the fixed 12-decimal output policy.
+#'   All returned finite weather values use the fixed 5-decimal output policy.
 #' @return A named list of collected data frames with columns
 #'   `code, year, survname, loc_id, timestamp, <weather_vars>`:
 #'   * `"historical"` - unperturbed result filtered to `dates`.
@@ -759,7 +759,7 @@ get_weather <- function(
 
   # -- Select and pin DuckDB weather-query threads ----------------------------
   # Multi-threaded aggregation sums floats in non-deterministic order. The
-  # output boundary rounds weather values to a fixed precision, while one
+  # output boundary rounds weather values to a fixed five-decimal precision, while one
   # thread remains the conservative default and automatic fallback.
   con_det <- .duck_con()
   prev_threads <- DBI::dbGetQuery(con_det, "SELECT current_setting('threads') AS t")$t

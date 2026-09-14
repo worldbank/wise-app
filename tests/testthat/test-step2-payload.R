@@ -302,7 +302,7 @@ test_that("weather thread policy keeps auto conservative until rollout is enable
   ))
   expect_identical(enabled$selected_threads, 2L)
   expect_identical(enabled$reason, "auto_preflight_passed")
-  expect_identical(enabled$rounding_digits, 12L)
+  expect_identical(enabled$rounding_digits, 5L)
 })
 
 test_that("weather thread policy falls back for remote, CPU, and RSS gates", {
@@ -350,7 +350,7 @@ test_that("weather output rounding changes finite weather values only", {
   )
   out <- .wx_round_weather_values(input, "tx")
   expect_identical(out$loc_id, input$loc_id)
-  expect_equal(out$tx[[1L]], 1.123456789012)
+  expect_equal(out$tx[[1L]], 1.12346)
   expect_true(is.na(out$tx[[2L]]))
   expect_identical(out$tx[3:4], input$tx[3:4])
 })
