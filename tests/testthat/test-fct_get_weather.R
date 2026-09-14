@@ -686,6 +686,35 @@ test_that("get_weather returns data frame with expected columns (continuous)", {
   expect_false(is.factor(hist$tx))
 })
 
+test_that("one- and two-thread weather output has canonical parity", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("duckdbfs")
+
+  fx <- cached_weather_fixture()
+  run <- function(threads) get_weather(
+    survey_data = fx$survey_data,
+    selected_surveys = fx$selected_surveys,
+    selected_weather = sw_continuous("tx"),
+    dates = fx$dates,
+    connection_params = fx$connection_params,
+    weather_threads = threads
+  )
+  one <- run("1")
+  two <- run("2")
+
+  expect_identical(one$historical, two$historical)
+  expect_identical(attr(one, "continuous_weather"), attr(two, "continuous_weather"))
+  expect_identical(
+    attr(one, "weather_collection_policy")$weather_threads$selected_threads,
+    1L
+  )
+  expect_identical(
+    attr(two, "weather_collection_policy")$weather_threads$selected_threads,
+    2L
+  )
+})
+
 test_that("get_weather returns only rows matching requested dates", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("duckdb")

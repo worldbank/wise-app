@@ -288,6 +288,73 @@ test_that("weather collection policy falls back only when fast exceeds budget", 
   expect_identical(.wx_collection_policy(2 * 1024^2, "fast")$effective, "fast")
 })
 
+test_that("weather thread policy keeps auto conservative until rollout is enabled", {
+  base <- list(
+    connection_type = "local", estimated_bytes = 128 * 1024^2,
+    rss_before = 100, budget_bytes = 1024^3, available_cpus = 2L
+  )
+  disabled <- do.call(.wx_thread_policy, c(list(requested = "auto"), base))
+  expect_identical(disabled$selected_threads, 1L)
+  expect_identical(disabled$reason, "auto_rollout_disabled")
+
+  enabled <- do.call(.wx_thread_policy, c(
+    list(requested = "auto", auto_enabled = TRUE), base
+  ))
+  expect_identical(enabled$selected_threads, 2L)
+  expect_identical(enabled$reason, "auto_preflight_passed")
+  expect_identical(enabled$rounding_digits, 12L)
+})
+
+test_that("weather thread policy falls back for remote, CPU, and RSS gates", {
+  common <- list(
+    estimated_bytes = 128 * 1024^2, rss_before = 100,
+    budget_bytes = 1024^3, auto_enabled = TRUE
+  )
+  remote <- do.call(.wx_thread_policy, c(
+    list(requested = "auto", connection_type = "databricks", available_cpus = 2L),
+    common
+  ))
+  expect_identical(remote$selected_threads, 1L)
+  expect_identical(remote$reason, "remote_backend")
+
+  cpu <- do.call(.wx_thread_policy, c(
+    list(requested = "auto", connection_type = "local", available_cpus = 1L),
+    common
+  ))
+  expect_identical(cpu$selected_threads, 1L)
+  expect_identical(cpu$reason, "insufficient_cpu")
+
+  rss <- do.call(.wx_thread_policy, c(
+    list(requested = "auto", connection_type = "local", available_cpus = 2L,
+         budget_bytes = 100),
+    list(
+      estimated_bytes = common$estimated_bytes, rss_before = common$rss_before,
+      auto_enabled = common$auto_enabled
+    )
+  ))
+  expect_identical(rss$selected_threads, 1L)
+  expect_identical(rss$reason, "rss_budget_exceeded")
+
+  explicit <- do.call(.wx_thread_policy, c(
+    list(requested = "2", connection_type = "local", available_cpus = 2L),
+    common
+  ))
+  expect_identical(explicit$selected_threads, 2L)
+  expect_identical(explicit$reason, "explicit_two")
+})
+
+test_that("weather output rounding changes finite weather values only", {
+  input <- data.frame(
+    tx = c(1.123456789012345, NA_real_, Inf, -Inf),
+    loc_id = 1:4
+  )
+  out <- .wx_round_weather_values(input, "tx")
+  expect_identical(out$loc_id, input$loc_id)
+  expect_equal(out$tx[[1L]], 1.123456789012)
+  expect_true(is.na(out$tx[[2L]]))
+  expect_identical(out$tx[3:4], input$tx[3:4])
+})
+
 test_that("observed RSS guard records bounded producer evidence", {
   withr::local_envvar(WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB = "4096")
   policy <- .wx_collection_policy(1, "fast")

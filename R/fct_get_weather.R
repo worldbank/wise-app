@@ -36,6 +36,108 @@
 # ---------------------------------------------------------------------------- #
 
 WISEAPP_WX_CACHE_VERSION <- "v1"
+WISEAPP_WX_ROUND_DIGITS <- 12L
+
+.wx_env_flag <- function(name, default = FALSE) {
+  value <- Sys.getenv(name, unset = if (default) "1" else "0")
+  value %in% c("1", "true", "TRUE", "yes", "YES")
+}
+
+.wx_env_number <- function(name, default) {
+  value <- suppressWarnings(as.numeric(Sys.getenv(name, unset = "")))
+  if (!is.finite(value)) default else value
+}
+
+.wx_available_cpu_count <- function() {
+  configured <- .wx_env_number("WISEAPP_WEATHER_CPU_COUNT", NA_real_)
+  if (is.finite(configured)) return(max(1L, floor(configured)))
+  detected <- tryCatch(parallel::detectCores(logical = TRUE), error = function(e) NA_integer_)
+  if (length(detected) != 1L || !is.finite(detected)) 1L else max(1L, as.integer(detected))
+}
+
+.wx_round_weather_values <- function(df, vars, digits = WISEAPP_WX_ROUND_DIGITS) {
+  if (!is.data.frame(df) || !length(vars)) return(df)
+  for (v in intersect(vars, names(df))) {
+    x <- df[[v]]
+    if (!is.numeric(x)) next
+    finite <- is.finite(x)
+    x[finite] <- round(x[finite], digits = digits)
+    df[[v]] <- x
+  }
+  df
+}
+
+.wx_thread_policy <- function(requested = c("auto", "1", "2"),
+                              connection_type = "local",
+                              estimated_bytes = NA_real_,
+                              rss_before = NA_real_,
+                              budget_bytes = NA_real_,
+                              available_cpus = .wx_available_cpu_count(),
+                              auto_enabled = .wx_env_flag(
+                                "WISEAPP_WEATHER_THREADS_AUTO_ENABLE"
+                              ),
+                              min_workload_bytes = .wx_env_number(
+                                "WISEAPP_WEATHER_THREADS_MIN_BYTES", 64 * 1024^2
+                              )) {
+  requested <- match.arg(requested)
+  connection_type <- connection_type %||% "local"
+  available_cpus <- max(1L, as.integer(available_cpus[[1L]] %||% 1L))
+  finite_rss <- is.finite(rss_before) && is.finite(budget_bytes)
+  projected_rss <- if (is.finite(rss_before) && is.finite(estimated_bytes))
+    rss_before + estimated_bytes * 1.25 else NA_real_
+  fits_budget <- finite_rss && is.finite(projected_rss) &&
+    projected_rss <= budget_bytes
+  local_source <- identical(connection_type, "local")
+  workload_large <- is.finite(estimated_bytes) &&
+    estimated_bytes >= min_workload_bytes
+
+  selected <- 1L
+  reason <- switch(
+    requested,
+    "1" = "explicit_one",
+    "2" = "explicit_two_requires_preflight",
+    "auto" = if (!isTRUE(auto_enabled)) "auto_rollout_disabled" else
+      "auto_requires_preflight"
+  )
+
+  if (requested %in% c("auto", "2")) {
+    can_use_two <- available_cpus >= 2L && fits_budget
+    if (requested == "auto") {
+      can_use_two <- can_use_two && local_source && workload_large
+      if (!isTRUE(auto_enabled)) can_use_two <- FALSE
+    }
+    if (can_use_two) {
+      selected <- 2L
+      reason <- if (requested == "auto") "auto_preflight_passed" else "explicit_two"
+    } else if (available_cpus < 2L) {
+      reason <- "insufficient_cpu"
+    } else if (!finite_rss) {
+      reason <- "rss_unavailable"
+    } else if (!fits_budget) {
+      reason <- "rss_budget_exceeded"
+    } else if (requested == "auto" && !local_source) {
+      reason <- "remote_backend"
+    } else if (requested == "auto" && !workload_large) {
+      reason <- "workload_below_minimum"
+    }
+  }
+
+  list(
+    requested = requested,
+    selected = selected,
+    selected_threads = selected,
+    reason = reason,
+    connection_type = connection_type,
+    available_cpus = available_cpus,
+    estimated_bytes = estimated_bytes,
+    min_workload_bytes = min_workload_bytes,
+    rss_before = rss_before,
+    projected_rss = projected_rss,
+    budget_bytes = budget_bytes,
+    auto_enabled = isTRUE(auto_enabled),
+    rounding_digits = WISEAPP_WX_ROUND_DIGITS
+  )
+}
 
 # `rss` is deliberately measured through an external `ps` process. R's
 # `gc()`/object.size() do not include DuckDB children or allocator-retained
@@ -618,6 +720,10 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
 #' @param stored_breaks     Optional named list of pre-computed bin breaks
 #'   keyed by weather variable name. When non-empty, these breaks are used
 #'   for the matching binned variables instead of re-deriving them.
+#' @param weather_threads   DuckDB weather-query thread mode: `"auto"` (the
+#'   default), `"1"`, or `"2"`. Automatic selection is conservative and remains
+#'   pinned to one thread until `WISEAPP_WEATHER_THREADS_AUTO_ENABLE=1` is set.
+#'   All returned finite weather values use the fixed 12-decimal output policy.
 #' @return A named list of collected data frames with columns
 #'   `code, year, survname, loc_id, timestamp, <weather_vars>`:
 #'   * `"historical"` - unperturbed result filtered to `dates`.
@@ -647,24 +753,46 @@ get_weather <- function(
   proj_source          = "cmip6",
   stored_breaks        = NULL,
   weather_collect      = c("fast", "bounded"),
+  weather_threads      = c("auto", "1", "2"),
   weather_consumer     = NULL
 ) {
 
-  # -- Pin DuckDB to single thread for floating-point determinism ------------
-  # Multi-threaded aggregation sums floats in non-deterministic order,
-  # causing last-bit differences (~1e-14) across identical calls.
+  # -- Select and pin DuckDB weather-query threads ----------------------------
+  # Multi-threaded aggregation sums floats in non-deterministic order. The
+  # output boundary rounds weather values to a fixed precision, while one
+  # thread remains the conservative default and automatic fallback.
   con_det <- .duck_con()
   prev_threads <- DBI::dbGetQuery(con_det, "SELECT current_setting('threads') AS t")$t
-  DBI::dbExecute(con_det, "SET threads TO 1")
-  on.exit(DBI::dbExecute(con_det, paste("SET threads TO", prev_threads)), add = TRUE)
+  weather_threads <- match.arg(weather_threads)
 
-  # -- Validate ---------------------------------------------------------------
   climate_scenario <- !is.null(ssp)
   weather_collect <- match.arg(weather_collect)
-  collection_policy <- .wx_collection_policy(
-    .wx_estimate_weather_bytes(survey_data, selected_weather, dates, ssp,
-                               future_period), weather_collect
+  estimated_weather_bytes <- .wx_estimate_weather_bytes(
+    survey_data, selected_weather, dates, ssp, future_period
   )
+  rss_before_threads <- .wx_process_tree_rss_bytes()
+  thread_policy <- .wx_thread_policy(
+    requested = weather_threads,
+    connection_type = connection_params$type %||% "local",
+    estimated_bytes = estimated_weather_bytes,
+    rss_before = rss_before_threads,
+    budget_bytes = .wx_env_number(
+      "WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB", 4096
+    ) * 1024^2
+  )
+  DBI::dbExecute(con_det, paste("SET threads TO", thread_policy$selected_threads))
+  on.exit(DBI::dbExecute(con_det, paste("SET threads TO", prev_threads)), add = TRUE)
+  # Process RSS is a preflight input, not part of the deterministic weather
+  # contract. Keep the stable selection decision in the returned policy while
+  # leaving volatile measurements to the benchmark instrumentation.
+  thread_policy$rss_before <- NULL
+  thread_policy$projected_rss <- NULL
+
+  # -- Validate ---------------------------------------------------------------
+  collection_policy <- .wx_collection_policy(
+    estimated_weather_bytes, weather_collect
+  )
+  collection_policy$weather_threads <- thread_policy
   weather_collect <- collection_policy$effective
   if (is.function(weather_consumer)) {
     # Callback consumers must never wait for a whole period to materialise.
@@ -904,6 +1032,9 @@ get_weather <- function(
     dplyr::filter(timestamp %in% !!dates) |>
     dplyr::arrange(code, year, survname, loc_id, timestamp) |>
     dplyr::collect()
+  result[["historical"]] <- .wx_round_weather_values(
+    result[["historical"]], weather_vars
+  )
   # -- Binning setup ----------------------------------------------------------
   # Determine whether any variables require binning.  Guard against
 
@@ -1314,6 +1445,7 @@ get_weather <- function(
             stats::setNames(
               lapply(model_list, function(model_df) {
                 model_df$model <- NULL
+                model_df <- .wx_round_weather_values(model_df, weather_vars)
                 if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
                 model_df
               }),
@@ -1343,6 +1475,7 @@ get_weather <- function(
               rm(model_df)
               next
             }
+            model_df <- .wx_round_weather_values(model_df, weather_vars)
             if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
             member_key <- paste0(ssp_i, "_", fp_label, "_", make.names(model_name))
             collection_policy$buffered_member_peak <- max(

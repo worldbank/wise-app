@@ -111,6 +111,8 @@
 #'   it only at consumer boundaries.
 #' @param weather_collect  "fast" (default) or "bounded" future-weather
 #'   collection strategy passed to `get_weather()`.
+#' @param weather_threads  DuckDB weather-query thread mode passed to
+#'   `get_weather()`: `"auto"` (default), `"1"`, or `"2"`.
 #' @param join_cache       Logical. Use the experimental survey-side join
 #'   cache. Defaults to FALSE until full-scale benchmarks establish a win.
 #' @param direct_rif_predictions Logical. Use direct RIF prediction with
@@ -164,10 +166,11 @@ fct_run_simulation <- function(sw,
                                  taus         = NULL,
                                  weather_cols = NULL,
                                  payload_mode = c("compact", "legacy"),
-                                 weather_storage = c("memory", "reference"),
-                                 weather_store_root = NULL,
-                                 weather_collect = c("fast", "bounded"),
-                                 join_cache = FALSE,
+                                  weather_storage = c("memory", "reference"),
+                                  weather_store_root = NULL,
+                                  weather_collect = c("fast", "bounded"),
+                                  weather_threads = c("auto", "1", "2"),
+                                  join_cache = FALSE,
                                  direct_rif_predictions = TRUE,
                                  notify_fn   = function(msg) message(msg),
                                 progress_fn = function(value, detail) invisible(NULL),
@@ -181,6 +184,7 @@ fct_run_simulation <- function(sw,
   payload_mode <- match.arg(payload_mode)
   weather_storage <- match.arg(weather_storage)
   weather_collect <- match.arg(weather_collect)
+  weather_threads <- match.arg(weather_threads)
   has_future <- length(fp_list) > 0 && length(ssps) > 0
   weather_store <- NULL
   weather_store_published <- FALSE
@@ -424,7 +428,8 @@ fct_run_simulation <- function(sw,
       ssp = if (has_future) ssps else NULL,
       future_period = if (has_future) fp_list else NULL,
       perturbation_method = perturbation_method, stored_breaks = stored_breaks,
-      weather_collect = weather_collect, weather_consumer = consume_key
+      weather_collect = weather_collect, weather_threads = weather_threads,
+      weather_consumer = consume_key
     ),
     error = function(e) {
       if (length(emitted_keys)) stop(e)
@@ -434,7 +439,8 @@ fct_run_simulation <- function(sw,
         ssp = if (has_future) ssps else NULL,
         future_period = if (has_future) fp_list else NULL,
         perturbation_method = perturbation_method,
-        stored_breaks = stored_breaks, weather_collect = weather_collect
+        stored_breaks = stored_breaks, weather_collect = weather_collect,
+        weather_threads = weather_threads
       )
     }
   )

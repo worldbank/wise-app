@@ -146,8 +146,9 @@ source(file.path(.bench_repo_root, "dev", "bench_step3_helpers.R"), local = TRUE
     ),
     payload_mode  = .bench_env("WISEAPP_STEP2_PAYLOAD_MODE", "compact"),
     weather_storage = .bench_env("WISEAPP_STEP2_WEATHER_STORAGE", "memory"),
-    weather_collect = .bench_env("WISEAPP_STEP2_WEATHER_COLLECT", "fast")
-    ,join_cache = .bench_env_flag("WISEAPP_STEP2_JOIN_CACHE", FALSE),
+    weather_collect = .bench_env("WISEAPP_STEP2_WEATHER_COLLECT", "fast"),
+    weather_threads = .bench_env("WISEAPP_STEP2_WEATHER_THREADS", "auto"),
+    join_cache = .bench_env_flag("WISEAPP_STEP2_JOIN_CACHE", FALSE),
     direct_rif_predictions = .bench_env_flag("WISEAPP_STEP2_DIRECT_RIF_PREDICTIONS", TRUE)
   )
 }
@@ -197,6 +198,9 @@ if (!cfg$weather_storage %in% c("memory", "reference")) {
 }
 if (!cfg$weather_collect %in% c("fast", "bounded")) {
   stop("WISEAPP_STEP2_WEATHER_COLLECT must be fast or bounded.", call. = FALSE)
+}
+if (!cfg$weather_threads %in% c("auto", "1", "2")) {
+  stop("WISEAPP_STEP2_WEATHER_THREADS must be auto, 1, or 2.", call. = FALSE)
 }
 if (!cfg$fixture_mode %in% c("production", "smoke")) {
   stop("WISEAPP_STEP2_FIXTURE must be production or smoke.", call. = FALSE)
@@ -684,8 +688,9 @@ inputs_by_country <- setNames(
     payload_mode = config$payload_mode,
     weather_storage = config$weather_storage,
     weather_store_root = config$output_dir,
-    weather_collect = config$weather_collect
-    ,join_cache = config$join_cache,
+    weather_collect = config$weather_collect,
+    weather_threads = config$weather_threads,
+    join_cache = config$join_cache,
     direct_rif_predictions = config$direct_rif_predictions
   )
 }
@@ -860,6 +865,7 @@ inputs_by_country <- setNames(
     payload_mode = case_config$payload_mode,
     weather_storage = case_config$weather_storage,
     weather_collect = case_config$weather_collect,
+    weather_threads = case_config$weather_threads,
     join_cache = case_config$join_cache,
     direct_rif_predictions = case_config$direct_rif_predictions,
     uncertainty = if (isTRUE(args$skip_coef_draws)) "disabled" else "enabled",
@@ -975,6 +981,7 @@ for (country in names(inputs_by_country)) {
                 payload_mode = cfg$payload_mode,
                 weather_storage = cfg$weather_storage,
                 weather_collect = cfg$weather_collect,
+                weather_threads = cfg$weather_threads,
                 join_cache = cfg$join_cache,
                 direct_rif_predictions = cfg$direct_rif_predictions,
                 uncertainty = uncertainty, cache = cache_state,

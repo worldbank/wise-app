@@ -756,6 +756,10 @@ mod_2_01_weathersim_server <- function(id,
               Sys.getenv("WISEAPP_STEP2_WEATHER_COLLECT", "fast"),
               c("fast", "bounded")
             ),
+            weather_threads     = match.arg(
+              Sys.getenv("WISEAPP_STEP2_WEATHER_THREADS", "auto"),
+              c("auto", "1", "2")
+            ),
             direct_rif_predictions = TRUE,
             payload_mode        = "compact",
             progress_fn         = function(value, detail)

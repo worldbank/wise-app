@@ -300,3 +300,26 @@ test_that("weather retrieval receives selected survey metadata unchanged", {
   expect_identical(captured$survname, c("SRV", "SRV_ALT"))
   expect_identical(captured$source, c("src", "src_alt"))
 })
+
+test_that("weather thread mode is forwarded to the weather loader", {
+  captured <- NULL
+  wr <- make_ledger_weather_result(with_ssp5 = FALSE)
+  suppressWarnings(fct_run_simulation(
+    sw = data.frame(name = "temp", stringsAsFactors = FALSE),
+    so = data.frame(name = "welfare", type = "numeric", transform = "log",
+                    stringsAsFactors = FALSE),
+    svy = make_ledger_svy(),
+    ss = data.frame(code = "TST", year = 2020L, survname = "SRV", source = "src"),
+    mf = list(fit3 = NULL, engine = "fixest", train_data = make_ledger_svy(),
+              weather_terms = "temp"),
+    cp = list(type = "local", path = tempdir()),
+    fp_list = list(), ssps = character(0), residuals = "none",
+    skip_coef_draws = TRUE, sim_dates = c("2020-01-01", "2020-12-31"),
+    perturbation_method = NULL, stored_breaks = NULL, weather_threads = "2",
+    weather_fn = function(..., weather_threads) {
+      captured <<- weather_threads
+      wr
+    }, pipeline_fn = make_ledger_pipeline_fn()
+  ))
+  expect_identical(captured, "2")
+})

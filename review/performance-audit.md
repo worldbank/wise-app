@@ -25,7 +25,7 @@
 | **3** | **S2-P9** | **Reference-weather store ownership** | **Integrated** |
 | **3** | **S2-P20** | **Shared RIF design and FE indexing** | **Integrated** |
 
-S2-P6, S2-P9, S2-P20, and S2-P17 are integrated. P15 is removed from the authorized scope and is not required for this delivery. S2-P16 is authorized conditionally on a rounding-based determinism design and characterization; it is not part of the current implementation batch.
+S2-P6, S2-P9, S2-P20, and S2-P17 are integrated. P15 is removed from the authorized scope and is not required for this delivery. S2-P16 has an implemented, opt-in characterization path; automatic two-thread rollout remains gate-blocked pending local performance/RSS evidence and the full precision/scientific-distortion matrix.
 
 ---
 
@@ -152,7 +152,7 @@ P15 — Stable Weather Map Surfaces — is removed from the authorized scope. It
 
 `R/fct_get_weather.R`
 
-**Status:** Implemented in the current working tree; commit pending.
+**Status:** Integrated in `e1404d4` (`Materialize location-month weather relations`); remote validation recorded in `9b928a7`.
 
 **Investigation:** Historical `loc_monthly` and per-SSP location-month delta relations remain lazy and are re-executed across future periods. A 3-SSP x 3-period workload can repeat the spatial aggregation roughly 10 times for historical weather and 18 times for CMIP6 delta construction/completeness evaluation. Controlled local probes support an estimated 2–4x weather-query reduction for the full 3x3 workload, with a possible 60–120 MB longer-lived DuckDB footprint.
 
@@ -164,11 +164,17 @@ P15 — Stable Weather Map Surfaces — is removed from the authorized scope. It
 
 `R/fct_get_weather.R`
 
-**Status:** Authorized conditionally for a future implementation batch; do not implement in the current S2-P20 batch.
+**Status:** Implemented as an opt-in characterization path; automatic rollout remains disabled pending the gates below. The public default is `weather_threads="auto"`, which currently selects one thread. Explicit `weather_threads="2"` is available for testing only; `threads=1` remains the production default and fallback.
 
 **Investigation:** On a local IND workload, weather aggregation medians were 16.1s at one thread, 9.8s at two, 7.7s at four, and 6.0s at eight. Peak RSS increased from 1.66 GB at one thread to 2.36 GB at four and 2.47 GB at eight. Multi-threaded output differed from the one-thread baseline by approximately 1e-13 in final floating-point bits.
 
-**Condition:** Introduce and characterize a documented rounding policy at the weather-output boundary so parallel aggregation can preserve deterministic published outputs. The implementation must use a bounded thread setting, deployment CPU/RSS gates, and tests proving rounded output parity, cache behavior, and no unacceptable scientific distortion. Until that design passes, production remains pinned to one thread.
+**Step 1 — weather-output determinism policy:** Adopt canonical weather values rather than requiring DuckDB's parallel floating-point reduction to be bit-identical. The proposed fixed policy is `round(..., digits = 12)` for finite selected weather values. Apply it after weather-side SQL aggregation, rolling, transformation, and perturbation have been collected, but before historical bin-break computation or `cut()`. Apply the same policy to every returned historical/future frame and the `continuous_weather` attribute; leave keys, dates, bin labels, missingness, and model metadata unchanged. The policy rounds weather covariates only, never fitted coefficients, welfare outputs, standard errors, or other downstream estimates. The precision is a code-level contract, not a user setting, so thread mode cannot create different cache or payload identities. The 12-decimal candidate implies a maximum direct rounding error of `5e-13` per finite weather value and must be rejected if the characterization shows unacceptable downstream distortion.
+
+**Step 2 — precision characterization:** Before changing the thread pin, compare full-precision one-thread output with two-thread output and evaluate candidate precisions of 10, 11, 12, 13, and 14 decimal places. The acceptance comparison is rounded one-thread versus rounded two-thread output, with exact equality required for values, row/key ordering, names, model completeness, warnings/ledger behavior, `stored_breaks`, bin labels, and `continuous_weather`. The matrix must cover the synthetic weather fixture and production-shaped local IND data; historical-only and future scenarios; additive and multiplicative perturbations; continuous and binned variables; all temporal aggregators used by weather selection; and both `fast` and `bounded` collection. Cold/warm disk-cache runs and a representative read-only Databricks run must be included. Record raw maximum absolute/relative differences, changed cells, finite/NA status, bin-boundary changes, downstream weather/simulation differences, elapsed time, allocations, and external process-tree RSS. The proposed 12-decimal policy is the rollout candidate; if it does not pass, leave S2-P16 gate-failed rather than silently choosing a looser precision.
+
+**Step 3 — bounded two-thread rollout:** Add an explicit bounded runtime control allowing only one or two DuckDB threads, defaulting to one. Two-thread execution is opt-in and may be selected only when the deployment has at least two entitled CPUs and the projected/observed process-tree RSS remains within the configured weather budget; invalid or higher values must not be accepted. Preserve the existing connection-level `threads` restoration on every exit path. Run the complete weather characterization with two threads first, while retaining one thread as the automatic/default fallback when CPU or RSS gates are not met. Require at least a 1.2x local weather-construction improvement, peak RSS within the deployment budget and no more than 1.25x the one-thread reference target, and no more than 5% remote elapsed-time regression. If only local/cached workloads pass, do not enable two threads globally for remote backends. Add tests for mode restoration, repeated-call determinism, rounded one-/two-thread parity, cache cold/warm identity, historical/future and binned outputs, and fallback behavior. Until all numerical, scientific-distortion, CPU, RSS, and backend gates pass, production remains pinned to one thread.
+
+**Implementation:** `get_weather()` now accepts `weather_threads="auto"`, `"1"`, or `"2"`; `fct_run_simulation()` and the Step 2 benchmark/UI plumbing forward the mode. The selector is bounded at two threads, requires a local backend, two entitled CPUs, a large estimated workload, and RSS headroom for enabled `auto`; `WISEAPP_WEATHER_THREADS_AUTO_ENABLE` is deliberately off by default. Returned weather covariates are rounded to 12 decimal places before binning, with keys, missingness, dates, and metadata unchanged. Focused selector, forwarding, determinism, rounding, and one-/two-thread parity tests pass; the full package suite passes. A cold uncached Databricks Colombia 2018 two-period run returned 47 outputs in `109s` at one thread, `123s` at explicit two threads, and `87.22s` at `auto` (which correctly selected one thread because the backend was remote); remote output parity and temporary-table cleanup remained exact. Local production-shaped two-thread elapsed/RSS characterization and the full precision/scientific-distortion matrix remain required before enabling automatic two-thread selection.
 
 ## 3. Not Authorized
 
@@ -190,7 +196,6 @@ These require a separate authorization decision. No implementation without expli
 |---|---|---|---|
 | S2-P13 | Remove deep copy at async boundary | Potentially high startup peak-RSS reduction when async is enabled; no gain on current synchronous path | Async backend not yet selected |
 | S2-P15 | Key-level parallelism | Wall-clock reduction when prediction dominates; may be net loss from serialization overhead and duplicated model/survey memory | Deferred until post-Sets 2A/2B RSS is known |
-| S2-P16 | Bounded DuckDB thread scaling | Potentially substantial weather-query speedup (2–4 threads) on local/cached workloads; negligible for remote-I/O-bound runs; per-thread hash/sort/window memory is a key risk | Needs numerical, RSS, and CPU-entitlement gates |
 | S2-P17 | Materialized location-month weather | Potentially high for 3-SSP/3-period runs (spatial aggregation paid once); memory impact ambiguous — depends on temporary-table lifetime | Needs query-plan comparison and RSS measurement |
 | S2-P18 | Shared historical weight denominators | Moderate with many weather variables; low with one or two; DuckDB may already eliminate repeated expressions | Needs plan inspection and complete-case verification |
 | S2-P19 | Fused future-model completeness filter | Moderate-to-high if the query plan executes the H3/delta relation twice | Needs query-plan confirmation |

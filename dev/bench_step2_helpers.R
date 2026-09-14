@@ -2,10 +2,10 @@
 
 .bench_runtime_options <- function(args) {
   names <- c(
-    "payload_mode", "weather_storage", "weather_collect", "join_cache",
+    "payload_mode", "weather_storage", "weather_collect", "weather_threads", "join_cache",
     "direct_rif_predictions"
   )
-  args[names]
+  args[intersect(names, names(args))]
 }
 
 .bench_assert_runtime_contract <- function(args, run_fn = fct_run_simulation) {
