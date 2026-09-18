@@ -29,6 +29,52 @@
        gk       = paste0(ssp_code, "_", period))
 }
 
+.step2_formula_vars <- function(x) {
+  if (is.null(x) || !length(x)) return(character(0))
+  fml <- tryCatch({
+    if (inherits(x, "formula")) x else {
+      text <- paste(as.character(x), collapse = " ")
+      if (!grepl("~", text, fixed = TRUE)) text <- paste("~", text)
+      stats::as.formula(text)
+    }
+  }, error = function(e) NULL)
+  if (is.null(fml)) character(0) else all.vars(fml)
+}
+
+.step2_survey_projection <- function(svy, mf, sw, so, id_col = NULL,
+                                     weight_cols = NULL) {
+  join_keys <- c("code", "year", "survname", "loc_id", "int_month")
+  full_frame <- function() {
+    svy[, setdiff(names(svy), c(sw$name, so$name)), drop = FALSE] |>
+      dplyr::mutate(year = as.character(year))
+  }
+  formula3 <- mf$formulas$formula3
+  formula_vars <- .step2_formula_vars(formula3)
+  fit_formula <- tryCatch(stats::formula(mf$fit3), error = function(e) NULL)
+  fit_vars <- .step2_formula_vars(fit_formula)
+  metadata_names <- c("weather_terms", "interaction_terms", "fe_terms")
+  metadata_complete <- !is.null(formula3) && length(formula_vars) > 0L &&
+    !is.null(fit_formula) && length(fit_vars) > 0L &&
+    setequal(formula_vars, fit_vars) && all(metadata_names %in% names(mf)) &&
+    !is.null(mf$weather_terms) && !is.null(mf$interaction_terms) &&
+    !is.null(mf$fe_terms)
+  if (!metadata_complete) return(full_frame())
+  weather_vars <- unique(c(sw$name, mf$weather_terms))
+  declared_vars <- unique(c(formula_vars,
+    .step2_formula_vars(mf$interaction_terms), mf$fe_terms, mf$weather_terms))
+  required_svy <- setdiff(unique(c(join_keys, declared_vars, id_col, weight_cols)),
+                          c(weather_vars, so$name))
+  weather_complete <- length(mf$weather_terms) > 0L &&
+    all(mf$weather_terms %in% sw$name) &&
+    all(intersect(formula_vars, sw$name) %in% mf$weather_terms)
+  if (!weather_complete || !all(required_svy %in% names(svy))) return(full_frame())
+  required <- setdiff(unique(c(join_keys, declared_vars, id_col, weight_cols)),
+                      c(weather_vars, so$name))
+  keep <- names(svy)[names(svy) %in% required]
+  svy[, keep, drop = FALSE] |>
+    dplyr::mutate(year = as.character(year))
+}
+
 #' Run the full welfare-weather simulation pipeline
 #'
 #' Pure function - no reactives. Extracts all business logic from
@@ -58,6 +104,19 @@
 #' @param sim_dates        Character vector. Historical simulation dates.
 #' @param perturbation_method List or NULL. Built by build_perturbation_method().
 #' @param stored_breaks    Named list or NULL. Pre-computed histogram breaks.
+#' @param payload_mode     "compact" (default) or "legacy" shared-context
+#'   result payload.
+#' @param weather_storage  "memory" (default) or "reference". Reference mode
+#'   stores future member weather in a run-scoped signed RDS store and resolves
+#'   it only at consumer boundaries.
+#' @param weather_collect  "fast" (default) or "bounded" future-weather
+#'   collection strategy passed to `get_weather()`.
+#' @param weather_threads  DuckDB weather-query thread mode passed to
+#'   `get_weather()`: `"auto"` (default), `"1"`, or `"2"`.
+#' @param join_cache       Logical. Use the experimental survey-side join
+#'   cache. Defaults to FALSE until full-scale benchmarks establish a win.
+#' @param direct_rif_predictions Logical. Use direct RIF prediction with
+#'   automatic fallback for unsupported model structures. Defaults to TRUE.
 #' @param notify_fn   Function(msg). Called for user-facing notifications.
 #'   Default is message() to console only.
 #' @param progress_fn      Function(value, detail). Called to update progress.
@@ -103,10 +162,17 @@ fct_run_simulation <- function(sw,
                                 perturbation_method,
                                 stored_breaks,
                                 propagate_all_covariate_uncertainty = FALSE,
-                                fit_multi    = NULL,
-                                taus         = NULL,
-                                weather_cols = NULL,
-                                notify_fn   = function(msg) message(msg),
+                                 fit_multi    = NULL,
+                                 taus         = NULL,
+                                 weather_cols = NULL,
+                                 payload_mode = c("compact", "legacy"),
+                                  weather_storage = c("memory", "reference"),
+                                  weather_store_root = NULL,
+                                  weather_collect = c("fast", "bounded"),
+                                  weather_threads = c("auto", "1", "2"),
+                                  join_cache = FALSE,
+                                 direct_rif_predictions = TRUE,
+                                 notify_fn   = function(msg) message(msg),
                                 progress_fn = function(value, detail) invisible(NULL),
                                 weather_fn  = get_weather,
                                 pipeline_fn = run_sim_pipeline) {
@@ -115,7 +181,27 @@ fct_run_simulation <- function(sw,
   engine     <- mf$engine
   train_data <- mf$train_data
   weather_terms <- mf$weather_terms
+  payload_mode <- match.arg(payload_mode)
+  weather_storage <- match.arg(weather_storage)
+  weather_collect <- match.arg(weather_collect)
+  weather_threads <- match.arg(weather_threads)
   has_future <- length(fp_list) > 0 && length(ssps) > 0
+  weather_store <- NULL
+  weather_store_published <- FALSE
+  if (identical(weather_storage, "reference") && isTRUE(has_future)) {
+    run_id <- paste0(format(Sys.time(), "%Y%m%dT%H%M%OS3"), "-",
+                     substr(digest::digest(list(Sys.getpid(), Sys.time())), 1L, 12L))
+    weather_store <- step2_weather_store_create(
+      run_id = run_id,
+      signature = digest::digest(list(ss, fp_list, ssps, sim_dates,
+                                      perturbation_method, weather_terms)),
+      root = weather_store_root
+    )
+    on.exit(
+      if (!weather_store_published) step2_weather_store_cleanup(weather_store),
+      add = TRUE
+    )
+  }
 
   ssp_labels <- c(
     "ssp2_4_5" = "SSP2-4.5",
@@ -130,21 +216,7 @@ fct_run_simulation <- function(sw,
   progress_fn(0.05, "Querying weather data (this may take 1-2 minutes)...")
   t_weather_start <- proc.time()[["elapsed"]]
 
-  weather_result <- weather_fn(
-    survey_data         = svy,
-    selected_surveys    = ss,
-    selected_weather    = sw,
-    dates               = sim_dates,
-    connection_params   = cp,
-    ssp                 = if (has_future) ssps else NULL,
-    future_period       = if (has_future) fp_list else NULL,
-    perturbation_method = perturbation_method,
-    stored_breaks       = stored_breaks
-  )
-
-  t_weather <- proc.time()[["elapsed"]] - t_weather_start
-  progress_fn(0.20, sprintf("Weather loaded (%s) - preparing simulation...",
-                             format_elapsed(t_weather)))
+  weather_result <- NULL
 
   # ---- Cholesky VCV ------------------------------------------------------- #
   chol_obj <- if (isTRUE(skip_coef_draws)) {
@@ -190,8 +262,6 @@ fct_run_simulation <- function(sw,
     compute_cluster_counts(train_data),
     error = function(e) NULL
   )
-  n_models_before <- length(setdiff(names(weather_result), "historical"))
-
   # ---- Key loop setup ----------------------------------------------------- #
 
   weight_col_sim <- grep("^weight$|^hhweight$|^wgt$|^pw$",
@@ -205,16 +275,6 @@ fct_run_simulation <- function(sw,
       paste(wt_detected, collapse = ", "), weight_col_sim
     ))
   }
-
-  future_keys <- setdiff(names(weather_result), "historical")
-  all_keys    <- c("historical", future_keys)
-  n_keys      <- length(all_keys)
-
-  n_hist_yrs    <- if (!is.null(weather_result[["historical"]]))
-    length(unique(format(weather_result[["historical"]]$timestamp, "%Y")))
-  else 30L
-  n_future_keys <- length(future_keys)
-  total_runs    <- n_hist_yrs * (1L + n_future_keys)
 
   # Serial execution only - parallelisation removed
   n_workers_safe <- 1L
@@ -237,6 +297,8 @@ fct_run_simulation <- function(sw,
             conditionMessage(e))
     NULL
   })
+  shared_id_col <- if (identical(residuals, "original"))
+    resolve_id_col(train_data, svy) else NULL
 
   # ecdf_train: RIF-only analogue of the above - train_data[[outcome]] is
   # identical for every key, so the ecdf used to assign each household's
@@ -249,13 +311,32 @@ fct_run_simulation <- function(sw,
             conditionMessage(e))
     NULL
   }) else NULL
+  direct_rif_metadata <- if (is_rif && isTRUE(direct_rif_predictions)) {
+    tryCatch(build_direct_rif_metadata(fit_multi), error = function(e) NULL)
+  } else NULL
 
-  # Survey-side join prep: drop weather/outcome columns and convert year once.
-  # Passed to run_sim_pipeline() so prepare_hist_weather() skips this per key.
-  drop_cols <- c(sw$name, so$name)
-  svy_prepared <- svy |>
-    dplyr::mutate(year = as.character(year)) |>
-    dplyr::select(-dplyr::any_of(drop_cols))
+  # Project the survey before the weather expansion. The full baseline remains
+  # retained separately in hist_sim_result$svy for Step 3 policy consumers.
+  svy_prepared <- .step2_survey_projection(
+    svy, mf, sw, so, id_col = shared_id_col, weight_cols = wt_detected
+  )
+  weather_join_cache <- if (isTRUE(join_cache) &&
+                            all(c("code", "year", "survname", "loc_id",
+                                  "int_month") %in% names(svy_prepared))) {
+    build_weather_join_cache(svy_prepared)
+  } else {
+    NULL
+  }
+
+  hist_sim_result <- NULL
+  new_scenarios <- list()
+  group_agg <- list()
+  group_weather_rep <- list()
+  group_weather_shared <- list()
+  group_meta <- list()
+  group_n <- list()
+  group_requested <- list()
+  failures <- list()
 
   # ---- Run pipelines (one key at a time) ---------------------------------- #
   progress_fn(0.50, "Running simulations...")
@@ -265,170 +346,125 @@ fct_run_simulation <- function(sw,
 
   t_start_pipeline <- proc.time()[["elapsed"]]
   message("[wiseapp] Running simulation pipelines...")
-  progress_fn(0.35, sprintf("Running %d simulation pipelines...", n_keys))
+  progress_fn(0.35, "Running simulation pipelines as weather keys arrive...")
 
-  # Pre-split weather_result per key - each (potential) parallel worker only
-  # receives its own key's weather data (~10MB) not the full 228MB
-  weather_per_key <- setNames(
-    lapply(all_keys, function(k) weather_result[[k]]),
-    all_keys
-  )
-
-  # ---- Key loop ----------------------------------------------------------- #
-  # Run each key's pipeline and assemble its result immediately, then free the
-  # pipeline before the next key. This bounds resident memory to a single key's
-  # pipeline (each carries its full weather_raw and an N*P F_loading matrix)
-  # rather than holding all keys at once - the previous two-pass design (build
-  # every pipeline into pipeline_list, then consume) stacked one key's transient
-  # peak on top of every prior key's retained pipeline, which tips large-N
-  # countries over the vector-memory limit.
-
-  hist_sim_result  <- NULL
-  new_scenarios    <- list()
-  group_agg        <- list()
-  group_weather_rep <- list()
-  group_meta       <- list()
-  group_n          <- list()
-  # REACT-12: per-group requested-member counts and the failure ledger.
-  group_requested  <- list()
-  failures         <- list()
-
-  for (ki in seq_along(all_keys)) {
-    key       <- all_keys[[ki]]
-    is_hist   <- identical(key, "historical")
-    is_hist_k <- is_hist
+  weather_refs <- list()
+  emitted_keys <- character(0)
+  n_keys <- 0L
+  n_hist_yrs <- 30L
+  consume_key <- function(key, weather_input, metadata = NULL) {
+    emitted_keys <<- c(emitted_keys, key)
+    n_keys <<- n_keys + 1L
+    is_hist <- identical(key, "historical")
     key_group <- if (is_hist) NULL else .key_group(key)
-
-    # Register the group as requested before the key runs (REACT-12) so a
-    # group whose members all fail is distinguishable from a never-requested
-    # group when the run is classified below.
     if (!is.null(key_group)) {
       gk0 <- key_group$gk
-      group_requested[[gk0]] <- (group_requested[[gk0]] %||% 0L) + 1L
+      group_requested[[gk0]] <<- (group_requested[[gk0]] %||% 0L) + 1L
       if (is.null(group_meta[[gk0]])) {
-        group_meta[[gk0]] <- list(ssp_code = key_group$ssp_code,
-                                  year_range = key_group$yr_parts)
+        group_meta[[gk0]] <<- list(ssp_code = key_group$ssp_code,
+                                   year_range = key_group$yr_parts)
       }
     }
-
-    # Per-key progress (fires before the key runs) - mirrors the old pre-run
-    # loop's message.
-    t_el <- proc.time()[["elapsed"]] - t_start_pipeline
-    progress_fn(
-      value  = 0.35 + 0.45 * ((ki - 1L) / n_keys),
-      detail = sprintf("Key %d/%d: %s | %s elapsed",
-                       ki, n_keys,
-                       if (is_hist_k) "Historical"
-                       else sub("^(ssp[^_]+_[0-9]+_[0-9]+)_.*$",
-                                "\\1", key),
-                       format_elapsed(t_el))
-    )
-
     key_err <- NULL
     out <- tryCatch(
       pipeline_fn(
-        weather_raw  = weather_per_key[[key]],
-        svy          = svy,
-        sw           = sw,
-        so           = so,
-        model        = model,
-        residuals    = residuals,
-        train_data   = train_data,
-        engine       = engine,
-        chol_obj     = chol_obj,
-        fit_multi    = fit_multi,
-        taus         = taus,
-        weather_cols = weather_cols,
+        weather_raw = weather_input, svy = svy, sw = sw, so = so,
+        model = model, residuals = residuals, train_data = train_data,
+        engine = engine, chol_obj = chol_obj, fit_multi = fit_multi,
+        taus = taus, weather_cols = weather_cols,
         precomputed_train_aug = precomputed_train_aug,
-        svy_prepared = svy_prepared,
-        precomputed_ecdf_train = precomputed_ecdf_train
+        svy_prepared = svy_prepared, weather_join_cache = weather_join_cache,
+        precomputed_ecdf_train = precomputed_ecdf_train,
+        direct_rif_predictions = direct_rif_predictions,
+        direct_rif_metadata = direct_rif_metadata
       ),
       error = function(e) {
         key_err <<- conditionMessage(e)
-        warning(sprintf("[fct_run_simulation] Key %s failed: %s",
-                        key, key_err))
+        warning(sprintf("[fct_run_simulation] Key %s failed: %s", key, key_err))
         NULL
       }
     )
-
-    # Free this key's weather slice as soon as the pipeline has run.
-    weather_per_key[[key]] <- NULL
-
-    key_weather_raw        <- if (is_hist) weather_result[[key]] else NULL
-    weather_result[[key]]  <- NULL
-
-    t_elapsed_post <- proc.time()[["elapsed"]] - t_start
-    t_remain_post  <- if (ki >= 1L)
-      (t_elapsed_post / ki) * (n_keys - ki) else NA_real_
-
-    progress_fn(
-      value  = 0.5 + 0.45 * (ki / n_keys),
-      detail = sprintf(
-        "%s | Key %d/%d | %s elapsed%s",
-        if (is_hist) "Historical"
-        else sub("^(ssp[^_]+_[0-9]+_[0-9]+)_.*$", "\\1", key),
-        ki, n_keys,
-        format_elapsed(t_elapsed_post),
-        if (!is.na(t_remain_post) && t_remain_post > 0)
-          paste0(" | ~", format_elapsed(t_remain_post), " remaining")
-        else if (ki == n_keys) " | finalising..."
-        else ""
-      )
-    )
-
     if (is.null(out)) {
-      # REACT-12: record the failure instead of silently dropping the key.
-      failures[[length(failures) + 1L]] <- list(
-        key     = key,
-        gk      = if (is.null(key_group)) NA_character_ else key_group$gk,
-        is_hist = is_hist,
-        error   = key_err
+      failures[[length(failures) + 1L]] <<- list(
+        key = key, gk = if (is.null(key_group)) NA_character_ else key_group$gk,
+        is_hist = is_hist, error = key_err
       )
-      rm(out); next
+      return(invisible(NULL))
     }
-
-    if (is_hist && is.null(hist_sim_result)) {
-      hist_sim_result <- list(
-        pipeline       = out,
-        chol_obj       = chol_obj,
-        so             = so,
-        has_weights    = !is.null(out$weight),
-        weather_raw    = key_weather_raw,
-        train_data     = train_data,
-        cluster_counts = cluster_counts,
-        svy            = svy,
-        residuals      = residuals
+    if (identical(weather_storage, "reference") && !is_hist) {
+      weather_refs[[key]] <<- step2_weather_store_put(weather_store, key, weather_input)
+    }
+    if (is_hist) {
+      n_hist_yrs <<- length(unique(format(weather_input$timestamp, "%Y")))
+      hist_sim_result <<- list(
+        pipeline = out, chol_obj = chol_obj, so = so,
+        has_weights = !is.null(out$weight), weather_raw = weather_input,
+        train_data = train_data, cluster_counts = cluster_counts, svy = svy,
+        residuals = residuals
       )
-      # Strip weather_raw from pipeline after saving to hist_sim_result
       out$weather_raw <- NULL
-
-    } else if (!is_hist) {
-      gk       <- key_group$gk
-
-      if (is.null(group_agg[[gk]]))         group_agg[[gk]]         <- list()
-      if (is.null(group_weather_rep[[gk]])) group_weather_rep[[gk]] <- out$weather_raw
-      if (is.null(group_n[[gk]]))           group_n[[gk]]           <- 0L
-
-      # NB: per-member `weather_raw` is intentionally retained on each
-      # pipeline so Module 3's resimulate_with_svy() can re-predict per
-      # CMIP6 member using that member's own weather. Stripping it here
-      # collapses every member to the representative weather and silently
-      # erases inter-model spread on policy results.
-
-      member_type <- sub(".*_(ensemble_mean|ensemble_lo|ensemble_hi)$",
-                          "\\1", key)
+    } else {
+      gk <- key_group$gk
+      if (is.null(group_agg[[gk]])) group_agg[[gk]] <<- list()
+      if (is.null(group_weather_rep[[gk]])) {
+        group_weather_rep[[gk]] <<- if (identical(weather_storage, "reference"))
+          weather_refs[[key]] else out$weather_raw
+      }
+      if (is.null(group_n[[gk]])) group_n[[gk]] <<- 0L
+      member_type <- sub(".*_(ensemble_mean|ensemble_lo|ensemble_hi)$", "\\1", key)
       if (!nchar(member_type) || member_type == key)
         member_type <- paste0("model_", group_n[[gk]] + 1L)
-
-      group_agg[[gk]][[member_type]] <- out
-      group_n[[gk]] <- group_n[[gk]] + 1L
-
+      if (identical(weather_storage, "reference")) out$weather_raw <- weather_refs[[key]]
+      group_agg[[gk]][[member_type]] <<- out
+      group_n[[gk]] <<- group_n[[gk]] + 1L
     }
-    rm(out)
-    if (ki %% 10L == 0L) gc(verbose = FALSE)
+    invisible(NULL)
   }
 
-  rm(weather_per_key, weather_result, precomputed_train_aug, svy_prepared)
+  weather_result <- tryCatch(
+    weather_fn(
+      survey_data = svy, selected_surveys = ss, selected_weather = sw,
+      dates = sim_dates, connection_params = cp,
+      ssp = if (has_future) ssps else NULL,
+      future_period = if (has_future) fp_list else NULL,
+      perturbation_method = perturbation_method, stored_breaks = stored_breaks,
+      weather_collect = weather_collect, weather_threads = weather_threads,
+      weather_consumer = consume_key
+    ),
+    error = function(e) {
+      if (length(emitted_keys)) stop(e)
+      weather_fn(
+        survey_data = svy, selected_surveys = ss, selected_weather = sw,
+        dates = sim_dates, connection_params = cp,
+        ssp = if (has_future) ssps else NULL,
+        future_period = if (has_future) fp_list else NULL,
+        perturbation_method = perturbation_method,
+        stored_breaks = stored_breaks, weather_collect = weather_collect,
+        weather_threads = weather_threads
+      )
+    }
+  )
+  t_weather <- proc.time()[["elapsed"]] - t_weather_start
+  progress_fn(0.20, sprintf("Weather loaded (%s) - preparing simulation...",
+                             format_elapsed(t_weather)))
+  if (is.list(weather_result) && length(weather_result)) {
+    for (key in setdiff(names(weather_result), emitted_keys))
+      consume_key(key, weather_result[[key]])
+  }
+  all_keys <- emitted_keys
+  if (is.list(weather_result))
+    all_keys <- unique(c(all_keys, setdiff(names(weather_result), emitted_keys)))
+  n_future_keys <- sum(all_keys != "historical")
+  total_runs <- n_hist_yrs * (1L + n_future_keys)
+
+  compact_train_aug <- .compact_residual_context(
+    precomputed_train_aug, shared_id_col, residuals,
+    compact = identical(payload_mode, "compact")
+  )
+  has_weather_references <- identical(weather_storage, "reference") &&
+    length(weather_refs) > 0L
+  rm(weather_result, weather_refs, precomputed_train_aug,
+     svy_prepared, weather_join_cache, direct_rif_metadata)
   gc(verbose = FALSE)
 
   t_pipeline_done <- proc.time()[["elapsed"]] - t_start_pipeline
@@ -470,6 +506,21 @@ fct_run_simulation <- function(sw,
 
   # ---- Assemble new_scenarios --------------------------------------------- #
   for (gk in names(group_agg)) {
+    if (identical(weather_storage, "memory")) {
+      shared_members <- step2_weather_share_members(
+        lapply(group_agg[[gk]], `[[`, "weather_raw")
+      )
+      if (!is.null(shared_members$shared)) {
+        group_weather_shared[[gk]] <- shared_members$shared
+        member_names <- names(group_agg[[gk]]) %||%
+          paste0("model_", seq_along(group_agg[[gk]]))
+        for (mi in seq_along(member_names)) {
+          group_agg[[gk]][[member_names[[mi]]]]$weather_raw <-
+            shared_members$members[[mi]]
+        }
+        group_weather_rep[[gk]] <- shared_members$members[[1L]]
+      }
+    }
     meta        <- group_meta[[gk]]
     ssp_pretty  <- ssp_labels[meta$ssp_code] %||% meta$ssp_code
     period_lbl  <- paste0(meta$year_range[1], "-", meta$year_range[2])
@@ -485,8 +536,15 @@ fct_run_simulation <- function(sw,
       n_models_requested = group_requested[[gk]] %||% group_n[[gk]],
       residuals   = residuals
     )
+    if (!is.null(group_weather_shared[[gk]])) {
+      new_scenarios[[display_key]]$weather_shared <- group_weather_shared[[gk]]
+    }
+    if (identical(weather_storage, "reference")) {
+      new_scenarios[[display_key]]$weather_store <- weather_store
+      new_scenarios[[display_key]]$weather_signature <- weather_store$signature
+    }
   }
-  rm(group_agg, group_weather_rep, group_meta, group_n)
+  rm(group_agg, group_weather_rep, group_weather_shared, group_meta, group_n)
   gc(verbose = FALSE)
 
   t_elapsed_total    <- proc.time()[["elapsed"]] - t_start_total
@@ -503,7 +561,7 @@ fct_run_simulation <- function(sw,
     if (n_failed > 0L) sprintf(" | %d key(s) FAILED", n_failed) else ""
   ))
 
-  list(
+  result <- list(
     hist_sim_result = hist_sim_result,
     new_scenarios   = new_scenarios,
     chol_obj        = chol_obj,
@@ -514,4 +572,36 @@ fct_run_simulation <- function(sw,
     failures        = failures,        # <- REACT-12 failure ledger
     n_keys_ok       = n_keys - n_failed
   )
+  if (identical(weather_storage, "reference")) {
+    result$weather_storage <- weather_storage
+    result$weather_store <- weather_store
+  }
+
+  if (identical(payload_mode, "compact")) {
+    result <- compact_step2_result(
+      result = result,
+      train_aug = compact_train_aug,
+      id_col = shared_id_col,
+      residuals = residuals,
+      chol_obj = chol_obj,
+      so = so,
+      train_data = train_data,
+      model_metadata = list(
+        engine = engine,
+        weather_terms = weather_terms,
+        fit_multi = !is.null(fit_multi),
+        taus = taus
+      )
+    )
+  }
+  if (has_weather_references) {
+    result$weather_store_lease <- step2_weather_store_acquire(weather_store)
+  } else if (identical(weather_storage, "reference") && !is.null(weather_store)) {
+    # A total future-group failure has no published consumer. Do not retain an
+    # empty run store merely because the requested configuration had a future
+    # period.
+    step2_weather_store_cleanup(weather_store)
+  }
+  weather_store_published <- has_weather_references
+  result
 }

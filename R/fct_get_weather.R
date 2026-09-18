@@ -36,6 +36,169 @@
 # ---------------------------------------------------------------------------- #
 
 WISEAPP_WX_CACHE_VERSION <- "v1"
+WISEAPP_WX_ROUND_DIGITS <- 5L
+
+.wx_env_flag <- function(name, default = FALSE) {
+  value <- Sys.getenv(name, unset = if (default) "1" else "0")
+  value %in% c("1", "true", "TRUE", "yes", "YES")
+}
+
+.wx_env_number <- function(name, default) {
+  value <- suppressWarnings(as.numeric(Sys.getenv(name, unset = "")))
+  if (!is.finite(value)) default else value
+}
+
+.wx_available_cpu_count <- function() {
+  configured <- .wx_env_number("WISEAPP_WEATHER_CPU_COUNT", NA_real_)
+  if (is.finite(configured)) return(max(1L, floor(configured)))
+  detected <- tryCatch(parallel::detectCores(logical = TRUE), error = function(e) NA_integer_)
+  if (length(detected) != 1L || !is.finite(detected)) 1L else max(1L, as.integer(detected))
+}
+
+.wx_round_weather_values <- function(df, vars, digits = WISEAPP_WX_ROUND_DIGITS) {
+  if (!is.data.frame(df) || !length(vars)) return(df)
+  for (v in intersect(vars, names(df))) {
+    x <- df[[v]]
+    if (!is.numeric(x)) next
+    finite <- is.finite(x)
+    x[finite] <- round(x[finite], digits = digits)
+    df[[v]] <- x
+  }
+  df
+}
+
+.wx_thread_policy <- function(requested = c("auto", "1", "2"),
+                              connection_type = "local",
+                              estimated_bytes = NA_real_,
+                              rss_before = NA_real_,
+                              budget_bytes = NA_real_,
+                              available_cpus = .wx_available_cpu_count(),
+                              auto_enabled = .wx_env_flag(
+                                "WISEAPP_WEATHER_THREADS_AUTO_ENABLE"
+                              ),
+                              min_workload_bytes = .wx_env_number(
+                                "WISEAPP_WEATHER_THREADS_MIN_BYTES", 64 * 1024^2
+                              )) {
+  requested <- match.arg(requested)
+  connection_type <- connection_type %||% "local"
+  available_cpus <- max(1L, as.integer(available_cpus[[1L]] %||% 1L))
+  finite_rss <- is.finite(rss_before) && is.finite(budget_bytes)
+  projected_rss <- if (is.finite(rss_before) && is.finite(estimated_bytes))
+    rss_before + estimated_bytes * 1.25 else NA_real_
+  fits_budget <- finite_rss && is.finite(projected_rss) &&
+    projected_rss <= budget_bytes
+  local_source <- identical(connection_type, "local")
+  workload_large <- is.finite(estimated_bytes) &&
+    estimated_bytes >= min_workload_bytes
+
+  selected <- 1L
+  reason <- switch(
+    requested,
+    "1" = "explicit_one",
+    "2" = "explicit_two_requires_preflight",
+    "auto" = if (!isTRUE(auto_enabled)) "auto_rollout_disabled" else
+      "auto_requires_preflight"
+  )
+
+  if (requested %in% c("auto", "2")) {
+    can_use_two <- available_cpus >= 2L && fits_budget
+    if (requested == "auto") {
+      can_use_two <- can_use_two && local_source && workload_large
+      if (!isTRUE(auto_enabled)) can_use_two <- FALSE
+    }
+    if (can_use_two) {
+      selected <- 2L
+      reason <- if (requested == "auto") "auto_preflight_passed" else "explicit_two"
+    } else if (available_cpus < 2L) {
+      reason <- "insufficient_cpu"
+    } else if (!finite_rss) {
+      reason <- "rss_unavailable"
+    } else if (!fits_budget) {
+      reason <- "rss_budget_exceeded"
+    } else if (requested == "auto" && !local_source) {
+      reason <- "remote_backend"
+    } else if (requested == "auto" && !workload_large) {
+      reason <- "workload_below_minimum"
+    }
+  }
+
+  list(
+    requested = requested,
+    selected = selected,
+    selected_threads = selected,
+    reason = reason,
+    connection_type = connection_type,
+    available_cpus = available_cpus,
+    estimated_bytes = estimated_bytes,
+    min_workload_bytes = min_workload_bytes,
+    rss_before = rss_before,
+    projected_rss = projected_rss,
+    budget_bytes = budget_bytes,
+    auto_enabled = isTRUE(auto_enabled),
+    rounding_digits = WISEAPP_WX_ROUND_DIGITS
+  )
+}
+
+# `rss` is deliberately measured through an external `ps` process. R's
+# `gc()`/object.size() do not include DuckDB children or allocator-retained
+# pages, so they are not safe gates for a deployment memory budget.
+.wx_process_tree_rss_bytes <- function(pid = Sys.getpid()) {
+  rows <- tryCatch(system2("ps", c("-axo", "pid=,ppid=,rss="), stdout = TRUE),
+                   error = function(e) character())
+  if (!length(rows)) return(NA_real_)
+  fields <- strsplit(trimws(rows), "[[:space:]]+")
+  tab <- do.call(rbind, lapply(fields, function(x) {
+    if (length(x) < 3L) return(c(NA, NA, NA))
+    as.numeric(x[1:3])
+  }))
+  tab <- tab[stats::complete.cases(tab), , drop = FALSE]
+  if (!nrow(tab)) return(NA_real_)
+  pids <- as.numeric(pid)
+  repeat {
+    children <- tab[tab[, 2L] %in% pids, 1L]
+    new <- setdiff(children, pids)
+    if (!length(new)) break
+    pids <- c(pids, new)
+  }
+  sum(tab[tab[, 1L] %in% pids, 3L], na.rm = TRUE) * 1024
+}
+
+.wx_estimate_weather_bytes <- function(survey_data, selected_weather, dates,
+                                       ssp = NULL, future_period = NULL) {
+  n_loc <- if ("loc_id" %in% names(survey_data))
+    length(unique(survey_data$loc_id[!is.na(survey_data$loc_id)])) else nrow(survey_data)
+  n_dates <- max(1L, length(unique(as.character(dates))))
+  n_periods <- if (is.null(future_period)) 0L else length(future_period)
+  n_members <- if (is.null(ssp)) 0L else max(1L, length(ssp)) * 16L
+  n_rows <- n_loc * n_dates * (1 + n_members * max(1L, n_periods))
+  n_cols <- length(unique(c(STEP2_WEATHER_KEY_COLUMNS, selected_weather$name)))
+  as.numeric(n_rows) * n_cols * 8 * 1.5
+}
+
+.wx_collection_policy <- function(estimated_bytes, requested = c("fast", "bounded")) {
+  requested <- match.arg(requested)
+  budget_mb <- suppressWarnings(as.numeric(Sys.getenv(
+    "WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB", "4096")))
+  if (!is.finite(budget_mb) || budget_mb <= 0) budget_mb <- 4096
+  budget <- budget_mb * 1024^2
+  fallback <- identical(requested, "fast") && is.finite(estimated_bytes) &&
+    estimated_bytes > budget
+  measure_rss <- isTRUE(Sys.getenv("WISEAPP_STEP2_WEATHER_RSS_MEASURE") %in%
+                          c("1", "true", "TRUE"))
+  list(requested = requested, effective = if (fallback) "bounded" else requested,
+       estimated_bytes = estimated_bytes, budget_bytes = budget,
+       fallback = fallback,
+       external_rss_before = if (measure_rss) .wx_process_tree_rss_bytes() else NULL)
+}
+
+.wx_collection_rss_guard <- function(policy) {
+  rss <- .wx_process_tree_rss_bytes()
+  list(
+    rss = rss,
+    exceeded = is.finite(rss) && is.finite(policy$budget_bytes) &&
+      rss > policy$budget_bytes
+  )
+}
 
 .weather_cache_dir <- function() {
   base <- Sys.getenv("WISEAPP_WEATHER_CACHE_DIR")
@@ -303,11 +466,15 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
 
   stats_exprs <- c(
     stats::setNames(
-      lapply(specs$name, function(v) dbplyr::sql(paste0("AVG(", v, ")"))),
+      lapply(specs$name, function(v) dbplyr::sql(paste0(
+        "AVG(", v, ") FILTER (WHERE ", v, " IS NOT NULL)"
+      ))),
       specs$mean_col
     ),
     stats::setNames(
-      lapply(specs$name, function(v) dbplyr::sql(paste0("STDDEV_SAMP(", v, ")"))),
+      lapply(specs$name, function(v) dbplyr::sql(paste0(
+        "STDDEV_SAMP(", v, ") FILTER (WHERE ", v, " IS NOT NULL)"
+      ))),
       specs$sd_col
     )
   )
@@ -467,6 +634,11 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
     if (!is.null(cutoffs) && length(cutoffs) > 1) {
       breaks_ext         <- c(-Inf, cutoffs[-c(1, length(cutoffs))], Inf)
       stored_breaks[[v]] <- breaks_ext
+      # The extended breaks are what cut() needs, but the outer sentinel
+      # edges hide the observed weather range from every downstream label.
+      # Carry the observed cutoffs alongside (attr ignored by consumers that
+      # use the vector numerically).
+      attr(stored_breaks[[v]], "observed") <- cutoffs
       message(binning_method, " cutoffs for ", v, ": ", paste(round(cutoffs, 3), collapse = ", "))
     } else {
       message("Insufficient variation in ", v, ". Keeping continuous.")
@@ -482,7 +654,8 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
 #' @param df     Collected data frame.
 #' @param breaks Named list of break vectors as returned by `.compute_breaks()`.
 #'
-#' @return `df` with binned columns converted to factors via `cut()`.
+#' @return `df` with binned columns converted to factors via `cut()` and using
+#'   the same display-safe levels as the fitted model data.
 #' @noRd
 .apply_binning <- function(df, breaks) {
   for (v in names(breaks)) {
@@ -490,7 +663,11 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
       df[[v]] <- cut(df[[v]], breaks = breaks[[v]], include.lowest = TRUE)
     }
   }
-  df
+  # Model fitting relabels sentinel outer edges for display. Apply that
+  # canonical relabelling here as well so simulation newdata has exactly the
+  # factor levels used by the fitted model and its weather coefficients are
+  # not silently omitted from the prediction design matrix.
+  relabel_bin_levels(df, breaks)
 }
 
 # ---------------------------------------------------------------------------- #
@@ -543,6 +720,10 @@ WISEAPP_WX_CACHE_VERSION <- "v1"
 #' @param stored_breaks     Optional named list of pre-computed bin breaks
 #'   keyed by weather variable name. When non-empty, these breaks are used
 #'   for the matching binned variables instead of re-deriving them.
+#' @param weather_threads   DuckDB weather-query thread mode: `"auto"` (the
+#'   default), `"1"`, or `"2"`. Automatic selection is conservative and remains
+#'   pinned to one thread until `WISEAPP_WEATHER_THREADS_AUTO_ENABLE=1` is set.
+#'   All returned finite weather values use the fixed 5-decimal output policy.
 #' @return A named list of collected data frames with columns
 #'   `code, year, survname, loc_id, timestamp, <weather_vars>`:
 #'   * `"historical"` - unperturbed result filtered to `dates`.
@@ -570,19 +751,70 @@ get_weather <- function(
   epsilon              = 0.001,
   weather_source       = "era5land",
   proj_source          = "cmip6",
-  stored_breaks        = NULL
+  stored_breaks        = NULL,
+  weather_collect      = c("fast", "bounded"),
+  weather_threads      = c("auto", "1", "2"),
+  weather_consumer     = NULL
 ) {
 
-  # -- Pin DuckDB to single thread for floating-point determinism ------------
-  # Multi-threaded aggregation sums floats in non-deterministic order,
-  # causing last-bit differences (~1e-14) across identical calls.
+  # -- Select and pin DuckDB weather-query threads ----------------------------
+  # Multi-threaded aggregation sums floats in non-deterministic order. The
+  # output boundary rounds weather values to a fixed five-decimal precision, while one
+  # thread remains the conservative default and automatic fallback.
   con_det <- .duck_con()
   prev_threads <- DBI::dbGetQuery(con_det, "SELECT current_setting('threads') AS t")$t
-  DBI::dbExecute(con_det, "SET threads TO 1")
+  weather_threads <- match.arg(weather_threads)
+
+  climate_scenario <- !is.null(ssp)
+  weather_collect <- match.arg(weather_collect)
+  estimated_weather_bytes <- .wx_estimate_weather_bytes(
+    survey_data, selected_weather, dates, ssp, future_period
+  )
+  rss_before_threads <- .wx_process_tree_rss_bytes()
+  thread_policy <- .wx_thread_policy(
+    requested = weather_threads,
+    connection_type = connection_params$type %||% "local",
+    estimated_bytes = estimated_weather_bytes,
+    rss_before = rss_before_threads,
+    budget_bytes = .wx_env_number(
+      "WISEAPP_STEP2_WEATHER_RSS_BUDGET_MB", 4096
+    ) * 1024^2
+  )
+  DBI::dbExecute(con_det, paste("SET threads TO", thread_policy$selected_threads))
   on.exit(DBI::dbExecute(con_det, paste("SET threads TO", prev_threads)), add = TRUE)
+  # Process RSS is a preflight input, not part of the deterministic weather
+  # contract. Keep the stable selection decision in the returned policy while
+  # leaving volatile measurements to the benchmark instrumentation.
+  thread_policy$rss_before <- NULL
+  thread_policy$projected_rss <- NULL
 
   # -- Validate ---------------------------------------------------------------
-  climate_scenario <- !is.null(ssp)
+  collection_policy <- .wx_collection_policy(
+    estimated_weather_bytes, weather_collect
+  )
+  collection_policy$weather_threads <- thread_policy
+  weather_collect <- collection_policy$effective
+  if (is.function(weather_consumer)) {
+    # Callback consumers must never wait for a whole period to materialise.
+    # The legacy fast return path remains available when no consumer is used.
+    weather_collect <- "bounded"
+    collection_policy$effective <- "bounded"
+    collection_policy$consumer_bounded <- TRUE
+  } else {
+    collection_policy$consumer_bounded <- FALSE
+  }
+  collection_policy$rss_guard_activated <- FALSE
+  if (!is.null(collection_policy$external_rss_before) &&
+      is.finite(collection_policy$external_rss_before) &&
+      collection_policy$external_rss_before + collection_policy$estimated_bytes >
+        collection_policy$budget_bytes) {
+    weather_collect <- "bounded"
+    collection_policy$effective <- "bounded"
+    collection_policy$rss_guard_activated <- TRUE
+    collection_policy$fallback_reason <-
+      "observed_process_tree_rss_plus_estimate_exceeded_budget"
+  }
+  collection_policy$buffered_member_peak <- 0L
 
   if (climate_scenario) {
     stopifnot(
@@ -663,7 +895,22 @@ get_weather <- function(
     dplyr::filter(dplyr::if_all(dplyr::all_of(weather_vars), ~ !is.na(.x))) |>
     dplyr::filter(timestamp >= date_min, timestamp <= date_max)
 
-  h3_slim <- .wx_cache_load(h3_fnames, connection_params, cols = NULL, tcol = NULL)
+  # Projection-prune the mapping scan. These are the only fields used by the
+  # H3 harmonisation and population-weighted aggregation below; requesting the
+  # full parquet schema made DuckDB read unused microdata columns.
+  h3_cols <- c("h3", "code", "year", "survname", "loc_id", "pop_2020")
+  h3_slim <- tryCatch(
+    .wx_cache_load(h3_fnames, connection_params, cols = h3_cols, tcol = NULL),
+    error = function(e) {
+      # Older mapping files may not carry population weights; preserve their
+      # unit-weight fallback without making the common weighted path read the
+      # full parquet schema.
+      .wx_cache_load(
+        h3_fnames, connection_params,
+        cols = setdiff(h3_cols, "pop_2020"), tcol = NULL
+      )
+    }
+  )
 
   if (!"pop_2020" %in% colnames(h3_slim)) {
     h3_slim <- h3_slim |> dplyr::mutate(pop_2020 = 1L)
@@ -693,6 +940,12 @@ get_weather <- function(
     dplyr::group_by(code, year, survname, loc_id, h3_weather) |>
     dplyr::summarise(pop_2020 = sum(pop_2020, na.rm = TRUE), .groups = "drop")
 
+  # Materialise the normalized location-to-weather-cell weights once. The same
+  # relation is joined by historical weather and every future model/period.
+  h3_weights_name <- basename(tempfile(pattern = "lw_h3_weights_"))
+  tmp_tables <- c(tmp_tables, h3_weights_name)
+  h3_slim <- dplyr::compute(h3_slim, name = h3_weights_name, temporary = TRUE)
+
   # -- Spatial aggregation: h3 -> loc_id (population-weighted mean) ----------
   .pop_weighted_mean <- function(tbl, vars) {
     tbl |>
@@ -714,6 +967,13 @@ get_weather <- function(
     dplyr::inner_join(h3_slim, by = c("h3" = "h3_weather")) |>
     dplyr::group_by(code, year, survname, loc_id, timestamp) |>
     .pop_weighted_mean(weather_vars)
+  # Materialise location-month weather once. The same relation is consumed by
+  # the historical result and every future SSP/period batch.
+  tmp_loc_monthly_name <- basename(tempfile(pattern = "lw_loc_monthly_"))
+  tmp_tables <- c(tmp_tables, tmp_loc_monthly_name)
+  loc_monthly <- dplyr::compute(
+    loc_monthly, name = tmp_loc_monthly_name, temporary = TRUE
+  )
 
   # -- Rolling window expressions --------------------------------------------
   agg_fn_map <- c(
@@ -772,7 +1032,9 @@ get_weather <- function(
     dplyr::filter(timestamp %in% !!dates) |>
     dplyr::arrange(code, year, survname, loc_id, timestamp) |>
     dplyr::collect()
-
+  result[["historical"]] <- .wx_round_weather_values(
+    result[["historical"]], weather_vars
+  )
   # -- Binning setup ----------------------------------------------------------
   # Determine whether any variables require binning.  Guard against
 
@@ -795,8 +1057,6 @@ get_weather <- function(
       sort_cols <- intersect(c("code", "year", "survname", "loc_id", "timestamp"), names(result[["historical"]]))
       keep      <- unique(c(sort_cols, wx_cols))
       hist_ref  <- result[["historical"]][result[["historical"]]$timestamp %in% survey_timestamps, keep, drop = FALSE]
-      hist_ref  <- hist_ref[do.call(order, hist_ref[sort_cols]), ]
-
       stored_breaks <- .compute_breaks(hist_ref, selected_weather)
     }
 
@@ -817,6 +1077,13 @@ get_weather <- function(
 
     # Apply to historical slice immediately
     result[["historical"]] <- .apply_binning(result[["historical"]], stored_breaks)
+  }
+
+  emitted_order <- 0L
+  if (is.function(weather_consumer)) {
+    emitted_order <- emitted_order + 1L
+    weather_consumer("historical", result[["historical"]],
+                     list(order = emitted_order, is_historical = TRUE))
   }
 
   # -- Climate perturbation ---------------------------------------------------
@@ -960,6 +1227,17 @@ get_weather <- function(
     # CMIP6 historical baseline - shared across all SSPs (same files)
     h3_hist_raw <- .cmip6_h3_monthly(cmip6_hist_raw_lazy, baseline_start, baseline_end)
 
+    period_specs <- lapply(seq_along(future_period), function(i) {
+      fp <- future_period[[i]]
+      list(
+        id = i,
+        start = as.Date(fp[1]),
+        end = as.Date(fp[2]),
+        label = paste0(format(as.Date(fp[1]), "%Y"), "_",
+                       format(as.Date(fp[2]), "%Y"))
+      )
+    })
+
     # -- Per-SSP worker -------------------------------------------------------
     # Processes all models * all future periods.  The CMIP6 historical
     # baseline and SSP baseline-period data are loaded once and shared
@@ -973,11 +1251,23 @@ get_weather <- function(
         survey_codes, "_", proj_source, "_", ssp_fname, ".parquet"
       )
 
+      # The SSP relation is reused for the baseline overlap and every requested
+      # future period. Slice it once to their union so the cache/remote parquet
+      # scan does not retain unrelated years from the full projection file.
+      ssp_starts <- as.Date(vapply(future_period, function(x) as.character(x[[1L]]), character(1L)))
+      ssp_ends <- as.Date(vapply(future_period, function(x) as.character(x[[2L]]), character(1L)))
+      ssp_tmin <- min(baseline_start, ssp_starts, na.rm = TRUE)
+      ssp_tmax <- max(baseline_end, ssp_ends, na.rm = TRUE)
+
       # PERF-13: the future file is fetched through the disk cache once per
       # SSP and reused for the baseline overlap *and* every future period
       # (previously one remote read per period).
       ssp_raw_lazy <- .wx_cache_load(
-        future_fnames, connection_params, cols = cmip6_cols, tcol = NULL
+        future_fnames,
+        connection_params,
+        cols = cmip6_cols,
+        tmin = ssp_tmin,
+        tmax = ssp_tmax
       )
 
       # SSP baseline overlap - shared across all future periods
@@ -991,61 +1281,88 @@ get_weather <- function(
           .groups = "drop"
         )
 
+      # Aggregate every requested period once, then join the combined relation
+      # to h3_slim once. This removes the repeated location-level spatial join
+      # from the period loop while retaining a period key for exact semantics.
+      h3_fut_by_period <- lapply(period_specs, function(spec) {
+        .cmip6_h3_monthly(ssp_raw_lazy, spec$start, spec$end) |>
+          dplyr::mutate(period_id = spec$id)
+      })
+      h3_fut_all <- Reduce(dplyr::union_all, h3_fut_by_period)
+      h3_deltas_all <- dplyr::inner_join(
+        h3_hist, h3_fut_all,
+        by = c("model", "h3", "month"),
+        suffix = c("_hist", "_fut")
+      ) |>
+        dplyr::mutate(!!!delta_exprs_h3) |>
+        dplyr::select(period_id, model, h3, month, dplyr::all_of(delta_vars))
+
+      loc_deltas_all <- h3_deltas_all |>
+        dplyr::inner_join(h3_slim, by = c("h3" = "h3_cmip6")) |>
+        dplyr::group_by(period_id, model, code, year, survname, loc_id, month) |>
+        .pop_weighted_mean(delta_vars)
+
+      complete_model_tbl <- loc_deltas_all |>
+        dplyr::group_by(period_id, model) |>
+        dplyr::summarise(
+          n_complete = sum(
+            dplyr::if_all(dplyr::all_of(delta_vars), ~ !is.na(.x)),
+            na.rm = TRUE
+          ),
+          .groups = "drop"
+        ) |>
+        dplyr::collect()
+
+      complete_keys <- complete_model_tbl |>
+        dplyr::filter(n_complete > 0L) |>
+        dplyr::select(period_id, model)
+      if (!nrow(complete_keys)) return(list())
+
+      complete_predicates <- vapply(seq_len(nrow(complete_keys)), function(i) {
+        sprintf(
+          "(period_id = %d AND model = %s)",
+          complete_keys$period_id[[i]],
+          DBI::dbQuoteString(con, complete_keys$model[[i]])
+        )
+      }, character(1L))
+      loc_deltas_complete <- loc_deltas_all |>
+        dplyr::filter(!!dbplyr::sql(paste(complete_predicates, collapse = " OR ")))
+      tmp_delta_all_name <- basename(tempfile(pattern = "lw_delta_all_"))
+      tmp_tables <<- c(tmp_tables, tmp_delta_all_name)
+      loc_deltas_complete <- dplyr::compute(
+        loc_deltas_complete,
+        name = tmp_delta_all_name,
+        temporary = TRUE
+      )
+
       # -- Loop over future periods ------------------------------------------
       out <- list()
-      tmp_delta_tables <- character(0L) #DRK addition
-      for (fp in future_period) {
-        fp_start <- as.Date(fp[1])
-        fp_end   <- as.Date(fp[2])
-        fp_label <- paste0(
-          format(fp_start, "%Y"), "_", format(fp_end, "%Y")
-        )
+      tmp_delta_tables <- character(0L)
 
-        h3_fut <- .cmip6_h3_monthly(ssp_raw_lazy, fp_start, fp_end)
+      # Once a period has been collected, neither temporary relation is needed
+      # by the returned weather frames. Drop it before constructing the next
+      # period so DuckDB's materialised intermediates do not accumulate across
+      # a future workload.
+      .drop_period_tables <- function(...) {
+        table_names <- unique(unlist(list(...), use.names = FALSE))
+        table_names <- table_names[nzchar(table_names)]
+        for (table_name in table_names) {
+          try(DBI::dbRemoveTable(con, table_name), silent = TRUE)
+        }
+        tmp_tables <<- setdiff(tmp_tables, table_names)
+        tmp_delta_tables <<- setdiff(tmp_delta_tables, table_names)
+        invisible(NULL)
+      }
 
-        # Lazy per-model H3-level delta table
-        h3_deltas <- dplyr::inner_join(
-          h3_hist, h3_fut,
-          by     = c("model", "h3", "month"),
-          suffix = c("_hist", "_fut")
-        ) |>
-          dplyr::mutate(!!!delta_exprs_h3) |>
-          dplyr::select(model, h3, month, dplyr::all_of(delta_vars))
+      for (spec in period_specs) {
+        fp_start <- spec$start
+        fp_end   <- spec$end
+        fp_label <- spec$label
+        current_period_id <- spec$id
 
-        # Population-weighted loc-level deltas
-        loc_deltas_by_model <- h3_deltas |>
-          dplyr::inner_join(h3_slim, by = c("h3" = "h3_cmip6")) |>
-          dplyr::group_by(model, code, year, survname, loc_id, month) |>
-          .pop_weighted_mean(delta_vars)
-
-
-        # Materialise delta table - lets DuckDB plan a hash join in the
-        # batch query instead of replanning the full lazy delta chain.
-        # Name generated via tempfile() rather than sample() so this does not
-        # consume/advance the caller's RNG stream (see DET-04).
-        tmp_delta_name <- basename(tempfile(pattern = "lw_delta_"))
-        tmp_tables <<- c(tmp_tables, tmp_delta_name)
-        loc_deltas_by_model <- dplyr::compute(
-          loc_deltas_by_model,
-          name      = tmp_delta_name,
-          temporary = TRUE
-        )
-        tmp_delta_tables <- c(tmp_delta_tables, tmp_delta_name)
-
-
-        # Filter incomplete models
-        complete_model_tbl <- loc_deltas_by_model |>
-          dplyr::group_by(model) |>
-          dplyr::summarise(
-            n_complete = sum(
-              dplyr::if_all(dplyr::all_of(delta_vars), ~ !is.na(.x)),
-              na.rm = TRUE
-            ),
-            .groups = "drop"
-          ) |>
-          dplyr::collect()
-
-        incomplete_models <- complete_model_tbl$model[complete_model_tbl$n_complete == 0L]
+        complete_for_period <- complete_model_tbl |>
+          dplyr::filter(period_id == !!current_period_id)
+        incomplete_models <- complete_for_period$model[complete_for_period$n_complete == 0L]
         if (length(incomplete_models) > 0L) {
           warning(sprintf(
             "%s / %s: %d model(s) excluded due to missing variables (%s): %s",
@@ -1055,11 +1372,26 @@ get_weather <- function(
           ), call. = FALSE)
         }
 
-        complete_models <- complete_model_tbl$model[complete_model_tbl$n_complete > 0L]
+        complete_models <- complete_for_period$model[complete_for_period$n_complete > 0L]
         if (length(complete_models) == 0L) next
 
-        loc_deltas_by_model <- loc_deltas_by_model |>
-          dplyr::filter(model %in% complete_models)
+        loc_deltas_by_model <- loc_deltas_complete |>
+          dplyr::filter(
+            period_id == !!current_period_id,
+            model %in% complete_models
+          )
+
+        # Materialise the filtered delta table - lets DuckDB plan a hash join in
+        # the batch query without retaining rows for incomplete models.
+        tmp_delta_name <- basename(tempfile(pattern = "lw_delta_"))
+        tmp_tables <<- c(tmp_tables, tmp_delta_name)
+        loc_deltas_by_model <- dplyr::compute(
+          loc_deltas_by_model |>
+            dplyr::select(-period_id),
+          name      = tmp_delta_name,
+          temporary = TRUE
+        )
+        tmp_delta_tables <- c(tmp_delta_tables, tmp_delta_name)
 
         # -- Batch query: split into two steps to help DuckDB plan ----------
         # Step 1: join + perturb + select -> materialise before rolling window
@@ -1082,30 +1414,122 @@ get_weather <- function(
           ) |>
           dplyr::compute(name = tmp_perturb_name, temporary = TRUE)
 
-        # Step 2: rolling window + transformations + filter -> collect
-        batch <- perturbed |>
+        # Step 2: rolling window + transformations. The fast path keeps this
+        # relation lazy and performs one direct collect; the bounded path
+        # materialises it so model-specific slices can be collected safely.
+        rolled_lazy <- perturbed |>
           dplyr::mutate(!!!roll_exprs_climate) |>
           .apply_transformations(
             selected_weather, loc_weather_base, climate_ref = climate_ref
           ) |>
-          dplyr::filter(timestamp %in% !!dates) |>
-          dplyr::arrange(model, code, year, survname, loc_id, timestamp) |>
-          dplyr::collect()
+          dplyr::filter(timestamp %in% !!dates)
+        tmp_roll_name <- NULL
+        rolled <- rolled_lazy
+        if (identical(weather_collect, "bounded")) {
+          tmp_roll_name <- basename(tempfile(pattern = "lw_roll_"))
+          tmp_tables <<- c(tmp_tables, tmp_roll_name)
+          rolled <- dplyr::compute(rolled_lazy, name = tmp_roll_name, temporary = TRUE)
+        }
 
-        if (nrow(batch) == 0L) next
+        period_out <- if (identical(weather_collect, "fast")) {
+          # Production path: one collect after the transformed relation has
+          # been materialised. This avoids a DuckDB query/collect round trip per
+          # model and is materially faster when latency is the primary concern.
+          batch <- rolled_lazy |>
+            dplyr::arrange(model, code, year, survname, loc_id, timestamp) |>
+            dplyr::collect()
+          if (!nrow(batch)) {
+            list()
+          } else {
+            model_list <- split(batch, batch$model)
+            stats::setNames(
+              lapply(model_list, function(model_df) {
+                model_df$model <- NULL
+                model_df <- .wx_round_weather_values(model_df, weather_vars)
+                if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
+                model_df
+              }),
+              paste0(ssp_i, "_", fp_label, "_", make.names(names(model_list)))
+            )
+          }
+        } else {
+          # Bounded-memory path: collect one model at a time. Keep this option
+          # for deployments with a hard RSS ceiling; it is intentionally not
+          # the production default because each model repeats the collect work.
+          model_names <- DBI::dbGetQuery(
+            con,
+            paste0(
+              "SELECT DISTINCT model FROM (",
+              dbplyr::sql_render(rolled |> dplyr::select(model)),
+              ") models ORDER BY model"
+            )
+          )$model
+          model_out <- if (is.function(weather_consumer)) NULL else list()
+          for (model_name in model_names) {
+            model_df <- rolled |>
+              dplyr::filter(model == !!model_name) |>
+              dplyr::arrange(code, year, survname, loc_id, timestamp) |>
+              dplyr::select(-model) |>
+              dplyr::collect()
+            if (!nrow(model_df)) {
+              rm(model_df)
+              next
+            }
+            model_df <- .wx_round_weather_values(model_df, weather_vars)
+            if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
+            member_key <- paste0(ssp_i, "_", fp_label, "_", make.names(model_name))
+            collection_policy$buffered_member_peak <- max(
+              collection_policy$buffered_member_peak, 1L
+            )
+            if (is.function(weather_consumer)) {
+              guard <- .wx_collection_rss_guard(collection_policy)
+              if (isTRUE(guard$exceeded)) {
+                collection_policy$rss_guard_activated <<- TRUE
+                collection_policy$effective <<- "bounded"
+                collection_policy$fallback_reason <<-
+                  "observed_process_tree_rss_exceeded_budget"
+              }
+              emitted_order <<- emitted_order + 1L
+              weather_consumer(
+                member_key, model_df,
+                list(order = emitted_order, is_historical = FALSE,
+                     ssp = ssp_i, period = fp_label,
+                     collection = "bounded",
+                     rss_bytes = guard$rss,
+                     budget_exceeded = guard$exceeded,
+                     buffered_members = 1L)
+              )
+              rm(model_df)
+              gc(verbose = FALSE)
+            } else {
+              model_out[[member_key]] <- model_df
+            }
+          }
+          model_out
+        }
+        if (!is.function(weather_consumer)) out <- c(out, period_out)
+        if (is.function(weather_consumer) && length(period_out)) {
+          invisible(lapply(names(period_out), function(key) {
+            emitted_order <<- emitted_order + 1L
+            weather_consumer(key, period_out[[key]],
+                             list(order = emitted_order, is_historical = FALSE,
+                                  ssp = ssp_i, period = fp_label))
+          }))
+        }
 
-        # Split into per-model data frames
-        model_list <- split(batch, batch$model)
-        period_out <- stats::setNames(
-          lapply(model_list, function(df) {
-            df$model <- NULL
-            if (has_binning) df <- .apply_binning(df, stored_breaks)
-            df
-          }),
-          paste0(ssp_i, "_", fp_label, "_", make.names(names(model_list)))
-        )
-        out <- c(out, period_out)
+        # All returned frames are now detached from the query intermediates.
+        .drop_period_tables(tmp_delta_name, tmp_perturb_name, tmp_roll_name)
+        rm(perturbed, rolled_lazy,
+           rolled, period_out)
+        if (exists("batch", inherits = FALSE)) rm(batch)
+        if (exists("model_list", inherits = FALSE)) rm(model_list)
+        if (exists("model_names", inherits = FALSE)) rm(model_names)
+        if (exists("model_out", inherits = FALSE)) rm(model_out)
+        gc(verbose = FALSE)
       }
+
+      try(DBI::dbRemoveTable(con, tmp_delta_all_name), silent = TRUE)
+      tmp_tables <<- setdiff(tmp_tables, tmp_delta_all_name)
 
       # Cleanup all materialised delta temp tables (best-effort, early release;
       # the on.exit ledger still covers any that fail to drop here)
@@ -1136,6 +1560,10 @@ get_weather <- function(
   if (!is.null(continuous_hist)) {
     attr(result, "continuous_weather") <- continuous_hist
   }
+
+  if (!is.null(collection_policy$external_rss_before))
+    collection_policy$external_rss_after <- .wx_process_tree_rss_bytes()
+  attr(result, "weather_collection_policy") <- collection_policy
 
   result
 }

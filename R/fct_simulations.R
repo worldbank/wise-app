@@ -18,14 +18,8 @@
 # ---- Internal colour / style helpers ---------------------------------------
 # Used by enhance_exceedance() and plot_pointrange_climate(). Not exported.
 
-# Canonical SSP keys must match what .normalise_ssp() returns.
-# Okabe-Ito hues (UI-04): bluish green (lower emissions), blue (mid),
-# vermillion (high) - distinguishable without red/green vision.
-.ssp_colours <- c(
-  "SSP2-4.5" = "#009E73",   # bluish green (lower emissions)
-  "SSP3-7.0" = "#0072B2",   # blue          (mid emissions)
-  "SSP5-8.5" = "#D55E00"    # vermillion    (high emissions)
-)
+# SSP scenario colours (.ssp_colours) live in utils_plot_theme.R together with
+# the rest of the shared colour system.
 
 
 
@@ -295,6 +289,15 @@ compute_factor_loading <- function(X_nonFE, chol_obj) {
   stopifnot(
     "X_nonFE must be a numeric matrix"        = is.matrix(X_nonFE) && is.numeric(X_nonFE),
     "chol_obj must contain L and beta"        = all(c("L", "beta") %in% names(chol_obj)),
+    "chol_obj$beta must be a named numeric vector" =
+      is.numeric(chol_obj$beta) && !is.null(names(chol_obj$beta)),
+    "X_nonFE columns must match chol_obj$beta names" =
+      length(intersect(colnames(X_nonFE), names(chol_obj$beta))) > 0L
+  )
+
+  X_nonFE <- align_factor_loading_matrix(X_nonFE, names(chol_obj$beta))
+
+  stopifnot(
     "X_nonFE columns must match chol_obj$beta names" =
       identical(colnames(X_nonFE), names(chol_obj$beta))
   )
@@ -312,6 +315,42 @@ compute_factor_loading <- function(X_nonFE, chol_obj) {
 
   # Legacy: F = X %*% L (N * K).
   X_nonFE %*% chol_obj$L
+}
+
+
+# `model.matrix()` can omit valid coefficient columns when a prediction slice
+# has no observations for a factor level, and some model classes return the
+# same columns in a different order. Align by coefficient name before applying
+# the VCV factor so coefficient uncertainty remains attached to the right term.
+align_factor_loading_matrix <- function(X_nonFE, beta_names) {
+  stopifnot(
+    "X_nonFE must be a numeric matrix" = is.matrix(X_nonFE) && is.numeric(X_nonFE),
+    "beta_names must be non-empty and unique" =
+      length(beta_names) > 0L && !anyDuplicated(beta_names)
+  )
+
+  x_names <- colnames(X_nonFE)
+  if (is.null(x_names) || anyDuplicated(x_names)) {
+    stop("Prediction design matrix must have unique column names.", call. = FALSE)
+  }
+
+  if (!length(intersect(x_names, beta_names))) {
+    stop("Prediction design matrix has no columns matching fitted coefficients.",
+         call. = FALSE)
+  }
+
+  common <- intersect(beta_names, x_names)
+  aligned <- X_nonFE[, common, drop = FALSE]
+  missing <- setdiff(beta_names, common)
+  if (length(missing)) {
+    aligned <- cbind(
+      aligned,
+      matrix(0, nrow = nrow(X_nonFE), ncol = length(missing),
+             dimnames = list(NULL, missing))
+    )
+  }
+
+  aligned[, beta_names, drop = FALSE]
 }
 
 
@@ -465,9 +504,13 @@ run_sim_pipeline <- function(weather_raw,
                              fit_multi   = NULL,
                              taus        = NULL,
                              weather_cols = NULL,
-                             precomputed_train_aug = NULL,
-                             svy_prepared = NULL,
-                             svy_baseline = NULL,
+                              precomputed_train_aug = NULL,
+                              svy_prepared = NULL,
+                              weather_join_cache = NULL,
+                              batch_rif_predictions = FALSE,
+                              direct_rif_predictions = FALSE,
+                              direct_rif_metadata = NULL,
+                              svy_baseline = NULL,
                              rif_grid     = NULL,
                              precomputed_ecdf_train = NULL) {
 
@@ -507,11 +550,15 @@ run_sim_pipeline <- function(weather_raw,
       dplyr::select(-dplyr::any_of(drop_cols))
   }
 
-  survey_wd_sim <- weather_raw |>
-    .add_sim_timestamp_fields() |>
-    dplyr::select(-timestamp) |>
-    dplyr::inner_join(svy_join, by = c("code", "year", "survname", "loc_id", "int_month")) |>
-    dplyr::mutate(year = as.factor(year))
+  survey_wd_sim <- if (!is.null(weather_join_cache) && !is_rif_policy) {
+    join_weather_survey_cached(weather_raw, weather_join_cache)
+  } else {
+    weather_raw |>
+      .add_sim_timestamp_fields() |>
+      dplyr::select(-timestamp) |>
+      dplyr::inner_join(svy_join, by = c("code", "year", "survname", "loc_id", "int_month")) |>
+      dplyr::mutate(year = as.factor(year))
+  }
   rm(svy_join)
 
   # Resolve ID column for "original" residual matching
@@ -561,7 +608,10 @@ run_sim_pipeline <- function(weather_raw,
       weather_cols = weather_cols,
       so           = so,
       chol_list    = chol_list,
-      ecdf_train   = precomputed_ecdf_train
+      ecdf_train   = precomputed_ecdf_train,
+      batch_predictions = batch_rif_predictions,
+      direct_predictions = direct_rif_predictions,
+      direct_metadata = direct_rif_metadata
     )
   } else {
     # Standard OLS path - unchanged
@@ -694,10 +744,6 @@ run_sim_pipeline <- function(weather_raw,
       if (!is.null(X_nonFE)) {
         if (is.list(chol_obj) && "L" %in% names(chol_obj)) {
           # Our named list format - use compute_factor_loading()
-          stopifnot(
-            "X_nonFE columns must match chol_obj$beta names" =
-              identical(colnames(X_nonFE), names(chol_obj$beta))
-          )
           F_loading <- compute_factor_loading(X_nonFE, chol_obj)
         } else if (is.matrix(chol_obj)) {
           # Golem matrix format - inline multiply
@@ -857,6 +903,54 @@ build_perturbation_method <- function(selected_weather) {
     int_month = as.integer(ts_lt$mon + 1L),
     sim_year  = as.integer(ts_lt$year + 1900L)
   )
+}
+
+.weather_join_key <- function(df, by) {
+  parts <- lapply(df[by], function(x) {
+    x <- as.character(x)
+    x[is.na(x)] <- "\001"
+    x
+  })
+  do.call(paste, c(parts, sep = "\002"))
+}
+
+build_weather_join_cache <- function(survey_join,
+                                     by = c("code", "year", "survname",
+                                            "loc_id", "int_month")) {
+  stopifnot(is.data.frame(survey_join), all(by %in% names(survey_join)))
+  list(
+    by = by,
+    survey = survey_join,
+    survey_nonjoin = setdiff(names(survey_join), by),
+    lookup = split(seq_len(nrow(survey_join)),
+                   .weather_join_key(survey_join, by), drop = TRUE)
+  )
+}
+
+join_weather_survey_cached <- function(weather_raw, cache) {
+  by <- cache$by
+  weather <- weather_raw |>
+    .add_sim_timestamp_fields() |>
+    dplyr::select(-timestamp)
+  matches <- cache$lookup[.weather_join_key(weather, by)]
+  n_matches <- lengths(matches)
+  if (!any(n_matches)) {
+    out <- dplyr::bind_cols(
+      tibble::as_tibble(weather[FALSE, , drop = FALSE]),
+      tibble::as_tibble(cache$survey[FALSE, cache$survey_nonjoin, drop = FALSE])
+    )
+    return(as.data.frame(dplyr::mutate(out, year = as.factor(year))))
+  }
+  weather_rows <- rep.int(seq_len(nrow(weather)), n_matches)
+  survey_rows <- unlist(matches[n_matches > 0L], use.names = FALSE)
+  as.data.frame(dplyr::mutate(
+    dplyr::bind_cols(
+      tibble::as_tibble(weather[weather_rows, , drop = FALSE]),
+      tibble::as_tibble(cache$survey[survey_rows, cache$survey_nonjoin,
+                                     drop = FALSE])
+    ),
+    year = as.factor(year)
+  ))
 }
 
 #' Prepare Historical Weather Data for Simulation

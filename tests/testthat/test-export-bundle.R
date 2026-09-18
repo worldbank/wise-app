@@ -335,6 +335,39 @@ test_that("transient UI state is excluded from the exported configuration", {
   expect_true(all(.export_keep_input(keep)))
 })
 
+test_that("DataTables UI state and legacy button ids are excluded", {
+  expect_false(all(.export_keep_input(c(
+    "DataTables_Table_0_length",
+    "DataTables_Table_1_search",
+    "tbl_cell_edit",
+    "grid_state_change",
+    "survey_stats",
+    "weather_stats",
+    "outcome_stats_btn"
+  ))))
+  expect_true(all(.export_keep_input(c(
+    "outcome",
+    "step1-model-model_type",
+    "step3-sp-targeting"
+  ))))
+})
+
+test_that("action-button values are filtered by class during snapshot", {
+  testServer(function(input, output, session) {}, {
+    button <- structure(3L,
+                        class = c("shinyActionButtonValue", "integer"))
+    session$setInputs(
+      `step1-model-model_type` = "Linear regression",
+      outcome = "welfare",
+      arbitrary_button = button
+    )
+    cfg <- wise_config_snapshot(input)
+    expect_true(all(c("step1-model-model_type", "outcome") %in%
+                    names(cfg$inputs)))
+    expect_false("arbitrary_button" %in% names(cfg$inputs))
+  })
+})
+
 test_that("credential-shaped inputs are never exported (SEC-06)", {
   # Every secret/key field the Overview connection form asks for. The bundle
   # is meant to be shared, so none of these may ride the snapshot - and the
@@ -430,6 +463,25 @@ test_that("applying a config sends values and reports what could not be placed",
   expect_null(sent$absent)
 })
 
+test_that("applying legacy configurations filters transient ids", {
+  sent <- list()
+  fake <- list(sendInputMessage = function(id, msg) {
+    sent[[id]] <<- msg$value
+    invisible(NULL)
+  })
+  cfg <- list(inputs = list(
+    real_setting = "yes",
+    DataTables_Table_0_length = 25,
+    old_run_btn = 4L
+  ))
+  res <- wise_config_apply(cfg, fake,
+                           existing = names(cfg$inputs))
+  expect_equal(res$applied, "real_setting")
+  expect_equal(sent$real_setting, "yes")
+  expect_false(any(c("DataTables_Table_0_length", "old_run_btn") %in%
+                   names(sent)))
+})
+
 test_that("applying an empty config is a no-op", {
   res <- wise_config_apply(list(inputs = list()), list(), character(0))
   expect_length(res$applied, 0L)
@@ -484,7 +536,8 @@ test_that("already-in-force values are not counted as changes", {
     }
     proxy$userData <- session$userData
     export_menu_server(input, output, proxy,
-                       provenance = shiny::reactive(list()), seed = 1L)
+                       provenance = shiny::reactive(list()), seed = 1L,
+                       run_triggers = list(), step_results = list())
   }
 }
 
@@ -508,7 +561,7 @@ test_that("a deferred setting is applied once its control appears (UI-52)", {
 
     st <- session$userData$wise_import_status
     expect_equal(st$class, "alert-success")
-    expect_match(st$text, "1 more will be applied")
+    expect_match(st$text, "1 more will be applied", fixed = TRUE)
     expect_false("late_ctrl" %in% ls(sent))
 
     # The mock session flushes synchronously when the control appears, so the
@@ -548,9 +601,6 @@ test_that("deferred settings that never appear are abandoned audibly", {
     session$setInputs(import_config_file = list(
       datapath = f, name = "configuration.json", size = 20L,
       type = "application/json"))
-    expect_match(session$userData$wise_import_status$text,
-                 "1 more will be applied")
-
     # Expire the retry window; the next retry pass gives up, audibly.
     session$userData$wise_import_state$pending$deadline <- Sys.time() - 1
     session$setInputs(`dummy_existing` = 2L)

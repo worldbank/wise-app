@@ -89,7 +89,7 @@ test_that("fit snapshot captures fit-time labels; headings follow re-fit engine"
       expect_identical(.label_lookup(snap$variable_list)("tx"), "Max temp")
 
       # Headings describe the fitted engine (fixest wording)
-      expect_match(html_of("heading_effect"), "Predicted outcome vs weather",
+      expect_match(html_of("heading_effect"), "How does weather relate to outcome a?",
                    fixed = TRUE)
 
       # Change the live selections WITHOUT refitting: the snapshot must not
@@ -120,9 +120,10 @@ test_that("fit snapshot captures fit-time labels; headings follow re-fit engine"
       expect_identical(snap$outcome$label, "Outcome B")
       expect_identical(snap$weather$name, "pr")
       expect_match(html_of("heading_effect"),
-                   "Weather sensitivity across the distribution", fixed = TRUE)
-      expect_match(html_of("heading_coef"),
-                   "UQR coefficients by model specification", fixed = TRUE)
+                   "across the welfare distribution", fixed = TRUE)
+      # The RIF coefficient-stability section is suppressed (the quantile
+      # curve in "Who is most affected?" carries that content).
+      expect_identical(nchar(html_of("heading_coef")), 0L)
       expect_true(model_fit_val()$.snap$outcome$label == "Outcome B")
     }
   )
@@ -190,4 +191,200 @@ test_that("REACT-14: specification fallbacks render the provenance banner", {
       expect_match(html, "requested logistic, fitted linear", fixed = TRUE)
     }
   )
+})
+
+test_that("P16: one fit-signature observer preserves exact stale transitions", {
+  local_mocked_bindings(
+    prepare_outcome_df = function(df, so) df,
+    fit_model = function(df, selected_outcome, selected_weather, selected_model) {
+      list(engine = selected_model$engine, y_var = selected_outcome$name,
+           weather_terms = selected_weather$name, interaction_terms = character(0),
+           fit1 = NULL, fit2 = NULL, fit3 = NULL, rif_grid = NULL)
+    },
+    make_coefplot = function(...) ggplot2::ggplot(),
+    make_weather_effect_plot = function(...) ggplot2::ggplot(),
+    make_regtable = function(...) shiny::tags$p("table"),
+    is_logistic_fit = function(mf) FALSE
+  )
+  outcome <- shiny::reactiveVal(make_outcome())
+  weather <- shiny::reactiveVal(make_weather_sel())
+  model <- shiny::reactiveVal(list(engine = "fixest"))
+  swd <- shiny::reactiveVal(data.frame(tx = 1:4, welfare = 1:4, weight = 1))
+  version <- shiny::reactiveVal(0L)
+  run <- shiny::reactiveVal(0L)
+  shiny::testServer(
+    mod_1_07_results_server,
+    args = list(id = "res", variable_list = shiny::reactiveVal(make_vl()),
+                selected_surveys = shiny::reactiveVal(data.frame()),
+                selected_outcome = outcome, selected_weather = weather,
+                survey_weather = swd, selected_model = model,
+                model_type = shiny::reactiveVal("linear"), run_model = run,
+                survey_version = version, tabset_id = "step1_tabs"),
+    {
+      settle <- function() { session$elapse(500); session$flushReact() }
+      run(1L); settle(); run(2L); settle()
+      expect_false(stale())
+      outcome(make_outcome()); weather(make_weather_sel())
+      model(list(engine = "fixest")); swd(data.frame(tx = 1:4, welfare = 1:4, weight = 1))
+      version(0L); settle()
+      expect_false(stale())
+      version(1L); settle(); expect_true(stale()); stale(FALSE)
+      outcome(make_outcome(label = "Outcome B")); settle(); expect_true(stale()); stale(FALSE)
+      weather(make_weather_sel("pr")); settle(); expect_true(stale()); stale(FALSE)
+      model(list(engine = "rif")); settle(); expect_true(stale()); stale(FALSE)
+      swd(data.frame(tx = 1:5, welfare = 1:5, weight = 1)); settle()
+      expect_true(stale())
+    }
+  )
+})
+
+test_that("redesigned sections render: who-panel, focused table, RIF suppression", {
+  skip_if_not_installed("shiny")
+
+  local_mocked_bindings(
+    prepare_outcome_df = function(df, so) df,
+    fit_model = function(df, selected_outcome, selected_weather, selected_model) {
+      list(
+        engine            = selected_model$engine,
+        y_var             = selected_outcome$name,
+        weather_terms     = selected_weather$name,
+        interaction_terms = if (identical(selected_model$engine, "fixest")) "tx:urban" else character(0),
+        fit1 = NULL, fit2 = NULL, fit3 = NULL,
+        rif_grid = NULL
+      )
+    },
+    make_coefplot            = function(...) ggplot2::ggplot(),
+    make_weather_effect_plot = function(...) ggplot2::ggplot(),
+    make_regtable            = function(...) shiny::tags$p("table"),
+    make_regtable_focused    = function(...) shiny::tags$p("focused-table"),
+    make_regtable_specs      = function(...) shiny::tags$p("specs-table"),
+    make_regtable_focused_df = function(...) data.frame(Variable = character(0)),
+    step1_scenarios          = function(...) NULL,
+    is_logistic_fit          = function(mf) FALSE
+  )
+
+  sel_outcome <- shiny::reactiveVal(make_outcome())
+  sel_weather <- shiny::reactiveVal(make_weather_sel())
+  sel_model   <- shiny::reactiveVal(list(engine = "fixest", cluster = "loc_id_panel"))
+  run_model   <- shiny::reactiveVal(0L)
+
+  shiny::testServer(
+    mod_1_07_results_server,
+    args = list(
+      id               = "res",
+      variable_list    = shiny::reactiveVal(make_vl()),
+      selected_surveys = shiny::reactiveVal(data.frame()),
+      selected_outcome = sel_outcome,
+      selected_weather = sel_weather,
+      survey_weather   = shiny::reactiveVal(
+        data.frame(tx = 1:4, welfare = 1:4, weight = 1)
+      ),
+      selected_model   = sel_model,
+      model_type       = shiny::reactiveVal("linear"),
+      run_model        = run_model,
+      tabset_id        = "step1_tabs"
+    ),
+    {
+      settle <- function() { session$elapse(500); session$flushReact() }
+      html_of <- function(output_id) {
+        paste(as.character(session$output[[output_id]]), collapse = " ")
+      }
+
+      # Quirk: prime the fit counter (see the note in the first test)
+      # before the real first fit.
+      run_model(1L); settle()
+      run_model(2L); settle()
+
+      # Question-led headings
+      expect_match(html_of("heading_effect"),
+                   "How does weather relate to outcome a?", fixed = TRUE)
+      expect_match(html_of("heading_who"), "Who is most affected?", fixed = TRUE)
+      expect_match(html_of("heading_table"), "Full model estimates", fixed = TRUE)
+
+      # Who panel: moderated plot layout + methodological note (interactions)
+      expect_match(html_of("who_note_ui"), "moderator level", fixed = TRUE)
+
+      # Focused table + spec comparison render; AER table inside details
+      expect_match(html_of("focused_table"), "focused-table", fixed = TRUE)
+      expect_match(html_of("specs_table"), "specs-table", fixed = TRUE)
+
+      # Refit as RIF: coefficient-stability section suppressed, who note
+      # switches to the quantile wording, specs comparison hidden.
+      sel_model(list(engine = "rif"))
+      session$elapse(500); session$flushReact()
+      run_model(3L); settle()
+      run_model(4L); settle()
+      expect_identical(nchar(html_of("heading_coef")), 0L)
+      expect_match(html_of("who_note_ui"),
+                   "welfare distribution", fixed = TRUE)
+      expect_identical(nchar(html_of("specs_table")), 0L)
+    }
+  )
+})
+
+test_that("fit-scoped headline inputs preserve values without recomputation", {
+  calls <- new.env(parent = emptyenv())
+  calls$scenario <- 0L
+  calls$tail <- 0L
+  calls$heterogeneity <- 0L
+
+  scenario_builder <- function(mf, snap, var) {
+    calls$scenario <- calls$scenario + 1L
+    list(engine = "rif", scale = "pct", contrast_label = "+1 SD",
+         profile_note = NULL,
+         scenarios = list(list(tau = 0.5, value = "median", label = "median",
+                               estimate = 0.02, se = 0.01, ci = NULL)))
+  }
+  tail_builder <- function(mf, snap, var, taus) {
+    calls$tail <- calls$tail + 1L
+    out <- list(lapply(taus, function(tau) {
+      list(tau = tau, value = paste0("tau-", tau), label = paste0("tau-", tau),
+           estimate = 0.01 + 0.02 * tau, se = 0.01, ci = NULL)
+    }))
+    attr(out, "contrast_label") <- "+1 SD"
+    out
+  }
+  heterogeneity_builder <- function(...) {
+    calls$heterogeneity <- calls$heterogeneity + 1L
+    0.042
+  }
+
+  mf <- list(engine = "rif", weather_terms = "tx", fit3 = NULL,
+             interaction_terms = character(0), train_data = data.frame())
+  snap <- list(
+    weather = data.frame(name = "tx", label = "Temperature", cont_binned = "Continuous"),
+    outcome = data.frame(type = "numeric", transform = "log"),
+    model = list(), survey_weather = data.frame(tx = 1:3)
+  )
+
+  local_mocked_bindings(
+    step1_scenarios = scenario_builder,
+    .s1_rif_scenarios = tail_builder,
+    step1_rif_heterogeneity_p = heterogeneity_builder
+  )
+
+  legacy <- step1_headline_cards(mf, snap)
+  legacy_table <- step1_headline_table(result = legacy)
+  expect_identical(calls$scenario, 0L)
+  expect_identical(calls$tail, 2L)
+  expect_identical(calls$heterogeneity, 1L)
+
+  scenarios <- list(tx = scenario_builder(mf, snap, "tx"))
+  tails <- list(tx = tail_builder(mf, snap, "tx", c(0.1, 0.9)))
+  pvals <- list(tx = heterogeneity_builder(mf, snap, "tx"))
+  calls$scenario <- 0L
+  calls$tail <- 0L
+  calls$heterogeneity <- 0L
+
+  cached <- step1_headline_cards(
+    mf, snap, scenarios_list = scenarios,
+    rif_scenarios = tails, rif_heterogeneity = pvals
+  )
+
+  expect_identical(cached, legacy)
+  expect_identical(calls$scenario, 0L)
+  expect_identical(calls$tail, 0L)
+  expect_identical(calls$heterogeneity, 0L)
+  expect_identical(step1_headline_table(result = cached), legacy_table)
+  expect_null(step1_headline_table(result = NULL))
 })

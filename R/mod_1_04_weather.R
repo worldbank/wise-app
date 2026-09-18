@@ -75,7 +75,7 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
         v        <- input$weather_variable_selector[i]
         var_info <- wl[wl$name == v, ]
         units    <- as.character(var_info$units[1])
-        display_label <- sub("^Monthly\\s+", "", as.character(var_info$label[1]))
+        display_label <- wise_label_short(as.character(var_info$label[1]))
         prefix   <- paste0(v, "_")
 
         tagList(
@@ -105,9 +105,9 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
                   "'][0] !== input['", ns(paste0(prefix, "relativePeriod")),
                   "'][1]"
                 ),
-                shiny::selectInput(
+                pill_toggle(
                   ns(paste0(prefix, "temporalAgg")),
-                  "Aggregation over reference period:",
+                  "Aggregation over reference period",
                   choices  = temporal_agg_choices(units),
                   selected = temporal_agg_default(units)
                 )
@@ -129,12 +129,21 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
                 tagList(
                   shiny::sliderInput(
                     ns(paste0(prefix, "numBins")),
-                    "Number of bins:",
+                    "Number of bins",
                     min = 2, max = 10, value = 5
                   ),
                   pill_toggle(
                     ns(paste0(prefix, "binningMethod")),
-                    label = "Binning method:",
+                    label = shiny::tagList(
+                      "Binning method",
+                      info_popover(
+                        title = "Binning",
+                        shiny::p(
+                          "Binning keeps only unique bins, so duplicate values are",
+                          "dropped. This can result in fewer bins than specified."
+                        )
+                      )
+                    ),
                     choices = c("Equal frequency", "Equal width", "K-means", "Custom"),
                     layout = "vertical"
                   ),
@@ -157,10 +166,6 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
                       )
                     )
                   ),
-                  shiny::helpText(
-                    "Binning keeps only unique bins, duplicates are dropped. This can lead to fewer bins than specified.",
-                    style = "color: red; font-size: 12px;"
-                  )
                 )
               ),
               shiny::conditionalPanel(
@@ -179,6 +184,10 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
 
       tagList(do.call(tagList, ui_list))
     })
+    shiny::outputOptions(output, "weather_selector_ui",
+                         suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "weather_construction_ui",
+                         suspendWhenHidden = FALSE)
 
     # ---- Historical comparison config ---------------------------------------
     # The weather stats tab always draws each wave against its own climate
@@ -201,24 +210,25 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
           tagList(
             shiny::sliderInput(
               inputId = ns("hist_years"),
-              label = shiny::tags$span(
-                class = "visually-hidden",
-                "Historical comparison period"
+              label = shiny::tagList(
+                "Historical comparison period",
+                info_popover(
+                  title = "Historical comparison period",
+                  shiny::p(
+                    paste(
+                      "Weather over these years for the same locations and the same",
+                      "calendar months each wave was fielded in. It is drawn",
+                      "alongside the sample in the weather distribution plots and",
+                      "backs the within-location map views. Widening the range",
+                      "means loading more years, which takes longer."
+                    )
+                  )
+                )
               ),
               min = 1950,
               max = this_year,
               value = c(1991, 2020),
               sep = ""
-            ),
-            shiny::helpText(
-              paste(
-                "Weather over these years for the same locations and the same",
-                "calendar months each wave was fielded in. It is drawn",
-                "alongside the sample in the weather distribution plots and",
-                "backs the within-location map views. Widening the range",
-                "means loading more years, which takes longer."
-              ),
-              style = "font-size: 12px;"
             )
           ),
           display_label = "Historical comparison"
@@ -283,20 +293,28 @@ mod_1_04_weather_server <- function(id, variable_list, selected_surveys, survey_
       if (is.null(sw) || nrow(sw) == 0) return(NULL)
 
       hy <- hist_years()
-      selection_summary_card(
-        title   = NULL,
-        badge   = paste0("History ", hy[["from"]], "-", hy[["to"]]),
-        rows    = weather_pipeline_rows(sw),
-        info    = paste(
-          "Each row reads left to right: the reference window (months before",
-          "each interview), how those months are aggregated into one value",
-          "(shown only when the window spans several months), any",
-          "transformation against the historical mean, and the form the",
-          "variable takes in the model (bins or continuous curve). The",
-          "history badge is the comparison period: same locations and",
-          "calendar months, per survey wave."
-        ),
-        compact = TRUE
+      single_weather <- nrow(sw) == 1L
+      weather_title <- if (single_weather) {
+        label <- wise_label_short(as.character(sw$label[1]))
+        tags$span(
+          class = "weather-sidebar-title",
+          paste0(toupper(substr(label, 1, 1)), substr(label, 2, nchar(label)))
+        )
+      } else NULL
+      weather_rows <- weather_pipeline_rows(sw)
+      if (single_weather) {
+        # Move the variable name into the card header, keeping its units in
+        # the body beside the pipeline stages.
+        weather_rows[[1]]$children[[1]]$children[[1]] <- NULL
+      }
+      tags$div(
+        class = "weather-sidebar-summary",
+        selection_summary_card(
+          title   = weather_title,
+          badge   = paste0("History ", hy[["from"]], "-", hy[["to"]]),
+          rows    = weather_rows,
+          compact = TRUE
+        )
       )
     })
 

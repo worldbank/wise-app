@@ -2,8 +2,10 @@
 
 test_that("wise_csv_dom adds the Buttons placeholder exactly once", {
   expect_equal(wise_csv_dom("t"), "Bt")
-  expect_equal(wise_csv_dom("lfrtip"), "Blfrtip")
+  expect_equal(wise_csv_dom("lfrtip"), "<'wise-dt-controls'Blf>rtip")
   expect_equal(wise_csv_dom("tip"), "Btip")
+  expect_equal(wise_csv_dom("lrtip"), "Blrtip")
+  expect_equal(wise_csv_dom("frtip"), "Bfrtip")
   # Already carries a B - left alone rather than gaining a second toolbar.
   expect_equal(wise_csv_dom("Btip"), "Btip")
   expect_equal(wise_csv_dom("Bt"), "Bt")

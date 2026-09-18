@@ -34,6 +34,7 @@ mod_1_05_weatherstats_ui <- function(id) {
 #' @param tabset_id        Character. `inputId` of the parent tabset panel.
 #' @param tabset_session   Shiny session for the parent tabset. Defaults to
 #'   `session$parent`.
+#' @param run_trigger      Optional reactive trigger for a programmatic load.
 #'
 #' @noRd
 mod_1_05_weatherstats_server <- function(
@@ -47,8 +48,10 @@ mod_1_05_weatherstats_server <- function(
     survey_data,
     cell_data = NULL,
     survey_version = reactive(0L),
+    survey_data_generation = survey_version,
     tabset_id,
-    tabset_session = NULL
+    tabset_session = NULL,
+    run_trigger = shiny::reactive(NULL)
 ) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -68,6 +71,26 @@ mod_1_05_weatherstats_server <- function(
     # sample's location x calendar-month cells. Plot-only.
     hist_cells        <- reactiveVal(NULL)
     hist_cells_years  <- reactiveVal(NULL)
+    survey_wave_meta <- shiny::reactive({
+      cached_survey_wave_metadata(
+        session, shiny::isolate(survey_data()), survey_data_generation()
+      )
+    })
+
+    weather_plot_frame <- shiny::reactive({
+      df <- req(survey_weather())
+      if (!"countryyear" %in% names(df)) {
+        df <- dplyr::mutate(df, countryyear = paste0(economy, ", ", year))
+      }
+      df
+    })
+    weather_plot_cont_frame <- shiny::reactive({
+      df <- req(survey_weather_cont())
+      if (!"countryyear" %in% names(df)) {
+        df <- dplyr::mutate(df, countryyear = paste0(economy, ", ", year))
+      }
+      df
+    })
 
     # ---- Weather stats button -----------------------------------------------
 
@@ -92,6 +115,9 @@ mod_1_05_weatherstats_server <- function(
     wx_spec_so  <- shiny::reactive({ req(wx_spec()); wx_spec()$so })
     # REACT-03: digest of the last successfully completed weather load.
     last_wx_load_sig <- reactiveVal(NULL)
+    # Completion generation used by the automatic configuration pipeline.
+    load_done   <- reactiveVal(0L)
+    load_status <- reactiveVal("idle")
 
     # INT-08: banner when the survey data behind the weather load was
     # reloaded after the button was last pressed.
@@ -108,10 +134,27 @@ mod_1_05_weatherstats_server <- function(
 
     # ---- Load and merge weather on button click ------------------------------
 
-    observeEvent(input$weather_stats, {
-      req(selected_weather(), selected_surveys(), survey_data())
+    weather_stats_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$weather_stats, {
+      if (shiny::isTruthy(input$weather_stats)) {
+        weather_stats_event(list(source = "manual", value = input$weather_stats))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) weather_stats_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    observeEvent(weather_stats_event(), {
       if (!load_guard$begin()) return(invisible(NULL))
       on.exit(load_guard$end(), add = TRUE)
+      load_done(load_done() + 1L)
+      load_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) load_status("failure")
+      }, add = TRUE)
+      req(selected_weather(), selected_surveys(), survey_data())
 
       sw  <- selected_weather()
       svy <- survey_data()
@@ -133,6 +176,8 @@ mod_1_05_weatherstats_server <- function(
       if (identical(sig, last_wx_load_sig())) {
         showNotification("Weather data is already loaded for this selection.",
                          duration = 3, type = "message")
+        load_status("success")
+        completed <- TRUE
         return(invisible(NULL))
       }
 
@@ -236,6 +281,8 @@ mod_1_05_weatherstats_server <- function(
                    survey_version = survey_version()))
 
       last_wx_load_sig(sig)
+      load_status("success")
+      completed <- TRUE
 
       showNotification("Weather data ready.", duration = 3, type = "message")
 
@@ -254,11 +301,9 @@ mod_1_05_weatherstats_server <- function(
         # screen draw the same figure.
         weather_dist_fig <- function(idx) function() {
           swx <- req(wx_spec())
-          swd <- req(survey_weather())
+          df <- weather_plot_frame()
           sw <- swx$sw
           if (is.null(sw) || nrow(sw) < idx) return(NULL)
-          df   <- swd |>
-            dplyr::mutate(countryyear = paste0(economy, ", ", year))
           hv   <- sw$name[idx]
           yrs  <- hist_cells_years()
           brks <- stored_breaks()
@@ -274,9 +319,8 @@ mod_1_05_weatherstats_server <- function(
 
         make_weather_dist <- function(idx) {
           renderPlot({
-            req(survey_weather(), wx_spec())
-            df          <- survey_weather() |>
-              dplyr::mutate(countryyear = paste0(economy, ", ", year))
+            req(wx_spec())
+            df          <- weather_plot_frame()
             sw          <- wx_spec()$sw
             hv          <- sw$name[idx]
             label       <- sw$label[idx]
@@ -290,10 +334,10 @@ mod_1_05_weatherstats_server <- function(
               breaks    = if (is.null(brks)) NULL else brks[[hv]],
               year_from = if (is.null(yrs)) NULL else yrs[["from"]],
                year_to   = if (is.null(yrs)) NULL else yrs[["to"]],
-               wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
+               wave_labels = survey_wave_meta()$plot_labels
             )
             if (is.null(p)) {
-              plot.new(); title(main = "Weather variable not configured")
+              blank_plot("Weather variable not configured")
               return(invisible(NULL))
             }
             p
@@ -310,11 +354,9 @@ mod_1_05_weatherstats_server <- function(
 
         weather_dist_cont_fig <- function(idx) function() {
           swx <- req(wx_spec())
-          swc <- req(survey_weather_cont())
+          df <- weather_plot_cont_frame()
           sw <- swx$sw
           if (is.null(sw) || nrow(sw) < idx) return(NULL)
-          df  <- swc |>
-            dplyr::mutate(countryyear = paste0(economy, ", ", year))
           yrs <- hist_cells_years()
 
           plot_weather_ridges_compare(
@@ -327,9 +369,8 @@ mod_1_05_weatherstats_server <- function(
 
         make_weather_dist_cont <- function(idx) {
           renderPlot({
-            req(survey_weather_cont(), wx_spec())
-            df    <- survey_weather_cont() |>
-              dplyr::mutate(countryyear = paste0(economy, ", ", year))
+            req(wx_spec())
+            df    <- weather_plot_cont_frame()
             sw    <- wx_spec()$sw
             hv    <- sw$name[idx]
             label <- sw$label[idx]
@@ -340,10 +381,10 @@ mod_1_05_weatherstats_server <- function(
               hist_df   = hist_cells(),
               year_from = if (is.null(yrs)) NULL else yrs[["from"]],
                year_to   = if (is.null(yrs)) NULL else yrs[["to"]],
-               wave_labels = wave_plot_labels(survey_wave_list(survey_data()))
+               wave_labels = survey_wave_meta()$plot_labels
             )
             if (is.null(p)) {
-              plot.new(); title(main = "Continuous distribution unavailable")
+              blank_plot("Continuous distribution unavailable")
               return(invisible(NULL))
             }
             p
@@ -387,8 +428,7 @@ mod_1_05_weatherstats_server <- function(
             req(survey_weather(), wx_spec_so())
             p <- binscatter_fig(idx)()
             if (is.null(p)) {
-              plot.new()
-              title(main = "Weather variable not configured")
+              blank_plot("Weather variable not configured")
               return(invisible(NULL))
             }
             p
@@ -558,7 +598,7 @@ mod_1_05_weatherstats_server <- function(
         extensions = "Buttons",
         options    = list(dom = wise_csv_dom("t"), paging = FALSE,
                           searching = FALSE, info = FALSE,
-                          buttons = wise_csv_button("selected_weather")),
+                          buttons = wise_csv_button("weather_specification")),
         class      = "compact")
 
         # -- Append tab -------------------------------------------------------
@@ -956,17 +996,7 @@ mod_1_05_weatherstats_server <- function(
     )
   }
 
-  wave_list <- reactive({
-    swd <- survey_weather()
-    if (is.null(swd) || !all(c("code", "year", "survname") %in% names(swd))) {
-      return(NULL)
-    }
-    if (!"economy" %in% names(swd)) swd$economy <- swd$code
-    w <- unique(swd[, c("code", "year", "survname", "economy")])
-    w$key   <- paste(w$code, as.character(w$year), w$survname, sep = "|")
-    w$label <- paste0(w$economy, ", ", w$year)
-    w[order(w$label), , drop = FALSE]
-  })
+  wave_list <- reactive(survey_wave_list(survey_weather()))
 
   # One map per weather variable, not per variable x wave. A wave is picked
   # above the maps instead: a country with several waves and two variables
@@ -1138,7 +1168,7 @@ mod_1_05_weatherstats_server <- function(
         hexmap_update(session, ns, id, pl$payload)
         key <- digest::digest(list(wx_spec(), id, wave, view,
                                    sort(unique(cmap$h3))))
-        if (!identical(key, wxmap_keys[[id]])) {
+        if (!identical(key, shiny::isolate(wxmap_keys[[id]]))) {
           hexmap_fit(session, ns, id, pl$payload$bounds)
           wxmap_keys[[id]] <- key
         }
@@ -1376,6 +1406,8 @@ mod_1_05_weatherstats_server <- function(
     # ---- Return API ---------------------------------------------------------
 
     list(survey_weather = survey_weather,
-         stored_breaks  = stored_breaks)
+         stored_breaks  = stored_breaks,
+         load_done      = load_done,
+         load_status    = load_status)
   })
 }

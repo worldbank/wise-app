@@ -28,6 +28,13 @@ make_raw_survey <- function() {
   )
 }
 
+make_raw_survey_year <- function(year) {
+  df <- make_raw_survey()
+  df$year <- as.character(year)
+  df$timestamp <- as.Date(sprintf("%s-06-01", year))
+  df
+}
+
 make_selected_surveys_fixture <- function() {
   data.frame(
     code     = "TST",
@@ -78,11 +85,102 @@ test_that("INT-06: reload clears stale map/cell state; H3 failure leaves it clea
       # geography (INT-06).
       expect_false(is.null(survey_data()))
       expect_null(cell_data())
+      expect_equal(survey_version(), 0L)
 
       # A second load starts from the same cleared baseline.
       session$setInputs(survey_stats = 3L)
       session$flushReact()
       expect_null(cell_data())
+    }
+  )
+})
+
+test_that("P8: failed downstream loads invalidate cached wave metadata", {
+  load_number <- 0L
+  local_mocked_bindings(
+    load_data = function(fnames, ...) {
+      if (any(grepl("/h3/", fnames))) stop("h3 boom")
+      load_number <<- load_number + 1L
+      make_raw_survey_year(c("2021", "2022")[[load_number]])
+    }
+  )
+
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id = "ss", connection_params = shiny::reactiveVal(list()),
+      variable_list = shiny::reactiveVal(data.frame(name = character(0), units = character(0))),
+      selected_surveys = shiny::reactiveVal(make_selected_surveys_fixture()),
+      cpi_ppp = shiny::reactiveVal(data.frame()), tabset_id = "step1_tabs"
+    ),
+    {
+      session$setInputs(survey_stats = 0L)
+      session$setInputs(survey_stats = 1L)
+      session$flushReact()
+      first <- survey_wave_meta()
+      expect_identical(first$waves$year, "2021")
+      expect_equal(survey_data_generation(), 1L)
+      expect_equal(survey_version(), 0L)
+
+      session$setInputs(survey_stats = 2L)
+      session$flushReact()
+      second <- survey_wave_meta()
+      expect_identical(second$waves$year, "2022")
+      expect_equal(survey_data_generation(), 2L)
+      expect_equal(survey_version(), 0L)
+      expect_false(identical(first, second))
+    }
+  )
+})
+
+test_that("P3: density map fit state does not self-invalidate its observer", {
+  fit_calls <- 0L
+  update_calls <- 0L
+  local_mocked_bindings(
+    load_data = function(fnames, ...) {
+      if (any(grepl("/h3/", fnames))) stop("h3 unavailable")
+      make_raw_survey()
+    },
+    hexmap_update = function(...) { update_calls <<- update_calls + 1L; invisible(TRUE) },
+    hexmap_fit = function(...) { fit_calls <<- fit_calls + 1L; invisible(TRUE) },
+    hexmap_clear = function(...) invisible(TRUE)
+  )
+
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id = "ss", connection_params = shiny::reactiveVal(list()),
+      variable_list = shiny::reactiveVal(data.frame(name = character(0), units = character(0))),
+      selected_surveys = shiny::reactiveVal(make_selected_surveys_fixture()),
+      cpi_ppp = shiny::reactiveVal(data.frame()), tabset_id = "step1_tabs"
+    ),
+    {
+      session$setInputs(survey_stats = 0L)
+      session$setInputs(survey_stats = 1L)
+      session$flushReact()
+      current_survey <- make_raw_survey()
+      current_survey$loc_id_panel <- current_survey$loc_id
+      survey_data(current_survey)
+      cell_data(list(
+        geom = data.frame(h3 = "h1", geom = "{x}", xmin = 0, ymin = 0, xmax = 1, ymax = 1),
+        map = data.frame(code = "TST", year = "2021", survname = "SRV", loc_id = "L1", h3 = "h1", pop_2020 = 1)
+      ))
+      map_data_version(1L)
+      expect_false(is.null(density_cells()))
+      session$flushReact()
+      expect_equal(fit_calls, 1L)
+      expect_equal(update_calls, 1L)
+      session$flushReact(); session$flushReact()
+      expect_equal(fit_calls, 1L)
+      expect_equal(update_calls, 1L)
+      session$setInputs(map_wave = "all")
+      session$flushReact()
+      expect_equal(fit_calls, 1L)
+      expect_equal(update_calls, 2L)
+      map_data_version(2L)
+      session$flushReact()
+      expect_equal(fit_calls, 2L)
+      expect_equal(update_calls, 3L)
     }
   )
 })
@@ -124,6 +222,68 @@ test_that("PERF-40: stats tables render from the shared union pass", {
       expect_match(payload, "Variable", fixed = TRUE)
       expect_match(payload, "Country, Year", fixed = TRUE)
       expect_match(payload, "Mean", fixed = TRUE)
+    }
+  )
+})
+
+test_that("density cells share mapped-location counts with the payload", {
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id                = "ss",
+      connection_params = shiny::reactiveVal(list()),
+      variable_list     = shiny::reactiveVal(data.frame()),
+      selected_surveys  = shiny::reactiveVal(make_selected_surveys_fixture()),
+      cpi_ppp            = shiny::reactiveVal(data.frame()),
+      tabset_id         = "step1_tabs"
+    ),
+    {
+      survey_data(data.frame(
+        code = "TST", year = "2021", survname = "SRV",
+        loc_id = c("L1", "L1", "L2", "unmapped")
+      ))
+      cell_data(list(
+        geom = data.frame(h3 = c("a", "b"), geom = c("{a}", "{b}")),
+        map = data.frame(
+          code = "TST", year = 2021L, survname = "SRV",
+          loc_id = c("L1", "L1", "L2"), h3 = c("a", "b", "a"),
+          pop_2020 = c(3, 1, 1)
+        )
+      ))
+
+      density <- density_cells("all")
+      expect_identical(names(density), c("cells", "n_locations"))
+      expect_identical(density$n_locations, 2L)
+      expect_identical(density$cells$h3, c("a", "b"))
+      expect_equal(density$cells$n_units, c(2.5, 0.5))
+    }
+  )
+})
+
+test_that("an unmet survey prerequisite releases the load guard", {
+  selected <- shiny::reactiveVal(NULL)
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id                = "ss",
+      connection_params = shiny::reactiveVal(list()),
+      variable_list     = shiny::reactiveVal(data.frame()),
+      selected_surveys  = selected,
+      cpi_ppp           = shiny::reactiveVal(data.frame()),
+      tabset_id         = "step1_tabs"
+    ),
+    {
+      session$setInputs(survey_stats = 0L)
+      session$setInputs(survey_stats = 1L)
+      session$flushReact()
+      expect_false(load_guard$is_running())
+      expect_equal(load_status(), "failure")
+
+      selected(make_selected_surveys_fixture())
+      session$setInputs(survey_stats = 2L)
+      session$flushReact()
+      expect_false(load_guard$is_running())
+      expect_equal(load_done(), 2L)
     }
   )
 })

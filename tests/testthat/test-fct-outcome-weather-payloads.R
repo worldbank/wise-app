@@ -128,6 +128,32 @@ test_that("weather payload: continuous values, averaged dash, notes", {
   expect_match(pl$legend$notes, "1 of 3 areas averaged")
 })
 
+test_that("weather payload: averaged notes work without missing cells", {
+  geo  <- make_cell_geo(2)
+  cmap <- make_cmap(geo)
+  sub <- data.frame(
+    code = "TST", year = "2021", survname = "SRV",
+    loc_id = geo$h3, value = c(1.5, 2.5),
+    n_hh = c(30, 30), n_months = c(2L, 1L),
+    stringsAsFactors = FALSE
+  )
+  pal <- wiseapp:::.weather_map_palette(c(0.5, 2.8), FALSE, NULL, "None")
+
+  pl <- wiseapp:::.weather_hex_payload(geo, cmap, sub, pal)
+
+  expect_identical(pl$payload$dash, c(TRUE, FALSE))
+  expect_identical(pl$legend$notes,
+                   paste0(
+                     '<div style="background: rgba(255,255,255,0.88); ',
+                     'padding: 3px 5px; border-radius: 4px; font-size: 10px; ',
+                     'line-height: 1.3; color: #333; max-width: 160px; ',
+                     'margin-top: 2px;">',
+                     '<span style="display: inline-block; width: 10px; height: 10px; ',
+                     'border-top: 2px dashed #666; vertical-align: -1px;"></span> ',
+                     '1 of 2 areas averaged</div>'
+                   ))
+})
+
 test_that("weather payload: binned variables send a level match ramp", {
   geo  <- make_cell_geo(3)
   cmap <- make_cmap(geo)

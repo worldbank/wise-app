@@ -250,9 +250,9 @@ welfare_poverty_lines <- function() {
 #'   `"Households"`; use `"Individuals"` or `"Firms"` when the selected
 #'   survey files are at those levels.
 #' @param palette Fill palette. The default `"sequential"` assigns each
-#'   economy its own colour series and orders colours from older to newer
-#'   survey waves within that economy. Other options are `"okabe_ito"`,
-#'   `"wise"`, and `"blue"`.
+#'   survey wave its colour from the shared wave palette (same series as the
+#'   weather and outcome distribution charts). Other options are
+#'   `"okabe_ito"`, `"wise"`, and `"blue"`.
 #' @param wave_labels Optional named character vector replacing wave labels.
 #'
 #' @return A `ggplot` object, or `NULL` invisibly when `plot_data` is
@@ -312,27 +312,13 @@ plot_interview_dates <- function(plot_data,
   plot_data$countryyear <- factor(plot_data$countryyear, levels = waves)
   wave_cols <- switch(
     palette,
-    sequential = {
-      series <- list(
-        c("#264A79", "#0071BC"), # navy to World Bank blue
-        c("#185C78", "#00A6C7"), # deep teal to bright cyan
-        c("#493B70", "#8667B3"), # indigo to violet
-        c("#79501F", "#C28C2C"), # brown to ochre
-        c("#713443", "#B85C6B")  # burgundy to muted red
-      )
-      economies <- unique(wave_info$economy)
-      out <- stats::setNames(character(length(waves)), waves)
-      for (i in seq_along(economies)) {
-        these <- wave_info$countryyear[wave_info$economy == economies[i]]
-        out[these] <- grDevices::colorRampPalette(
-          series[[((i - 1L) %% length(series)) + 1L]]
-        )(length(these))
-      }
-      out
-    },
-    okabe_ito = c("#0072B2", "#009E73", "#E69F00", "#56B4E9", "#CC79A7"),
-    wise      = c("#0071BC", "#00AB51", "#FDB714", "#009FDA", "#5B6B79"),
-    blue      = c("#003B5C", "#0071BC", "#2C9CCB", "#78C6D0", "#B6DDE2")
+    sequential = .wave_palette(waves),
+    okabe_ito = stats::setNames(
+      c("#0072B2", "#009E73", "#E69F00", "#56B4E9", "#CC79A7"), waves),
+    wise      = stats::setNames(
+      c("#0071BC", "#00AB51", "#FDB714", "#009FDA", "#5B6B79"), waves),
+    blue      = stats::setNames(
+      c("#003B5C", "#0071BC", "#2C9CCB", "#78C6D0", "#B6DDE2"), waves)
   )
   if (palette != "sequential") {
     wave_cols <- stats::setNames(rep(wave_cols, length.out = length(waves)), waves)
@@ -351,15 +337,14 @@ plot_interview_dates <- function(plot_data,
           size = 3, colour = "#1D2A35"
         ) +
         ggplot2::scale_x_discrete(drop = FALSE) +
-        ggplot2::scale_fill_gradient(
-          low = "#D9EFF8", high = "#0071BC",
+        ggplot2::scale_fill_gradientn(
+          colours = wise_seq_ramp(100),
           labels = scales::label_number(big.mark = ","),
           name = unit_label
         ) +
         ggplot2::labs(x = NULL, y = NULL) +
-        theme_wise(base_size = 12) +
+        theme_wise(base_size = 13) +
         ggplot2::theme(
-          axis.text.x = ggplot2::element_text(size = 10),
           panel.grid = ggplot2::element_blank(),
           legend.position = "top",
           legend.justification = "left",
@@ -398,17 +383,14 @@ plot_interview_dates <- function(plot_data,
       expand = ggplot2::expansion(mult = c(0, 0.08))
     ) +
     ggplot2::labs(x = NULL, y = unit_label) +
-    theme_wise(base_size = 12) +
+    theme_wise(base_size = 13) +
     ggplot2::theme(
-      axis.text.x        = ggplot2::element_text(size = 10),
-      axis.text.y        = ggplot2::element_text(size = 10),
       axis.ticks.x       = ggplot2::element_line(colour = "#5B6B79"),
       panel.grid.major.x = ggplot2::element_blank(),
       panel.grid.minor.x = ggplot2::element_blank(),
       panel.grid.major.y = ggplot2::element_line(colour = "#E3E9EE"),
       panel.grid.minor.y = ggplot2::element_blank(),
       legend.position    = if (variant == "faceted") "none" else "top",
-      legend.text        = ggplot2::element_text(size = 11),
       legend.justification = "left",
       plot.margin = ggplot2::margin(4, 8, 4, 4)
     )
@@ -445,6 +427,44 @@ survey_wave_list <- function(df) {
   w <- w[order(w$label), , drop = FALSE]
   rownames(w) <- NULL
   w
+}
+
+
+#' Build survey-wave metadata used by controls and plots
+#'
+#' @param df Any frame accepted by [survey_wave_list()].
+#'
+#' @return A list containing the ordered wave data frame and its plot labels.
+#' @noRd
+survey_wave_metadata <- function(df) {
+  waves <- survey_wave_list(df)
+  list(
+    waves       = waves,
+    plot_labels = wave_plot_labels(waves)
+  )
+}
+
+
+#' Cache survey-wave metadata for one published survey generation
+#'
+#' @param session A Shiny session.
+#' @param df Survey data used when the version is not cached.
+#' @param generation Survey-data publication generation.
+#'
+#' @return The value from `survey_wave_metadata()`.
+#' @noRd
+cached_survey_wave_metadata <- function(session, df, generation) {
+  cache <- session$userData$survey_wave_metadata
+  if (!is.null(cache) && identical(cache$generation, generation)) {
+    return(cache$value)
+  }
+
+  value <- survey_wave_metadata(df)
+  session$userData$survey_wave_metadata <- list(
+    generation = generation,
+    value = value
+  )
+  value
 }
 
 
@@ -499,6 +519,13 @@ filter_by_wave <- function(df, key = "all") {
 #'
 #' @export
 allocate_units_to_cells <- function(cell_map, survey_data) {
+  out <- .density_cell_summary(cell_map, survey_data)
+  if (is.null(out)) NULL else out$cells
+}
+
+
+#' @noRd
+.density_cell_summary <- function(cell_map, survey_data) {
   keys <- c("code", "year", "survname", "loc_id")
   if (is.null(cell_map) || is.null(survey_data)) return(NULL)
   if (!all(c(keys, "h3") %in% names(cell_map))) return(NULL)
@@ -510,10 +537,12 @@ allocate_units_to_cells <- function(cell_map, survey_data) {
   sd <- survey_data
   sd$year <- as.character(sd$year)
 
-  # Sampled units per location.
-  n_loc <- sd |>
-    dplyr::count(.data$code, .data$year, .data$survname, .data$loc_id,
-                 name = "n_units")
+  # One location grouping supplies both the survey counts and stable IDs that
+  # survive the duplicate-sensitive join onto the mapping rows.
+  g_loc <- collapse::GRP(sd, by = keys, group.sizes = TRUE)
+  n_loc <- g_loc$groups
+  n_loc$n_units <- as.integer(g_loc$group.sizes)
+  n_loc$.loc_group <- seq_len(g_loc$N.groups)
 
   cm <- cm |>
     dplyr::inner_join(n_loc, by = keys)
@@ -524,27 +553,36 @@ allocate_units_to_cells <- function(cell_map, survey_data) {
   # location keeps most of its households. Locations without usable
   # weights (all NA / zero / negative) fall back to an even split.
   has_pop <- "pop_2020" %in% names(cm)
-  cm |>
-    dplyr::group_by(.data$code, .data$year, .data$survname, .data$loc_id) |>
-    dplyr::mutate(
-      .alloc = if (has_pop) {
-        .pop <- pmax(.data$pop_2020, 0, na.rm = TRUE)
-        .pop_sum <- sum(.pop)
-        if (.pop_sum > 0) {
-          .data$n_units * .pop / .pop_sum
-        } else {
-          .data$n_units / dplyr::n()
-        }
-      } else {
-        .data$n_units / dplyr::n()
-      }
-    ) |>
-    dplyr::ungroup() |>
-    dplyr::group_by(.data$h3) |>
-    dplyr::summarise(n_units = sum(.data$.alloc, na.rm = TRUE),
-                     .groups = "drop") |>
-    dplyr::filter(.data$n_units > 0) |>
-    as.data.frame()
+  loc_group <- cm$.loc_group
+  n_cells <- collapse::fsum(rep.int(1L, nrow(cm)), g = loc_group,
+                            TRA = "replace")
+  alloc <- if (has_pop) {
+    pop <- pmax(cm$pop_2020, 0, na.rm = TRUE)
+    pop_sum <- collapse::fsum(pop, g = loc_group, na.rm = TRUE,
+                              TRA = "replace")
+    use_pop <- pop_sum > 0
+    ifelse(use_pop, cm$n_units * pop / pop_sum, cm$n_units / n_cells)
+  } else {
+    cm$n_units / n_cells
+  }
+
+  g_h3 <- collapse::GRP(cm, by = "h3")
+  n_units <- collapse::fsum(alloc, g = g_h3, na.rm = TRUE)
+  # base::sum(..., na.rm = TRUE), used by the old summarise(), returns zero
+  # for groups containing only NA/NaN allocations; collapse returns NA.
+  n_units[is.na(n_units)] <- 0
+  cells <- data.frame(
+    h3 = g_h3$groups$h3,
+    n_units = as.numeric(n_units),
+    stringsAsFactors = FALSE
+  )
+  cells <- cells[cells$n_units > 0, , drop = FALSE]
+  rownames(cells) <- NULL
+
+  list(
+    cells = cells,
+    n_locations = length(unique(loc_group))
+  )
 }
 
 
@@ -1041,7 +1079,8 @@ make_stats_dt <- function(survey_data, variable_list, flag_col = NULL,
         columnDefs = list(list(className = "dt-wrap", targets = "_all")),
         dom     = wise_csv_dom("lfrtip"),
         buttons = wise_csv_button(
-          paste0("summary_stats_", flag_col %||% "selected")
+          if (!is.null(vars)) "survey_summary_policy"
+          else paste0("survey_summary_", flag_col %||% "selected")
         )
       )
     )

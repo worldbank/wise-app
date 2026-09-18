@@ -250,23 +250,16 @@ outcome_missing_summary <- function(df, outcome) {
 }
 
 
-# Outcome ridges use one colour per economy, matching the blue/teal series in
-# the interview-date chart. The ridge labels already identify each wave, so a
-# quiet economy-level fill is clearer than a separate legend entry per wave.
+# Outcome ridges use one colour per economy, matching the wave series in the
+# interview-date and weather charts. The ridge labels already identify each
+# wave, so a quiet economy-level fill is clearer than a separate legend entry
+# per wave. Delegates to the shared wave palette in fct_weatherstats.R.
 #' @noRd
 .outcome_density_palette <- function(codes) {
   codes <- sort(unique(as.character(codes)))
   codes <- codes[!is.na(codes) & nzchar(codes)]
   if (!length(codes)) return(character(0))
-
-  series <- c(
-    "#0071BC", # World Bank blue
-    "#00A6C7", # bright cyan
-    "#8667B3", # violet
-    "#C28C2C", # ochre
-    "#B85C6B"  # muted red
-  )
-  stats::setNames(rep(series, length.out = length(codes)), codes)
+  .wave_palette(codes)
 }
 
 
@@ -392,7 +385,7 @@ plot_welfare_dist <- function(df,
           # baseline state, World Bank blue for the positive state.
           values = c(No = "#D9EFF8", Yes = "#0071BC"),
           drop = FALSE,
-          name = "Outcome"
+          name = NULL
         ) +
         ggplot2::scale_colour_identity() +
         ggplot2::scale_y_continuous(
@@ -402,14 +395,13 @@ plot_welfare_dist <- function(df,
         ) +
         ggplot2::labs(
           x = "Survey wave",
-          y = "Share of observations",
-          title = x_label
+          y = "Share of observations"
         ) +
         ggplot2::scale_x_discrete(labels = display_waves) +
         theme_wise() +
         ggplot2::theme(
           legend.position = "top",
-          axis.text.x = ggplot2::element_text(angle = 35, hjust = 1)
+          axis.text.x = ggplot2::element_text(angle = 30, hjust = 1)
         )
     )
   }
@@ -441,7 +433,7 @@ plot_welfare_dist <- function(df,
         ggplot2::geom_vline(
           xintercept = poverty_lines$value[i],
           linetype   = "dashed",
-          color      = "red",
+          color      = .wise_marker,
           linewidth  = 0.5
         ) +
         ggplot2::annotate(
@@ -450,8 +442,8 @@ plot_welfare_dist <- function(df,
           y     = 0.5,
           label = poverty_lines$label[i],
           angle = 90,
-          size  = 3,
-          color = "red",
+          size  = 3.2,
+          color = .wise_marker,
           hjust = 0
         )
     }
@@ -621,7 +613,7 @@ plot_welfare_dist <- function(df,
     dplyr::mutate(.val = suppressWarnings(as.numeric(.data[[outcome]]))) |>
     dplyr::filter(!is.na(.data$.val)) |>
     dplyr::summarise(
-      value = mean(.data$.val),
+      value = mean(.data$.val, na.rm = TRUE),
       n_hh  = dplyr::n(),
       .by   = dplyr::any_of(keys)
     )

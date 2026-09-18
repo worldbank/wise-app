@@ -19,17 +19,23 @@
 mod_2_01_weathersim_ui <- function(id) {
 
   ns <- NS(id)
+  step2_with_grid_num <- function(slider_tag, n) {
+    for (i in seq_along(slider_tag$children)) {
+      ch <- slider_tag$children[[i]]
+      if (is.list(ch) && !is.null(ch$attribs) &&
+          "data-grid-num" %in% names(ch$attribs)) {
+        ch$attribs[["data-grid-num"]] <- n
+        slider_tag$children[[i]] <- ch
+        break
+      }
+    }
+    slider_tag
+  }
 
-  tagList(
+  tags$div(
+    class = "step2-sidebar",
     # ---- Settings summary banner (always visible) --------------------------
-    shiny::htmlOutput(ns("settings_summary")),
-
-    # ---- Include coefficient uncertainty -------------------------------------------
-    shiny::checkboxInput(
-        inputId = ns("include_coef_uncertainty"),
-        label   = "Include coefficient uncertainty",
-        value   = TRUE
-      ),
+    shiny::uiOutput(ns("settings_summary")),
 
     # ---- Simulation settings flyout (same pattern as Step 1 'Configure') ---
     # UI-02: shared flyout block - anchored to its toggle, one-open state,
@@ -39,18 +45,64 @@ mod_2_01_weathersim_ui <- function(id) {
       "Simulation settings",
       toggle_label = "Simulation settings",
 
-      # -- Baseline survey ------------------------------------------------
-      # UI-03: the h6 headings stay visual; each control carries a
-      # visually-hidden label so screen readers announce it.
-      shiny::tags$h6("Baseline survey",
-                     style = "font-weight:600; margin-top:8px; margin-bottom:4px;"),
+      # -- Baseline survey ----------------------------------------------------
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Baseline survey"
+      ),
       shiny::uiOutput(ns("baseline_survey_ui")),
       shiny::uiOutput(ns("baseline_warning_ui")),
       shiny::tags$hr(style = "margin: 6px 0;"),
 
+      # -- Climate scenarios --------------------------------------------------
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Climate scenarios"
+      ),
+      shiny::checkboxGroupInput(
+        inputId  = ns("climate"),
+        label    = shiny::tags$span(class = "visually-hidden", "Climate scenarios"),
+        choices  = c(
+          "SSP2" = "ssp2_4_5",
+          "SSP3" = "ssp3_7_0",
+          "SSP5" = "ssp5_8_5"
+        ),
+        selected = "ssp3_7_0",
+        inline = TRUE
+      ),
+      shiny::tags$hr(style = "margin: 6px 0;"),
+
+      # -- Projection period -------------------------------------------------
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Projection period"
+      ),
+      shiny::tags$div(
+        class = "step2-projection-period",
+        step2_with_grid_num(
+          shiny::sliderInput(
+            ns("fut_period_1"),
+            label = shiny::tags$span(class = "visually-hidden", "Projection period 1"),
+            min = 2010, max = 2100, value = c(2025, 2035), step = 1, sep = ""
+          ),
+          9
+        )
+      ),
+      shiny::uiOutput(ns("fut_years_warning")),
+      shiny::tags$hr(style = "margin: 6px 0;"),
+
       # -- Historical period --------------------------------------------------
-      shiny::tags$h6("Historical weather distribution period",
-                     style = "font-weight:600; margin-top:8px; margin-bottom:4px;"),
+      shiny::tags$h6(
+        "Historical weather distribution period",
+        info_popover(
+          title = "Historical weather distribution period",
+          shiny::p(
+            "Historical weather informs the underlying variability, which is then",
+            "perturbed with climate scenario projections."
+          )
+        ),
+        style = "font-weight:600; margin-top:8px; margin-bottom:4px;"
+      ),
       shiny::sliderInput(
         inputId = ns("hist_years"),
         label   = shiny::tags$span(class = "visually-hidden",
@@ -62,83 +114,41 @@ mod_2_01_weathersim_ui <- function(id) {
       ),
       shiny::uiOutput(ns("hist_years_warning")),
       shiny::helpText(
-        tags$b("Note:"), " Historical weather informs the underlying variability,",
-        " which is then perturbed with climate scenario projections.",
-        tags$b(" 30 years is the recommended default."),
+        tags$b("30 years is the recommended default."),
         style = "font-size: 11px; color: #555; margin-top: 2px; margin-bottom: 8px;"
       ),
 
       shiny::tags$hr(style = "margin: 6px 0;"),
 
-      # -- Future periods (up to 3) -------------------------------------------
-      shiny::tags$h6("Projection periods",
+      # -- Additional future periods ------------------------------------------
+      shiny::tags$h6("Additional projection periods",
                      style = "font-weight:600; margin-bottom:4px;"),
 
-      # Period 1
-      shiny::tags$div(
-        style = "display:flex; gap:8px; align-items:center; margin-bottom:4px;",
-        shiny::tags$span("Period 1:", style = "min-width:60px; font-weight:500;"),
-        shiny::numericInput(ns("fut_start_1"),
-                            label = shiny::tags$span(class = "visually-hidden",
-                                                     "Period 1 start year"),
-                            value = 2025,
-                            min = 2015, max = 2100, step = 1, width = "90px"),
-        shiny::tags$span("\u2013"),
-        shiny::numericInput(ns("fut_end_1"),
-                            label = shiny::tags$span(class = "visually-hidden",
-                                                     "Period 1 end year"),
-                            value = 2035,
-                            min = 2015, max = 2100, step = 1, width = "90px")
-      ),
       # Period 2 (optional)
       shiny::tags$div(
-        style = "display:flex; gap:8px; align-items:center; margin-bottom:4px;",
-        shiny::tags$span("Period 2:", style = "min-width:60px; font-weight:500;"),
-        shiny::numericInput(ns("fut_start_2"),
-                            label = shiny::tags$span(class = "visually-hidden",
-                                                     "Period 2 start year"),
-                            value = NA,
-                            min = 2015, max = 2100, step = 1, width = "90px"),
-        shiny::tags$span("\u2013"),
-        shiny::numericInput(ns("fut_end_2"),
-                            label = shiny::tags$span(class = "visually-hidden",
-                                                     "Period 2 end year"),
-                            value = NA,
-                            min = 2015, max = 2100, step = 1, width = "90px")
+        class = "step2-projection-period",
+        shiny::tags$span("Period 2", class = "step2-projection-label"),
+        step2_with_grid_num(
+          shiny::sliderInput(
+            ns("fut_period_2"),
+            label = shiny::tags$span(class = "visually-hidden", "Projection period 2"),
+            min = 2010, max = 2100, value = c(2015, 2015), step = 1, sep = ""
+          ),
+          9
+        )
       ),
       # Period 3 (optional)
       shiny::tags$div(
-        style = "display:flex; gap:8px; align-items:center; margin-bottom:4px;",
-        shiny::tags$span("Period 3:", style = "min-width:60px; font-weight:500;"),
-        shiny::numericInput(ns("fut_start_3"),
-                            label = shiny::tags$span(class = "visually-hidden",
-                                                     "Period 3 start year"),
-                            value = NA,
-                            min = 2015, max = 2100, step = 1, width = "90px"),
-        shiny::tags$span("\u2013"),
-        shiny::numericInput(ns("fut_end_3"),
-                            label = shiny::tags$span(class = "visually-hidden",
-                                                     "Period 3 end year"),
-                            value = NA,
-                            min = 2015, max = 2100, step = 1, width = "90px")
-      ),
-      shiny::uiOutput(ns("fut_years_warning")),
-
-      shiny::tags$hr(style = "margin: 6px 0;"),
-
-      # -- Climate scenarios ---------------------------------------------------
-      shiny::tags$h6("Climate scenarios",
-                     style = "font-weight:600; margin-bottom:4px;"),
-      shiny::checkboxGroupInput(
-        inputId  = ns("climate"),
-        label    = shiny::tags$span(class = "visually-hidden",
-                                    "Climate scenarios"),
-        choices  = c(
-          "SSP2-4.5" = "ssp2_4_5",
-          "SSP3-7.0" = "ssp3_7_0",
-          "SSP5-8.5" = "ssp5_8_5"
-        ),
-        selected = "ssp3_7_0"
+        class = "step2-projection-period",
+        shiny::tags$span("Period 3", class = "step2-projection-label"),
+        step2_with_grid_num(
+          shiny::sliderInput(
+            ns("fut_period_3"),
+            label = shiny::tags$span(class = "visually-hidden", "Projection period 3"),
+            min = 2010, max = 2100, value = c(2015, 2015), step = 1, sep = ""
+          ),
+          9
+        )
       ),
 
       shiny::tags$hr(style = "margin: 6px 0;"),
@@ -161,13 +171,6 @@ mod_2_01_weathersim_ui <- function(id) {
         choices  = residual_choices(),
         selected = "original"
       ),
-      shiny::helpText(
-        "How simulated outcomes incorporate unexplained variation.",
-        " 'Original' is recommended.",
-        style = "font-size:11px;"
-      ),
-
-
       shiny::tags$hr(style = "margin: 6px 0;"),
 
       # -- Coefficient uncertainty -------------------------------------------
@@ -202,10 +205,10 @@ mod_2_01_weathersim_ui <- function(id) {
         ),
         style = "font-weight:600; margin-bottom:4px;"
       ),
-      shiny::helpText(
-        "Incorporates uncertainty from the model estimation itself via the",
-        " analytic delta method.",
-        style = "font-size:11px; color:#555; margin-top:2px; margin-bottom:8px;"
+      shiny::checkboxInput(
+        inputId = ns("include_coef_uncertainty"),
+        label   = "Include coefficient uncertainty",
+        value   = TRUE
       ),
       shiny::conditionalPanel(
         condition = sprintf("input['%s'] == true", ns("include_coef_uncertainty")),
@@ -221,6 +224,18 @@ mod_2_01_weathersim_ui <- function(id) {
     # ---- Run simulation button (hidden for RIF engine) ---------------------
     shiny::uiOutput(ns("run_sim_ui"))
   )
+}
+
+.step2_filter_baseline_surveys <- function(selected_surveys,
+                                            baseline_selection) {
+  if (is.null(selected_surveys) || length(baseline_selection) == 0L) {
+    return(selected_surveys)
+  }
+  required <- c("code", "year")
+  if (!all(required %in% names(selected_surveys))) return(selected_surveys)
+  wave_key <- paste0(selected_surveys$code, "|",
+                     as.character(selected_surveys$year))
+  selected_surveys[wave_key %in% baseline_selection, , drop = FALSE]
 }
 
 
@@ -239,6 +254,7 @@ mod_2_01_weathersim_ui <- function(id) {
 #' @param stored_breaks Reactive returning a named list of pre-computed
 #'   histogram break points for the weather density plot. Defaults to
 #'   \code{reactive(NULL)} - breaks computed on demand when not supplied.
+#' @param run_trigger Optional reactive trigger for a programmatic run.
 #'
 #' @noRd
 mod_2_01_weathersim_server <- function(id,
@@ -249,7 +265,8 @@ mod_2_01_weathersim_server <- function(id,
                                         survey_weather,
                                         model_fit,
                                         stored_breaks = reactive(NULL),
-                                        survey_version = reactive(0L)) {
+                                        survey_version = reactive(0L),
+                                        run_trigger = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -259,6 +276,18 @@ mod_2_01_weathersim_server <- function(id,
     # INT-08: TRUE while the stored simulation's run signature no longer
     # matches the current fit/climate inputs.
     sim_stale       <- reactiveVal(FALSE)
+    run_generation  <- reactiveVal(0L)
+    run_status      <- reactiveVal("idle")
+    weather_store_lease <- reactiveVal(NULL)
+
+    cleanup_weather_stores <- function() {
+      # Session-end callbacks are not reactive consumers. Isolate the final
+      # state read so cleanup does not try to register a dependency after the
+      # session's reactive graph has been torn down.
+      step2_weather_store_release(shiny::isolate(weather_store_lease()))
+      weather_store_lease(NULL)
+    }
+    session$onSessionEnded(cleanup_weather_stores)
 
     # ---- Baseline survey reactives ----------------------------------------
 
@@ -328,6 +357,8 @@ mod_2_01_weathersim_server <- function(id,
         selectize = TRUE
       )
     })
+    shiny::outputOptions(output, "baseline_survey_ui",
+                         suspendWhenHidden = FALSE)
 
     output$baseline_warning_ui <- shiny::renderUI({
       sel <- input$baseline_survey %||% baseline_default()
@@ -346,56 +377,75 @@ mod_2_01_weathersim_server <- function(id,
 
     output$settings_summary <- shiny::renderUI({
       hist_yr <- input$hist_years %||% c(1991, 2020)
-
-      # Collect future periods
-      fut_parts <- character(0)
-      for (i in 1:3) {
-        s <- input[[paste0("fut_start_", i)]]
-        e <- input[[paste0("fut_end_", i)]]
-        if (!is.null(s) && !is.na(s) && !is.null(e) && !is.na(e)) {
-          fut_parts <- c(fut_parts, paste0(s, "\u2013", e))
-        }
-      }
-      fut_txt <- if (length(fut_parts) > 0) paste(fut_parts, collapse = ", ") else "None"
-
       ssp_map <- c(
         "ssp2_4_5" = "SSP2-4.5",
         "ssp3_7_0" = "SSP3-7.0",
         "ssp5_8_5" = "SSP5-8.5"
       )
       ssp_sel <- input$climate %||% character(0)
-      ssp_txt <- if (length(ssp_sel) > 0)
-        paste(ssp_map[ssp_sel], collapse = ", ") else "None"
+      sel <- input$baseline_survey %||% baseline_default()
+      ch  <- baseline_survey_choices()
+      survey_txt <- {
+        nms <- names(ch)[ch %in% sel]
+        if (length(nms) == 0) "None" else paste(nms, collapse = ", ")
+      }
 
-      ens_txt <- "All models"
+      period_values <- lapply(seq_len(3), function(i) {
+        period <- input[[paste0("fut_period_", i)]]
+        if (length(period) >= 2 && all(is.finite(period)) && period[2] > period[1]) {
+          as.integer(period[1:2])
+        } else NULL
+      })
+      period_values <- Filter(Negate(is.null), period_values)
 
-      res_labels <- c(
-        "original"  = "Original",
-        "resample" = "Resample"
+      item <- function(label, value, pill = TRUE) {
+        shiny::tags$span(
+          class = "step2-summary-item",
+          shiny::tags$span(class = "step2-summary-label", label),
+          if (isTRUE(pill)) {
+            shiny::tags$span(class = "selection-card-pill", value)
+          } else {
+            shiny::tags$span(class = "step2-summary-value", value)
+          }
+        )
+      }
+      separator <- shiny::tags$span(class = "step2-summary-separator", "·")
+      scenario_items <- unlist(lapply(ssp_sel, function(ssp) {
+        lapply(period_values, function(period) {
+          shiny::tags$span(
+            class = "step2-summary-item",
+            shiny::tags$span(class = "step2-summary-label step2-summary-scenario-label",
+                             unname(ssp_map[[ssp]])),
+            shiny::tags$span(class = "step2-summary-value",
+                             paste0(period[1], "\u2013", period[2]))
+          )
+        })
+      }), recursive = FALSE)
+      climate_items <- if (length(scenario_items)) {
+        do.call(c, lapply(seq_along(scenario_items), function(i) {
+          c(if (i > 1L) list(separator) else list(),
+            list(scenario_items[[i]]))
+        }))
+      } else {
+        list(item("Climate scenarios", "None", pill = FALSE))
+      }
+
+      summary_row <- c(
+        climate_items,
+        list(separator),
+        list(item("Reference climate", paste0(hist_yr[1], "\u2013", hist_yr[2]))),
+        list(separator),
+        list(item("Baseline survey", survey_txt))
       )
-      res_txt <- res_labels[input$residuals %||% "original"] %||% input$residuals
 
-      shiny::tags$div(
-        style = paste0(
-          "border-left: 3px solid #2166ac; background: #f4f8fd; ",
-          "padding: 8px 12px; margin-bottom: 10px; border-radius: 3px; ",
-          "font-size: 12px; color: #444;"
-        ),
-        shiny::tags$b("Historical baseline:", style = "color:#333;"),
-        paste0(hist_yr[1], "\u2013", hist_yr[2]),
-        shiny::tags$br(),
-        shiny::tags$b("Projection periods:", style = "color:#333;"), fut_txt,
-        shiny::tags$b(" \u00b7 SSPs:", style = "color:#333;"), ssp_txt,
-        shiny::tags$b(" \u00b7 Ensemble result:", style = "color:#333;"), ens_txt,
-        shiny::tags$br(),
-        shiny::tags$b("Simulation residuals:", style = "color:#333;"), res_txt,
-        shiny::tags$br(),
-        shiny::tags$b("Baseline survey:", style = "color:#333;"), {
-          sel  <- input$baseline_survey %||% baseline_default()
-          ch   <- baseline_survey_choices()
-          nms  <- names(ch)[ch %in% sel]
-          if (length(nms) == 0) "None" else paste(nms, collapse = ", ")
-        }
+      selection_summary_card(
+        title = NULL,
+        badge = NULL,
+        rows = list(shiny::tags$div(
+          class = "selection-card-row step2-summary-row",
+          summary_row
+        )),
+        compact = TRUE
       )
     })
 
@@ -417,11 +467,11 @@ mod_2_01_weathersim_server <- function(id,
     output$fut_years_warning <- shiny::renderUI({
       issues <- character(0)
       for (i in 1:3) {
-        s <- input[[paste0("fut_start_", i)]]
-        e <- input[[paste0("fut_end_", i)]]
-        if (!is.null(s) && !is.na(s) && !is.null(e) && !is.na(e) && e <= s) {
+        period <- input[[paste0("fut_period_", i)]]
+        if (length(period) >= 2 && all(is.finite(period)) && period[2] < period[1]) {
           issues <- c(issues, paste0(
-            "Period ", i, " (", s, "-", e, "): end year is not after start year."
+            "Period ", i, " (", period[1], "-", period[2],
+            "): end year is not after start year."
           ))
         }
       }
@@ -446,6 +496,16 @@ mod_2_01_weathersim_server <- function(id,
       svy[vals %in% sel, , drop = FALSE]
     })
 
+    # Keep weather retrieval on the same code/year waves as the baseline
+    # population. Retain every matching metadata row so same-year survey rounds
+    # and duplicate file references keep their existing filename semantics.
+    baseline_surveys <- reactive({
+      ss <- selected_surveys()
+      req(ss)
+      sel <- input$baseline_survey %||% baseline_default()
+      .step2_filter_baseline_surveys(ss, sel)
+    })
+
     selected_hist <- reactive({
       req(input$hist_years)
       data.frame(
@@ -461,10 +521,9 @@ mod_2_01_weathersim_server <- function(id,
     future_periods <- reactive({
       periods <- list()
       for (i in 1:3) {
-        s <- input[[paste0("fut_start_", i)]]
-        e <- input[[paste0("fut_end_", i)]]
-        if (!is.null(s) && !is.na(s) && !is.null(e) && !is.na(e) && e > s) {
-          periods[[length(periods) + 1L]] <- c(s, e)
+        period <- input[[paste0("fut_period_", i)]]
+        if (length(period) >= 2 && all(is.finite(period)) && period[2] > period[1]) {
+          periods[[length(periods) + 1L]] <- period[1:2]
         }
       }
       periods
@@ -578,6 +637,7 @@ mod_2_01_weathersim_server <- function(id,
         step           = "sim",
         fit_sig        = fit_sig,
         survey_version = survey_version(),
+        selected_surveys = .sig_plain(selected_surveys()),
         hist_years     = input$hist_years,
         climate        = input$climate,
         future_periods = future_periods(),
@@ -590,50 +650,45 @@ mod_2_01_weathersim_server <- function(id,
       )
     }
 
-    observeEvent(model_fit(), {
+    live_sim_sig <- reactive({
+      mf <- model_fit()
+      .sim_sig_from_live(mf$.sig %||% NULL)
+    })
+
+    stale_dependencies <- reactive(list(
+      model_fit(), survey_version(), selected_surveys(),
+      input$hist_years, input$climate,
+      input$baseline_survey, input$residuals, input$include_coef_uncertainty,
+      input$propagate_all_covariate_uncertainty,
+      input$fut_period_1, input$fut_period_2, input$fut_period_3
+    ))
+
+    observeEvent(stale_dependencies(), {
       hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$hist_years, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$climate, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$baseline_survey, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$residuals, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$include_coef_uncertainty, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(input$propagate_all_covariate_uncertainty, {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
-        sim_stale(TRUE)
-    }, ignoreInit = TRUE)
-    observeEvent(future_periods(), {
-      hs <- hist_sim()
-      if (!is.null(hs) && !identical(.sim_sig_from_live(hs$.sig$fit_sig %||% NULL), hs$.sig))
+      if (!is.null(hs) && !identical(live_sim_sig(), hs$.sig))
         sim_stale(TRUE)
     }, ignoreInit = TRUE)
 
     observeEvent(hist_sim(), sim_stale(FALSE))
 
-    observeEvent(input$run_sim, {
+    sim_run_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$run_sim, {
+      if (shiny::isTruthy(input$run_sim)) {
+        sim_run_event(list(source = "manual", value = input$run_sim))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) sim_run_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    observeEvent(sim_run_event(), {
+      run_generation(run_generation() + 1L)
+      run_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) run_status("failure")
+      }, add = TRUE)
       req(selected_weather(), selected_outcome(),
           survey_weather(), selected_hist(), model_fit())
       if (!sim_guard$begin()) return(invisible(NULL))
@@ -644,7 +699,7 @@ mod_2_01_weathersim_server <- function(id,
       so  <- selected_outcome()
       sh  <- selected_hist()
       svy <- baseline_svy()
-      ss  <- selected_surveys()
+      ss  <- baseline_surveys()
       req(ss)
       mf  <- model_fit()
       cp  <- connection_params()
@@ -693,6 +748,20 @@ mod_2_01_weathersim_server <- function(id,
             fit_multi           = fit_multi,
             taus                = rif_taus,
             weather_cols        = rif_weather,   
+            weather_storage     = match.arg(
+              Sys.getenv("WISEAPP_STEP2_WEATHER_STORAGE", "memory"),
+              c("memory", "reference")
+            ),
+            weather_collect     = match.arg(
+              Sys.getenv("WISEAPP_STEP2_WEATHER_COLLECT", "fast"),
+              c("fast", "bounded")
+            ),
+            weather_threads     = match.arg(
+              Sys.getenv("WISEAPP_STEP2_WEATHER_THREADS", "auto"),
+              c("auto", "1", "2")
+            ),
+            direct_rif_predictions = TRUE,
+            payload_mode        = "compact",
             progress_fn         = function(value, detail)
                                     shiny::setProgress(value = value,
                                                        detail = detail)
@@ -736,8 +805,15 @@ mod_2_01_weathersim_server <- function(id,
         # Step 3 can detect that it is consuming a superseded simulation.
         result$hist_sim_result$.sig <- .sim_sig_from_live(mf$.sig %||% NULL)
         sim_stale(FALSE)
+        old_lease <- weather_store_lease()
+        weather_store_lease(result$weather_store_lease %||% NULL)
+        result$hist_sim_result$weather_store_lease <-
+          result$weather_store_lease %||% NULL
         hist_sim(result$hist_sim_result)
         saved_scenarios(result$new_scenarios)
+        step2_weather_store_release(old_lease)
+        run_status("success")
+        completed <- TRUE
 
         shiny::setProgress(value = 1, detail = "Complete")
       })
@@ -803,7 +879,10 @@ mod_2_01_weathersim_server <- function(id,
       skip_coef_draws = reactive(!isTRUE(input$include_coef_uncertainty)),
       propagate_all_covariate_uncertainty =
         reactive(isTRUE(input$propagate_all_covariate_uncertainty)),
-      stale           = sim_stale
+      stale           = sim_stale,
+      run_generation  = run_generation,
+      run_status      = run_status,
+      clear_weather_stores = cleanup_weather_stores
     )
   })
 }

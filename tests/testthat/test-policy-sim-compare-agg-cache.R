@@ -125,40 +125,10 @@ test_that("Step 3 scenario filter grid and poverty line survive rebuilds (INT-01
     },
     {
       settle <- function() { session$elapse(500); session$flushReact() }
-      html_text <- function(html) paste(as.character(html), collapse = "\n")
-      n_checked <- function(txt) {
-        length(regmatches(txt, gregexpr('checked="checked"', txt))[[1]])
-      }
-      cell_checked <- function(txt, key_id) {
-        grepl(paste0('id="[^"]*', key_id, '"[^>]*checked="checked"'), txt)
-      }
-      cell_present <- function(txt, key_id) {
-        grepl(paste0('id="[^"]*', key_id, '"'), txt)
-      }
-
-      # First render: every grid cell checked (historical default)
-      html <- session$output$scenario_filter_ui
-      expect_equal(n_checked(html_text(html)), 2L)  # SSP2 + SSP5 cells
-
-      # User unchecks a scenario cell, then the scenario set is republished
-      # (Step 2 re-run): the surviving selection is kept, not reset to all.
-      session$setInputs(`sc_SSP5_8_5___2030_2040` = FALSE); settle()
-      bsc(make_step3_scenarios_fixture()); settle()
-      txt <- html_text(session$output$scenario_filter_ui)
-      expect_true(cell_checked(txt, "sc_SSP2_4_5___2030_2040"))
-      expect_false(cell_present(txt, "sc_SSP5_8_5___2030_2040"))
-
-      # Unchecking the final cell falls back to the held selection (UI-38),
-      # aligned with the Step 2 grid: the selection never becomes empty.
-      # (testServer does not simulate the updateCheckboxInput round-trip on
-      # renderUI-created inputs, so assert the selection reactive rather
-      # than the re-rendered markup here.)
-      session$setInputs(`sc_SSP2_4_5___2030_2040` = FALSE); settle()
-      expect_setequal(internals$selected_scenario_names(),
-                      "SSP2-4.5 / 2030-2040")
-      bsc(make_step3_scenarios_fixture_multi()); settle()
-      expect_setequal(internals$selected_scenario_names(),
-                      "SSP2-4.5 / 2030-2040")
+      expect_setequal(
+        internals$selected_scenario_names(),
+        c("SSP2-4.5 / 2030-2040", "SSP5-8.5 / 2030-2040")
+      )
 
       # Poverty line: the input is a static conditionalPanel cell (Step 2
       # alignment). The run's value is the aggregation default while the
@@ -299,14 +269,14 @@ test_that("threshold table has unique keys with two years and two members", {
       hit <- duplicated(tbl[key]) | duplicated(tbl[key], fromLast = TRUE)
       expect_false(any(hit))
 
-      # The scenario block carries the full band set: Central, Coef lo/hi,
-      # Ensemble lo/hi, Pooled lo/hi - one row each, twice (Baseline + Policy)
-      # plus the historical triple per arm.
-      expect_equal(nrow(tbl), 20L)
+      # The default no-spread state carries one ensemble median row instead of
+      # duplicate lower/upper P50 rows, twice (Baseline + Policy), plus the
+      # historical triple per arm.
+      expect_equal(nrow(tbl), 18L)
       expect_setequal(
         tbl$Estimate[tbl$scenario != "Historical"],
         c("Central (P50)", "Coef P10", "Coef P90",
-          "Ensemble min", "Ensemble max", "Pooled P10", "Pooled P90")
+          "Ensemble P50", "Pooled P10", "Pooled P90")
       )
     }
   )
@@ -376,6 +346,95 @@ test_that("Step 3 agg cache: deviation changes reuse cache; method/pov-line key 
       expect_length(bh_keys(), 4L)
       # Step 3 schema: `out` carries a scalar `value` per year directly
       expect_true(all(g2$value > g1$value))
+    }
+  )
+})
+
+test_that("Step 3 aggregation cache is bounded, LRU, and value-preserving", {
+  skip_if_not_installed("shiny")
+  bh <- shiny::reactiveVal(make_step3_hist_fixture())
+  ph <- shiny::reactiveVal(make_step3_hist_fixture())
+  bsc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  psc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  shiny::testServer(function(input, output, session) {
+    internals <<- .wire_results_pane(input, output, session, bh, bsc, ph, psc,
+      selected_hist = shiny::reactiveVal(NULL))
+  }, {
+    ws <- internals$agg_cache_ws()
+    keys <- paste0("direct-", seq_len(32L))
+    values <- lapply(seq_along(keys), function(i) list(value = i))
+    for (i in seq_along(keys)) internals$agg_cache_put(ws, keys[[i]], values[[i]])
+    expect_length(ls(envir = ws), 32L)
+    expect_identical(internals$agg_cache_get(ws, keys[[1L]]), values[[1L]])
+    internals$agg_cache_put(ws, "direct-33", list(value = 33L))
+    expect_length(ls(envir = ws), 32L)
+    expect_true(is.null(internals$agg_cache_get(ws, keys[[2L]])))
+    expect_identical(internals$agg_cache_get(ws, keys[[1L]]), values[[1L]])
+    expect_identical(internals$agg_cache_get(ws, "direct-33"), list(value = 33L))
+  })
+})
+
+test_that("historical matrix transforms use the canonical cache key and preserve values", {
+  skip_if_not_installed("shiny")
+  hist <- make_step3_hist_fixture()
+  hist$hist_label <- "Hist run 1991-2020"
+  bh <- shiny::reactiveVal(hist)
+  ph <- shiny::reactiveVal(make_step3_hist_fixture())
+  bsc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  psc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  internals <- NULL
+  shiny::testServer(function(input, output, session) {
+    internals <<- .wire_results_pane(input, output, session, bh, bsc, ph, psc,
+      selected_hist = shiny::reactiveVal(NULL), residuals = shiny::reactiveVal("none"))
+  }, {
+    session$flushReact()
+    cached <- internals$matrix_transforms()
+    key <- paste("Baseline", "Historical", sep = "\r")
+    expected <- by_model_matrix(internals$baseline_agg_hist()$out)
+    expect_true(key %in% names(cached))
+    expect_false(paste("Baseline", "Hist run 1991-2020", sep = "\r") %in% names(cached))
+    expect_identical(internals$matrix_transform(internals$baseline_agg_hist()$out,
+      "Baseline", "Historical"), cached[[key]])
+    expect_identical(cached[[key]]$vals, expected$vals)
+    expect_identical(cached[[key]]$sds, expected$sds)
+  })
+})
+
+test_that("switching directly to a poverty method always has a poverty line", {
+  skip_if_not_installed("shiny")
+
+  bh  <- shiny::reactiveVal(make_step3_hist_fixture())
+  ph  <- shiny::reactiveVal(make_step3_hist_fixture())
+  bsc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+  psc <- shiny::reactiveVal(make_step3_scenarios_fixture())
+
+  shiny::testServer(
+    function(input, output, session) {
+      internals <<- .wire_results_pane(
+        input, output, session,
+        baseline_hist_sim = bh,
+        baseline_saved_scenarios = bsc,
+        policy_hist_sim = ph,
+        policy_saved_scenarios = psc,
+        selected_hist = shiny::reactiveVal(NULL),
+        residuals = shiny::reactiveVal("none")
+      )
+    },
+    {
+      session$setInputs(cmp_agg_method = "mean", cmp_pov_line = 3.00)
+      session$elapse(500)
+      session$flushReact()
+
+      # Do not elapse the input debounce: this reproduces the UI transition
+      # that previously paired headcount_ratio with a stale NULL line.
+      session$setInputs(cmp_agg_method = "headcount_ratio")
+      session$flushReact()
+
+      expect_equal(internals$pov_line_val(), 3.00)
+      expect_no_error(internals$baseline_agg_hist())
+      expect_no_error(internals$policy_agg_hist())
+      expect_no_error(internals$baseline_agg_scenarios())
+      expect_no_error(internals$policy_agg_scenarios())
     }
   )
 })

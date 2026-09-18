@@ -70,7 +70,8 @@ aggregate_with_uncertainty_delta <- function(y_point,
                                               bandwidth_p0 = 0.05,
                                               seed          = WISEAPP_DEFAULT_SEED,
                                               resid_lookup  = NULL,
-                                              resid_sigma2  = NULL) {
+                                              resid_sigma2  = NULL,
+                                              prepared_mu   = NULL) {
 
   N <- length(y_point)
   stopifnot(is.numeric(y_point) && N > 0)
@@ -83,11 +84,16 @@ aggregate_with_uncertainty_delta <- function(y_point,
     residuals <- "none"
   }
 
-  resid_vec <- draw_residuals_vec(
-    residuals, train_aug, N, id_vec, id_col, seed = seed,
-    resid_lookup = resid_lookup, resid_sigma2 = resid_sigma2
-  )
-  mu        <- if (is_log) exp(y_point + resid_vec) else y_point + resid_vec
+  if (is.null(prepared_mu)) {
+    resid_vec <- draw_residuals_vec(
+      residuals, train_aug, N, id_vec, id_col, seed = seed,
+      resid_lookup = resid_lookup, resid_sigma2 = resid_sigma2
+    )
+    mu <- if (is_log) exp(y_point + resid_vec) else y_point + resid_vec
+  } else {
+    stopifnot(length(prepared_mu) == N)
+    mu <- prepared_mu
+  }
 
   # Point estimate via existing resolver
   agg_fn   <- resolve_agg_fn(method)
@@ -339,6 +345,120 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
 #' @return List with one entry per unique \code{sim_year}, each a result list
 #'   from \code{aggregate_with_uncertainty_delta()} augmented with a
 #'   \code{sim_year} scalar.
+#' @noRd
+.new_aggregation_preparation_cache <- function(max_entries = 32L) {
+  cache <- new.env(parent = emptyenv())
+  cache$entries <- list()
+  cache$keys <- character(0)
+  cache$max_entries <- as.integer(max_entries)[1L]
+  cache
+}
+
+.aggregation_preparation_key <- function(pipe, train_aug, id_col,
+                                         residuals, seed, is_log) {
+  resid_data <- if (!is.null(train_aug) && ".resid" %in% names(train_aug)) {
+    list(
+      residuals = train_aug$.resid,
+      ids = if (!is.null(id_col) && id_col %in% names(train_aug))
+        train_aug[[id_col]] else NULL
+    )
+  } else NULL
+  digest::digest(list(
+    sim_year = pipe$sim_year,
+    y_point = pipe$y_point,
+    weight = pipe$weight,
+    id_vec = pipe$id_vec,
+    id_col = id_col,
+    residuals = residuals,
+    seed = seed,
+    is_log = is_log,
+    train = resid_data
+  ), serialize = TRUE)
+}
+
+.aggregation_prepare_pipeline <- function(pipe, train_aug, id_col,
+                                          residuals, seed, is_log,
+                                          cache = NULL) {
+  key <- .aggregation_preparation_key(
+    pipe, train_aug, id_col, residuals, seed, is_log
+  )
+  if (!is.null(cache) && is.environment(cache) &&
+      !is.null(cache$entries[[key]])) {
+    cache$keys <- c(setdiff(cache$keys, key), key)
+    return(cache$entries[[key]])
+  }
+
+  years <- sort(unique(pipe$sim_year))
+  rows <- lapply(years, function(year) which(pipe$sim_year == year))
+  valid <- lapply(rows, function(idx) !is.na(pipe$y_point[idx]))
+  weights <- lapply(seq_along(rows), function(i) {
+    idx <- rows[[i]][valid[[i]]]
+    if (!is.null(pipe$weight)) as.numeric(pipe$weight[idx]) else NULL
+  })
+  weights_normalized <- lapply(weights, function(w) {
+    if (is.null(w)) return(NULL)
+    total <- sum(w, na.rm = TRUE)
+    if (is.finite(total) && total != 0) w / total else w
+  })
+  lookup <- .residual_lookup(train_aug, id_col)
+  sigma2 <- .residual_sigma2(train_aug)
+  residual_vectors <- lapply(seq_along(rows), function(i) {
+    idx <- rows[[i]][valid[[i]]]
+    draw_residuals_vec(
+      residuals = residuals,
+      train_aug = train_aug,
+      N = length(idx),
+      id_vec = if (!is.null(pipe$id_vec)) pipe$id_vec[idx] else NULL,
+      id_col = id_col,
+      seed = wise_seed(seed, "residual", years[[i]]),
+      resid_lookup = lookup,
+      resid_sigma2 = sigma2
+    )
+  })
+  mu <- lapply(seq_along(rows), function(i) {
+    idx <- rows[[i]][valid[[i]]]
+    y <- pipe$y_point[idx]
+    r <- residual_vectors[[i]]
+    if (isTRUE(is_log)) exp(y + r) else y + r
+  })
+  prepared <- list(
+    key = key,
+    years = years,
+    rows = rows,
+    valid = valid,
+    weights = weights,
+    weights_normalized = weights_normalized,
+    residuals = residual_vectors,
+    mu = mu
+  )
+
+  if (!is.null(cache) && is.environment(cache)) {
+    cache$entries[[key]] <- prepared
+    cache$keys <- c(setdiff(cache$keys, key), key)
+    while (length(cache$keys) > cache$max_entries) {
+      evict <- cache$keys[[1L]]
+      cache$keys <- cache$keys[-1L]
+      cache$entries[[evict]] <- NULL
+    }
+  }
+  prepared
+}
+
+#' Aggregate one prediction pipeline by simulation year
+#'
+#' @param pipe Prediction pipeline containing point predictions and metadata.
+#' @param method Aggregation method.
+#' @param weighted Logical; whether to use pipeline weights.
+#' @param pov_line Optional poverty line for poverty measures.
+#' @param residuals Residual mode.
+#' @param is_log Logical; whether predictions are on the log scale.
+#' @param band_q Quantile band for uncertainty output.
+#' @param skip_coef Logical; skip coefficient uncertainty calculations.
+#' @param bandwidth_p0 Bandwidth for poverty smoothing.
+#' @param seed Seed for deterministic residual draws.
+#' @param shared_context Optional shared pipeline context.
+#' @param preparation_cache Optional bounded preparation cache.
+#' @return A list of per-year aggregation results.
 #' @export
 aggregate_pipeline_per_year <- function(pipe,
                                          method,
@@ -349,50 +469,66 @@ aggregate_pipeline_per_year <- function(pipe,
                                          band_q       = c(lo = 0.10, hi = 0.90),
                                          skip_coef    = FALSE,
                                          bandwidth_p0 = 0.05,
-                                         seed          = WISEAPP_DEFAULT_SEED) {
+                                         seed          = WISEAPP_DEFAULT_SEED,
+                                         shared_context = NULL,
+                                         preparation_cache = NULL) {
   if (is.null(pipe) || is.null(pipe$y_point)) return(list())
 
-  yrs <- sort(unique(pipe$sim_year))
+  context <- step2_pipeline_context(pipe, shared_context)
+  train_aug <- context$train_aug
+  id_col <- context$id_col
+
+  # train_aug carries .resid for "original"/"resample" residual paths. RIF
+  # pipelines set train_aug = NULL by construction; honour that.
+  res_mode <- residuals %||% "original"
+  if (is.null(train_aug) && !identical(res_mode, "none"))
+    res_mode <- "none"
+
+  if (is.null(preparation_cache))
+    preparation_cache <- .new_aggregation_preparation_cache()
+  prep <- .aggregation_prepare_pipeline(
+    pipe = pipe,
+    train_aug = train_aug,
+    id_col = id_col,
+    residuals = res_mode,
+    seed = seed,
+    is_log = is_log,
+    cache = preparation_cache
+  )
   F_full <- pipe$F_loading
   # Promote a length-K numeric to a 1xK matrix so row-subsetting below never
   # fails with "incorrect number of dimensions".
   if (!is.null(F_full) && is.null(dim(F_full))) {
     F_full <- matrix(F_full, nrow = 1L)
   }
-  # train_aug carries .resid for "original"/"resample" residual paths. RIF
-  # pipelines set train_aug = NULL by construction; honour that.
-  res_mode <- residuals %||% "original"
-  if (is.null(pipe$train_aug) && !identical(res_mode, "none"))
-    res_mode <- "none"
-
   # PERF-34: the ID-to-residual lookup and the residual variance are the
   # same for every year of this pipeline - build them once, not per year.
-  lk  <- .residual_lookup(pipe$train_aug, pipe$id_col)
-  sg2 <- .residual_sigma2(pipe$train_aug)
+  lk <- NULL
+  sg2 <- NULL
 
-  lapply(yrs, function(yr) {
-    idx   <- pipe$sim_year == yr
-    valid <- idx & !is.na(pipe$y_point)
+  lapply(seq_along(prep$years), function(i) {
+    yr <- prep$years[[i]]
+    idx <- prep$rows[[i]][prep$valid[[i]]]
     F_idx <- if (!is.null(F_full) && !isTRUE(skip_coef))
-               F_full[valid, , drop = FALSE] else NULL
-    w_idx <- if (isTRUE(weighted) && !is.null(pipe$weight)) pipe$weight[valid] else NULL
-    id_idx <- if (!is.null(pipe$id_vec)) pipe$id_vec[valid] else NULL
+               F_full[idx, , drop = FALSE] else NULL
+    w_idx <- if (isTRUE(weighted)) prep$weights[[i]] else NULL
     m <- aggregate_with_uncertainty_delta(
-      y_point      = pipe$y_point[valid],
+      y_point      = pipe$y_point[idx],
       F_loading    = F_idx,
       method       = method,
       weights      = w_idx,
       pov_line     = pov_line,
       residuals    = res_mode,
-      train_aug    = pipe$train_aug,
-      id_vec       = id_idx,
-      id_col       = pipe$id_col,
+      train_aug    = train_aug,
+      id_vec       = NULL,
+      id_col       = id_col,
       is_log       = is_log,
       band_q       = band_q,
       bandwidth_p0 = bandwidth_p0,
       seed          = wise_seed(seed, "residual", yr),
       resid_lookup  = lk,
-      resid_sigma2  = sg2
+      resid_sigma2  = sg2,
+      prepared_mu   = prep$mu[[i]]
     )
     m$sim_year <- yr
     m

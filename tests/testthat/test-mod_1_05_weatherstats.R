@@ -35,7 +35,12 @@ make_selected_weather <- function(n = 1) {
 }
 
 # Boilerplate the module needs but that these tests do not exercise.
-weatherstats_args <- function(sw, swd, cell_data = NULL) {
+weatherstats_args <- function(sw, swd, cell_data = NULL,
+                              survey_data = NULL, survey_version = 0L,
+                              survey_data_generation = survey_version) {
+  survey_data_rx <- if (is.function(survey_data)) survey_data else shiny::reactiveVal(survey_data)
+  survey_version_rx <- if (is.function(survey_version)) survey_version else shiny::reactiveVal(survey_version)
+  survey_generation_rx <- if (is.function(survey_data_generation)) survey_data_generation else shiny::reactiveVal(survey_data_generation)
   list(
     connection_params = shiny::reactive(list(type = "local", path = ".")),
     variable_list     = shiny::reactive(NULL),
@@ -43,8 +48,10 @@ weatherstats_args <- function(sw, swd, cell_data = NULL) {
     selected_outcome  = shiny::reactive(NULL),
     selected_weather  = shiny::reactive(sw),
     hist_years        = shiny::reactive(c(from = 1991L, to = 2020L)),
-    survey_data       = shiny::reactive(NULL),
+    survey_data       = survey_data_rx,
     cell_data         = shiny::reactive(cell_data),
+    survey_version    = survey_version_rx,
+    survey_data_generation = survey_generation_rx,
     tabset_id         = "tabs"
   )
 }
@@ -192,6 +199,118 @@ test_that("the map colour scale spans every wave, not just the one shown", {
       lv  <- weather_loc_vals()[[1]]
       pal <- .weather_map_palette(lv$value, FALSE, NULL, "None")
       expect_equal(pal$domain, range(swd$tx))
+    }
+  )
+})
+
+test_that("an unmet weather prerequisite releases the load guard", {
+  selected <- shiny::reactiveVal(NULL)
+  args <- weatherstats_args(selected, NULL)
+  args$selected_weather <- selected
+
+  shiny::testServer(mod_1_05_weatherstats_server, args = args, {
+    session$setInputs(weather_stats = 0L)
+    session$setInputs(weather_stats = 1L)
+    session$flushReact()
+    expect_false(load_guard$is_running())
+    expect_equal(load_status(), "failure")
+
+    selected(make_selected_weather())
+    session$setInputs(weather_stats = 2L)
+    session$flushReact()
+    expect_false(load_guard$is_running())
+    expect_equal(load_done(), 2L)
+  })
+})
+
+test_that("P3: weather map fit keys do not self-invalidate the payload observer", {
+  sw <- make_selected_weather(1)
+  swd <- make_survey_weather(waves = 2018)
+  fit_calls <- 0L
+  update_calls <- 0L
+  local_mocked_bindings(
+    hexmap_update = function(...) { update_calls <<- update_calls + 1L; invisible(TRUE) },
+    hexmap_fit = function(...) { fit_calls <<- fit_calls + 1L; invisible(TRUE) },
+    hexmap_clear = function(...) invisible(TRUE)
+  )
+  shiny::testServer(
+    mod_1_05_weatherstats_server,
+    args = weatherstats_args(sw, swd, make_cell_data(waves = 2018)),
+    {
+      survey_weather(swd)
+      wx_spec(list(sw = sw, so = NULL))
+      session$flushReact()
+      expect_equal(fit_calls, 1L)
+      expect_equal(update_calls, 1L)
+      session$flushReact(); session$flushReact()
+      expect_equal(fit_calls, 1L)
+      expect_equal(update_calls, 1L)
+      wx_spec(list(sw = sw, so = NULL, revision = 2L))
+      session$flushReact()
+      expect_equal(fit_calls, 2L)
+      expect_equal(update_calls, 2L)
+    }
+  )
+})
+
+test_that("P8: survey-wave metadata follows survey-data generation", {
+  calls <- 0L
+  real_metadata <- survey_wave_metadata
+  local_mocked_bindings(survey_wave_metadata = function(df) {
+    calls <<- calls + 1L
+    real_metadata(df)
+  })
+  svy <- shiny::reactiveVal(make_survey_weather(waves = 2018))
+  version <- shiny::reactiveVal(1L)
+  generation <- shiny::reactiveVal(1L)
+  swd <- make_survey_weather(waves = 2018)
+  shiny::testServer(
+    mod_1_05_weatherstats_server,
+    args = weatherstats_args(make_selected_weather(1), swd,
+                             survey_data = svy, survey_version = version,
+                             survey_data_generation = generation),
+    {
+      first <- survey_wave_meta()
+      expect_equal(calls, 1L)
+      expect_identical(survey_wave_meta(), first)
+      expect_equal(calls, 1L)
+      svy(make_survey_weather(waves = c(2018, 2021)))
+      expect_identical(survey_wave_meta(), first)
+      expect_equal(calls, 1L)
+      version(2L)
+      expect_identical(survey_wave_meta(), first)
+      expect_equal(calls, 1L)
+      generation(2L)
+      expect_equal(nrow(survey_wave_meta()$waves), 2L)
+      expect_equal(calls, 2L)
+    }
+  )
+})
+
+test_that("P7: weather plotting frames are reused until their source changes", {
+  swd <- make_survey_weather(waves = 2018)
+  shiny::testServer(
+    mod_1_05_weatherstats_server,
+    args = weatherstats_args(make_selected_weather(1), swd),
+    {
+      survey_weather(swd)
+      survey_weather_cont(swd)
+      expect_identical(weather_plot_frame(), weather_plot_frame())
+      expect_identical(weather_plot_cont_frame(), weather_plot_cont_frame())
+      expect_equal(attr(weather_plot_frame, "observable")$.execCount, 1L)
+      expect_equal(attr(weather_plot_cont_frame, "observable")$.execCount, 1L)
+      expect_identical(weather_plot_frame()$countryyear,
+                       paste0(swd$economy, ", ", swd$year))
+      existing <- swd
+      existing$countryyear <- paste0("Existing ", seq_len(nrow(existing)))
+      survey_weather(existing)
+      expect_identical(weather_plot_frame()$countryyear, existing$countryyear)
+      changed <- swd
+      changed$tx <- changed$tx + 1
+      survey_weather(changed)
+      expect_identical(weather_plot_frame()$tx, changed$tx)
+      expect_equal(attr(weather_plot_frame, "observable")$.execCount, 3L)
+      expect_equal(attr(weather_plot_cont_frame, "observable")$.execCount, 1L)
     }
   )
 })

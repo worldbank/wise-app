@@ -160,13 +160,13 @@ test_that("outcome map switches between coverage and mean-value views", {
       session$setInputs(outcome_stats_btn = 0L)
       session$setInputs(outcome_stats_btn = 1L); settle()
 
-      # Default view is mean value. The payload observer reads and rewrites
-      # its own fit key, so one flush runs it twice (also true of the
-      # weather module's map observer) - count deltas between flushes,
-      # not totals.
+      # Default view is mean value. The isolated fit-key read prevents the
+      # observer from running a second time after storing that key.
       cov0 <- cov_calls; mean0 <- mean_calls
-      expect_gt(mean0, 0L)
+      expect_equal(mean0, 1L)
       expect_equal(cov0, 0L)
+      settle()
+      expect_equal(mean_calls, mean0)
 
       # Switch to coverage: the coverage payload builder takes over.
       session$setInputs(cov_view = "coverage"); settle()

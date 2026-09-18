@@ -1,3 +1,10 @@
+# Keep the last successful result/context pair intact until the next run has
+# completed all work. A failed run therefore has no publication side effect.
+.publish_decomposition_bundle <- function(previous, result, context, success) {
+  if (!isTRUE(success)) return(previous)
+  list(result = result, context = context)
+}
+
 #' 3_06_policy_sim UI Function
 #'
 #' @description A shiny Module. Renders status banner for policy adjustments.
@@ -73,8 +80,13 @@ mod_3_06_policy_sim_server <- function(id,
     sim_run_id          <- reactiveVal(0L)
     # REACT-02: TRUE while a policy simulation is executing.
     sim_running         <- reactiveVal(FALSE)
-    decomp_rv           <- reactiveVal(NULL)
+    run_generation      <- reactiveVal(0L)
+    run_status          <- reactiveVal("idle")
+    decomp_bundle_rv    <- reactiveVal(list(result = NULL, context = NULL))
+    decomp_rv           <- reactive(decomp_bundle_rv()$result)
+    decomp_context_rv   <- reactive(decomp_bundle_rv()$context)
     decomp_scenarios_rv <- reactiveVal(list())
+    diagnostic_summary_rv <- reactiveVal(NULL)
     # INT-08: TRUE while the stored policy results' run signature no longer
     # matches the current Step 2 output / scenario inputs.
     policy_stale        <- reactiveVal(FALSE)
@@ -83,7 +95,20 @@ mod_3_06_policy_sim_server <- function(id,
     baseline_saved_scenarios_rv <- reactiveVal(list())
     policy_hist_sim_rv          <- reactiveVal(NULL)
     policy_saved_scenarios_rv   <- reactiveVal(list())
+    weather_store_lease_rv      <- reactiveVal(NULL)
     sp_scenario_rv              <- reactiveVal(NULL)
+    # Snapshot all policy domains with the run so summary surfaces describe
+    # the configuration that produced the results.
+    infra_scenario_rv           <- reactiveVal(NULL)
+    digital_scenario_rv         <- reactiveVal(NULL)
+    labor_scenario_rv           <- reactiveVal(NULL)
+    education_scenario_rv       <- reactiveVal(NULL)
+
+    cleanup_weather_stores <- function() {
+      step2_weather_store_release(shiny::isolate(weather_store_lease_rv()))
+      weather_store_lease_rv(NULL)
+    }
+    session$onSessionEnded(cleanup_weather_stores)
 
     output$sim_status_ui <- shiny::renderUI({
       err <- sim_error()
@@ -125,20 +150,12 @@ mod_3_06_policy_sim_server <- function(id,
     # Step 3 lever never marked the policy results stale. Calling `react()`
     # inside the quoted expression re-establishes the dependency on every
     # invalidation.
-    .mark_stale_on_change <- function(react) {
-      shiny::observeEvent(react(), {
-        bh <- baseline_hist_sim_rv()
-        if (!is.null(bh) && !identical(.policy_sig_from_live(), bh$.sig))
-          policy_stale(TRUE)
-      }, ignoreInit = TRUE)
-    }
-    .mark_stale_on_change(hist_sim)
-    .mark_stale_on_change(sp_scenario)
-    .mark_stale_on_change(infra_scenario)
-    .mark_stale_on_change(digital_scenario)
-    .mark_stale_on_change(labor_scenario)
-    .mark_stale_on_change(education_scenario)
-    .mark_stale_on_change(survey_version)
+    policy_signature <- reactive(.policy_sig_from_live())
+    shiny::observeEvent(policy_signature(), {
+      bh <- baseline_hist_sim_rv()
+      if (!is.null(bh) && !identical(policy_signature(), bh$.sig))
+        policy_stale(TRUE)
+    }, ignoreInit = TRUE)
     # Cascade: when Step 2 is stale (inputs changed, not yet re-run) the
     # policy results built on it are stale too.
     shiny::observeEvent(sim_stale(), {
@@ -154,6 +171,12 @@ mod_3_06_policy_sim_server <- function(id,
       if (isTRUE(sim_running())) return(invisible(NULL))
       sim_running(TRUE)
       on.exit(sim_running(FALSE), add = TRUE)
+      run_generation(run_generation() + 1L)
+      run_status("running")
+      completed <- FALSE
+      on.exit({
+        if (!completed) run_status("failure")
+      }, add = TRUE)
 
       sim_error(NULL)
 
@@ -174,8 +197,16 @@ mod_3_06_policy_sim_server <- function(id,
       # contains rows for all survey years in selected_surveys - joining the
       # FULL survey_weather() would pull in extra households from non-baseline
       # rounds and produce a systematically different aggregate.
-      svy <- hs$svy %||% .safe(survey_weather())
-      sp_cfg <- .safe(sp_scenario())
+       svy <- hs$svy %||% .safe(survey_weather())
+       # The synthetic `poor` outcome is created during Step 1 preparation,
+       # but may not be retained in the Step 2 survey snapshot.
+       svy <- ensure_outcome_column(svy, hs$so)
+      sp_cfg        <- .safe(sp_scenario())
+      infra_cfg     <- .safe(infra_scenario())
+      digital_cfg   <- .safe(digital_scenario())
+      labor_cfg     <- .safe(labor_scenario())
+      education_cfg <- .safe(education_scenario())
+      model_vars <- model_term_names(.safe(selected_model()))
 
       .fail <- function(msg) {
         sim_error(simpleError(msg))
@@ -213,14 +244,22 @@ mod_3_06_policy_sim_server <- function(id,
 
           svy_mod <- apply_policy_to_svy(
             svy,
-            infra         = infra_scenario(),
-            sp            = sp_scenario(),
-            digital       = digital_scenario(),
-            labor         = labor_scenario(),
-            education     = education_scenario(),
-            model_vars    = model_term_names(.safe(selected_model())),
+            infra         = infra_cfg,
+            sp            = sp_cfg,
+            digital       = digital_cfg,
+            labor         = labor_cfg,
+            education     = education_cfg,
+            model_vars    = model_vars,
             analysis_unit = analysis_unit(),
             seed          = WISEAPP_DEFAULT_SEED
+          )
+
+          policy_candidates <- .policy_candidate_cols(
+            infra = infra_cfg,
+            digital = digital_cfg,
+            labor = labor_cfg,
+            education = education_cfg,
+            model_vars = model_vars
           )
 
           # A social-protection-only scenario changes nothing but the cash
@@ -229,7 +268,9 @@ mod_3_06_policy_sim_server <- function(id,
           # "nothing configured". What is worth flagging is a scenario that is
           # a literal no-op (every lever at its zero default): the run still
           # goes ahead, but the policy arm will equal the baseline.
-          if (!.scenario_has_effect(svy, svy_mod)) {
+          if (!.scenario_has_effect(
+            svy, svy_mod, candidates = policy_candidates
+          )) {
             shiny::showNotification(
               paste(
                 "No policy change is configured - every lever is at zero, so",
@@ -280,13 +321,43 @@ mod_3_06_policy_sim_server <- function(id,
               # effect() call below (historical + per scenario-year) would
               # otherwise rebuild both. Compute once, pass through.
               deltas_pre <- .compute_policy_deltas(
-                svy, svy_mod, hs$so$name, mf$weather_terms
+                svy, svy_mod, hs$so$name, mf$weather_terms,
+                candidate_cols = policy_candidates
               )
               F_hat_pre <- if (identical(mf$engine, "rif") &&
                                !is.null(mf$train_data) &&
                                hs$so$name %in% names(mf$train_data)) {
                 stats::ecdf(mf$train_data[[hs$so$name]])
               } else NULL
+
+              adverse_bases_pre <- if (exists(".prepare_decomp_adverse_bases",
+                                             mode = "function")) {
+                .prepare_decomp_adverse_bases(hs$weather_raw, hs, hs$so)
+              } else list()
+
+              # W2-D: all decomposition calls in this published run share
+              # invariant survey/model state. Weather hazards remain supplied
+              # per panel so member-specific and year-specific weather cannot
+              # leak across bases.
+              decomp_context <- .build_decomposition_context(
+                svy_baseline = svy, svy_policy = svy_mod, model_fit = mf,
+                so = hs$so, deltas = deltas_pre,
+                skip_coef = skip_coef_val, F_hat = F_hat_pre,
+                run_identity = paste0("generation-", run_generation()),
+                weather_panels = Filter(Negate(is.null), c(
+                  list(step2_resolve_weather(hs$weather_raw, hs)),
+                  unlist(lapply(baseline_scenarios_out, function(x) {
+                    raw <- step2_resolve_weather(x$weather_raw, x)
+                    if (is.null(raw) || !"timestamp" %in% names(raw)) return(list(raw))
+                    split(raw, as.integer(format(raw$timestamp, "%Y")))
+                  }), recursive = FALSE),
+                  unname(adverse_bases_pre)
+                )),
+                adverse_bases = adverse_bases_pre
+              )
+              if (is.null(decomp_context)) {
+                stop("Unable to prepare policy decomposition context.", call. = FALSE)
+              }
 
               pol_out <- apply_policy_delta_to_baseline(
                 svy_baseline             = svy,
@@ -295,9 +366,11 @@ mod_3_06_policy_sim_server <- function(id,
                 so                       = hs$so,
                 hist_sim_baseline        = baseline_out,
                 saved_scenarios_baseline = baseline_scenarios_out,
-                skip_coef                = skip_coef_val,
-                deltas                   = deltas_pre,
-                F_hat                    = F_hat_pre
+                 skip_coef                = skip_coef_val,
+                 deltas                   = deltas_pre,
+                  F_hat                    = F_hat_pre,
+                  decomp_context           = decomp_context,
+                  run_identity             = decomp_context$run_identity
               )
               if (is.null(pol_out)) {
                 stop("Policy simulation produced no results.", call. = FALSE)
@@ -312,14 +385,29 @@ mod_3_06_policy_sim_server <- function(id,
                 svy_policy   = svy_mod,
                 model_fit    = mf,
                 so           = hs$so,
-                weather_raw  = hs$weather_raw,
+                weather_raw  = step2_resolve_weather(hs$weather_raw, hs),
                 skip_coef    = skip_coef_val,
                 deltas       = deltas_pre,
-                F_hat        = F_hat_pre
+                  F_hat        = F_hat_pre,
+                  context      = decomp_context,
+                  run_identity = decomp_context$run_identity
               )
               if (is.null(decomp)) {
                 stop("Effect decomposition produced no results.", call. = FALSE)
               }
+
+              adverse_decompositions <- lapply(names(decomp_context$adverse_bases),
+                function(basis) tryCatch(
+                  decompose_policy_effect(
+                    svy, svy_mod, mf, hs$so,
+                    weather_raw = decomp_context$adverse_bases[[basis]],
+                    skip_coef = skip_coef_val, deltas = deltas_pre,
+                    F_hat = F_hat_pre, context = decomp_context,
+                    run_identity = decomp_context$run_identity
+                  ), error = function(e) NULL
+                ))
+              names(adverse_decompositions) <- names(decomp_context$adverse_bases)
+              adverse_decompositions <- Filter(Negate(is.null), adverse_decompositions)
 
               # Decompose per saved scenario * sim_year for year-to-year
               # variation. Per-year failures are collected: if every attempt
@@ -328,9 +416,9 @@ mod_3_06_policy_sim_server <- function(id,
               shiny::setProgress(value = 0.90, detail = "Decomposing scenario effects...")
               sc_list <- pol_out$saved_scenarios %||% list()
               decomp_sc_errors <- character(0)
-              decomp_sc <- lapply(seq_along(sc_list), function(i) {
+              decomp_sc_parts <- lapply(seq_along(sc_list), function(i) {
                 sc       <- sc_list[[i]]
-                w_raw    <- sc$weather_raw
+                w_raw    <- step2_resolve_weather(sc$weather_raw, sc)
                 if (is.null(w_raw)) return(NULL)
                 sc_label <- names(sc_list)[i] %||% paste0("Scenario ", i)
 
@@ -353,65 +441,108 @@ mod_3_06_policy_sim_server <- function(id,
                   } else {
                     w_raw
                   }
-                  tryCatch(
-                    decompose_policy_effect(
+                  tryCatch({
+                    decomp_year <- decompose_policy_effect(
                       svy_baseline = svy,
                       svy_policy   = svy_mod,
                       model_fit    = mf,
                       so           = hs$so,
                       weather_raw  = w_yr,
-                      skip_coef    = skip_coef_val,
-                      deltas       = deltas_pre,
-                      F_hat        = F_hat_pre
-                    ) |> dplyr::mutate(
-                      scenario   = sc_label,
-                      sim_year   = yr,
+                       skip_coef    = skip_coef_val,
+                       deltas       = deltas_pre,
+                       F_hat        = F_hat_pre,
+                       context      = decomp_context,
+                       run_identity = decomp_context$run_identity
+                    )
+                    .compact_future_decomposition(
+                      decomp_year,
+                      scenario = sc_label,
+                      sim_year = yr,
                       year_start = sc$year_range[[1]] %||% NA_integer_,
-                      year_end   = sc$year_range[[2]] %||% NA_integer_
-                    ),
-                    error = function(e) {
-                      decomp_sc_errors <<- c(decomp_sc_errors, paste0(
-                        sc_label, if (!is.na(yr)) paste0(" (", yr, ")"), ": ",
-                        conditionMessage(e)
-                      ))
-                      NULL
-                    }
-                  )
+                      year_end = sc$year_range[[2]] %||% NA_integer_,
+                      baseline_deciles = decomp_context$baseline_deciles,
+                      is_rif = identical(mf$engine, "rif"),
+                      engine = mf$engine
+                    )
+                  }, error = function(e) {
+                    decomp_sc_errors <<- c(decomp_sc_errors, paste0(
+                      sc_label, if (!is.na(yr)) paste0(" (", yr, ")"), ": ",
+                      conditionMessage(e)
+                    ))
+                    NULL
+                  })
                 })
-                dplyr::bind_rows(Filter(Negate(is.null), year_results))
+                Filter(Negate(is.null), year_results)
               })
-              decomp_sc <- dplyr::bind_rows(Filter(Negate(is.null), decomp_sc))
-              if (length(decomp_sc_errors) > 0L && nrow(decomp_sc) == 0L) {
+              decomp_sc_parts <- unlist(decomp_sc_parts, recursive = FALSE)
+              decomp_sc_parts <- Filter(Negate(is.null), decomp_sc_parts)
+              if (length(decomp_sc_errors) > 0L && !length(decomp_sc_parts)) {
                 stop(
                   "All scenario decompositions failed. First error: ",
                   decomp_sc_errors[[1]],
                   call. = FALSE
                 )
               }
+              decomp_sc <- .bind_compact_future_decompositions(
+                decomp_sc_parts,
+                engine = mf$engine,
+                is_rif = identical(mf$engine, "rif")
+              )
+
+              diagnostic_summary_out <- .policy_diagnostics_snapshot(
+                svy_baseline = svy,
+                svy_policy   = svy_mod,
+                outcome      = hs$so$name,
+                analysis_unit = analysis_unit(),
+                candidates   = unique(c(policy_candidates, hs$so$name)),
+                sp           = sp_cfg
+              )
+              if (is.null(diagnostic_summary_out)) {
+                stop("Policy diagnostics produced no results.", call. = FALSE)
+              }
 
               shiny::setProgress(value = 1, detail = "Complete")
             }
           )
 
-          # -- Atomic publish (INT-09) -----------------------------------------
+           # -- Atomic publish (INT-09) -----------------------------------------
           # Every reactive value is written only now that the complete run
           # (simulation + decomposition) succeeded, so a failure anywhere
           # above leaves the previous results, diagnostics, and run ID intact.
           # INT-08: the policy run signature is stored with both result arms.
           baseline_out$.sig <- policy_sig
           if (!is.null(pol_out$hist_sim)) pol_out$hist_sim$.sig <- policy_sig
-          baseline_svy_rv(svy)
-          policy_svy_rv(svy_mod)
+           new_weather_lease <- step2_weather_store_acquire_scenarios(c(
+             baseline_scenarios_out,
+             pol_out$saved_scenarios %||% list()
+           ))
+           old_weather_lease <- weather_store_lease_rv()
+           baseline_svy_rv(svy)
+           policy_svy_rv(svy_mod)
           baseline_hist_sim_rv(baseline_out)
           baseline_saved_scenarios_rv(baseline_scenarios_out)
            policy_hist_sim_rv(pol_out$hist_sim)
            policy_saved_scenarios_rv(pol_out$saved_scenarios)
+           weather_store_lease_rv(new_weather_lease)
+           step2_weather_store_release(old_weather_lease)
            sp_scenario_rv(sp_cfg)
-          decomp_rv(decomp)
+           infra_scenario_rv(infra_cfg)
+           digital_scenario_rv(digital_cfg)
+           labor_scenario_rv(labor_cfg)
+           education_scenario_rv(education_cfg)
+           final_context <- .finalize_decomposition_context(
+             decomp_context, adverse_decompositions
+           )
+           decomp_bundle_rv(.publish_decomposition_bundle(
+             decomp_bundle_rv(), decomp, final_context, success = TRUE
+           ))
           decomp_scenarios_rv(decomp_sc)
+          diagnostic_summary_rv(diagnostic_summary_out)
           policy_stale(FALSE)
 
-          sim_run_id(isolate(sim_run_id()) + 1L)
+           sim_run_id(isolate(sim_run_id()) + 1L)
+           run_status("success")
+           completed <- TRUE
           if (length(decomp_sc_errors) > 0L) {
             shiny::showNotification(
               paste0(
@@ -459,13 +590,32 @@ mod_3_06_policy_sim_server <- function(id,
       baseline_svy             = baseline_svy_rv,
       policy_svy               = policy_svy_rv,
       sim_run_id               = sim_run_id,
+      run_generation          = run_generation,
+      run_status              = run_status,
       decomp_result            = decomp_rv,
+      decomp_context           = decomp_context_rv,
       decomp_scenarios         = decomp_scenarios_rv,
+      diagnostic_summary       = diagnostic_summary_rv,
       baseline_hist_sim        = baseline_hist_sim_rv,
       baseline_saved_scenarios = baseline_saved_scenarios_rv,
       policy_hist_sim          = policy_hist_sim_rv,
       policy_saved_scenarios   = policy_saved_scenarios_rv,
       sp_scenario              = sp_scenario_rv,
+      infra_scenario           = infra_scenario_rv,
+      digital_scenario         = digital_scenario_rv,
+      labor_scenario           = labor_scenario_rv,
+      education_scenario       = education_scenario_rv,
+      clear_weather_stores     = cleanup_weather_stores,
+      policy_scenarios         = reactive(list(
+        A = infra_scenario() %||% list(), B = infra_scenario() %||% list(),
+        C = infra_scenario() %||% list(), D = infra_scenario() %||% list(),
+        E = digital_scenario() %||% list(), F = digital_scenario() %||% list(),
+        K = education_scenario() %||% list(), L = education_scenario() %||% list(),
+        M = education_scenario() %||% list(),
+        G = infra_scenario() %||% list(), H = infra_scenario() %||% list(),
+        I = infra_scenario() %||% list()
+        , J = labor_scenario() %||% list()
+      )),
       stale                    = policy_stale
     )
   })

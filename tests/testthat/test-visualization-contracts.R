@@ -1,0 +1,303 @@
+library(testthat)
+
+test_that("metric metadata carries direction and adverse tail", {
+  low <- wiseapp:::metric_metadata("headcount_ratio")
+  high <- wiseapp:::metric_metadata("mean")
+  expect_identical(low$direction, "lower_is_better")
+  expect_identical(low$adverse_tail, "high")
+  expect_identical(high$direction, "higher_is_better")
+  expect_identical(high$adverse_tail, "low")
+})
+
+test_that("selected built-in metric direction overrides stale outcome metadata", {
+  spec <- wiseapp:::metric_metadata(
+    "headcount_ratio",
+    so = list(direction = "higher_is_better")
+  )
+  expect_identical(spec$direction, "lower_is_better")
+  expect_identical(spec$adverse_tail, "high")
+})
+
+test_that("return-period interpolation selects the adverse tail", {
+  vals <- matrix(seq_len(20), nrow = 1)
+  sds <- matrix(0, nrow = 1, ncol = 20)
+  high <- wiseapp:::by_model_rp_matrix(vals, sds, c(`1:20` = 0.05), "high")$rp[1, 1]
+  low <- wiseapp:::by_model_rp_matrix(vals, sds, c(`1:20` = 0.05), "low")$rp[1, 1]
+  expect_equal(high, 19.5)
+  expect_equal(low, 1.5)
+})
+
+test_that("paired effects are zero for identical baseline and policy tables", {
+  tbl <- tibble::tibble(
+    sim_year = c(2020L, 2021L),
+    model_id = list(c("m1"), c("m1")),
+    value_all = list(1, 2),
+    value_all_sd = list(0.1, 0.1),
+    F_agg_all = list(matrix(1, nrow = 1L), matrix(1, nrow = 1L))
+  )
+  effects <- wiseapp:::paired_model_year_effects(tbl, tbl)
+  expect_true(all(effects$effect == 0))
+  expect_true(all(effects$effect_sd == 0))
+  summary <- wiseapp:::paired_effect_summary(effects, scenario = "SSP2-4.5 / 2030-2040")
+  expect_equal(summary$value, 0)
+  expect_equal(summary$coef_lo, 0)
+  expect_equal(summary$coef_hi, 0)
+})
+
+test_that("paired adverse effects use equal-probability arm quantiles", {
+  effects <- tibble::tibble(
+    model_id = rep(c("m1", "m2"), each = 4L),
+    sim_year = rep(2018:2021, 2L),
+    baseline = rep(c(1, 2, 3, 4), 2L),
+    policy = rep(c(2, 3, 4, 5), 2L),
+    effect = 1,
+    effect_sd = 0
+  )
+  out <- wiseapp:::paired_equal_probability_effects(
+    effects, c(`1-in-10` = 0.1, `1-in-5` = 0.2)
+  )
+  expect_true(all(abs(out$effect - 1) < 1e-12))
+  expect_equal(sort(unique(out$probability)), c(0.1, 0.2))
+})
+
+test_that("variance display uses separate aligned bars", {
+  p <- wiseapp:::plot_variance_contribution(tibble::tibble(
+    scenario = "SSP2-4.5 / 2030-2040", var_coef = 1,
+    var_within = 4, var_across = 9, is_historical = FALSE
+  ))
+  expect_s3_class(p, "ggplot")
+  expect_true(any(vapply(p$layers, function(x) inherits(x$position, "PositionDodge"),
+                         logical(1L))))
+})
+
+test_that("visualization exports carry metric and observation metadata", {
+  out <- wiseapp:::annotate_visualization_export(
+    data.frame(value = 1:2),
+    method = "headcount_ratio",
+    observation_unit = "annual aggregate",
+    aggregation_order = "weighted household aggregate by model and year",
+    uncertainty = "inter-model spread"
+  )
+  expect_identical(out$metric_id, c("headcount_ratio", "headcount_ratio"))
+  expect_identical(out$direction, c("lower_is_better", "lower_is_better"))
+  expect_identical(out$adverse_tail, c("high", "high"))
+  expect_identical(out$observation_unit, rep("annual aggregate", 2L))
+  expect_identical(out$uncertainty_type, rep("inter-model spread", 2L))
+})
+
+test_that("weather support export preserves source and variable", {
+  survey <- data.frame(
+    loc_id = c("a", "a"), int_month = c(1L, 1L),
+    timestamp = as.Date(c("2020-01-01", "2021-01-01"))
+  )
+  weather <- data.frame(
+    loc_id = c("a", "a"), int_month = c(1L, 1L),
+    timestamp = as.Date(c("2020-01-01", "2021-01-01")),
+    temp = c(10, 20)
+  )
+  out <- wiseapp:::weather_density_data(
+    survey, weather, "temp",
+    scenario_weather = list(`SSP2 / 2030` = transform(weather, temp = temp + 1))
+  )
+  expect_true(all(c("weather_variable", "source", "value") %in% names(out)))
+  expect_setequal(unique(out$source), c("Model support", "Full historical archive", "SSP2 / 2030"))
+  expect_true(all(is.finite(out$value)))
+})
+
+test_that("weighted baseline deciles are fixed and cover supported households", {
+  svy <- data.frame(welfare = 1:10, weight = c(rep(1, 9), 9))
+  d <- wiseapp:::weighted_baseline_deciles(svy, "welfare", "weight")
+  expect_equal(d[[1]], 1L)
+  expect_equal(d[[10]], 10L)
+  expect_true(all(d >= 1L & d <= 10L))
+})
+
+test_that("paired adverse table includes expected supported periods", {
+  x <- tibble::tibble(
+    model_id = "m1", baseline = 1:20, policy = 2:21,
+    effect = 1, effect_sd = 0
+  )
+  out <- wiseapp:::paired_adverse_effect_table(x, "mean")
+  expect_setequal(out$period, c("Expected", "Adverse 1-in-5", "Adverse 1-in-10", "Adverse 1-in-20"))
+  expect_true(all(abs(out$effect - 1) < 1e-12))
+})
+
+test_that("unsupported adverse return periods are omitted", {
+  x <- tibble::tibble(
+    model_id = "m1", baseline = 1:10, policy = 2:11,
+    effect = 1, effect_sd = 0
+  )
+  out <- wiseapp:::paired_adverse_effect_table(x, "mean")
+  expect_false("Adverse 1-in-20" %in% out$period)
+})
+
+test_that("variance shares are opt-in and explicitly approximate", {
+  x <- data.frame(scenario = "SSP2 / 2030", var_coef = 1,
+                  var_within = 4, var_across = 9)
+  hidden <- wiseapp:::variance_component_data(x, FALSE)
+  shown <- wiseapp:::variance_component_data(x, TRUE)
+  expect_true(all(is.na(hidden$share_approx)))
+  expect_true(all(is.finite(shown$share_approx)))
+  expect_true(all(grepl("zero-covariance", shown$share_warning)))
+})
+
+test_that("weather support uses robust interval and warning share", {
+  ref <- data.frame(temp = 1:100)
+  sc <- list(`SSP2 / 2030` = data.frame(temp = c(rep(1, 90), rep(1000, 10))))
+  out <- wiseapp:::weather_support_summary(ref, sc, "temp")
+  expect_equal(out$n_reference, 100)
+  expect_true(out$warning)
+  expect_equal(out$warning_rule, "Robust 1%-99% reference interval; warn above 5% outside")
+})
+
+test_that("policy covariate support flags range and rare categories", {
+  train <- data.frame(x = 1:10, sector = rep(c("a", "b"), 5))
+  policy <- data.frame(x = c(1, 20), sector = c("a", "new"))
+  out <- wiseapp:::policy_covariate_support(train, policy)
+  expect_true(out$warning[out$variable == "x"])
+  expect_true(out$warning[out$variable == "sector"])
+})
+
+test_that("policy covariate support tolerates unmatched and missing categories", {
+  train <- data.frame(sector = factor(c("a", "b", "a")), x = c(1, 2, NA))
+  policy <- data.frame(sector = c("a", NA, ""), x = c(1, 3, NA))
+  out <- wiseapp:::policy_covariate_support(
+    train, policy, vars = c("sector", "x", "missing_from_both")
+  )
+
+  expect_setequal(out$variable, c("sector", "x"))
+  expect_true(out$warning[out$variable == "sector"])
+  expect_true(out$warning[out$variable == "x"])
+})
+
+test_that("log effects convert to percent without losing model-scale additivity", {
+  level <- 0.10
+  resilience <- -0.04
+  total <- level + resilience
+  expect_equal(wiseapp:::log_effect_to_percent(total),
+               100 * (exp(total) - 1))
+  expect_equal(wiseapp:::percent_to_log_effect(
+    wiseapp:::log_effect_to_percent(total)), total)
+  expect_false(isTRUE(all.equal(
+    wiseapp:::log_effect_to_percent(level) +
+      wiseapp:::log_effect_to_percent(resilience),
+    wiseapp:::log_effect_to_percent(total)
+  )))
+})
+
+test_that("model robustness summarizes one point per model", {
+  x <- data.frame(
+    scenario = rep("SSP2 / 2030", 6), model_id = rep(c("a", "b"), each = 3),
+    sim_year = rep(1:3, 2), value = c(1, 2, 3, 2, 3, 4)
+  )
+  out <- wiseapp:::model_robustness_data(x)
+  expect_equal(nrow(out), 2L)
+  expect_equal(unique(out$center), 2.5)
+  expect_true(all(out$n_weather_years == 3L))
+})
+
+test_that("decision return periods follow metric adverse direction", {
+  high <- wiseapp:::metric_decision_return_periods("mean")
+  low <- wiseapp:::metric_decision_return_periods("headcount_ratio")
+  expect_identical(unname(high[["Adverse 1-in-10"]]), "1:10")
+  expect_identical(unname(low[["Adverse 1-in-10"]]), "1:10")
+})
+
+test_that("adverse threshold interpolation follows metric tail direction", {
+  vals <- matrix(seq_len(20), nrow = 1L)
+  sds <- matrix(0, nrow = 1L, ncol = 20L)
+  rp <- c("1:20" = 0.05)
+
+  high <- wiseapp:::by_model_rp_matrix(vals, sds, rp, adverse_tail = "high")$rp[1, 1]
+  low  <- wiseapp:::by_model_rp_matrix(vals, sds, rp, adverse_tail = "low")$rp[1, 1]
+
+  expect_gt(high, low)
+  expect_equal(high, 19.5)
+  expect_equal(low, 1.5)
+})
+
+test_that("step2 adverse dot data extracts supported periods and ensemble bounds", {
+  tbl <- data.frame(
+    scenario = c("Historical", "Historical", "SSP2-4.5 / 2030", "SSP2-4.5 / 2030", "SSP2-4.5 / 2030"),
+    Estimate = c("Central (P50)", "Central (P50)", "Central (P50)", "Ensemble 0%", "Ensemble 100%"),
+    rp_name = c("1:1", "9:10", "1:1", "1:1", "1:1"),
+    value = c(10, 8, 12, 11, 14),
+    is_historical = c(TRUE, TRUE, FALSE, FALSE, FALSE),
+    stringsAsFactors = FALSE
+  )
+  out <- wiseapp:::step2_adverse_dot_data(tbl, method = "mean")
+  expect_true(nrow(out) >= 1)
+  expect_true("rp_label" %in% names(out))
+  fut <- out[!out$is_historical, ]
+  if (nrow(fut)) {
+    expect_equal(fut$intermod_lo[[1]], 11)
+    expect_equal(fut$intermod_hi[[1]], 14)
+  }
+})
+
+test_that("new export keys return valid figures or data frames", {
+  # 1. climate_adverse_return_periods
+  tbl <- data.frame(
+    scenario = "SSP2 / 2030", Estimate = "Central (P50)",
+    rp_name = "1:1", value = 10, is_historical = FALSE, stringsAsFactors = FALSE
+  )
+  dot_data <- wiseapp:::step2_adverse_dot_data(tbl, "mean")
+  p_dot <- wiseapp:::plot_step2_adverse_dot(dot_data)
+  expect_s3_class(p_dot, "ggplot")
+
+  # 2. policy_distributional_incidence
+  inc <- data.frame(decile = 1:10, effect = rep(1, 10))
+  p_inc <- wiseapp:::plot_incidence_by_decile(inc)
+  expect_s3_class(p_inc, "ggplot")
+
+  # 4. policy_construction_summary & treatment_matrix & covariate_support
+  df1 <- data.frame(welfare = 1:5, x = 1:5)
+  df2 <- data.frame(welfare = 2:6, x = 2:6)
+  expect_s3_class(wiseapp:::policy_construction_summary(df1, df2), "data.frame")
+  expect_s3_class(wiseapp:::policy_treatment_matrix(df1, df2), "data.frame")
+  expect_s3_class(wiseapp:::policy_covariate_support(df1, df2), "data.frame")
+})
+
+test_that("treatment diagnostics distinguish eligibility from realized treatment", {
+  baseline <- data.frame(weight = c(1, 1, 1, 1))
+  policy <- data.frame(
+    weight = baseline$weight,
+    .sp_transfer = c(0, 10, 0, 10)
+  )
+  eligible <- c(TRUE, FALSE, TRUE, FALSE)
+
+  out <- wiseapp:::policy_treatment_matrix(baseline, policy, eligible)
+  expect_identical(
+    out$status,
+    c(
+      "Not eligible, not treated",
+      "Inclusion error: not eligible, treated",
+      "Exclusion error: eligible, not treated",
+      "Eligible and treated"
+    )
+  )
+
+  note <- wiseapp:::.policy_treatment_explanation(list(
+    targeting = "exante_poor", targeting_threshold = 20,
+    inclusion_error_pct = 10, exclusion_error_pct = 5
+  ))
+  expect_match(note, "bottom 20%", fixed = TRUE)
+  expect_match(note, "10% inclusion error", fixed = TRUE)
+  expect_match(note, "5% exclusion error", fixed = TRUE)
+  expect_match(note, "not observed cash receipt", fixed = TRUE)
+})
+
+test_that("selected eligibility omits inclusion and exclusion errors", {
+  svy <- data.frame(welfare = 1:10)
+  sp <- list(
+    targeting = "exante_poor", targeting_threshold = 20,
+    inclusion_error_pct = 100, exclusion_error_pct = 100
+  )
+
+  ideal <- wiseapp:::.determine_sp_eligibility(svy, sp, apply_errors = FALSE)
+  realized <- withr::with_seed(
+    1L, wiseapp:::.determine_sp_eligibility(svy, sp, apply_errors = TRUE)
+  )
+  expect_equal(sum(ideal), 2L)
+  expect_equal(sum(realized), 8L)
+})

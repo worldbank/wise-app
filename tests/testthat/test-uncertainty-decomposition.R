@@ -132,4 +132,12 @@ test_that("build_threshold_table_df pivots long input wide and orders rows", {
                                    group_order = "scenario_x_year",
                                    show_coef = FALSE)
   expect_false(any(grepl("^Coef ", out2$Estimate)))
+
+  duplicated <- dplyr::bind_rows(long, long)
+  out3 <- build_threshold_table_df(
+    threshold_tbl = duplicated,
+    group_order = "scenario_x_year",
+    show_coef = TRUE
+  )
+  expect_false(any(vapply(out3, is.list, logical(1L))))
 })

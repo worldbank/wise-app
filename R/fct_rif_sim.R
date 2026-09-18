@@ -69,6 +69,164 @@ compute_rif <- function(y, tau, bw = NULL, dens = NULL) {
   rif
 }
 
+# Direct prediction is deliberately limited to ordinary fixed-effect OLS
+# models. Unsupported fixest features return NULL so callers retain the exact
+# fixest::predict() fallback.
+.direct_fixest_metadata_one <- function(fit) {
+  if (!inherits(fit, "fixest") || !identical(fit$method_type, "feols") ||
+      isTRUE(fit$iv) || !is.null(fit$NL.fml) || !is.null(fit$call$offset) ||
+      !is.null(fit$fixef_terms)) return(NULL)
+  beta <- tryCatch(stats::coef(fit), error = function(e) NULL)
+  fixefs <- tryCatch(fixest::fixef(fit, notes = FALSE),
+                     error = function(e) NULL)
+  if (is.null(beta) || is.null(fixefs)) return(NULL)
+  fe_vars <- fit$fixef_vars %||% character()
+  fe_names <- lapply(fe_vars, function(fe_var) {
+    vars <- all.vars(tryCatch(str2lang(fe_var), error = function(e) NULL))
+    if (length(vars) != 1L) return(NULL)
+    vars
+  })
+  if (length(fe_vars) && any(vapply(fe_names, is.null, logical(1L)))) return(NULL)
+  list(beta = beta, fixefs = fixefs, fe_vars = fe_vars, fe_names = fe_names)
+}
+
+build_direct_rif_metadata <- function(fits) {
+  metadata <- lapply(fits, .direct_fixest_metadata_one)
+  if (!length(metadata) || any(vapply(metadata, is.null, logical(1L)))) return(NULL)
+  metadata
+}
+
+.direct_fixest_design <- function(fit, data) {
+  X <- tryCatch(stats::model.matrix(fit, data = data, type = "rhs"),
+                error = function(e) NULL)
+  if (is.null(X) || !is.numeric(X)) return(NULL)
+  list(X = X, data = data)
+}
+
+.direct_rif_design_cache <- function(fits, metadata, base, scenario) {
+  if (!length(fits) || !length(metadata)) return(NULL)
+  base_design <- .direct_fixest_design(fits[[1L]], base)
+  scen_design <- .direct_fixest_design(fits[[1L]], scenario)
+  if (is.null(base_design) || is.null(scen_design) ||
+      !identical(colnames(base_design$X), colnames(scen_design$X))) return(NULL)
+
+  fe_vars <- metadata[[1L]]$fe_vars %||% character()
+  fe_names <- metadata[[1L]]$fe_names %||% list()
+  if (length(fe_vars) != length(fe_names)) return(NULL)
+
+  # Encode each FE column once. Quantile-specific fixed-effect values are
+  # looked up by these shared level indices instead of matching N rows per tau.
+  level_values <- lapply(seq_along(fe_vars), function(i) {
+    var <- fe_names[[i]][[1L]]
+    if (!var %in% names(base) || !var %in% names(scenario)) return(NULL)
+    names(metadata[[1L]]$fixefs[[fe_vars[[i]]]])
+  })
+  if (length(level_values) && any(vapply(level_values, is.null, logical(1))))
+    return(NULL)
+  level_index <- function(data, i) {
+    if (!length(level_values)) return(integer(nrow(data)))
+    match(as.character(data[[fe_names[[i]][[1L]]]]), level_values[[i]])
+  }
+  base_fe_index <- lapply(seq_along(fe_vars), function(i) level_index(base, i))
+  scen_fe_index <- lapply(seq_along(fe_vars), function(i) level_index(scenario, i))
+  if (any(vapply(c(base_fe_index, scen_fe_index), anyNA, logical(1)))) return(NULL)
+
+  beta_columns <- lapply(metadata, function(meta) {
+    match(names(meta$beta), colnames(base_design$X))
+  })
+  if (any(vapply(beta_columns, function(x) anyNA(x), logical(1)))) return(NULL)
+
+  list(
+    base_X = base_design$X,
+    scenario_X = scen_design$X,
+    beta_columns = beta_columns,
+    fe_indices = list(base = base_fe_index, scenario = scen_fe_index),
+    fe_levels = level_values
+  )
+}
+
+.direct_rif_prediction_pair <- function(fits, base, scenario,
+                                        metadata = NULL) {
+  if (!length(fits)) return(NULL)
+  metadata <- metadata %||% build_direct_rif_metadata(fits)
+  if (is.null(metadata) || length(metadata) != length(fits)) return(NULL)
+  design_cache <- .direct_rif_design_cache(fits, metadata, base, scenario)
+  if (is.null(design_cache)) return(NULL)
+
+  direct_one <- function(meta, k) {
+    beta <- meta$beta
+    add_fixed_effects <- function(which, n) {
+      if (!length(meta$fe_vars)) return(numeric(n))
+      indices <- design_cache$fe_indices[[which]]
+      Reduce(`+`, lapply(seq_along(meta$fe_vars), function(i) {
+        values <- meta$fixefs[[meta$fe_vars[[i]]]]
+        values <- as.numeric(values[match(design_cache$fe_levels[[i]], names(values))])
+        values[indices[[i]]]
+      }))
+    }
+    base_fe <- add_fixed_effects("base", nrow(design_cache$base_X))
+    scen_fe <- add_fixed_effects("scenario", nrow(design_cache$scenario_X))
+    list(
+      base = as.numeric(design_cache$base_X[, design_cache$beta_columns[[k]], drop = FALSE] %*% beta) + base_fe,
+      scenario = as.numeric(design_cache$scenario_X[, design_cache$beta_columns[[k]], drop = FALSE] %*% beta) + scen_fe
+    )
+  }
+
+  out <- lapply(seq_along(metadata), function(k) direct_one(metadata[[k]], k))
+  if (any(vapply(out, is.null, logical(1L)))) return(NULL)
+  attr(out, "design_cache") <- design_cache
+  out
+}
+
+
+#' Compute RIF outcomes for several quantiles with shared preparation
+#'
+#' This is the fit-time counterpart to \code{compute_rif()}. It preserves that
+#' function's per-quantile output while sharing the finite-value scan, type-7
+#' quantile calculation, and density interpolation across the quantile grid.
+#' Each RIF vector is still built separately to avoid an \code{N x K} logical
+#' comparison matrix.
+#'
+#' @param y Numeric outcome vector.
+#' @param taus Numeric vector of quantiles in the required output order.
+#' @param bw Optional bandwidth, as in \code{compute_rif()}.
+#' @param dens Optional pre-built density object, as in \code{compute_rif()}.
+#'
+#' @return An unnamed list of numeric vectors, one for each value of
+#'   \code{taus}, in the same order.
+#'
+#' @keywords internal
+compute_rif_multi <- function(y, taus, bw = NULL, dens = NULL) {
+  na_mask <- !is.finite(y)
+  y_obs   <- y[!na_mask]
+  q_taus  <- stats::quantile(y_obs, probs = taus, names = FALSE, type = 7)
+
+  if (is.null(dens)) {
+    bw_use <- bw
+    if (is.null(bw_use)) {
+      bw_use <- tryCatch(stats::bw.SJ(y_obs), error = function(e) stats::bw.nrd0(y_obs))
+    }
+    dens <- stats::density(y_obs, bw = bw_use, n = 1024)
+  }
+
+  f_taus   <- stats::approx(dens$x, dens$y, xout = q_taus)$y
+  dens_max <- max(dens$y)
+
+  lapply(seq_along(taus), function(i) {
+    f_q <- f_taus[i]
+    if (is.na(f_q) || f_q <= 0) {
+      f_q <- dens_max * 0.01
+      warning(sprintf("Density near zero at quantile %.2f; using floor.", taus[i]))
+    }
+    f_q <- max(f_q, dens_max * 0.001)
+
+    rif <- rep(NA_real_, length(y))
+    rif[!na_mask] <- q_taus[i] +
+      (taus[i] - as.numeric(y_obs <= q_taus[i])) / f_q
+    rif
+  })
+}
+
 
 # ---------------------------------------------------------------------------- #
 # Grid construction                                                             #
@@ -153,7 +311,9 @@ build_rif_grid <- function(fits_multi, taus, model_id) {
 #' @export
 predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
                         weather_cols, so = NULL, chol_list = NULL,
-                        ecdf_train = NULL) {
+                        ecdf_train = NULL, batch_predictions = FALSE,
+                        direct_predictions = FALSE,
+                        direct_metadata = NULL) {
   stopifnot(
     ".svy_row_id must be present in newdata" = ".svy_row_id" %in% names(newdata),
     "taus must be non-empty" = length(taus) > 0,
@@ -191,6 +351,33 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
   # Store deltas in a matrix: rows = observations, cols = quantiles
   delta_mat <- matrix(NA_real_, nrow = n, ncol = K)
 
+  direct_pairs <- if (isTRUE(direct_predictions)) {
+    .direct_rif_prediction_pair(
+      fit_multi, newdata_base, newdata_scen, metadata = direct_metadata
+    )
+  } else NULL
+
+  predict_pair <- function(fit, base, scenario) {
+    if (isTRUE(batch_predictions)) {
+      combined <- tryCatch(rbind(base, scenario), error = function(e) NULL)
+      if (!is.null(combined)) {
+        pair <- tryCatch(
+          as.numeric(stats::predict(fit, newdata = combined,
+                                    type = "response")),
+          error = function(e) NULL
+        )
+        if (length(pair) == 2L * n) {
+          return(list(base = pair[seq_len(n)],
+                      scenario = pair[n + seq_len(n)]))
+        }
+      }
+    }
+    list(
+      base = as.numeric(stats::predict(fit, newdata = base, type = "response")),
+      scenario = as.numeric(stats::predict(fit, newdata = scenario, type = "response"))
+    )
+  }
+
   # For F_loading: the scenario design matrix X_scenario %*% L_k gives the
   # delta-method gradient of the *predicted welfare level* under the RIF
   # regression at quantile k, consistent with the OLS path's F_loading
@@ -221,12 +408,10 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
   for (k in seq_len(K)) {
     # Baseline weather prediction (needed for the climate-delta point
     # estimate; not used for F_loading any more).
-    pred_base <- as.numeric(stats::predict(fit_multi[[k]], newdata = newdata_base,
-                                           type = "response"))
-
-    # Scenario weather prediction
-    pred_new <- as.numeric(stats::predict(fit_multi[[k]], newdata = newdata_scen,
-                                          type = "response"))
+    pair <- direct_pairs[[k]] %||%
+      predict_pair(fit_multi[[k]], newdata_base, newdata_scen)
+    pred_base <- pair$base
+    pred_new  <- pair$scenario
 
     delta_mat[, k] <- pred_new - pred_base
   }
@@ -251,7 +436,10 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
   # given rows only - model.matrix() on a row subset of newdata_scen.
   if (compute_loading) {
     active_mask <- attr(chol_list, "active_mask")
-    X_scen_fn <- function(k, rows) {
+    direct_design_cache <- attr(direct_pairs, "design_cache")
+    X_scen_fn <- if (!is.null(direct_design_cache)) {
+      function(k, rows) direct_design_cache$scenario_X[rows, , drop = FALSE]
+    } else function(k, rows) {
       stats::model.matrix(fit_multi[[k]], data = newdata_scen[rows, , drop = FALSE],
                           type = "rhs")
     }

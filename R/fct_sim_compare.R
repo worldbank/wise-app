@@ -171,6 +171,9 @@ resolve_band_q <- function(band_key) {
 #'   \code{"year_x_scenario"} x-axis ordering.
 #' @param show_coef Logical. Show the thin coefficient-uncertainty line.
 #'   Default TRUE.
+#' @param show_annual Logical. Show the inter-annual interval. The decision-
+#'   first results view leaves this off because annual variation is shown in a
+#'   separate distribution plot.
 #' @return A ggplot object.
 #' @importFrom ggplot2 ggplot aes geom_linerange geom_point geom_hline
 #'   scale_colour_manual scale_x_discrete labs theme_minimal theme
@@ -181,9 +184,10 @@ resolve_band_q <- function(band_key) {
 #' @importFrom rlang .data
 #' @export
 plot_pointrange_climate <- function(bands_tbl,
-                                    x_label     = "",
-                                    group_order = "scenario_x_year",
-                                    show_coef   = TRUE) {
+                                     x_label     = "",
+                                     group_order = "scenario_x_year",
+                                     show_coef   = TRUE,
+                                     show_annual = FALSE) {
 
   if (is.null(bands_tbl) || nrow(bands_tbl) == 0L) {
     return(ggplot2::ggplot() +
@@ -265,8 +269,7 @@ plot_pointrange_climate <- function(bands_tbl,
   df <- df[df$pt_key %in% data_levels, , drop = FALSE]
 
   if (nrow(df) == 0L)
-    return(ggplot2::ggplot() +
-           ggplot2::labs(title = "Run a future simulation to see scenario comparisons."))
+    return(blank_plot("Run a future simulation to see scenario comparisons."))
 
   # ---- plot: nested bands + dot --------------------------------------------
   # When a `source` column is present we dodge Baseline vs Policy side-by-side
@@ -281,20 +284,22 @@ plot_pointrange_climate <- function(bands_tbl,
     ggplot2::aes(x = .data$pt_key, colour = .data$colour_key)
   p <- ggplot2::ggplot(df, aes_base)
 
-  p <- p +
-    ggplot2::geom_linerange(
-      ggplot2::aes(ymin = .data$intermod_lo, ymax = .data$intermod_hi),
-      linewidth = 6.0, alpha = 0.6, na.rm = TRUE, position = pos
-    ) +
-    ggplot2::geom_linerange(
+  p <- p + ggplot2::geom_linerange(
+    ggplot2::aes(ymin = .data$intermod_lo, ymax = .data$intermod_hi),
+    linewidth = 6.0, alpha = 0.6, na.rm = TRUE, position = pos
+  )
+
+  if (isTRUE(show_annual)) {
+    p <- p + ggplot2::geom_linerange(
       ggplot2::aes(ymin = .data$interann_lo, ymax = .data$interann_hi),
       linewidth = 3.5, alpha = 1.0, na.rm = TRUE, position = pos
     )
+  }
 
   if (isTRUE(show_coef)) {
     p <- p + ggplot2::geom_linerange(
       ggplot2::aes(ymin = .data$coef_lo, ymax = .data$coef_hi),
-      linewidth = 1.2, colour = "black", na.rm = TRUE, position = pos
+      linewidth = 1.2, colour = .wise_support, na.rm = TRUE, position = pos
     )
   }
 
@@ -302,19 +307,19 @@ plot_pointrange_climate <- function(bands_tbl,
     p <- p + ggplot2::geom_point(
       ggplot2::aes(y = .data$value, shape = .data$source,
                    fill  = .data$source),
-      size = 3, stroke = 1.2, colour = "black", na.rm = TRUE, position = pos
+      size = 3, stroke = 1.2, colour = .wise_support, na.rm = TRUE, position = pos
     ) +
       ggplot2::scale_shape_manual(
         values = c(Baseline = 21, Policy = 23), name = NULL, drop = FALSE
       ) +
       ggplot2::scale_fill_manual(
-        values = c(Baseline = "white", Policy = "#d32f2f"),
+        values = c(Baseline = "white", Policy = .wise_policy),
         name   = NULL, drop = FALSE
       )
   } else {
     p <- p + ggplot2::geom_point(
       ggplot2::aes(y = .data$value),
-      size = 3, shape = 21, fill = "white", colour = "black", na.rm = TRUE
+      size = 3, shape = 21, fill = "white", colour = .wise_support, na.rm = TRUE
     )
   }
 
@@ -327,9 +332,1021 @@ plot_pointrange_climate <- function(bands_tbl,
     ggplot2::theme(
       panel.grid.major.x = ggplot2::element_blank(),
       panel.grid.minor.x = ggplot2::element_blank(),
-      axis.text.x        = ggplot2::element_text(size = 10),
       legend.position    = if (has_source) "top" else "none"
     )
+}
+
+# ---------------------------------------------------------------------------- #
+# Decision-first annual and paired summaries                                    #
+# ---------------------------------------------------------------------------- #
+
+# Build paired model-year effects from the two arms' canonical aggregate
+# tables. F_agg is used whenever available so the coefficient interval retains
+# baseline-policy covariance instead of treating the arms as independent.
+paired_model_year_effects <- function(baseline_tbl, policy_tbl) {
+  if (is.null(baseline_tbl) || is.null(policy_tbl) ||
+      !nrow(baseline_tbl) || !nrow(policy_tbl)) return(tibble::tibble())
+
+  rows <- lapply(intersect(baseline_tbl$sim_year, policy_tbl$sim_year), function(yr) {
+    b <- baseline_tbl[baseline_tbl$sim_year == yr, , drop = FALSE][1L, ]
+    p <- policy_tbl[policy_tbl$sim_year == yr, , drop = FALSE][1L, ]
+    b_ids <- as.character(b$model_id[[1L]])
+    p_ids <- as.character(p$model_id[[1L]])
+    ids <- intersect(b_ids, p_ids)
+    if (!length(ids)) return(NULL)
+    b_vals <- stats::setNames(as.numeric(b$value_all[[1L]]), b_ids)
+    p_vals <- stats::setNames(as.numeric(p$value_all[[1L]]), p_ids)
+    b_sd <- stats::setNames(as.numeric(b$value_all_sd[[1L]]), b_ids)
+    p_sd <- stats::setNames(as.numeric(p$value_all_sd[[1L]]), p_ids)
+    b_f <- b$F_agg_all[[1L]]
+    p_f <- p$F_agg_all[[1L]]
+    out <- lapply(ids, function(id) {
+      i_b <- match(id, b_ids); i_p <- match(id, p_ids)
+      f_b <- if (is.matrix(b_f) && nrow(b_f) >= i_b) b_f[i_b, ] else NULL
+      f_p <- if (is.matrix(p_f) && nrow(p_f) >= i_p) p_f[i_p, ] else NULL
+      sd_effect <- if (!is.null(f_b) && !is.null(f_p) &&
+                       length(f_b) == length(f_p)) {
+        sqrt(sum((f_p - f_b)^2, na.rm = TRUE))
+      } else sqrt((b_sd[[id]] %||% 0)^2 + (p_sd[[id]] %||% 0)^2)
+      tibble::tibble(
+        sim_year = yr, model_id = id,
+        baseline = b_vals[[id]], policy = p_vals[[id]],
+        effect = p_vals[[id]] - b_vals[[id]],
+        effect_sd = sd_effect,
+        effect_gradient = list(if (!is.null(f_b) && !is.null(f_p) &&
+                                   length(f_b) == length(f_p)) f_p - f_b else NULL)
+      )
+    })
+    dplyr::bind_rows(out)
+  })
+  dplyr::bind_rows(Filter(Negate(is.null), rows))
+}
+
+paired_effect_summary <- function(effect_tbl,
+                                  band_q = c(lo = 0.10, hi = 0.90),
+                                  scenario = "") {
+  if (is.null(effect_tbl) || !nrow(effect_tbl)) return(NULL)
+  models <- split(effect_tbl, effect_tbl$model_id)
+  model_rows <- lapply(models, function(x) {
+    x <- x[is.finite(x$effect), , drop = FALSE]
+    if (!nrow(x)) return(NULL)
+    q <- stats::quantile(x$effect, probs = band_q, na.rm = TRUE, names = FALSE)
+    gradients <- if ("effect_gradient" %in% names(x)) {
+      x$effect_gradient[
+        vapply(x$effect_gradient,
+               function(g) is.numeric(g) && length(g) > 0L, logical(1L))
+      ]
+    } else list()
+    coef_sd <- if (length(gradients) == nrow(x)) {
+      g <- Reduce(`+`, gradients) / nrow(x)
+      sqrt(sum(g * g, na.rm = TRUE))
+    } else {
+      sqrt(mean(x$effect_sd^2, na.rm = TRUE) / max(nrow(x), 1L))
+    }
+    tibble::tibble(
+      model_id = x$model_id[[1L]],
+      mean_effect = mean(x$effect),
+      annual_lo = q[[1L]], annual_hi = q[[2L]],
+      coef_sd = coef_sd,
+      n_years = nrow(x)
+    )
+  })
+  model_rows <- dplyr::bind_rows(Filter(Negate(is.null), model_rows))
+  if (!nrow(model_rows)) return(NULL)
+  center <- stats::median(model_rows$mean_effect, na.rm = TRUE)
+  intermod <- stats::quantile(model_rows$mean_effect, probs = band_q,
+                              na.rm = TRUE, names = FALSE)
+  interann <- c(
+    lo = mean(model_rows$annual_lo, na.rm = TRUE),
+    hi = mean(model_rows$annual_hi, na.rm = TRUE)
+  )
+  z <- stats::qnorm(band_q)
+  coef_sd <- mean(model_rows$coef_sd, na.rm = TRUE)
+  tibble::tibble(
+    scenario = scenario, value = center,
+    coef_lo = center + z[[1L]] * coef_sd,
+    coef_hi = center + z[[2L]] * coef_sd,
+    interann_lo = interann[[1L]], interann_hi = interann[[2L]],
+    intermod_lo = intermod[[1L]], intermod_hi = intermod[[2L]],
+    n_models = nrow(model_rows), n_years = min(model_rows$n_years)
+  )
+}
+
+# Equal-probability tail contrast: calculate the adverse quantile separately
+# in each arm for each matched model, then subtract policy minus baseline.
+paired_equal_probability_effects <- function(effect_tbl, probs) {
+  if (is.null(effect_tbl) || !nrow(effect_tbl) || !length(probs)) {
+    return(tibble::tibble())
+  }
+  rows <- lapply(split(effect_tbl, effect_tbl$model_id), function(x) {
+    do.call(rbind, lapply(probs, function(prob) {
+      if (sum(is.finite(x$baseline)) < 2L || sum(is.finite(x$policy)) < 2L) {
+        return(NULL)
+      }
+      tibble::tibble(
+        model_id = x$model_id[[1L]], probability = prob,
+        baseline = as.numeric(stats::quantile(x$baseline, prob,
+                                              na.rm = TRUE, names = FALSE)),
+        policy = as.numeric(stats::quantile(x$policy, prob,
+                                            na.rm = TRUE, names = FALSE))
+      ) |>
+        dplyr::mutate(effect = policy - baseline)
+    }))
+  })
+  dplyr::bind_rows(Filter(Negate(is.null), rows))
+}
+
+paired_effect_plot <- function(tbl, x_label = "Policy effect (outcome units)") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(blank_plot("Paired policy effects are unavailable."))
+  }
+  tbl$scenario <- factor(tbl$scenario, levels = rev(unique(tbl$scenario)))
+  ggplot2::ggplot(tbl, ggplot2::aes(x = .data$value, y = .data$scenario)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = .wise_zero) +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$intermod_lo,
+                                       xend = .data$intermod_hi,
+                                       y = .data$scenario, yend = .data$scenario),
+                          linewidth = 5, colour = .wise_policy, alpha = 0.35,
+                          na.rm = TRUE) +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$coef_lo,
+                                       xend = .data$coef_hi,
+                                       y = .data$scenario, yend = .data$scenario),
+                          linewidth = 1.2, colour = .wise_support, na.rm = TRUE) +
+    ggplot2::geom_point(shape = 21, size = 3.2, fill = .wise_policy,
+                        colour = .wise_policy_dark, stroke = 0.8, na.rm = TRUE) +
+    ggplot2::labs(x = x_label, y = NULL,
+                  subtitle = "Thick interval = ensemble spread; thin interval = coefficient uncertainty.") +
+    theme_wise()
+}
+
+#' Horizontal dumbbell chart for Step 3 Outcome Levels (Figure S3-2B)
+#' @noRd
+plot_policy_levels_dumbbell <- function(baseline_df, policy_df,
+                                        x_label = "Outcome level (outcome units)",
+                                        show_intervals = TRUE) {
+  if (is.null(baseline_df) || !nrow(baseline_df) ||
+      is.null(policy_df) || !nrow(policy_df)) {
+    return(blank_plot("Baseline and policy levels are unavailable."))
+  }
+
+  b <- baseline_df[!baseline_df$is_historical, , drop = FALSE]
+  p <- policy_df[!policy_df$is_historical, , drop = FALSE]
+  hist_b <- baseline_df[baseline_df$is_historical, , drop = FALSE]
+
+  common_scenarios <- intersect(b$scenario, p$scenario)
+  if (!length(common_scenarios)) {
+    return(blank_plot("No matching scenarios between baseline and policy."))
+  }
+
+  b <- b[b$scenario %in% common_scenarios, , drop = FALSE]
+  p <- p[p$scenario %in% common_scenarios, , drop = FALSE]
+
+  merged <- merge(
+    b[, c("scenario", "value", "intermod_lo", "intermod_hi")],
+    p[, c("scenario", "value", "intermod_lo", "intermod_hi")],
+    by = "scenario", suffixes = c("_base", "_policy")
+  )
+  merged$diff <- merged$value_policy - merged$value_base
+  merged$diff_label <- paste0(ifelse(merged$diff >= 0, "+", ""), fmt_num(merged$diff, 2))
+  merged$ssp_key <- vapply(merged$scenario, .normalise_ssp, character(1L))
+  merged$ssp_col <- vapply(merged$ssp_key, function(k) {
+    .ssp_colours[[k]] %||% "#0072B2"
+  }, character(1L))
+
+  scen_order <- rev(unique(merged$scenario))
+  if (nrow(hist_b) > 0L) {
+    hist_row <- data.frame(
+      scenario = "Historical",
+      value_base = hist_b$value[[1L]],
+      intermod_lo_base = NA_real_,
+      intermod_hi_base = NA_real_,
+      value_policy = hist_b$value[[1L]],
+      intermod_lo_policy = NA_real_,
+      intermod_hi_policy = NA_real_,
+      diff = 0,
+      diff_label = "Reference",
+      ssp_key = "Historical",
+      ssp_col = "#808080",
+      stringsAsFactors = FALSE
+    )
+    merged <- rbind(hist_row, merged)
+    scen_order <- c("Historical", scen_order)
+  }
+  merged$scenario <- factor(merged$scenario, levels = rev(scen_order))
+
+  plt <- ggplot2::ggplot(merged, ggplot2::aes(y = .data$scenario))
+
+  fut_merged <- merged[merged$scenario != "Historical", , drop = FALSE]
+  if (nrow(fut_merged) > 0L) {
+    plt <- plt + ggplot2::geom_segment(
+      data = fut_merged,
+      ggplot2::aes(x = .data$value_base, xend = .data$value_policy,
+                   y = .data$scenario, yend = .data$scenario),
+      colour = .wise_slate, linewidth = 1.0, na.rm = TRUE
+    )
+  }
+
+  plt <- plt + ggplot2::geom_point(
+    ggplot2::aes(x = .data$value_base),
+    shape = 21, fill = "white", colour = .wise_slate, size = 3.6, stroke = 1.4, na.rm = TRUE
+  )
+
+  if (nrow(fut_merged) > 0L) {
+    x_span <- max(c(merged$value_base, merged$value_policy), na.rm = TRUE) -
+              min(c(merged$value_base, merged$value_policy), na.rm = TRUE)
+    nudge <- if (is.finite(x_span) && x_span > 0) x_span * 0.04 else 0.5
+    plt <- plt +
+      ggplot2::geom_point(
+        data = fut_merged,
+        ggplot2::aes(x = .data$value_policy),
+        shape = 21, fill = .wise_policy, colour = .wise_policy_dark, size = 4.0,
+        stroke = 1.2, na.rm = TRUE
+      ) +
+      ggplot2::geom_text(
+        data = fut_merged,
+        ggplot2::aes(x = pmax(.data$value_base, .data$value_policy),
+                     label = .data$diff_label),
+        nudge_x = nudge,
+        size = 3.2, fontface = "bold", colour = .wise_support, na.rm = TRUE
+      )
+  }
+
+  if (nrow(hist_b) > 0L) {
+    plt <- plt + ggplot2::geom_vline(
+      xintercept = hist_b$value[[1L]], linetype = "dotted", colour = .wise_zero, linewidth = 0.6
+    )
+  }
+
+  plt <- plt +
+    ggplot2::labs(
+      x = x_label, y = NULL,
+      subtitle = "Connected points use identical climate-weather draws; open = Baseline, filled = Policy. Separation is the policy effect."
+    ) +
+    theme_wise() +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_line(colour = "grey92"))
+
+  plt
+}
+
+plot_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
+                                      title = NULL, subtitle = NULL,
+                                      plot_type = "violin") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(blank_plot("No annual simulation results available."))
+  }
+  df <- tbl
+  df$scenario <- as.character(df$scenario)
+  df$period <- ifelse(df$scenario == "Historical", "Historical",
+                      vapply(df$scenario, .parse_year, character(1L)))
+  df$ssp <- ifelse(df$scenario == "Historical", "Historical",
+                   vapply(df$scenario, .normalise_ssp, character(1L)))
+  scenario_levels <- c("Historical", sort(unique(df$scenario[df$scenario != "Historical"])))
+  scenario_palette <- c(Historical = .wise_history)
+  for (ssp in unique(df$ssp[df$ssp != "Historical"])) {
+    members <- scenario_levels[scenario_levels != "Historical"]
+    members <- members[vapply(members, function(s)
+      identical(.normalise_ssp(s), ssp), logical(1L))]
+    members <- members[order(vapply(members, .parse_year, character(1L)))]
+    base_col <- if (ssp %in% names(.ssp_colours))
+      unname(.ssp_colours[[ssp]]) else "#0072B2"
+    shades <- if (length(members) > 1L)
+      colorspace::lighten(base_col, seq(0.30, 0, length.out = length(members)))
+    else base_col
+    scenario_palette[members] <- shades
+  }
+  df$scenario_key <- factor(df$scenario, levels = scenario_levels)
+
+  hist_mean <- if (any(df$scenario == "Historical")) {
+    mean(df$value[df$scenario == "Historical"], na.rm = TRUE)
+  } else NA_real_
+
+  has_source <- "source" %in% names(df) && length(unique(df$source)) > 1L
+  plot_type <- match.arg(plot_type, c("violin", "boxplot"))
+
+  if (has_source) {
+    df$source <- factor(df$source, levels = c("Baseline", "Policy"))
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$scenario, y = .data$value))
+
+    if (is.finite(hist_mean)) {
+      p <- p + ggplot2::geom_hline(yintercept = hist_mean, linetype = "dashed",
+                                   colour = .wise_zero, linewidth = 0.5)
+    }
+
+    # Show one distribution summary at a time to keep the chart readable.
+    distribution_layer <- if (identical(plot_type, "violin")) {
+      ggplot2::geom_violin(
+         ggplot2::aes(fill = .data$scenario_key, alpha = .data$source,
+                      group = interaction(.data$scenario, .data$source)),
+        position = ggplot2::position_dodge(width = 0.65),
+        scale = "width", colour = NA, na.rm = TRUE
+      )
+    } else {
+      ggplot2::geom_boxplot(
+        ggplot2::aes(group = interaction(.data$scenario, .data$source),
+                      fill = .data$scenario_key, alpha = .data$source),
+        position = ggplot2::position_dodge(width = 0.65),
+        width = 0.22, outlier.shape = NA, colour = .wise_support, na.rm = TRUE
+      )
+    }
+
+    mean_df <- stats::aggregate(value ~ scenario + source, data = df,
+                                FUN = mean, na.rm = TRUE)
+    mean_df$scenario <- factor(mean_df$scenario, levels = scenario_levels)
+    mean_df$source <- factor(mean_df$source, levels = c("Baseline", "Policy"))
+
+    p <- p + distribution_layer +
+      ggplot2::geom_point(
+        ggplot2::aes(group = interaction(.data$scenario, .data$source),
+                      colour = .data$scenario_key, alpha = .data$source),
+        position = ggplot2::position_jitterdodge(jitter.width = 0.06, dodge.width = 0.65),
+        size = 1.0, na.rm = TRUE
+      ) +
+      ggplot2::geom_point(
+        data = mean_df[mean_df$source == "Baseline", , drop = FALSE],
+        ggplot2::aes(x = .data$scenario, y = .data$value),
+        shape = 21, size = 3.0, fill = "white", colour = .wise_slate, stroke = 1.0,
+        position = ggplot2::position_nudge(x = -0.1625),
+        na.rm = TRUE
+      ) +
+      ggplot2::geom_point(
+        data = mean_df[mean_df$source == "Policy", , drop = FALSE],
+        ggplot2::aes(x = .data$scenario, y = .data$value),
+        shape = 21, size = 3.4, fill = .wise_policy, colour = .wise_policy_dark,
+        stroke = 1.0,
+        position = ggplot2::position_nudge(x = 0.1625),
+        na.rm = TRUE
+      ) +
+      ggplot2::scale_fill_manual(
+         values = scenario_palette,
+        na.value = .wise_history, name = "Climate scenario"
+      ) +
+      ggplot2::scale_colour_manual(
+         values = scenario_palette,
+        na.value = .wise_history, guide = "none"
+      ) +
+      ggplot2::scale_alpha_manual(
+        values = c(Baseline = 0.30, Policy = 0.85),
+        name = "Series"
+      ) +
+      ggplot2::scale_shape_manual(
+        values = c(Baseline = 21, Policy = 23),
+        name = "Series",
+        labels = c(Baseline = "Baseline mean", Policy = "Policy mean")
+      ) +
+       ggplot2::guides(fill = "none", alpha = "none", shape = "none") +
+      ggplot2::labs(x = NULL, y = x_label, title = title, subtitle = subtitle) +
+      theme_wise() +
+       ggplot2::theme(legend.position = "none",
+                      plot.margin = ggplot2::margin(8, 8, 72, 8),
+                     axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
+
+    return(p)
+  }
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$scenario, y = .data$value,
+                                    fill = .data$scenario_key))
+
+  if (is.finite(hist_mean)) {
+    p <- p + ggplot2::geom_hline(yintercept = hist_mean, linetype = "dashed",
+                                 colour = .wise_zero, linewidth = 0.5)
+  }
+
+  distribution_layer <- if (identical(plot_type, "violin")) {
+    ggplot2::geom_violin(scale = "width", alpha = 0.25, colour = NA,
+                         na.rm = TRUE)
+  } else {
+    ggplot2::geom_boxplot(width = 0.22, outlier.shape = NA, na.rm = TRUE,
+                          colour = .wise_support, fill = "white")
+  }
+
+    p <- p + distribution_layer +
+      ggplot2::geom_point(ggplot2::aes(colour = .data$scenario_key),
+                          position = ggplot2::position_jitter(width = 0.08),
+                          alpha = 0.55, size = 1.2, na.rm = TRUE) +
+      ggplot2::stat_summary(
+        fun = mean, geom = "point", shape = 23,
+        size = 2.8, fill = "white", colour = .wise_slate, stroke = 1.0,
+        na.rm = TRUE
+      ) +
+     ggplot2::scale_fill_manual(values = scenario_palette,
+                                na.value = .wise_history, guide = "none") +
+     ggplot2::scale_colour_manual(values = scenario_palette, guide = "none") +
+    ggplot2::labs(x = NULL, y = x_label, title = title,
+                  subtitle = subtitle) +
+    theme_wise() +
+     ggplot2::theme(legend.position = "none",
+                    plot.margin = ggplot2::margin(8, 8, 72, 8),
+                   axis.text.x = ggplot2::element_text(angle = 25, hjust = 1))
+  p
+}
+
+plot_adverse_effects <- function(tbl, x_label = "Policy effect (outcome units)") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(blank_plot("Adverse-year results are unavailable."))
+  }
+  tbl$ssp_key <- ifelse(tbl$scenario == "Historical", "Historical",
+                        vapply(tbl$scenario, .normalise_ssp, character(1L)))
+  ggplot2::ggplot(tbl, ggplot2::aes(y = .data$scenario, x = .data$effect,
+                                    colour = .data$ssp_key)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = .wise_zero) +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$lo, xend = .data$hi,
+                                       y = .data$scenario, yend = .data$scenario),
+                          linewidth = 1.1, na.rm = TRUE) +
+    ggplot2::geom_point(size = 2.8, na.rm = TRUE) +
+    ggplot2::scale_colour_manual(values = c("Historical" = .wise_history, .ssp_colours),
+                                 na.value = "#0072B2", guide = "none") +
+    ggplot2::labs(x = x_label, y = NULL,
+                  subtitle = "Equal-probability tail contrast: policy quantile minus baseline quantile. CMIP6 values are ensemble spread, not probabilities.") +
+    theme_wise()
+}
+
+paired_adverse_effect_table <- function(effect_tbl,
+                                        metric = NULL,
+                                        band_q = c(lo = 0.10, hi = 0.90)) {
+  if (is.null(effect_tbl) || !nrow(effect_tbl)) return(tibble::tibble())
+  probs <- c("Expected" = 0.50, "Adverse 1-in-5" = 0.20,
+             "Adverse 1-in-10" = 0.10, "Adverse 1-in-20" = 0.05)
+  spec <- metric_metadata(metric %||% "mean")
+  target <- if (identical(spec$adverse_tail, "high")) 1 - probs else probs
+  rows <- lapply(split(effect_tbl, effect_tbl$model_id), function(x) {
+    do.call(rbind, lapply(seq_along(probs), function(i) {
+      b <- x$baseline[is.finite(x$baseline)]
+      p <- x$policy[is.finite(x$policy)]
+      # An empirical 1-in-N tail is reported only when the model has at least
+      # N usable weather years. This avoids presenting the single most extreme
+      # draw as a supported return-period estimate.
+      support_n <- ceiling(1 / min(probs[[i]], 1 - probs[[i]]))
+      if (length(b) < support_n || length(p) < support_n) return(NULL)
+      data.frame(
+        model_id = x$model_id[[1L]], period = names(probs)[[i]],
+        probability = probs[[i]],
+        baseline = as.numeric(stats::quantile(b, target[[i]], names = FALSE)),
+        policy = as.numeric(stats::quantile(p, target[[i]], names = FALSE)),
+        stringsAsFactors = FALSE
+      )
+    }))
+  })
+  long <- dplyr::bind_rows(Filter(Negate(is.null), rows))
+  if (!nrow(long)) return(long)
+  dplyr::group_by(long, .data$period, .data$probability) |>
+    dplyr::summarise(
+      baseline = stats::median(.data$baseline, na.rm = TRUE),
+      policy = stats::median(.data$policy, na.rm = TRUE),
+      effect = .data$policy - .data$baseline,
+      ensemble_lo = stats::quantile(.data$policy - .data$baseline,
+                                    band_q[[1L]], na.rm = TRUE),
+      ensemble_hi = stats::quantile(.data$policy - .data$baseline,
+                                    band_q[[2L]], na.rm = TRUE),
+      n_models = dplyr::n_distinct(.data$model_id),
+      n_weather_years = dplyr::n(),
+      .groups = "drop"
+    )
+}
+
+#' Data behind the Step 2 return-period dot plot (Figure S2-4)
+#' @noRd
+step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
+  if (is.null(threshold_tbl) || !nrow(threshold_tbl)) return(tibble::tibble())
+  rp_map <- metric_decision_return_periods(method, so)
+  keep_rps <- unname(rp_map)
+  tbl <- threshold_tbl[threshold_tbl$rp_name %in% keep_rps, , drop = FALSE]
+  if (!nrow(tbl)) return(tibble::tibble())
+
+  central <- tbl[tbl$Estimate == "Central (P50)", , drop = FALSE]
+  if (!nrow(central)) return(tibble::tibble())
+  central$rp_label <- names(rp_map)[match(central$rp_name, unname(rp_map))]
+
+  ens_rows <- tbl[grepl("^Ensemble ", tbl$Estimate), , drop = FALSE]
+  if (nrow(ens_rows)) {
+    # The displayed labels vary between min/max and Pxx. Within each
+    # scenario, threshold_table_rv creates the complete lower vector before
+    # the complete upper vector, so split by scenario before pairing RPs.
+    parts <- lapply(split(ens_rows, ens_rows$scenario), function(x) {
+      n_each <- nrow(x) %/% 2L
+      if (n_each < 1L || nrow(x) != 2L * n_each) return(NULL)
+      list(
+        lo = x[seq_len(n_each), , drop = FALSE],
+        hi = x[seq.int(n_each + 1L, nrow(x)), , drop = FALSE]
+      )
+    })
+    parts <- Filter(Negate(is.null), parts)
+    ens_lo <- dplyr::bind_rows(lapply(parts, `[[`, "lo"))
+    ens_hi <- dplyr::bind_rows(lapply(parts, `[[`, "hi"))
+  } else {
+    ens_lo <- ens_hi <- tbl[FALSE, , drop = FALSE]
+  }
+
+  central$intermod_lo <- NA_real_
+  central$intermod_hi <- NA_real_
+  for (i in seq_len(nrow(central))) {
+    sc <- central$scenario[[i]]
+    rp <- central$rp_name[[i]]
+    lo_val <- ens_lo$value[ens_lo$scenario == sc & ens_lo$rp_name == rp]
+    hi_val <- ens_hi$value[ens_hi$scenario == sc & ens_hi$rp_name == rp]
+    if (length(lo_val)) central$intermod_lo[[i]] <- lo_val[[1L]]
+    if (length(hi_val)) central$intermod_hi[[i]] <- hi_val[[1L]]
+  }
+
+  central$ssp_key <- ifelse(central$is_historical, "Historical",
+                            vapply(central$scenario, .normalise_ssp, character(1L)))
+  central$yr_lbl  <- ifelse(central$is_historical, "Historical",
+                            vapply(central$scenario, .parse_year, character(1L)))
+  central$rp_label <- factor(
+    central$rp_label,
+    levels = rev(c("Expected", "Adverse 1-in-5", "Adverse 1-in-10",
+                   "Adverse 1-in-20", "Adverse 1-in-50"))
+  )
+  central
+}
+
+#' Render Step 2 Return-Period Dot Plot (Figure S2-4)
+#' @noRd
+plot_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
+                                   title = NULL, subtitle = NULL) {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(blank_plot("Return-period outcomes are unavailable."))
+  }
+  scenario_levels <- c(
+    "Historical",
+    sort(unique(as.character(tbl$scenario[!tbl$is_historical])))
+  )
+  scenario_colours <- stats::setNames(vapply(scenario_levels, function(s) {
+    if (identical(s, "Historical")) return(.wise_history)
+    ssp <- .normalise_ssp(s)
+    if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else .wise_slate
+  }, character(1L)), scenario_levels)
+  tbl$scenario_key <- factor(
+    ifelse(tbl$is_historical, "Historical", as.character(tbl$scenario)),
+    levels = scenario_levels
+  )
+  tbl$series <- ifelse(tbl$is_historical, "Historical", "Future")
+  tbl$point_shape <- ifelse(tbl$is_historical, 21, 24)
+  # Vertical dodge: multiple scenarios share each return-period row, so
+  # offset the dumbbells per scenario to keep them readable. Historical
+  # keeps the centre line; each future scenario takes its own slot.
+  n_scen <- length(scenario_levels)
+  dodge_width <- 0.42
+  tbl$rp_key <- as.character(tbl$rp_label)
+  n_per_rp <- stats::setNames(
+    as.list(table(factor(tbl$rp_label, levels = levels(tbl$rp_label)))),
+    as.character(unique(tbl$rp_label[!duplicated(tbl$rp_label)]))
+  )
+  tbl$rp_y <- as.integer(tbl$rp_label)
+  tbl$dodge_offset <- stats::ave(
+    seq_len(nrow(tbl)),
+    tbl$rp_y,
+    FUN = function(idx) {
+      k <- length(idx)
+      if (k <= 1L) return(0)
+      seq(-(k - 1L) / 2, (k - 1L) / 2, length.out = k)[
+        order(match(as.character(tbl$scenario_key[idx]), scenario_levels))
+      ] * (dodge_width / max(k - 1L, 1))
+    }
+  )
+  p <- ggplot2::ggplot(tbl, ggplot2::aes(y = .data$rp_y + .data$dodge_offset,
+                                         x = .data$value,
+                                         colour = .data$scenario_key,
+                                         shape = .data$series,
+                                         fill = .data$scenario_key)) +
+    ggplot2::geom_segment(ggplot2::aes(x = .data$intermod_lo, xend = .data$intermod_hi,
+                                       yend = .data$rp_y + .data$dodge_offset),
+                          linewidth = 2.0, alpha = 0.65, na.rm = TRUE) +
+    ggplot2::geom_point(size = 3.4, stroke = 1.0, na.rm = TRUE) +
+    ggplot2::annotate(
+      "text", x = -Inf,
+      y = sort(unique(tbl$rp_y)),
+      hjust = -0.08,
+      label = levels(droplevels(tbl$rp_label)),
+      size = 4.8, fontface = "bold",
+      colour = .wise_slate
+    ) +
+    ggplot2::scale_colour_manual(
+      values = scenario_colours,
+      breaks = scenario_levels,
+      labels = scenario_levels,
+      name = "Climate scenario and period"
+    ) +
+    # Shape mirrors the colour legend (circle = historical, triangle = future),
+    # so its guide is suppressed to avoid a duplicate legend.
+    ggplot2::scale_shape_manual(values = c(Historical = 21, Future = 24),
+                                 guide = "none") +
+    ggplot2::scale_fill_manual(values = scenario_colours, guide = "none") +
+    ggplot2::labs(
+      x = x_label, y = NULL,
+      title = title,
+      subtitle = subtitle
+    ) +
+    theme_wise() +
+    ggplot2::theme(
+      legend.position = "bottom",
+      # Return-period names are drawn as annotations next to each row band;
+      # suppress the default axis labels to avoid duplication.
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks.y = ggplot2::element_blank()
+    ) +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(order = 1)
+    )
+
+  fut_periods <- unique(tbl$yr_lbl[!tbl$is_historical])
+  if (length(fut_periods) > 1L) {
+    p <- p + ggplot2::facet_wrap(~yr_lbl)
+  }
+  p
+}
+
+# ---------------------------------------------------------------------------- #
+# Step 2 headline cards                                                        #
+# ---------------------------------------------------------------------------- #
+
+#' Build Step 2 Results Headline Cards
+#'
+#' Pure function returning a list of 5 card specifications for
+#' \code{headline_cards_ui()}, matching the \code{mod_1} design language:
+#' \enumerate{
+#'   \item Typical weather year outcome (Scenario expected, historical baseline, change)
+#'   \item Adverse weather year outcomes (1-in-10 and 1-in-20 thresholds)
+#'   \item Weather-year range (range across years: inter-annual weather variability)
+#'   \item Climate-model spread (range across models & coefficient uncertainty)
+#'   \item Simulation years (tally of simulation years: scenarios * models * years)
+#' }
+#'
+#' @param bands Data frame from \code{pointrange_bands_rv()}.
+#' @param threshold_tbl Data frame from \code{threshold_table_rv()}.
+#' @param hist_sim List from \code{hist_sim()}.
+#' @param saved_scenarios List of saved future scenarios.
+#' @param method Character aggregation method (default "mean").
+#' @param deviation Character deviation mode ("none", "mean", "median").
+#' @param ensemble_band Character band key for inter-model/inter-annual spread.
+#' @param uncertainty_band Character band key for coefficient uncertainty.
+#' @param skip_coef_draws Logical flag.
+#' @param timeseries_curves Data frame from \code{timeseries_curves_rv()}.
+#'
+#' @return A list of 5 card lists ready for \code{headline_cards_ui()}.
+#' @noRd
+step2_headline_cards <- function(bands,
+                                 threshold_tbl = NULL,
+                                 hist_sim = NULL,
+                                 saved_scenarios = list(),
+                                 method = "mean",
+                                 deviation = "none",
+                                 ensemble_band = "minmax",
+                                 uncertainty_band = "p10_p90",
+                                 skip_coef_draws = FALSE,
+                                 timeseries_curves = NULL) {
+  if (is.null(bands) || !nrow(bands) ||
+      !all(c("is_historical", "scenario") %in% names(bands))) {
+    return(NULL)
+  }
+
+  hist_rows <- bands[bands$is_historical, , drop = FALSE]
+  fut_rows  <- bands[!bands$is_historical, , drop = FALSE]
+  if (!nrow(hist_rows) && !nrow(fut_rows)) return(NULL)
+
+  hist  <- if (nrow(hist_rows)) hist_rows[1L, ] else fut_rows[1L, ]
+  focus <- if (nrow(fut_rows)) fut_rows[1L, ] else hist
+  has_future <- nrow(fut_rows) > 0L
+
+  so <- if (!is.null(hist_sim)) hist_sim$so else NULL
+
+  # 1. Typical weather year outcome
+  val_1 <- if (has_future) {
+    paste0(fmt_num(hist$value, 2), " vs ", fmt_num(focus$value, 2))
+  } else {
+    fmt_num(hist$value, 2)
+  }
+
+  line1_1 <- if (has_future) {
+    "Historical vs SSP"
+  } else {
+    "Historical baseline"
+  }
+  # The expected outcome is the mean across simulated weather years. This is
+  # separate from the selected household-level aggregation within each year.
+  weather_year_label <- "Mean weather year"
+
+  card1 <- list(
+    label = "Expected outcome",
+    value = val_1,
+    note = paste(line1_1, weather_year_label, sep = " \u00b7 "),
+    note_html = shiny::tagList(
+      shiny::tags$div(line1_1),
+      shiny::tags$div(style = "font-weight: 600;", weather_year_label)
+    ),
+    info = paste(
+      "Expected annual aggregate outcome under the historical baseline compared with the",
+      "focus climate scenario (mean across weather years and climate models).",
+      "Differences reflect simulated climate conditions for the fixed survey population."
+    )
+  )
+
+  # 2. Adverse weather year outcomes (1-in-20 year)
+  v20_hist <- NA_real_
+  v20_ssp  <- NA_real_
+  if (!is.null(threshold_tbl) && nrow(threshold_tbl) &&
+      all(c("scenario", "rp_name", "Estimate") %in% names(threshold_tbl))) {
+    rp_map   <- metric_decision_return_periods(method %||% "mean", so)
+    rp_20    <- unname(rp_map[["Adverse 1-in-20"]])
+    r20_hist <- threshold_tbl[threshold_tbl$scenario == "Historical" &
+                              threshold_tbl$rp_name == rp_20 &
+                              threshold_tbl$Estimate == "Central (P50)", , drop = FALSE]
+    r20_ssp  <- threshold_tbl[threshold_tbl$scenario == focus$scenario &
+                              threshold_tbl$rp_name == rp_20 &
+                              threshold_tbl$Estimate == "Central (P50)", , drop = FALSE]
+    if (nrow(r20_hist) && is.finite(r20_hist$value[[1L]])) v20_hist <- r20_hist$value[[1L]]
+    if (nrow(r20_ssp)  && is.finite(r20_ssp$value[[1L]]))  v20_ssp  <- r20_ssp$value[[1L]]
+  }
+
+  if (has_future && is.finite(v20_hist) && is.finite(v20_ssp)) {
+    val_2   <- paste0(fmt_num(v20_hist, 2), " vs ", fmt_num(v20_ssp, 2))
+    line1_2 <- "Historical vs SSP"
+    line2_2 <- "1-in-20 year"
+  } else if (!has_future && is.finite(v20_hist)) {
+    val_2   <- fmt_num(v20_hist, 2)
+    line1_2 <- "Historical baseline"
+    line2_2 <- "1-in-20 year"
+  } else if (has_future && is.finite(v20_ssp)) {
+    val_2   <- fmt_num(v20_ssp, 2)
+    line1_2 <- as.character(focus$scenario)
+    line2_2 <- "1-in-20 year"
+  } else {
+    val_2   <- "Unavailable"
+    line1_2 <- "Requires \u226520 weather years"
+    line2_2 <- "1-in-20 year"
+  }
+
+  card2 <- list(
+    label = "Adverse weather years",
+    value = val_2,
+    note = paste(line1_2, line2_2, sep = " \u00b7 "),
+    note_html = shiny::tagList(
+      shiny::tags$div(line1_2),
+      shiny::tags$div(style = "font-weight: 600;", line2_2)
+    ),
+    info = paste(
+      "Simulated aggregate outcome in adverse 1-in-20 weather years under the historical",
+      "baseline compared with the focus climate regime. A 1-in-20 year event occurs in",
+      "approximately 5% of simulated weather years. The adverse tail is determined",
+      "automatically by the selected metric."
+    )
+  )
+
+  # 3. Range across years (inter-annual weather variability). For future
+  # scenarios, first calculate each model's observed year range, then average
+  # the lower and upper endpoints across models. This is different from taking
+  # quantiles of the pooled model-year values, which can overweight extremes.
+  finite_range <- function(x) {
+    x <- x[is.finite(x)]
+    if (!length(x)) return(c(lo = NA_real_, hi = NA_real_))
+    c(lo = min(x), hi = max(x))
+  }
+  scenario_year_range <- function(scenario) {
+    if (is.null(timeseries_curves) || !nrow(timeseries_curves) ||
+        !all(c("scenario", "value") %in% names(timeseries_curves))) {
+      return(c(lo = NA_real_, hi = NA_real_))
+    }
+    x <- timeseries_curves[timeseries_curves$scenario == scenario, , drop = FALSE]
+    if (!nrow(x)) return(c(lo = NA_real_, hi = NA_real_))
+    if ("model_id" %in% names(x)) {
+      by_model <- split(x$value, x$model_id)
+      ranges <- lapply(by_model, finite_range)
+      ranges <- ranges[vapply(ranges, function(r) all(is.finite(r)), logical(1L))]
+      if (!length(ranges)) return(c(lo = NA_real_, hi = NA_real_))
+      c(lo = mean(vapply(ranges, `[[`, numeric(1L), "lo"), na.rm = TRUE),
+        hi = mean(vapply(ranges, `[[`, numeric(1L), "hi"), na.rm = TRUE))
+    } else {
+      finite_range(x$value)
+    }
+  }
+  hist_range <- scenario_year_range("Historical")
+  focus_range <- scenario_year_range(focus$scenario)
+  if (!is.finite(focus_range[["lo"]])) {
+    focus_range <- c(lo = focus$interann_lo, hi = focus$interann_hi)
+  }
+  if (!is.finite(hist_range[["lo"]])) {
+    hist_range <- c(lo = hist$interann_lo, hi = hist$interann_hi)
+  }
+
+  val_3 <- if (has_future && all(is.finite(focus_range))) {
+    paste(fmt_num(focus_range[["lo"]], 2), "to", fmt_num(focus_range[["hi"]], 2))
+  } else if (all(is.finite(hist_range))) {
+    paste(fmt_num(hist_range[["lo"]], 2), "to", fmt_num(hist_range[["hi"]], 2))
+  } else {
+    "Unavailable"
+  }
+
+  line1_3 <- if (has_future && all(is.finite(hist_range))) {
+    paste0("Hist: ", fmt_num(hist_range[["lo"]], 2), " to ", fmt_num(hist_range[["hi"]], 2))
+  } else {
+    "Historical baseline"
+  }
+  line2_3 <- "Inter-annual weather variability"
+
+  card3 <- list(
+    label = "Range across years",
+    value = val_3,
+    note = paste(line1_3, line2_3, sep = " \u00b7 "),
+    note_html = shiny::tagList(
+      shiny::tags$div(line1_3),
+      shiny::tags$div(style = "font-weight: 600;", line2_3)
+    ),
+    info = paste(
+      "Range of annual population aggregate outcomes across simulated weather-year",
+      "realizations within the selected climate regime. This characterises",
+      "year-to-year weather fluctuations, not household inequality or continuous",
+      "time forecasting."
+    )
+  )
+
+  # 4. Climate-model spread (full range of model means at expected outcome)
+  n_mods <- suppressWarnings(as.integer(focus$n_models %||% 1L))[1L]
+  if (!is.finite(n_mods) || n_mods < 1L) n_mods <- 1L
+
+  focus_model_means <- if (!is.null(timeseries_curves) && nrow(timeseries_curves) &&
+                           all(c("scenario", "value") %in% names(timeseries_curves))) {
+    x <- timeseries_curves[timeseries_curves$scenario == focus$scenario, , drop = FALSE]
+    if (nrow(x) && "model_id" %in% names(x)) {
+      tapply(x$value, x$model_id, mean, na.rm = TRUE)
+    } else numeric(0L)
+  } else numeric(0L)
+  focus_model_means <- as.numeric(focus_model_means[is.finite(focus_model_means)])
+
+  val_4 <- if (has_future && length(focus_model_means) > 1L) {
+    paste(fmt_num(min(focus_model_means), 2), "to", fmt_num(max(focus_model_means), 2))
+  } else if (has_future) {
+    fmt_num(focus$value, 2)
+  } else {
+    "Not applicable"
+  }
+
+  line1_4 <- if (has_future && length(focus_model_means) > 1L) {
+    paste0("Full range across ", length(focus_model_means), " models")
+  } else if (has_future) {
+    "Single climate model"
+  } else {
+    "Single historical climate series"
+  }
+  line2_4 <- "CMIP6 model disagreement"
+
+  card4 <- list(
+    label = "Climate-model spread",
+    value = val_4,
+    note = paste(line1_4, line2_4, sep = " \u00b7 "),
+    note_html = shiny::tagList(
+      shiny::tags$div(line1_4),
+      shiny::tags$div(style = "font-weight: 600;", line2_4)
+    ),
+    info = paste(
+      "Range of expected annual aggregate outcomes across CMIP6 climate models for",
+      "the focus scenario. Reflects climate projection disagreement, evaluated at the",
+      "central expected outcome."
+    )
+  )
+
+  # 5. Tally of simulation years (e.g. scenarios * models * years...)
+  run_info <- if (!is.null(hist_sim)) hist_sim$sim_summary %||% list() else list()
+
+  # Number of simulation years per model (evaluated on focus scenario)
+  hist_years <- run_info$historical_years %||% integer(0)
+  focus_curves <- if (!is.null(timeseries_curves) && nrow(timeseries_curves)) {
+    timeseries_curves[timeseries_curves$scenario == focus$scenario, , drop = FALSE]
+  } else NULL
+
+  n_years <- if (!is.null(focus_curves) && nrow(focus_curves)) {
+    length(unique(focus_curves$sim_year))
+  } else if (!is.null(timeseries_curves) && nrow(timeseries_curves)) {
+    length(unique(timeseries_curves$sim_year))
+  } else if (length(hist_years) >= 2L && is.finite(hist_years[1]) && is.finite(hist_years[2])) {
+    as.integer(hist_years[2] - hist_years[1] + 1L)
+  } else {
+    30L
+  }
+
+  n_scenarios <- length(saved_scenarios %||% list())
+
+  # Total simulated model-years across all scenarios, models, and weather years
+  total_runs <- if (!is.null(timeseries_curves) && nrow(timeseries_curves)) {
+    nrow(timeseries_curves)
+  } else if (is.finite(run_info$total_runs %||% NA_integer_) && run_info$total_runs > 0L && n_mods <= 1L) {
+    run_info$total_runs
+  } else {
+    (max(n_scenarios, 1L) * n_mods + (if (has_future) 1L else 0L)) * n_years
+  }
+
+  val_5 <- format(total_runs, big.mark = ",")
+
+  line1_5 <- if (n_scenarios > 0L) {
+    paste0("(", n_scenarios, if (n_scenarios == 1L) " SSP \u00d7 " else " SSPs \u00d7 ",
+           n_mods, " models + 1 historical) \u00d7 ", n_years, " yrs")
+  } else {
+    paste0("1 historical \u00d7 ", n_years, " yrs")
+  }
+
+  card5 <- list(
+    label = "Simulation years",
+    value = val_5,
+    note = line1_5,
+    note_html = shiny::tagList(
+      shiny::tags$div(line1_5)
+    ),
+    class = "neutral",
+    info = paste(
+      "Total number of simulated population aggregates across all configured",
+      "climate scenarios, ensemble climate models, and annual weather draws",
+      "(scenarios \u00d7 models \u00d7 weather years)."
+    )
+  )
+
+  list(card1, card2, card3, card4, card5)
+}
+
+#' Convert Step 2 Headline Cards to a Tidy Data Frame
+#'
+#' @param cards List returned by \code{step2_headline_cards()}.
+#' @return A tidy data frame with columns `Metric`, `Value`, `Note`.
+#' @noRd
+step2_headline_df <- function(cards) {
+  if (is.null(cards) || !length(cards)) {
+    return(data.frame(Metric = character(0), Value = character(0), Note = character(0),
+                      stringsAsFactors = FALSE))
+  }
+  data.frame(
+    Metric = vapply(cards, function(c) as.character(c$label %||% ""), character(1L)),
+    Value  = vapply(cards, function(c) as.character(c$value %||% ""), character(1L)),
+    Note   = vapply(cards, function(c) as.character(c$note %||% ""), character(1L)),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Build Return-Period Decision Summary HTML Table
+#'
+#' Pure function that formats a decision return-period summary data frame into
+#' a clean `.wise-table` HTML table matching the `mod_1` styling.
+#'
+#' @param df Data frame with columns `scenario`, `Expected`, `Adverse 1-in-5`, etc.
+#' @param subheader Character string displayed in the subheader.
+#' @param footnotes Character vector of footnotes displayed below the table.
+#'
+#' @return A \code{shiny.tag} containing the table.
+#' @noRd
+make_decision_table_html <- function(df, subheader = NULL, footnotes = NULL) {
+  if (is.null(df) || !nrow(df)) {
+    return(shiny::tags$div(class = "text-muted", "No return-period data available."))
+  }
+
+  cols <- names(df)[!names(df) %in% c("n_obs", "ssp_key", "yr_lbl")]
+
+  # Header row
+  th_tags <- lapply(cols, function(col_nm) {
+    cls <- if (col_nm == "scenario") "text-start" else "text-end num"
+    display_nm <- if (col_nm == "scenario") "Scenario & Period" else col_nm
+    shiny::tags$th(class = cls, display_nm)
+  })
+
+  # Body rows
+  tbody_tags <- lapply(seq_len(nrow(df)), function(i) {
+    row_data <- df[i, , drop = FALSE]
+    is_hist  <- identical(as.character(row_data$scenario[[1L]]), "Historical")
+    row_cls  <- if (is_hist) "historical-row font-weight-bold" else ""
+
+    td_tags <- lapply(cols, function(col_nm) {
+      val <- row_data[[col_nm]][[1L]]
+      if (col_nm == "scenario") {
+        shiny::tags$td(class = "text-start", style = "font-weight: 600;", as.character(val))
+      } else if (col_nm == "Change from historical") {
+        if (!is.na(val)) {
+          diff_str <- sprintf("%+.2f", val)
+          shiny::tags$td(class = "text-end num", diff_str)
+        } else {
+          shiny::tags$td(class = "text-end num text-muted", "\u2014")
+        }
+      } else {
+        num_str <- if (is.numeric(val) && is.finite(val)) fmt_num(val, 2) else "\u2014"
+        shiny::tags$td(class = "text-end num", num_str)
+      }
+    })
+    shiny::tags$tr(class = row_cls, td_tags)
+  })
+
+  table_tag <- shiny::tags$table(
+    class = "table wise-table table-sm table-hover",
+    shiny::tags$thead(shiny::tags$tr(th_tags)),
+    shiny::tags$tbody(tbody_tags)
+  )
+
+  shiny::tags$div(
+    class = "wise-table-container",
+    if (!is.null(subheader) && nzchar(subheader)) {
+      shiny::tags$div(class = "wise-subheader", subheader)
+    },
+    table_tag,
+    if (!is.null(footnotes) && length(footnotes) > 0) {
+      shiny::tags$div(
+        class = "t2-note",
+        lapply(footnotes, function(fn) shiny::tags$div(fn))
+      )
+    }
+  )
 }
 
 # ---------------------------------------------------------------------------- #
@@ -359,8 +1376,12 @@ plot_pointrange_climate <- function(bands_tbl,
 #' @importFrom stats quantile median
 #' @export
 build_threshold_table_df <- function(threshold_tbl,
-                                     group_order = "scenario_x_year",
-                                     show_coef   = TRUE) {
+                                     group_order  = "scenario_x_year",
+                                     show_coef    = TRUE,
+                                     adverse_only = FALSE,
+                                     method       = "mean",
+                                     so           = NULL,
+                                     n_hist_years = NULL) {
 
   if (is.null(threshold_tbl) || nrow(threshold_tbl) == 0L) return(NULL)
   df <- threshold_tbl
@@ -378,31 +1399,62 @@ build_threshold_table_df <- function(threshold_tbl,
   }
   if (nrow(df) == 0L) return(NULL)
 
+  if (isTRUE(adverse_only)) {
+    rp_map <- metric_decision_return_periods(method, so)
+    max_yrs <- if (!is.null(n_hist_years) && is.finite(n_hist_years)) {
+      as.integer(n_hist_years)
+    } else {
+      max(df$n_obs, na.rm = TRUE)
+    }
+    if (max_yrs < 50L) {
+      rp_map <- rp_map[!names(rp_map) %in% c("Adverse 1-in-50", "Adverse 1 in 50")]
+    }
+    df <- df[df$rp_name %in% unname(rp_map), , drop = FALSE]
+    if (nrow(df) == 0L) return(NULL)
+
+    label_lookup <- names(rp_map)
+    names(label_lookup) <- unname(rp_map)
+    df$rp_label <- label_lookup[df$rp_name]
+    df$rp_label <- gsub("-", " ", df$rp_label)
+  }
+
   # Pivot: one column per RP threshold, value rounded.
   rp_levels <- unique(df$rp_label)
-  df$value_round <- round(df$value, 3)
+  df$value_round <- round(df$value, 2)
 
   pivot_cols <- if (has_source)
-    c("scenario", "source", "Estimate", "rp_label", "n_obs", "value_round")
+    c("scenario", "source", "Estimate", "rp_label", "value_round")
   else
-    c("scenario", "Estimate", "rp_label", "n_obs", "value_round")
+    c("scenario", "Estimate", "rp_label", "value_round")
+  if (!isTRUE(adverse_only)) pivot_cols <- c(pivot_cols, "n_obs")
+
   wide <- tidyr::pivot_wider(
     df[, pivot_cols],
     names_from  = "rp_label",
-    values_from = "value_round"
+    values_from = "value_round",
+    values_fn   = function(x) mean(x, na.rm = TRUE)
   )
   wide <- as.data.frame(wide)
-  wide <- dplyr::rename(wide, Scenario = scenario, Obs = n_obs)
-  if (has_source) wide <- dplyr::rename(wide, Source = source)
 
-  # Reorder columns to canonical sequential order: 1:50, 1:20, ..., 1:1, ...,
-  # 19:20, 49:50. RPs that didn't survive the n-year reliability filter are
-  # simply absent from `names(wide)` and are skipped.
-  canonical <- c(names(RP_LOW), "1:1", names(RP_HIGH))
-  rp_present <- intersect(canonical, names(wide))
-  lead_cols  <- if (has_source) c("Scenario", "Source", "Estimate", "Obs")
-                else c("Scenario", "Estimate", "Obs")
-  wide <- wide[, c(lead_cols, rp_present), drop = FALSE]
+  if (isTRUE(adverse_only)) {
+    wide <- dplyr::rename(wide, `Scenario / Period` = scenario)
+    if (has_source) wide <- dplyr::rename(wide, Source = source)
+    rp_canonical <- c("Expected", "Adverse 1 in 5", "Adverse 1 in 10", "Adverse 1 in 20", "Adverse 1 in 50")
+    rp_present <- intersect(rp_canonical, names(wide))
+    lead_cols  <- if (has_source) c("Scenario / Period", "Source", "Estimate")
+                  else c("Scenario / Period", "Estimate")
+    wide <- wide[, c(lead_cols, rp_present), drop = FALSE]
+    scenario_col <- "Scenario / Period"
+  } else {
+    wide <- dplyr::rename(wide, Scenario = scenario, Obs = n_obs)
+    if (has_source) wide <- dplyr::rename(wide, Source = source)
+    canonical <- c(names(RP_LOW), "1:1", names(RP_HIGH))
+    rp_present <- intersect(canonical, names(wide))
+    lead_cols  <- if (has_source) c("Scenario", "Source", "Estimate", "Obs")
+                  else c("Scenario", "Estimate", "Obs")
+    wide <- wide[, c(lead_cols, rp_present), drop = FALSE]
+    scenario_col <- "Scenario"
+  }
 
   # Sort rows: Historical first, then SSPs. Within each scenario the
   # Estimate rows are arranged concentrically around the Central P50:
@@ -424,19 +1476,19 @@ build_threshold_table_df <- function(threshold_tbl,
   }
   wide$.est_order <- .est_rank(wide$Estimate)
 
-  hist_rows <- wide[wide$Scenario == "Historical", , drop = FALSE]
-  ssp_rows  <- wide[wide$Scenario != "Historical", , drop = FALSE]
+  hist_rows <- wide[wide[[scenario_col]] == "Historical", , drop = FALSE]
+  ssp_rows  <- wide[wide[[scenario_col]] != "Historical", , drop = FALSE]
 
   if (nrow(hist_rows) > 0)
     hist_rows <- hist_rows[order(hist_rows$.est_order), , drop = FALSE]
 
   if (nrow(ssp_rows) > 0) {
-    ssp_rows$.ssp_sort <- sub(" /.*", "", ssp_rows$Scenario)
-    yr_m <- regexpr("[0-9]{4}-[0-9]{4}", ssp_rows$Scenario)
+    ssp_rows$.ssp_sort <- sub(" /.*", "", ssp_rows[[scenario_col]])
+    yr_m <- regexpr("[0-9]{4}-[0-9]{4}", ssp_rows[[scenario_col]])
     ssp_rows$.yr_sort  <- ifelse(
       yr_m > 0,
-      regmatches(ssp_rows$Scenario, yr_m),
-      regmatches(ssp_rows$Scenario, regexpr("[0-9]{4}", ssp_rows$Scenario))
+      regmatches(ssp_rows[[scenario_col]], yr_m),
+      regmatches(ssp_rows[[scenario_col]], regexpr("[0-9]{4}", ssp_rows[[scenario_col]]))
     )
     src_sort <- if (has_source)
       match(ssp_rows$Source, c("Baseline", "Policy")) else 1L
@@ -486,8 +1538,7 @@ plot_timeseries_spaghetti <- function(ts_tbl,
                                        x_label         = "",
                                        ensemble_band_q = c(lo = 0, hi = 1)) {
   if (is.null(ts_tbl) || nrow(ts_tbl) == 0L)
-    return(ggplot2::ggplot() +
-           ggplot2::labs(title = "Run a simulation to see model trajectories."))
+    return(blank_plot("Run a simulation to see model trajectories."))
 
   df <- ts_tbl
   has_source <- "source" %in% names(df)
@@ -503,7 +1554,7 @@ plot_timeseries_spaghetti <- function(ts_tbl,
   fut_yr_labels  <- sort(unique(df$yr_lbl[df$yr_lbl != "Historical"]))
   yr_styles      <- .resolve_year_styles(fut_yr_labels)
   present_ssps   <- sort(unique(df$ssp_key[df$ssp_key != "Historical"]))
-  colour_map_ssp <- c("Historical" = "black",
+  colour_map_ssp <- c("Historical" = .wise_support,
                       .ssp_colours[intersect(names(.ssp_colours),
                                              present_ssps)])
   ltype_map_yr   <- c("Historical" = "solid", yr_styles$linetype_map)
@@ -597,7 +1648,7 @@ plot_timeseries_spaghetti <- function(ts_tbl,
     linewidth = 1.1, na.rm = TRUE
   )
 
-  p +
+  p <- p +
     ggplot2::scale_color_manual(
       values = scen_colour_map, breaks = scen_levels,
       name   = "Scenario",
@@ -618,17 +1669,27 @@ plot_timeseries_spaghetti <- function(ts_tbl,
       guide  = ggplot2::guide_legend(override.aes = list(linewidth = 0.9))
     )
   }
-  p +
-    ggplot2::labs(x = "Simulation year", y = x_label) +
+  p <- p +
+    ggplot2::labs(
+      x = "Historical weather-year draw (simulated)",
+      y = x_label,
+      subtitle = NULL
+    ) +
     theme_wise() +
+    ggplot2::guides(
+      colour = ggplot2::guide_legend(title = NULL),
+      linetype = ggplot2::guide_legend(title = NULL),
+      alpha = ggplot2::guide_legend(title = NULL)
+    ) +
     ggplot2::theme(legend.position = "bottom")
+  p
 }
 
 # ---------------------------------------------------------------------------- #
 # Variance-contribution stacked bar                                            #
 # ---------------------------------------------------------------------------- #
 
-#' Stacked SD-Contribution Bar by Scenario
+#' Aligned SD-Contribution Bars by Scenario
 #'
 #' For each scenario, plots a horizontal bar stacking each uncertainty
 #' source's standard deviation contribution (sqrt of its variance):
@@ -636,41 +1697,32 @@ plot_timeseries_spaghetti <- function(ts_tbl,
 #'   - Inter-annual variability (within-model year-to-year)
 #'   - Inter-model spread (across-model disagreement; future only)
 #'
-#' Each segment's length is the source's SD on the outcome scale. Segment
-#' labels show each source's share of the bar's total length (sum of the
-#' three source SDs). Because variances (not SDs) add under independence,
-#' the stacked total is an **upper bound** on the true combined SD;
-#' segments are placed side by side as a visual decomposition of where
-#' uncertainty comes from, not as a literal additive total.
+#' Each bar is one source's SD on the outcome scale. Bars are deliberately
+#' aligned rather than stacked: SD components are not additive and covariance
+#' assumptions must not be hidden in the visual encoding.
 #'
 #' @param var_tbl Tibble with columns: scenario, var_coef, var_within,
 #'   var_across, is_historical.
 #' @return A ggplot object.
-#' @importFrom ggplot2 ggplot aes geom_col geom_text scale_fill_manual
-#'   scale_y_continuous labs theme_minimal theme coord_flip position_stack
+#' @importFrom ggplot2 ggplot aes geom_col scale_fill_manual
+#'   scale_y_continuous labs theme_minimal theme coord_flip
 #' @importFrom tidyr pivot_longer
 #' @importFrom rlang .data
 #' @export
 plot_variance_contribution <- function(var_tbl) {
   if (is.null(var_tbl) || nrow(var_tbl) == 0L)
-    return(ggplot2::ggplot() +
-           ggplot2::labs(title = "Run a simulation to see SD contributions."))
+    return(blank_plot("Run a simulation to see SD contributions."))
 
   df <- var_tbl
   df$sd_coef   <- sqrt(pmax(df$var_coef,   0))
   df$sd_within <- sqrt(pmax(df$var_within, 0))
   df$sd_across <- sqrt(pmax(df$var_across, 0))
-  df$sd_sum    <- df$sd_coef + df$sd_within + df$sd_across
-
   long <- tidyr::pivot_longer(
-    df[, c("scenario", "sd_coef", "sd_within", "sd_across", "sd_sum")],
+    df[, c("scenario", "sd_coef", "sd_within", "sd_across")],
     cols      = c("sd_coef", "sd_within", "sd_across"),
     names_to  = "source",
     values_to = "sd"
   )
-  long$share <- ifelse(long$sd_sum > 0, long$sd / long$sd_sum, NA_real_)
-  long$share_lbl <- ifelse(is.finite(long$share),
-                           paste0(round(100 * long$share), "%"), "")
 
   long$source <- factor(long$source,
                         levels = c("sd_across", "sd_within", "sd_coef"),
@@ -680,25 +1732,21 @@ plot_variance_contribution <- function(var_tbl) {
   long$scenario <- factor(long$scenario, levels = rev(unique(df$scenario)))
 
   fill_map <- c(
-    "Coefficient uncertainty"  = "#4a90d9",
-    "Inter-annual variability" = "#f4a261",
-    "Inter-model spread"       = "#7a5195"
+    "Coefficient uncertainty"  = .wise_cat[[1]], # blue
+    "Inter-annual variability" = .wise_cat[[2]], # vermillion
+    "Inter-model spread"       = .wise_cat[[3]]  # bluish green
   )
 
   ggplot2::ggplot(long,
     ggplot2::aes(x = .data$scenario, y = .data$sd, fill = .data$source)
   ) +
-    ggplot2::geom_col(width = 0.7) +
-    ggplot2::geom_text(
-      ggplot2::aes(label = .data$share_lbl),
-      position = ggplot2::position_stack(vjust = 0.5),
-      size = 3, colour = "white"
-    ) +
+    ggplot2::geom_col(width = 0.7, position = "dodge") +
     ggplot2::scale_fill_manual(values = fill_map, name = NULL) +
     ggplot2::scale_y_continuous(expand = c(0, 0)) +
     ggplot2::labs(
       x = NULL,
-      y = "Standard deviation (outcome units)"
+      y = "Standard deviation (outcome units)",
+      subtitle = NULL
     ) +
     theme_wise() +
     ggplot2::theme(
@@ -707,6 +1755,65 @@ plot_variance_contribution <- function(var_tbl) {
       panel.grid.minor   = ggplot2::element_blank()
     ) +
     ggplot2::coord_flip()
+}
+
+variance_component_data <- function(var_tbl, include_shares = FALSE,
+                                    share_tolerance = 1e-12) {
+  if (is.null(var_tbl) || !nrow(var_tbl)) return(tibble::tibble())
+  df <- var_tbl
+  df$sd_coef <- sqrt(pmax(df$var_coef %||% 0, 0))
+  df$sd_within <- sqrt(pmax(df$var_within %||% 0, 0))
+  df$sd_across <- sqrt(pmax(df$var_across %||% 0, 0))
+  out <- tidyr::pivot_longer(
+    df[, intersect(c("scenario", "sd_coef", "sd_within", "sd_across"), names(df)),
+       drop = FALSE],
+    cols = c("sd_coef", "sd_within", "sd_across"),
+    names_to = "source", values_to = "sd"
+  )
+  out$variance <- out$sd^2
+  if (isTRUE(include_shares)) {
+    totals <- stats::setNames(
+      tapply(out$variance, out$scenario, sum, na.rm = TRUE),
+      unique(out$scenario)
+    )
+    out$share_approx <- out$variance / pmax(totals[as.character(out$scenario)],
+                                            share_tolerance)
+    out$share_warning <- "Approximate zero-covariance share; not a full variance decomposition."
+  } else {
+    out$share_approx <- NA_real_
+    out$share_warning <- NA_character_
+  }
+  out
+}
+
+model_robustness_data <- function(ts_tbl, band_q = c(lo = 0.10, hi = 0.90)) {
+  if (is.null(ts_tbl) || !nrow(ts_tbl) ||
+      !all(c("scenario", "model_id", "sim_year", "value") %in% names(ts_tbl))) {
+    return(tibble::tibble())
+  }
+  x <- dplyr::group_by(ts_tbl, .data$scenario, .data$model_id) |>
+    dplyr::summarise(model_mean = mean(.data$value, na.rm = TRUE),
+                     n_weather_years = sum(is.finite(.data$value)), .groups = "drop")
+  centers <- dplyr::group_by(x, .data$scenario) |>
+    dplyr::summarise(center = stats::median(.data$model_mean, na.rm = TRUE),
+                     ensemble_lo = stats::quantile(.data$model_mean, band_q[[1L]], na.rm = TRUE),
+                     ensemble_hi = stats::quantile(.data$model_mean, band_q[[2L]], na.rm = TRUE),
+                     n_models = dplyr::n_distinct(.data$model_id), .groups = "drop")
+  dplyr::left_join(x, centers, by = "scenario")
+}
+
+plot_model_robustness <- function(tbl, x_label = "Expected annual outcome") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(blank_plot("Climate-model robustness is unavailable."))
+  }
+  ggplot2::ggplot(tbl, ggplot2::aes(x = .data$model_mean, y = .data$scenario)) +
+    ggplot2::geom_point(size = 2, colour = .wise_support, alpha = 0.7) +
+    ggplot2::geom_point(data = unique(tbl[c("scenario", "center")]),
+                        ggplot2::aes(x = .data$center, y = .data$scenario),
+                        shape = 21, fill = "#009E73", colour = .wise_support,
+                        size = 3) +
+    ggplot2::labs(x = x_label, y = NULL) +
+    theme_wise()
 }
 
 # ---------------------------------------------------------------------------- #
@@ -753,8 +1860,7 @@ enhance_exceedance <- function(curves_tbl,
                                ensemble_band_q = c(lo = 0, hi = 1)) {
 
   if (is.null(curves_tbl) || nrow(curves_tbl) == 0L)
-    return(ggplot2::ggplot() +
-           ggplot2::labs(title = "Run a simulation to see exceedance probabilities."))
+    return(blank_plot("Run a simulation to see exceedance probabilities."))
 
   # ---- Per-scenario summary at each rank ---------------------------------
   # For each (scenario, rank) collapse across models:
@@ -827,7 +1933,7 @@ enhance_exceedance <- function(curves_tbl,
   fut_yr_labels  <- sort(unique(agg_df$yr_lbl[agg_df$yr_lbl != "Historical"]))
   yr_styles      <- .resolve_year_styles(fut_yr_labels)
   present_ssps   <- sort(unique(agg_df$ssp_key[agg_df$ssp_key != "Historical"]))
-  colour_map_ssp <- c("Historical" = "black",
+  colour_map_ssp <- c("Historical" = .wise_support,
                       .ssp_colours[intersect(names(.ssp_colours), present_ssps)])
   ltype_map_yr   <- c("Historical" = "solid", yr_styles$linetype_map)
 
@@ -836,8 +1942,9 @@ enhance_exceedance <- function(curves_tbl,
     sort(unique(as.character(agg_df$scenario[!agg_df$is_historical])))
   )
   scenario_colour_map <- stats::setNames(vapply(scenario_levels, function(s) {
-    if (identical(s, "Historical")) return("black")
-    unname(colour_map_ssp[[.normalise_ssp(s)]] %||% "grey50")
+     if (identical(s, "Historical")) return(.wise_support)
+     ssp <- .normalise_ssp(s)
+     if (ssp %in% names(colour_map_ssp)) unname(colour_map_ssp[[ssp]]) else .wise_slate
   }, character(1L)), scenario_levels)
   scenario_linetype_map <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) return("solid")
@@ -871,7 +1978,7 @@ enhance_exceedance <- function(curves_tbl,
     fut_mod_df[fut_mod_df$source == "Policy", , drop = FALSE]
   else fut_mod_df[0, , drop = FALSE]
   hist_mean  <- if (nrow(hist_df) > 0L) mean(hist_df$central, na.rm = TRUE) else NA_real_
-  ann_y      <- if (isTRUE(logit_x)) 0.97 else 0.95
+  ann_y      <- if (max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55) 0.48 else if (isTRUE(logit_x)) 0.97 else 0.95
 
   # ---- Plot ---------------------------------------------------------------
   # Layer order (back to front): inter-model ribbon (future) -> coefficient
@@ -897,28 +2004,32 @@ enhance_exceedance <- function(curves_tbl,
     )
   )
 
-  # Inter-model ribbon (futures only). When source is present we draw a
-  # ribbon per source - both faded so the baseline ribbon stays readable.
-  if (nrow(fut_mod_df) > 0L) {
-    ribbon_aes <- if (has_source)
-      ggplot2::aes(y = .data$exceed_prob, xmin = .data$intermod_lo,
-                   xmax = .data$intermod_hi, fill = .data$ribbon_key,
-                   alpha = .data$source, group = .data$line_id)
-    else
-      ggplot2::aes(y = .data$exceed_prob, xmin = .data$intermod_lo,
-                   xmax = .data$intermod_hi, fill = .data$ribbon_key,
-                   group = .data$line_id)
-    ribbon_layer <- if (has_source) {
-      ggplot2::geom_ribbon(
-        data = fut_mod_df, mapping = ribbon_aes, inherit.aes = FALSE
-      )
+  # Inter-model ribbons for each future series. Baseline and policy are both
+  # simulated across climate models, so each has its own spread.
+  show_ens_ribbon <- !is.null(ensemble_band_q) &&
+    (ensemble_band_q[["hi"]] > ensemble_band_q[["lo"]])
+  if (nrow(fut_mod_df) > 0L && isTRUE(show_ens_ribbon)) {
+    ribbon_aes <- ggplot2::aes(
+      y = .data$exceed_prob, xmin = .data$intermod_lo,
+      xmax = .data$intermod_hi, fill = .data$ribbon_key,
+      group = .data$line_id
+    )
+    if (has_source) {
+      p <- p +
+        ggplot2::geom_ribbon(
+          data = fut_baseline_df, mapping = ribbon_aes,
+          alpha = 0.10, inherit.aes = FALSE
+        ) +
+        ggplot2::geom_ribbon(
+          data = fut_policy_df, mapping = ribbon_aes,
+          alpha = 0.18, inherit.aes = FALSE
+        )
     } else {
-      ggplot2::geom_ribbon(
-        data = fut_mod_df, mapping = ribbon_aes, alpha = 0.18,
-        inherit.aes = FALSE
+      p <- p + ggplot2::geom_ribbon(
+        data = fut_mod_df, mapping = ribbon_aes,
+        alpha = 0.18, inherit.aes = FALSE
       )
     }
-    p <- p + ribbon_layer
   }
 
   # Coefficient uncertainty band: drawn as a pair of dashed outline curves
@@ -957,15 +2068,16 @@ enhance_exceedance <- function(curves_tbl,
   # exceedance probability, making the centre of the ensemble explicit.
   p <- if (has_source) {
     p +
-      ggplot2::geom_line(data = hist_df, colour = "black", na.rm = TRUE) +
-      # Baseline retains the Mod 2 scenario colour and period linetype;
-      # policy is the additional red overlay drawn last.
-      ggplot2::geom_line(data = fut_baseline_df, na.rm = TRUE) +
-      # Draw policy last so the red centre line stays visible at crossings.
-      ggplot2::geom_line(data = fut_policy_df, colour = "#c62828",
+      ggplot2::geom_line(data = hist_df, colour = .wise_support, na.rm = TRUE) +
+      # Baseline: solid line with scenario colour; labels distinguish it from
+      # the thicker policy line.
+      ggplot2::geom_line(data = fut_baseline_df, linetype = "solid",
+                         alpha = 0.8, na.rm = TRUE) +
+      ggplot2::geom_line(data = fut_policy_df, linetype = "solid",
+                         colour = .wise_policy, linewidth = 1.5,
                          na.rm = TRUE,
                          show.legend = c(colour = FALSE, linetype = FALSE,
-                                         linewidth = TRUE))
+                                          linewidth = TRUE))
   } else {
     p +
       ggplot2::geom_line(data = hist_df, linewidth = 0.9, na.rm = TRUE) +
@@ -976,12 +2088,12 @@ enhance_exceedance <- function(curves_tbl,
     p <- p +
       ggplot2::geom_vline(
         xintercept = hist_mean, linetype = "dotted",
-        colour = "black", linewidth = 0.5
+        colour = .wise_support, linewidth = 0.5
       ) +
       ggplot2::annotate(
         "text", x = hist_mean, y = ann_y,
         label = "Hist. mean", hjust = 1.05, vjust = -0.4,
-        size = 2.8, colour = "grey30"
+        size = 3.2, colour = .wise_slate
       )
   }
   p <- p +
@@ -989,10 +2101,8 @@ enhance_exceedance <- function(curves_tbl,
       values = scenario_colour_map,
       breaks = scenario_levels,
       labels = scenario_levels,
-      name   = "Scenario",
-      guide  = ggplot2::guide_legend(
-        override.aes = list(linewidth = 0.9, linetype = "solid", alpha = 1)
-      )
+      name   = NULL,
+      guide  = "none"
     ) +
     ggplot2::scale_fill_manual(
       values   = ribbon_palette,
@@ -1002,19 +2112,16 @@ enhance_exceedance <- function(curves_tbl,
     ggplot2::scale_linetype_manual(
       values = scenario_linetype_map,
       breaks = scenario_levels,
-      name   = "Scenario"
+      name   = NULL,
+      guide  = "none"
     )
   if (has_source) {
     p <- p +
       ggplot2::scale_linewidth_manual(
-        values = c(Baseline = 0.7, Policy = 1.35),
+        values = c(Baseline = 0.8, Policy = 1.5),
         breaks = c("Baseline", "Policy"),
-        name   = "Series",
-        guide  = ggplot2::guide_legend(
-          override.aes = list(
-            colour = c("#4b5563", "#c62828"), linetype = "solid"
-          )
-        )
+         name   = NULL,
+         guide  = "none"
       ) +
       ggplot2::scale_alpha_manual(
         # Keep both uncertainty bands transparent; policy's central line is
@@ -1024,55 +2131,125 @@ enhance_exceedance <- function(curves_tbl,
         guide  = "none"
     )
   }
-  p <- p +
+  endpoint_rows <- dplyr::bind_rows(lapply(split(agg_df, agg_df$line_id), function(x) {
+    x <- x[which.max(x$exceed_prob), , drop = FALSE]
+    x$curve_label <- if (has_source) {
+      paste(as.character(x$scenario_key), as.character(x$source), sep = " - ")
+    } else as.character(x$scenario_key)
+    # Label colour must match the colour the line is actually drawn in:
+    # the policy line uses the vermillion accent override, everything else
+    # keeps its scenario colour from the map.
+    x$label_col <- if (has_source && identical(as.character(x$source), "Policy")) {
+      .wise_policy
+    } else {
+      unname(scenario_colour_map[[as.character(x$scenario_key)]]) %||% .wise_slate
+    }
+    x
+  }))
+  max_prob <- max(agg_df$exceed_prob, na.rm = TRUE)
+  label_prob <- max_prob
+  # One text layer per series so each label can take its line's exact colour
+  # as a constant without touching the plot-wide colour scale.
+  label_layers <- lapply(seq_len(nrow(endpoint_rows)), function(i) {
+    ggplot2::geom_text(
+      data = endpoint_rows[i, , drop = FALSE],
+      ggplot2::aes(x = .data$central, y = label_prob, label = .data$curve_label),
+      colour = endpoint_rows$label_col[[i]],
+      # Anchor each label just past its line's end and left-align it, so it
+      # starts off the right-hand side of the curves and reads into the axis
+      # expansion gutter, clear of every line regardless of curve direction.
+      hjust = -0.05, size = 3.5, fontface = "bold", show.legend = FALSE,
+      inherit.aes = FALSE
+    )
+  })
+  p <- p + label_layers +
     ggplot2::labs(
       x = x_label,
-      y = "Annual exceedance probability"
+      y = if (max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55) "Annual adverse exceedance probability (AEP)" else "Annual exceedance probability"
     ) +
     theme_wise() +
     ggplot2::theme(
-      legend.position = "bottom"
+         legend.position = "none"
     ) +
     ggplot2::coord_flip()
 
-  # ---- Return period lines (both tails, symmetric) -----------------------
+  # ---- Return period lines -----------------------
+  is_adverse_tail <- max(agg_df$exceed_prob, na.rm = TRUE) <= 0.55
+  support_years <- if (!is.null(n_sim_years) && is.finite(n_sim_years)) {
+    max(2L, floor(n_sim_years))
+  } else {
+    NA_integer_
+  }
+  supported_rp <- function(x) {
+    if (!is.finite(support_years)) return(x)
+    denom <- suppressWarnings(as.numeric(sub(".*:", "", names(x))))
+    x[is.na(denom) | denom <= support_years]
+  }
   if (isTRUE(return_period)) {
-    rp_all <- c(RP_LOW, RP_HIGH)
+    min_prob <- max(min(agg_df$exceed_prob, na.rm = TRUE), 0.005)
+    rp_all <- if (is_adverse_tail) {
+      rp_adv <- c("1:2" = 0.50, RP_LOW)
+      rp_adv <- supported_rp(rp_adv)
+      rp_adv[rp_adv >= min_prob * 0.85]
+    } else {
+      supported_rp(c(RP_LOW, RP_HIGH))
+    }
     for (nm in names(rp_all)) {
       prob      <- rp_all[nm]
       reliable  <- is.null(n_sim_years) ||
-        (!(nm == "1:20" && n_sim_years < 40) &&
-         !(nm == "1:50" && n_sim_years < 100))
-      rp_label  <- if (reliable) nm else paste0(nm, "*")
-      label_col <- if (reliable) "grey40" else "grey65"
+        (!(nm == "1:20" && n_sim_years < 20) &&
+         !(nm == "1:50" && n_sim_years < 50))
+      if (!reliable) next
+      rp_label  <- nm
+      label_col <- .wise_slate
       p <- p +
         ggplot2::geom_hline(
           yintercept = prob, linetype = "dashed",
-          colour = "grey60", linewidth = 0.35
+          colour = .wise_zero, linewidth = 0.3
         ) +
         ggplot2::annotate(
           "text", x = -Inf, y = prob, label = rp_label,
-          hjust = -0.1, vjust = -0.3, size = 2.8, colour = label_col
+          hjust = -0.1, vjust = -0.3, size = 3.2, colour = label_col
         )
-    }
-    if (!is.null(n_sim_years) && n_sim_years < 100) {
-      p <- p + ggplot2::annotate(
-        "text", x = Inf, y = 0.02,
-        label  = paste0("\u26a0 unreliable (n = ", n_sim_years, " yrs)"),
-        hjust  = 1.05, vjust = 1.5, size = 2.8, colour = "grey50"
-      )
     }
   }
 
-  # ---- Optional logit probability axis -----------------------------------
-  if (isTRUE(logit_x)) {
-    logit_breaks <- c(unname(RP_LOW), 0.50, rev(1 - unname(RP_LOW)))
-    logit_labels <- c(names(RP_LOW), "Median", rev(names(RP_HIGH)))
+  # ---- Probability axis scaling ------------------------------------------
+  if (is_adverse_tail) {
+    # Adverse tail: log scale covering only periods supported by the
+    # available simulated years. Do not imply a 1-in-50 estimate from 30 years.
+    log_rp <- c("1:2" = 0.50, RP_LOW)
+    log_rp <- supported_rp(log_rp)
+    log_rp <- log_rp[order(log_rp, decreasing = TRUE)]
+    log_breaks <- unname(log_rp)
+    log_labels <- paste0(names(log_rp), " (", scales::percent(log_rp, accuracy = 1), ")")
+    min_prob <- max(min(agg_df$exceed_prob, na.rm = TRUE), 0.005)
+    keep_b <- log_breaks >= min_prob * 0.9
+    low_lim <- min(min_prob * 0.9, min(log_breaks[keep_b]) * 0.9)
+    p <- p + ggplot2::scale_y_continuous(
+      trans  = scales::log10_trans(),
+      breaks = log_breaks[keep_b],
+      labels = log_labels[keep_b],
+      limits = c(low_lim, 0.55),
+      # Right-hand gutter so the endpoint series labels sit clear of the
+      # curves while remaining inside the plot window.
+      expand = ggplot2::expansion(mult = c(0.02, 0.30))
+    )
+  } else if (isTRUE(logit_x)) {
+    rp_low <- supported_rp(RP_LOW)
+    rp_high <- supported_rp(RP_HIGH)
+    logit_breaks <- c(unname(rp_low), 0.50, rev(1 - unname(rp_high)))
+    logit_labels <- c(names(rp_low), "Median", rev(names(rp_high)))
     p <- p + ggplot2::scale_y_continuous(
       trans  = scales::logit_trans(),
       breaks = logit_breaks,
       labels = logit_labels,
-      limits = c(0.005, 0.995)
+      limits = c(0.005, 0.995),
+      expand = ggplot2::expansion(mult = c(0.02, 0.30))
+    )
+  } else {
+    p <- p + ggplot2::scale_y_continuous(
+      expand = ggplot2::expansion(mult = c(0.02, 0.30))
     )
   }
   p

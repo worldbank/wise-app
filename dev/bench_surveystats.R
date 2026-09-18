@@ -21,6 +21,10 @@
 # Parity of every candidate is checked against the shipped implementation
 # before timing. A stress scale (4x Iran N) and a shared single-pass variant
 # for the module's six tables are included.
+#
+# With `WISEAPP_BENCH_DENSITY=1`, also benchmarks the W1-B density allocation
+# on the audited two-wave Colombia workload. That mode checks schema, order,
+# types, and values within 1e-12 before reporting timings and R allocations.
 
 options(golem.app.prod = FALSE)
 devtools::load_all(quiet = TRUE)
@@ -31,6 +35,92 @@ if (!nzchar(data_path)) stop(
   "(e.g. ~/Library/CloudStorage/OneDrive-WBG/wiseapp - Documents)"
 )
 data_path <- normalizePath(data_path, mustWork = TRUE)
+
+.density_reference <- function(cell_map, survey_data) {
+  keys <- c("code", "year", "survname", "loc_id")
+  cm <- cell_map
+  cm$year <- as.character(cm$year)
+  sd <- survey_data
+  sd$year <- as.character(sd$year)
+  n_loc <- sd |>
+    dplyr::count(.data$code, .data$year, .data$survname, .data$loc_id,
+                 name = "n_units")
+  cm <- dplyr::inner_join(cm, n_loc, by = keys)
+  if (!nrow(cm)) return(NULL)
+  has_pop <- "pop_2020" %in% names(cm)
+  cells <- cm |>
+    dplyr::group_by(.data$code, .data$year, .data$survname, .data$loc_id) |>
+    dplyr::mutate(.alloc = if (has_pop) {
+      .pop <- pmax(.data$pop_2020, 0, na.rm = TRUE)
+      .pop_sum <- sum(.pop)
+      if (.pop_sum > 0) .data$n_units * .pop / .pop_sum else
+        .data$n_units / dplyr::n()
+    } else .data$n_units / dplyr::n()) |>
+    dplyr::ungroup() |>
+    dplyr::group_by(.data$h3) |>
+    dplyr::summarise(n_units = sum(.data$.alloc, na.rm = TRUE),
+                     .groups = "drop") |>
+    dplyr::filter(.data$n_units > 0) |>
+    as.data.frame()
+  locs <- dplyr::inner_join(
+    dplyr::distinct(sd, .data$code, .data$year, .data$survname, .data$loc_id),
+    dplyr::distinct(cm, .data$code, .data$year, .data$survname, .data$loc_id),
+    by = keys
+  )
+  list(cells = cells, n_locations = nrow(locs))
+}
+
+if (identical(Sys.getenv("WISEAPP_BENCH_DENSITY"), "1")) {
+  years <- c(2008L, 2018L)
+  survey <- dplyr::bind_rows(lapply(years, function(year) {
+    arrow::read_parquet(
+      file.path(data_path, "microdata/hh/COL", sprintf(
+        "COL_%d_GEIH_GMD_hh.parquet", year
+      )),
+      col_select = c("code", "year", "survname", "loc_id")
+    )
+  }))
+  cell_map <- dplyr::bind_rows(lapply(years, function(year) {
+    arrow::read_parquet(file.path(data_path, "microdata/h3/COL", sprintf(
+      "COL_%d_GEIH_GMD_h3.parquet", year
+    )))
+  }))
+
+  implementation <- Sys.getenv("WISEAPP_BENCH_DENSITY_IMPL")
+  if (implementation %in% c("reference", "collapse")) {
+    gc()
+    if (identical(implementation, "reference")) {
+      invisible(.density_reference(cell_map, survey))
+    } else {
+      invisible(.density_cell_summary(cell_map, survey))
+    }
+    quit(save = "no", status = 0L)
+  }
+
+  reference <- .density_reference(cell_map, survey)
+  candidate <- .density_cell_summary(cell_map, survey)
+  stopifnot(
+    identical(names(candidate$cells), names(reference$cells)),
+    identical(vapply(candidate$cells, class, character(1)),
+              vapply(reference$cells, class, character(1))),
+    identical(candidate$cells$h3, reference$cells$h3),
+    isTRUE(all.equal(candidate$cells$n_units, reference$cells$n_units,
+                     tolerance = 1e-12)),
+    identical(candidate$n_locations, reference$n_locations)
+  )
+  cat(sprintf(
+    paste0("Density: %d survey rows, %d mapping rows, %d cells, ",
+           "%d mapped locations, max abs diff %.3g\n"),
+    nrow(survey), nrow(cell_map), nrow(candidate$cells), candidate$n_locations,
+    max(abs(candidate$cells$n_units - reference$cells$n_units))
+  ))
+  print(bench::mark(
+    reference = .density_reference(cell_map, survey),
+    collapse  = .density_cell_summary(cell_map, survey),
+    iterations = 10L, check = FALSE, memory = TRUE, filter_gc = FALSE
+  )[, c("expression", "median", "mem_alloc", "n_gc")])
+  quit(save = "no", status = 0L)
+}
 
 # ---------------------------------------------------------------------------
 # 1. Load Iran hh data through the module's own pipeline

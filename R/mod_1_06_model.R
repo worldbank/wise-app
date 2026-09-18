@@ -25,11 +25,7 @@ mod_1_06_model_ui <- function(id) {
       ns("model_settings_toggle"),
       "Model settings",
       toggle_label = "Model settings",
-      uiOutput(ns("model_specs_ui")),
-      shiny::helpText(
-        "More model types and covariate selection methods will be added in future updates.",
-        style = "color: red; font-size: 12px;"
-      )
+      uiOutput(ns("model_specs_ui"))
     ),
     shiny::uiOutput(ns("run_prereq_ui")),
     shiny::actionButton(ns("run_model"), "Run model",
@@ -46,6 +42,7 @@ mod_1_06_model_ui <- function(id) {
 #' @param selected_outcome Reactive data frame row for the selected outcome.
 #' @param selected_weather Reactive data frame of selected weather specs.
 #' @param survey_weather   Reactive data frame of merged survey + weather data.
+#' @param run_trigger      Optional reactive trigger for a programmatic fit.
 #'
 #' @noRd
 mod_1_06_model_server <- function(id,
@@ -54,7 +51,8 @@ mod_1_06_model_server <- function(id,
                                    analysis_unit,
                                    selected_outcome,
                                    selected_weather,
-                                   survey_weather) {
+                                   survey_weather,
+                                   run_trigger = shiny::reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -108,39 +106,32 @@ mod_1_06_model_server <- function(id,
       # Fall back to the rendered inputs' defaults before they register
       model_txt <- input$model_type %||%
         model_type_choices(so$type)$choices[1]
-      ixn_txt <- paste(to_labels(input$interactions) %||% "Urban",
-                       collapse = ", ")
-      fe_txt <- paste(
-        to_labels(input$fixedeffects) %||%
-          to_labels(c("year", "gaul1_code")),
-        collapse = ", "
-      )
       cov_txt <- input$covariates %||% "User-defined"
+      model_row_spec <- list(
+        type               = model_txt,
+        interactions       = input$interactions %||% "urban",
+        interaction_mode   = "pairwise",
+        fixedeffects       = input$fixedeffects %||% c("year", "gaul1_code"),
+        hh_covariates      = input$hhcov %||% character(0),
+        area_covariates    = input$areacov %||% character(0),
+        ind_covariates     = input$indcov %||% character(0),
+        firm_covariates    = input$firmcov %||% character(0),
+        covariate_selection = cov_txt
+      )
+      model_row_spec$hh_covariates <- input$hhcov %||% character(0)
+      model_row_spec$area_covariates <- input$areacov %||% character(0)
+      model_row_spec$ind_covariates <- input$indcov %||% character(0)
+      model_row_spec$firm_covariates <- input$firmcov %||% character(0)
 
       selection_summary_card(
-        title = NULL,
-        badge = model_txt,
-        rows = list(
-          list(
-            name  = "Outcome",
-            sub   = so$label
-          ),
-          list(
-            name = "Weather",
-            sub  = paste(sw$label, collapse = ", ")
-          ),
-          list(
-            name = "Interaction:",
-            sub  = ixn_txt
-          ),
-          list(
-            name = "FE:",
-            sub  = fe_txt
-          ),
-          list(
-            name = "Covariates:",
-            sub  = cov_txt
-          )
+        title = shiny::tags$span(class = "model-summary-title", model_txt),
+        badge = cov_txt,
+        rows = model_card_rows(
+          model_row_spec,
+          label_fun = function(v) to_labels(v)[1],
+          outcome_label = so$label,
+          weather_labels = as.character(sw$label),
+          include_model_type = FALSE
         ),
         compact = TRUE
       )
@@ -199,7 +190,7 @@ mod_1_06_model_server <- function(id,
       tagList(
         shiny::selectizeInput(
           ns("selected_policies"),
-          label    = "Policy scenario:",
+          label    = "Policy scenario",
           choices  = avail,
           selected = NULL,
           multiple = TRUE,
@@ -233,7 +224,7 @@ mod_1_06_model_server <- function(id,
       tagList(
         tags$small(
           class = "text-muted",
-          "Variables interacted with weather:"
+          "Variables interacted with weather"
         ),
         do.call(tags$ul, c(items, list(style = "font-size: 12px;")))
       )
@@ -301,7 +292,7 @@ mod_1_06_model_server <- function(id,
             tagList(
               shiny::selectizeInput(
                 ns("interactions"),
-                label    = shiny::tagList("Interaction with ", wise_math("Haz_{kt}"), ":"),
+                label    = shiny::tagList("Interaction with ", wise_math("Haz_{kt}")),
                 choices  = choices_locked,
                 selected = all_locked,
                 multiple = TRUE,
@@ -325,7 +316,7 @@ mod_1_06_model_server <- function(id,
             prev_ixn <- shiny::isolate(input$interactions)
             shiny::selectizeInput(
               ns("interactions"),
-              label    = shiny::tagList("Interactions with ", wise_math("Haz_{kt}"), ":"),
+              label    = shiny::tagList("Interactions with ", wise_math("Haz_{kt}")),
               choices  = setNames(ixn$name, ixn$label),
               selected = .restore_selection(prev_ixn, ixn$name,
                                             fallback = if ("urban" %in% ixn$name) "urban" else NULL),
@@ -347,7 +338,7 @@ mod_1_06_model_server <- function(id,
           prev_fe <- shiny::isolate(input$fixedeffects)
           shiny::selectizeInput(
             ns("fixedeffects"),
-            label    = "Fixed effects:",
+            label    = "Fixed effects",
             choices  = setNames(fe$name, fe$label),
             selected = .restore_selection(prev_fe, fe$name,
                                           fallback = intersect(c("year", "gaul1_code"), fe$name)),
@@ -365,7 +356,7 @@ mod_1_06_model_server <- function(id,
         pill_toggle(
           ns("covariates"),
           label = shiny::tagList(
-            "Covariate selection:",
+            "Covariate selection",
             info_popover(
               title = "Lasso covariate selection",
               shiny::p(
@@ -418,7 +409,7 @@ mod_1_06_model_server <- function(id,
             if (show_level("ind") && nrow(ind) > 0) {
               shiny::selectizeInput(
                 ns("indcov"),
-                label    = shiny::tagList("Individual characteristics ", wise_math("X_{ijt}"), ":"),
+                label    = shiny::tagList("Individual characteristics ", wise_math("X_{ijt}")),
                 choices  = make_choice_labels(ind),
                 selected = .restore_selection(prev_ind, ind$name, fallback = NULL),
                 multiple = TRUE,
@@ -430,7 +421,7 @@ mod_1_06_model_server <- function(id,
             if (show_level("hh") && nrow(hh) > 0) {
               shiny::selectizeInput(
                 ns("hhcov"),
-                label    = shiny::tagList("Household characteristics ", wise_math("X_{ijt}"), ":"),
+                label    = shiny::tagList("Household characteristics ", wise_math("X_{ijt}")),
                 choices  = make_choice_labels(hh),
                 selected = .restore_selection(prev_hh, hh$name, fallback = NULL),
                 multiple = TRUE,
@@ -442,7 +433,7 @@ mod_1_06_model_server <- function(id,
             if (show_level("firm") && nrow(firm) > 0) {
               shiny::selectizeInput(
                 ns("firmcov"),
-                label    = "Firm characteristics:",
+                label    = "Firm characteristics",
                 choices  = make_choice_labels(firm),
                 selected = .restore_selection(prev_firm, firm$name, fallback = NULL),
                 multiple = TRUE,
@@ -454,7 +445,7 @@ mod_1_06_model_server <- function(id,
             if (show_level("area") && nrow(area) > 0) {
               shiny::selectizeInput(
                 ns("areacov"),
-                label    = shiny::tagList("Area characteristics ", wise_math("E_{jt}"), ":"),
+                label    = shiny::tagList("Area characteristics ", wise_math("E_{jt}")),
                 choices  = make_choice_labels(area),
                 selected = .restore_selection(prev_area, area$name, fallback = NULL),
                 multiple = TRUE,
@@ -488,8 +479,10 @@ mod_1_06_model_server <- function(id,
     # existed until the user opened the flyout, and "Run model" silently
     # no-opped on `req(input$covariates)` until they did. Render them eagerly;
     # the flyout still controls visibility.
-    shiny::outputOptions(output, "model_specs_ui",    suspendWhenHidden = FALSE)
-    shiny::outputOptions(output, "covariate_inputs",  suspendWhenHidden = FALSE)
+    lapply(c("model_selector_ui", "policy_ui", "model_specs_ui",
+             "covariate_inputs"), function(out_id) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    })
 
     # Helper: vars at a given level (ind/hh/firm/area) from valid_vl
     .vars_at_level <- function(role) {
@@ -526,23 +519,25 @@ mod_1_06_model_server <- function(id,
         # INT-01: restore prior force selections when the panel re-renders.
         prev_in  <- shiny::isolate(input[[paste0("force_in_",  role)]])
         prev_out <- shiny::isolate(input[[paste0("force_out_", role)]])
+        in_choices  <- choices[!choices %in% prev_out]
+        out_choices <- choices[!choices %in% prev_in]
 
         tagList(
           tags$strong(role_label),
           shiny::selectizeInput(
             ns(paste0("force_in_", role)),
-            label    = "Force include:",
-            choices  = choices,
-            selected = .restore_selection(prev_in, choices,
+            label    = "Force include",
+            choices  = in_choices,
+            selected = .restore_selection(prev_in, in_choices,
                                           fallback = if (length(default_in) > 0) default_in else NULL),
             multiple = TRUE,
             options  = list(placeholder = "Select covariates to force in")
           ),
           shiny::selectizeInput(
             ns(paste0("force_out_", role)),
-            label    = "Force exclude:",
-            choices  = choices,
-            selected = .restore_selection(prev_out, choices, fallback = NULL),
+            label    = "Force exclude",
+            choices  = out_choices,
+            selected = .restore_selection(prev_out, out_choices, fallback = NULL),
             multiple = TRUE,
             options  = list(placeholder = "Select covariates to force out")
           ),
@@ -553,12 +548,7 @@ mod_1_06_model_server <- function(id,
       tagList(
         tags$small(
           class = "text-muted",
-          style = "display:block;margin-bottom:6px;",
-          paste0(
-            "Forced-included covariates always enter the model. ",
-            "Forced-excluded covariates are removed from Lasso candidates ",
-            "and the final regression."
-          )
+          style = "display:block;margin-bottom:6px;"
         ),
         level_block("ind",  "Individual covariates"),
         level_block("hh",   "Household covariates"),
@@ -569,10 +559,13 @@ mod_1_06_model_server <- function(id,
 
     # ---- Mutual exclusion between force-include and force-exclude --------
     # When a var is selected as force-include, remove it from force-exclude
-    # choices, and vice versa. Updates run per level.
+    # choices, and vice versa. Target inputs are isolated and repeated target
+    # states are skipped, so an update cannot invalidate its own observer.
     lapply(c("ind", "hh", "firm", "area"), function(role) {
       in_id  <- paste0("force_in_",  role)
       out_id <- paste0("force_out_", role)
+      sent <- new.env(parent = emptyenv())
+      sent$include <- sent$exclude <- NULL
 
       observe({
         if (!show_level(role)) return()
@@ -580,11 +573,16 @@ mod_1_06_model_server <- function(id,
         choices   <- .level_choices(role)
         if (length(choices) == 0) return()
         out_choices <- choices[!choices %in% chosen_in]
-        shiny::updateSelectizeInput(
-          session, out_id,
+        target <- list(
           choices  = out_choices,
-          selected = intersect(input[[out_id]], out_choices)
+          selected = intersect(shiny::isolate(input[[out_id]]), out_choices)
         )
+        if (!identical(target, sent$exclude)) {
+          shiny::updateSelectizeInput(session, out_id,
+                                      choices = target$choices,
+                                      selected = target$selected)
+          sent$exclude <- target
+        }
       })
 
       observe({
@@ -593,11 +591,16 @@ mod_1_06_model_server <- function(id,
         choices    <- .level_choices(role)
         if (length(choices) == 0) return()
         in_choices <- choices[!choices %in% chosen_out]
-        shiny::updateSelectizeInput(
-          session, in_id,
+        target <- list(
           choices  = in_choices,
-          selected = intersect(input[[in_id]], in_choices)
+          selected = intersect(shiny::isolate(input[[in_id]]), in_choices)
         )
+        if (!identical(target, sent$include)) {
+          shiny::updateSelectizeInput(session, in_id,
+                                      choices = target$choices,
+                                      selected = target$selected)
+          sent$include <- target
+        }
       })
     })
 
@@ -635,7 +638,7 @@ mod_1_06_model_server <- function(id,
 
         sliderInput(
           ns("lasso_alpha"),
-          "Elastic Net Mixing (alpha):",
+          "Elastic Net Mixing (alpha)",
           min = 0,
           max = 1,
           value = .restore_numeric(prev("lasso_alpha"), 0, 1, fallback = 1),
@@ -644,7 +647,7 @@ mod_1_06_model_server <- function(id,
 
         shiny::selectizeInput(
           ns("lasso_interactions"),
-          label    = "Lambda choice:",
+          label    = "Lambda choice",
           choices  = c("lambda.1se", "lambda.min"),
           selected = .restore_selection(prev("lasso_interactions"),
                                         c("lambda.1se", "lambda.min"), fallback = "lambda.1se"),
@@ -657,7 +660,7 @@ mod_1_06_model_server <- function(id,
 
         sliderInput(
           ns("lasso_nfolds"),
-          "Cross-validation folds:",
+          "Cross-validation folds",
           min = 5,
           max = 20,
           value = .restore_numeric(prev("lasso_nfolds"), 5, 20, fallback = 10),
@@ -666,7 +669,7 @@ mod_1_06_model_server <- function(id,
 
         pill_toggle(
           ns("lasso_standardize"),
-          label = "Standardize predictors:",
+          label = "Standardize predictors",
           choices  = c("Standardize", "Do not standardize"),
           selected = .restore_selection(prev("lasso_standardize"),
                                         c("Standardize", "Do not standardize"),
@@ -708,6 +711,8 @@ mod_1_06_model_server <- function(id,
 
       )
     })
+    shiny::outputOptions(output, "lasso_force_ui", suspendWhenHidden = FALSE)
+    shiny::outputOptions(output, "lasso_advanced_ui", suspendWhenHidden = FALSE)
 
     # --- LASSO MODEL ---------------------------------------------------------
     #
@@ -800,7 +805,18 @@ mod_1_06_model_server <- function(id,
     # `selected_model()`. The explicit priority is what orders the two - both
     # observers key off the same button, and flush order between equal
     # priorities is not something to rely on.
-    observeEvent(input$run_model, {
+    run_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$run_model, {
+      if (shiny::isTruthy(input$run_model)) {
+        run_event(list(source = "manual", value = input$run_model))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) run_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+
+    observeEvent(run_event(), {
       if (!isTRUE(input$covariates == "Lasso")) {
         lasso_store(NULL)
         return(invisible(NULL))
@@ -962,7 +978,7 @@ mod_1_06_model_server <- function(id,
         class = "alert alert-warning warning-message",
         role  = "alert",
         style = "font-size: 13px; margin-bottom: 4px;",
-        shiny::tags$b("Prerequisites: "), "select ",
+        shiny::tags$b("Prerequisites "), "select ",
         paste(missing, collapse = ", "), " to enable Run model."
       )
     })
@@ -977,7 +993,7 @@ mod_1_06_model_server <- function(id,
     list(
       selected_model    = selected_model,
       selected_policies = selected_policies_rv,
-      run_model         = reactive(input$run_model),
+      run_model         = run_event,
       fit_guard         = fit_guard
     )
   })

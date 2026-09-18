@@ -54,6 +54,35 @@ prepare_outcome_df <- function(df, so) {
 }
 
 
+#' Ensure a derived outcome column exists without applying transforms
+#'
+#' The `poor` outcome is synthesized from `welfare` and the selected poverty
+#' line. Step 2 survey snapshots can omit that derived column, so callers that
+#' operate on those snapshots must restore it before reading the outcome.
+#' Existing columns are left untouched. Unlike `prepare_outcome_df()`, this
+#' helper never logs or currency-converts values.
+#'
+#' @param df A survey data frame.
+#' @param so Outcome metadata containing `name`, `units`, and `povline`.
+#' @return `df`, with a derivable missing outcome column added.
+#' @export
+ensure_outcome_column <- function(df, so) {
+  if (is.null(df) || !is.data.frame(df) || is.null(so)) return(df)
+
+  name <- as.character(so$name %||% NA_character_)[1]
+  if (is.na(name) || !nzchar(name) || name %in% names(df)) return(df)
+  if (!identical(name, "poor") || !"welfare" %in% names(df)) return(df)
+
+  povline <- suppressWarnings(as.numeric(so$povline %||% NA_real_)[1])
+  if (!is.finite(povline)) return(df)
+
+  units <- as.character(so$units %||% NA_character_)[1]
+  line <- .povline_to_ppp(povline, df, identical(units, "LCU"))
+  df[[name]] <- as.numeric(df[["welfare"]] < line)
+  df
+}
+
+
 # Scale a user-specified poverty line to match the stored welfare column
 # (2021 PPP). LCU lines are divided by the per-observation ppp2021 factor;
 # PPP lines - and data loaded without deflators, where no load-time
@@ -403,6 +432,16 @@ coef_label <- function(coef_name, label_fun = identity) {
   paste(vapply(parts, label_fun, character(1)), collapse = " \u00d7 ")
 }
 
+# Pretty polynomial term name: I(I(t^2)) / I(t^2) -> "<label of t>²".
+.pretty_poly_label <- function(term, label_fun = identity) {
+  m <- regmatches(term, regexec("^I\\((?:I\\()?([^\\^]+)\\^([23])\\)\\)?$",
+                                term))[[1]]
+  if (length(m) != 3) return(term)
+  lab <- tryCatch(label_fun(m[2]), error = function(e) m[2])
+  if (is.null(lab) || is.na(lab) || !nzchar(lab)) lab <- m[2]
+  paste0(lab, if (m[3] == "2") "\u00b2" else "\u00b3")
+}
+
 
 #' Build a named coefficient map for jtools
 #'
@@ -519,29 +558,81 @@ is_logistic_fit <- function(fit_list) {
 #' @return A `ggplot` object.
 #'
 #' @export
-plot_diagnostics <- function(model, engine = "fixest") {
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 3.5, color = "grey40", hjust = 0.5, vjust = 0.5) +
-      ggplot2::theme_void()
+plot_residual_panels <- function(model, is_logistic = FALSE) {
+  if (is_logistic) {
+    # Binary outcomes: raw residuals vs fitted are unreadable (all points on
+    # two curves), so show binned residual means by decile of predicted risk
+    # (Gelman & Hill). Bins should scatter around zero without a trend.
+    return(tryCatch({
+      p   <- as.numeric(stats::fitted(model))
+      res <- tryCatch(as.numeric(stats::residuals(model, type = "response")),
+                      error = function(e) as.numeric(stats::residuals(model)))
+      n   <- min(length(p), length(res))
+      p   <- p[seq_len(n)]
+      res <- res[seq_len(n)]
+
+      k    <- max(3L, min(10L, floor(n / 20)))
+      ord  <- order(p)
+      brks <- unique(floor(seq(0, n, length.out = k + 1)))
+      if (length(brks) < 3) return(blank_plot("Too few observations for binned residuals."))
+      grp  <- cut(seq_len(n), breaks = brks, include.lowest = TRUE)
+
+      bdf <- data.frame(p = p[ord], res = res[ord], grp = grp)
+      agg <- stats::aggregate(cbind(pred = p, mean_res = res) ~ grp,
+                              data = bdf, FUN = mean)
+      cnt <- as.data.frame(table(bdf$grp))
+      agg$n <- cnt$Freq[match(as.character(agg$grp), as.character(cnt$Var1))]
+      agg$se <- vapply(split(bdf$res, bdf$grp), function(r) {
+        if (length(r) > 1) stats::sd(r) / sqrt(length(r)) else NA_real_
+      }, numeric(1))
+
+      ggplot2::ggplot(agg, ggplot2::aes(x = .data$pred, y = .data$mean_res)) +
+        ggplot2::geom_ribbon(
+          ggplot2::aes(ymin = .data$mean_res - 2 * .data$se,
+                       ymax = .data$mean_res + 2 * .data$se),
+          fill = .wise_blue, alpha = 0.15
+        ) +
+        ggplot2::geom_hline(yintercept = 0, color = .wise_zero,
+                            linetype = "dashed") +
+        ggplot2::geom_line(color = .wise_blue, linewidth = 0.6) +
+        ggplot2::geom_point(color = .wise_blue, size = 2) +
+        theme_wise() +
+        ggplot2::labs(
+          subtitle = "Binned residuals by predicted risk",
+          x = "Predicted risk (bin mean)",
+          y = "Mean residual in bin"
+        )
+    }, error = function(e) blank_plot(paste("Diagnostic plot error:",
+                                            conditionMessage(e)))))
   }
 
+  # Linear / LPM / RIF: residuals vs fitted next to a normal QQ plot.
   tryCatch({
-    res    <- stats::residuals(model)
-    fitted <- stats::fitted(model)
-    ggplot2::ggplot(
-      data.frame(fitted = fitted, residuals = res),
-      ggplot2::aes(x = .data$fitted, y = .data$residuals)
-    ) +
+    res    <- as.numeric(stats::residuals(model))
+    fitted <- as.numeric(stats::fitted(model))
+    n      <- min(length(fitted), length(res))
+    df     <- data.frame(fitted = fitted[seq_len(n)], residuals = res[seq_len(n)])
+
+    p1 <- ggplot2::ggplot(df, ggplot2::aes(x = .data$fitted, y = .data$residuals)) +
       ggplot2::geom_point(alpha = 0.15) +
-      ggplot2::geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
-      ggplot2::geom_smooth(method = "loess", se = FALSE, color = "steelblue",
+      ggplot2::geom_hline(yintercept = 0, color = .wise_zero,
+                          linetype = "dashed") +
+      ggplot2::geom_smooth(method = "loess", se = FALSE, color = .wise_blue,
                            linewidth = 0.8, formula = y ~ x) +
-      theme_wise() +
-      ggplot2::labs(subtitle = "Residuals vs Fitted",
+      theme_wise(base_size = 14) +
+      ggplot2::labs(subtitle = "Residuals vs fitted",
                     x = "Fitted values", y = "Residuals")
-  }, error = function(e) blank_plot(paste("Diagnostic plot error:", conditionMessage(e))))
+
+    p2 <- ggplot2::ggplot(df, ggplot2::aes(sample = .data$residuals)) +
+      ggplot2::stat_qq(alpha = 0.15, size = 1) +
+      ggplot2::stat_qq_line(color = .wise_blue, linewidth = 0.6) +
+      theme_wise(base_size = 14) +
+      ggplot2::labs(subtitle = "Normal Q-Q",
+                    x = "Theoretical quantiles", y = "Sample quantiles")
+
+    p1 + p2 + patchwork::plot_layout(ncol = 2)
+  }, error = function(e) blank_plot(paste("Diagnostic plot error:",
+                                          conditionMessage(e))))
 }
 
 
@@ -588,6 +679,8 @@ get_first_bin_label <- function(df, hv) {
 #'   \code{fit_model()$rif_grid}). Used only when \code{engine = "rif"}.
 #' @param pred_var          Optional scalar character. Weather predictor used
 #'   to filter RIF curves; when `NULL`, all weather terms are shown.
+#' @param x_label           Optional scalar character. When non-NULL, replaces
+#'   the default x-axis title ("Effect on <outcome_label>").
 #'
 #' @return A `ggplot` object.
 #'
@@ -599,14 +692,9 @@ make_coefplot <- function(fit1, fit2, fit3,
                            label_fun     = identity,
                            engine        = "fixest",
                            rif_grid      = NULL,
-                           pred_var      = NULL) {
-
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 3.5, color = "grey40", hjust = 0.5, vjust = 0.5) +
-      ggplot2::theme_void()
-  }
+                           pred_var      = NULL,
+                           x_label       = NULL,
+                           has_controls  = TRUE) {
 
   # --- RIF branch: beta curve plot -------------------------------------------
   if (identical(engine, "rif") && !is.null(rif_grid)) {
@@ -628,13 +716,14 @@ make_coefplot <- function(fit1, fit2, fit3,
       plot_terms <- all_terms[keep]
 
       plot_data <- rif_grid[rif_grid$term %in% plot_terms, ]
+      lab3 <- if (isTRUE(has_controls)) "FE + controls" else "FE (no controls selected)"
       plot_data$model_label <- factor(
         dplyr::case_when(
           plot_data$model == 1L ~ "No FE",
           plot_data$model == 2L ~ "FE",
-          TRUE                  ~ "FE + controls"
+          TRUE                  ~ lab3
         ),
-        levels = c("No FE", "FE", "FE + controls")
+        levels = c("No FE", "FE", lab3)
       )
       plot_data$term_label <- vapply(
         plot_data$term, function(t) coef_label(t, label_fun), character(1)
@@ -658,7 +747,8 @@ make_coefplot <- function(fit1, fit2, fit3,
       ggplot2::ggplot(plot_data, ggplot2::aes(x = tau, y = estimate,
                                                colour = model_label,
                                                fill   = model_label)) +
-        ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+        ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                            colour = .wise_zero) +
         ggplot2::geom_ribbon(
           ggplot2::aes(ymin = conf.low, ymax = conf.high),
           alpha = 0.10, colour = NA
@@ -670,11 +760,11 @@ make_coefplot <- function(fit1, fit2, fit3,
           breaks = taus,
           labels = scales::percent_format(1)
         ) +
-        wise_scale_colour_okabe_ito(name = NULL) +
-        wise_scale_fill_okabe_ito(name = NULL) +
-        ggplot2::labs(
-          subtitle = paste("UQR coefficients for", label_fun(pred_var)),
-          x        = "Welfare quantile",
+      wise_scale_colour_cat(name = NULL) +
+      wise_scale_fill_cat(name = NULL) +
+      ggplot2::labs(
+        subtitle = paste("UQR coefficients for", label_fun(pred_var)),
+        x        = "Welfare quantile",
           y        = stringr::str_wrap(paste0("Effect on ", outcome_label), 50),
           caption  = "Ribbon = 95% CI"
         ) +
@@ -682,10 +772,7 @@ make_coefplot <- function(fit1, fit2, fit3,
         ggplot2::theme(
           legend.position  = "bottom",
           panel.border     = ggplot2::element_blank(),
-          strip.background = ggplot2::element_blank(),
-          plot.subtitle    = ggplot2::element_text(face = "bold", hjust = 0.5, size = 11),
-          plot.caption     = ggplot2::element_text(size = 9, colour = "grey40", hjust = 0),
-          axis.text        = ggplot2::element_text(size = 9)
+          strip.background = ggplot2::element_blank()
         )
     }, error = function(e) blank_plot(paste0("RIF coefficient plot error: ", conditionMessage(e)))))
   }
@@ -693,11 +780,12 @@ make_coefplot <- function(fit1, fit2, fit3,
   if (!requireNamespace("fixest", quietly = TRUE))
     return(blank_plot("Package 'fixest' is required."))
 
-  model_list <- list(
-    "No FE"         = fit1,
-    "FE"            = fit2,
-    "FE + controls" = fit3
-  )
+  # Spec (3) equals spec (2) when no controls are selected - say so instead
+  # of labelling an identical column "FE + controls".
+  lab3 <- if (isTRUE(has_controls)) "FE + controls" else "FE (no controls selected)"
+
+  model_list <- list("No FE" = fit1, "FE" = fit2)
+  model_list[[lab3]] <- fit3
 
   p <- tryCatch({
     coef_data <- purrr::imap_dfr(model_list, function(fit, model_name) {
@@ -721,12 +809,15 @@ make_coefplot <- function(fit1, fit2, fit3,
       return(blank_plot("No weather coefficients found to plot."))
 
     coef_map            <- make_coef_map(keep_terms, label_fun)
-    coef_data$label     <- coef_map[coef_data$term]
+    # make_coef_map() is keyed for jtools (names = readable labels, values =
+    # raw terms); index it by position in the term list, not by term name,
+    # which silently fell back to raw coefficient labels.
+    coef_data$label     <- names(coef_map)[match(coef_data$term, coef_map)]
     coef_data$label     <- ifelse(is.na(coef_data$label), coef_data$term, coef_data$label)
     coef_data$conf.low  <- coef_data$Estimate - 1.96 * coef_data$`Std. Error`
     coef_data$conf.high <- coef_data$Estimate + 1.96 * coef_data$`Std. Error`
     coef_data$model     <- factor(coef_data$model,
-                                  levels = c("No FE", "FE", "FE + controls"))
+                                  levels = c("No FE", "FE", lab3))
 
     # Order y-axis labels: each main effect followed by its interaction(s),
     # in model order. Reversed so the first main appears at the TOP of the plot.
@@ -751,15 +842,21 @@ make_coefplot <- function(fit1, fit2, fit3,
         shape  = model
       )
     ) +
-      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = .wise_zero) +
       ggplot2::geom_pointrange(
         ggplot2::aes(xmin = conf.low, xmax = conf.high),
         position = ggplot2::position_dodge(width = 0.5)
       ) +
-      wise_scale_colour_okabe_ito(name = NULL) +
+      ggplot2::scale_colour_manual(
+        # Progressively stronger specification: greys for simpler specs, the
+        # categorical lead blue (#0072B2) for the preferred full specification.
+        values = c("No FE" = "grey72", "FE" = "grey58",
+                   setNames("#0072B2", lab3)),
+        name = NULL
+      ) +
       ggplot2::scale_shape_discrete(name = NULL) +
       ggplot2::labs(
-        x = stringr::str_wrap(paste0("Effect on ", outcome_label), 50),
+        x = x_label %||% stringr::str_wrap(paste0("Effect on ", outcome_label), 50),
         y = NULL
       ) +
       theme_wise() +
@@ -796,19 +893,115 @@ make_coefplot <- function(fit1, fit2, fit3,
 #' @param rif_grid Optional tidy data frame of RIF beta curves (from
 #'   \code{fit_model()$rif_grid}). Used only on the RIF branch
 #'   (\code{engine = "rif"}).
+#' @param mode Scalar character: \code{"auto"} (default) keeps the historical
+#'   behaviour; \code{"main"} forces the no-moderator branch even when a
+#'   moderator exists (interaction columns are recomputed at sample means, so
+#'   the plotted slope is correct); \code{"moderated"} forces the
+#'   moderator-overlay branch and returns an informative blank plot when no
+#'   moderator is specified for \code{pred_var}.
+#' @param is_logistic Scalar logical. When \code{TRUE}, manual predictions on
+#'   the continuous paths are transformed to the response scale
+#'   (\code{plogis(eta)} with delta-method SEs) instead of plotting raw
+#'   log-odds, and the default y-axis label becomes "Predicted poverty
+#'   probability".
+#' @param x_label Optional scalar character. When non-NULL, replaces the
+#'   constructed x-axis title (\code{"<pred_var> (<label>)"}) on continuous
+#'   and binned plots; callers pass unit-complete labels.
+#' @param y_label Optional scalar character. When non-NULL, replaces the
+#'   y-axis title ("Predicted <y>" / "Effect on <y>") in all branches.
+#' @param caption Optional scalar character. Continuous paths: replaces the
+#'   default marginal-effect note ("Line = marginal effect (95% CI); ...";
+#'   the logistic default adds the median-risk household qualifier). Binned
+#'   paths: prepended to the omitted-reference note.
+#' @param show_rug Scalar logical (default \code{TRUE}). Continuous paths:
+#'   rug of the observed \code{pred_var} values along the bottom axis.
+#' @param show_mean_ref Scalar logical (default \code{TRUE}). Continuous
+#'   paths: dashed vertical reference line at the mean of \code{pred_var}.
+#' @param mark_taus Optional numeric vector (RIF branch only). Draws dashed
+#'   vertical grey lines at those tau values with small top labels.
 #'
 #' @return A `ggplot` object. Returns an informative blank plot on error.
 #'
 #' @export
 make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned,
                                      label_fun, engine, selected_weather = NULL,
-                                     weather_df = NULL, rif_grid = NULL) {
+                                     weather_df = NULL, rif_grid = NULL,
+                                     mode = "auto", is_logistic = FALSE,
+                                     x_label = NULL, y_label = NULL,
+                                     caption = NULL,
+                                     show_rug = TRUE, show_mean_ref = TRUE,
+                                     mark_taus = NULL,
+                                     effect_scale = "model",
+                                     profile_eta = NULL) {
 
-  blank_plot <- function(msg) {
-    ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                        size = 3.5, color = "grey40", hjust = 0.5, vjust = 0.5) +
-      ggplot2::theme_void()
+  mode <- match.arg(mode, c("auto", "main", "moderated"))
+  effect_scale <- match.arg(effect_scale, c("model", "pp", "pp100", "pct"))
+
+  # Moderator level labels: raw 0/1 codes read as developer output, so binary
+  # moderators become "<label>: no / <label>: yes".
+  modx_level_label <- function(lab, v) {
+    v_chr <- as.character(v)
+    if (length(v_chr) != 1) v_chr <- v_chr[[1]]
+    num <- suppressWarnings(as.numeric(v_chr))
+    if (!is.na(num) && num %in% c(0, 1)) {
+      paste0(lab, ": ", if (num == 1) "yes" else "no")
+    } else if (!is.na(num)) {
+      paste0(lab, " = ", round(num, 2))
+    } else {
+      paste0(lab, " = ", v_chr)
+    }
+  }
+  # Scale transform for binned contrast effects (applied to estimate + CI
+  # endpoints together, so the interval stays valid):
+  #   "pp"    - logistic link contrasts mapped to percentage points at the
+  #             reference profile (monotone map, interval stays honest);
+  #   "pp100" - linear-probability contrasts expressed in pp (x 100);
+  #   "model" - unchanged (log points / level).
+  .apply_effect_scale <- function(df, est_col = "Estimate",
+                                  lo_col = "conf.low", hi_col = "conf.high") {
+    if (identical(effect_scale, "pp")) {
+      if (!is.finite(profile_eta)) return(df)
+      pp_at <- function(b) 100 * (stats::plogis(profile_eta + b) -
+                                    stats::plogis(profile_eta))
+      df[[est_col]] <- pp_at(df[[est_col]])
+      df[[lo_col]]  <- pp_at(df[[lo_col]])
+      df[[hi_col]]  <- pp_at(df[[hi_col]])
+    } else if (identical(effect_scale, "pp100")) {
+      df[[est_col]] <- 100 * df[[est_col]]
+      df[[lo_col]]  <- 100 * df[[lo_col]]
+      df[[hi_col]]  <- 100 * df[[hi_col]]
+    }
+    df
+  }
+
+  .t2_bin_label <- function(term, pred_var) {
+    term <- as.character(term)[[1]]
+    pred_esc <- gsub("([\\[\\]\\(\\)\\^\\$\\.\\*\\+\\?])", "\\\\\\1", pred_var)
+    s <- sub(paste0("^", pred_esc, "[\\[\\(]"), "", term)
+    if (identical(s, term)) return(term)
+    s <- sub("[])]$", "", s)
+    parts <- trimws(strsplit(s, ",", fixed = TRUE)[[1]])
+    if (length(parts) != 2L || any(!nzchar(parts))) return(term)
+    paste0(parts[[1]], "\u2013", parts[[2]])
+  }
+
+  tau_layers <- NULL
+  if (!is.null(mark_taus)) {
+    # The tau marks ride in their own data frame (not annotate()): in
+    # facetted plots annotate()'s literal label mapping is not replicated
+    # with the facet-expanded data, which breaks the aesthetic-length check.
+    tau_df <- data.frame(
+      x = mark_taus,
+      label = paste0("\u03c4 = ", formatC(mark_taus, format = "f", digits = 1))
+    )
+    tau_layers <- list(
+      ggplot2::geom_vline(xintercept = mark_taus,
+                          linetype = "dashed", colour = .wise_zero),
+      ggplot2::geom_text(data = tau_df,
+                         ggplot2::aes(x = x, y = Inf, label = label),
+                         inherit.aes = FALSE,
+                         vjust = 1.4, size = 3.2, colour = .wise_slate)
+    )
   }
 
   # Design matrix for the linear (non-RIF) effect plot. Prefers the cached
@@ -838,35 +1031,76 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
       )
 
       n_terms <- length(unique(plot_data$term))
+      has_int_terms <- any(grepl(":", plot_data$term, fixed = TRUE))
+      rif_y_lab <- tryCatch({
+        yv <- as.character(stats::formula(fit)[[2]])
+        paste0("Effect on ", label_fun(yv), " (log points)")
+      }, error = function(e) "Effect (log points)")
+      if (n_terms > 1 && !has_int_terms) {
+        # Binned predictor without interactions: one beta(tau) curve per bin,
+        # one facet per bin in numeric bin order. (The moderated branch below
+        # is for interaction terms and would invent 0/1 moderator levels.)
+        # Facet strips show the prettified bin range, ordered numerically.
+        bin_lo <- function(tm) {
+          s <- sub(paste0("^", pred_esc, "[\\[\\(]"), "", tm)
+          suppressWarnings(as.numeric(sub("^([^,]+),.*", "\\1", s)))
+        }
+        tu <- unique(plot_data$term)
+        tu <- tu[order(suppressWarnings(bin_lo(tu)))]
+        lab_map <- stats::setNames(
+          vapply(tu, function(t) .t2_bin_label(t, pred_var), character(1)), tu)
+        plot_data$term_label <- factor(plot_data$term, levels = tu,
+                                       labels = lab_map)
+        p <- ggplot2::ggplot(
+          plot_data,
+          ggplot2::aes(x = tau, y = estimate, ymin = conf.low, ymax = conf.high)
+        ) +
+          ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                              colour = .wise_zero) +
+          ggplot2::geom_ribbon(alpha = 0.15, fill = .wise_blue) +
+          ggplot2::geom_line(colour = .wise_blue, linewidth = 0.9) +
+          ggplot2::geom_point(colour = .wise_blue, size = 2) +
+          ggplot2::facet_wrap(~ term_label) +
+          ggplot2::scale_x_continuous(breaks = taus,
+                                      labels = scales::percent_format(1)) +
+          ggplot2::labs(
+            x       = "Welfare quantile",
+            y       = rif_y_lab,
+            caption = "Ribbon = 95% CI"
+          ) +
+          theme_wise(base_size = 14) +
+          ggplot2::theme(
+            legend.position    = "none",
+            panel.border       = ggplot2::element_blank(),
+            strip.background   = ggplot2::element_blank()
+          )
+        if (!is.null(tau_layers)) p <- p + tau_layers
+        return(p)
+      }
       if (n_terms == 1) {
         # Single term: simple beta curve
-        ggplot2::ggplot(plot_data, ggplot2::aes(x = tau, y = estimate)) +
-          ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+        p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = tau, y = estimate)) +
+          ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
           ggplot2::geom_ribbon(
             ggplot2::aes(ymin = conf.low, ymax = conf.high),
-            alpha = 0.15, fill = "steelblue"
+            alpha = 0.15, fill = .wise_blue
           ) +
-          ggplot2::geom_line(colour = "steelblue", linewidth = 0.9) +
-          ggplot2::geom_point(colour = "steelblue", size = 2.5) +
+          ggplot2::geom_line(colour = .wise_blue, linewidth = 0.9) +
+          ggplot2::geom_point(colour = .wise_blue, size = 2.5) +
           ggplot2::scale_x_continuous(breaks = taus, labels = scales::percent_format(1)) +
           ggplot2::labs(
-            subtitle = paste("Effect of", pred_lab, "across the welfare distribution"),
             x     = "Welfare quantile",
-            y     = paste("UQR coefficient"),
+            y     = rif_y_lab,
             caption = "Ribbon = 95% CI"
           ) +
           theme_wise() +
           ggplot2::theme(
-            legend.position    = "bottom",
+            legend.position    = "none",
             panel.border       = ggplot2::element_blank(),
-            strip.background   = ggplot2::element_blank(),
-            plot.subtitle         = ggplot2::element_text(face = "bold", hjust = 0.5, size = 11),
-            plot.caption       = ggplot2::element_text(size = 9, colour = "grey40", hjust = 0),
-            panel.grid.minor   = ggplot2::element_blank(),
-            axis.text          = ggplot2::element_text(size = 9),
-            axis.line.x.bottom = ggplot2::element_blank(),
-            axis.line.y.left   = ggplot2::element_blank()
+            strip.background   = ggplot2::element_blank()
           )
+        if (!is.null(tau_layers)) p <- p + tau_layers
+        p
       } else {
         # Multiple terms (main + interactions): evaluate the combined effect
         # at each moderator level so the plot has one line per modx value in
@@ -954,15 +1188,29 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
         }))
 
         modx_lab_print <- modx_lab %||% (modx_var %||% "moderator")
-        is_binary <- length(modx_vals) == 2 && all(modx_vals %in% c(0, 1))
-        combined$modx_label <- if (is_binary)
-          paste0(modx_lab_print, " = ", combined$modx_val)
-        else
-          paste0(modx_lab_print, " = ", round(combined$modx_val, 2))
+        combined$modx_label <- vapply(combined$modx_val,
+                                      function(v) modx_level_label(modx_lab_print, v),
+                                      character(1))
         combined$modx_label <- factor(
           combined$modx_label,
           levels = unique(combined$modx_label[order(combined$modx_val)])
         )
+
+        if (identical(mode, "main")) {
+          # The main relationship plot is the population-level RIF profile.
+          # Keep the moderator-specific curves for the heterogeneity plot, but
+          # average their estimates at each quantile and weather-bin panel here.
+          combined <- combined |>
+            dplyr::group_by(.data$tau, .data$bin_id, .data$bin_label) |>
+            dplyr::summarise(
+              estimate = mean(.data$estimate, na.rm = TRUE),
+              std.error = sqrt(mean(.data$std.error^2, na.rm = TRUE)),
+              conf.low = mean(.data$conf.low, na.rm = TRUE),
+              conf.high = mean(.data$conf.high, na.rm = TRUE),
+              .groups = "drop"
+            ) |>
+            dplyr::mutate(modx_label = "Average across moderator levels")
+        }
 
         # coef_label() is scalar - vectorise over each unique bin id so that
         # multi-bin (binned) predictors produce one facet per bin. Sort by
@@ -991,7 +1239,7 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
                        colour = modx_label, fill = modx_label)
         ) +
           ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
-                              colour = "grey60") +
+                              colour = .wise_zero) +
           ggplot2::geom_ribbon(
             ggplot2::aes(ymin = conf.low, ymax = conf.high),
             alpha = 0.15, colour = NA
@@ -1000,47 +1248,48 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           ggplot2::geom_point(size = 2) +
           ggplot2::scale_x_continuous(breaks = taus,
                                       labels = scales::percent_format(1)) +
-          wise_scale_colour_okabe_ito(name = modx_lab_print) +
-          wise_scale_fill_okabe_ito(name = modx_lab_print) +
+          # Legend keys already carry the moderator name ("Urban: no").
+          wise_scale_colour_cat(name = NULL) +
+          wise_scale_fill_cat(name = NULL) +
           ggplot2::labs(
-            subtitle = paste("Effect of", pred_lab,
-                            "across the welfare distribution"),
             x       = "Welfare quantile",
-            y       = "UQR coefficient",
-            caption = "Ribbon = 95% CI (cov(main, interaction) omitted)"
+            y       = rif_y_lab,
+            caption = if (identical(mode, "main"))
+              "Line and ribbon average the estimated effect across moderator levels; ribbon = 95% CI (cov(main, interaction) omitted)."
+            else "Ribbon = 95% CI (cov(main, interaction) omitted)"
           ) +
           theme_wise() +
           ggplot2::theme(
             legend.position    = "bottom",
             panel.border       = ggplot2::element_blank(),
-            strip.background   = ggplot2::element_blank(),
-            plot.subtitle      = ggplot2::element_text(face = "bold",
-                                                       hjust = 0.5, size = 11),
-            plot.caption       = ggplot2::element_text(size = 9,
-                                                       colour = "grey40",
-                                                       hjust = 0),
-            panel.grid.minor   = ggplot2::element_blank(),
-            axis.text          = ggplot2::element_text(size = 9),
-            axis.line.x.bottom = ggplot2::element_blank(),
-            axis.line.y.left   = ggplot2::element_blank()
+            strip.background   = ggplot2::element_blank()
           )
 
         if (n_bins > 1) {
           p <- p + ggplot2::facet_wrap(~ bin_label, scales = "free_y",
                                        ncol = 2)
         }
+        if (!is.null(tau_layers)) p <- p + tau_layers
         p
       }
     }, error = function(e) blank_plot(paste0("RIF effect plot error: ", conditionMessage(e)))))
   }
 
   pred_lab <- label_fun(pred_var)
-  pred_x_lab <- paste0(pred_var, " (", pred_lab, ")")
+  pred_x_lab <- x_label %||% paste0(pred_var, " (", pred_lab, ")")
   y_var_name <- tryCatch(
     as.character(stats::formula(fit)[[2]]),
     error = function(e) "outcome"
   )
   y_lab <- label_fun(y_var_name)
+  cap_text <- caption %||% (
+    if (isTRUE(is_logistic))
+      paste("Line = marginal effect (95% CI); curved with polynomial terms,",
+            "flat for linear ones. pp at the median-risk household.")
+    else
+      paste("Line = marginal effect (95% CI); curved with polynomial terms,",
+            "flat for linear ones.")
+  )
 
   mf <- mm_of(fit)
 
@@ -1107,7 +1356,9 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
       bins_df$Estimate[is.na(bins_df$Estimate)] <- 0
       bins_df$`Std. Error`[is.na(bins_df$`Std. Error`)] <- 0
       bins_df$bin_index <- seq_len(nrow(bins_df))
-      bins_df$bin_label <- bins_df$term
+      bins_df$bin_label <- vapply(
+        bins_df$term, .t2_bin_label, character(1), pred_var = pred_var
+      )
 
       # Detect moderator (if any). Use word-boundary regex so short pred_var
       # names (e.g. "r") aren't matched as substrings inside other variable
@@ -1125,31 +1376,39 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
       }
 
       # No moderator: single line
+      if (identical(mode, "main")) {
+        modx_var <- NULL
+        modx_lab <- NULL
+      } else if (identical(mode, "moderated") && is.null(modx_var)) {
+        return(blank_plot(paste0("No moderator specified for '", pred_var, "'.")))
+      }
+
       if (is.null(modx_var)) {
         bins_df$conf.low  <- bins_df$Estimate - 1.96 * bins_df$`Std. Error`
         bins_df$conf.high <- bins_df$Estimate + 1.96 * bins_df$`Std. Error`
+        bins_df <- .apply_effect_scale(bins_df)
+
+        # Figure note: the omitted reference bin (the dashed line at 0) plus
+        # any caller caption; no in-plot title (the section heading covers it).
+        cap_binned <- paste(c(omitted_note, caption), collapse = " ")
+        cap_binned <- if (is.null(cap_binned) || !nzchar(cap_binned)) NULL
+                      else cap_binned
 
         return(
           ggplot2::ggplot(
             bins_df,
             ggplot2::aes(x = bin_index, y = Estimate, ymin = conf.low, ymax = conf.high)
           ) +
-            ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
-            ggplot2::geom_pointrange(colour = "steelblue", size = 0.65) +
-            ggplot2::geom_line(ggplot2::aes(group = 1), colour = "steelblue", linewidth = 0.6) +
+            ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
+            ggplot2::geom_pointrange(colour = .wise_blue, size = 0.65) +
+            ggplot2::geom_line(ggplot2::aes(group = 1), colour = .wise_blue, linewidth = 0.6) +
             ggplot2::scale_x_continuous(breaks = bins_df$bin_index, labels = bins_df$bin_label) +
             ggplot2::labs(
-              subtitle = paste("Effect of", pred_lab, "bins on", y_lab),
               x = pred_x_lab,
-              y = paste("Effect on", y_lab),
-              caption = omitted_note
+              y = y_label %||% paste("Effect on", y_lab),
+              caption = cap_binned
             ) +
-            theme_wise() +
-            ggplot2::theme(
-              plot.subtitle = ggplot2::element_text(face = "bold", hjust = 0.5, size = 11),
-              plot.caption = ggplot2::element_text(hjust = 0, size = 9, colour = "grey40"),
-              axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)
-            )
+            theme_wise()
         )
       }
 
@@ -1206,7 +1465,19 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
       )
 
       plot_df <- plot_df[order(plot_df$modx, plot_df$bin_index), , drop = FALSE]
-      plot_df$modx <- factor(plot_df$modx)
+      plot_df <- .apply_effect_scale(plot_df, est_col = "est")
+      modx_u <- sort(unique(plot_df$modx))
+      plot_df$modx <- factor(
+        plot_df$modx, levels = modx_u,
+        labels = vapply(modx_u, function(v) modx_level_label(modx_lab, v),
+                        character(1))
+      )
+
+      # Legend keys already carry the moderator name ("Urban: no"); repeating
+      # it as the legend title is redundant.
+      cap_binned <- paste(c(omitted_note, caption), collapse = " ")
+      cap_binned <- if (is.null(cap_binned) || !nzchar(cap_binned)) NULL
+                    else cap_binned
 
       ggplot2::ggplot(
         plot_df,
@@ -1215,24 +1486,18 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           colour = modx, group = modx
         )
       ) +
-        ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+        ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .wise_zero) +
         ggplot2::geom_pointrange(position = ggplot2::position_dodge(width = 0.2), size = 0.5) +
         ggplot2::geom_line(position = ggplot2::position_dodge(width = 0.2), linewidth = 0.6) +
-        wise_scale_colour_okabe_ito(name = modx_lab) +
+        wise_scale_colour_cat(name = NULL) +
         ggplot2::scale_x_continuous(breaks = bins_df$bin_index, labels = bins_df$bin_label) +
         ggplot2::labs(
-          subtitle = paste("Effect of", pred_lab, "bins by", modx_lab),
           x = pred_x_lab,
-          y = paste("Effect on", y_lab),
-          caption = omitted_note
+          y = y_label %||% paste("Effect on", y_lab),
+          caption = cap_binned
         ) +
         theme_wise() +
-        ggplot2::theme(
-          plot.subtitle = ggplot2::element_text(face = "bold", hjust = 0.5, size = 11),
-          plot.caption = ggplot2::element_text(hjust = 0, size = 9, colour = "grey40"),
-          legend.position = "bottom",
-          axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)
-        )
+        ggplot2::theme(legend.position = "bottom")
 
     }, error = function(e) blank_plot(paste0("Binned effect plot error: ", conditionMessage(e))))
 
@@ -1240,7 +1505,7 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
   }
 
   # ========================================================================= #
-  # CONTINUOUS PATH                                                            #
+  # CONTINUOUS PATH: marginal effect of weather vs weather level               #
   # ========================================================================= #
   if(!is_binned) {
     pred_vals <- mf[[pred_var]]
@@ -1262,33 +1527,121 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
       }
     }
 
+    if (identical(mode, "main")) {
+      modx_var <- NULL
+      modx_lab <- NULL
+    } else if (identical(mode, "moderated") &&
+               (is.null(modx_var) || !modx_var %in% names(mf))) {
+      return(blank_plot(paste0("No moderator specified for '", pred_var, "'.")))
+    }
+
     p <- tryCatch({
       mm     <- mm_of(fit)
       if (is.null(mm)) return(blank_plot("Model matrix unavailable."))
       betas  <- stats::coef(fit)
       vcov_m <- .fixest_vcov(fit)
-      n_grid <- 50L
+      n_grid <- 100L
 
-      # Manual prediction: X_new %*% beta, SE via delta method sqrt(diag(X V X'))
-      fixest_predict_manual <- function(X_new) {
-        common <- intersect(colnames(X_new), names(betas[!is.na(betas)]))
-        X_sub  <- as.matrix(X_new[, common, drop = FALSE])
-        b_sub  <- betas[common]
-        v_sub  <- vcov_m[common, common, drop = FALSE]
-        list(
-          fit = as.numeric(X_sub %*% b_sub),
-          se  = sqrt(pmax(0, rowSums((X_sub %*% v_sub) * X_sub)))
-        )
+      # --- Marginal effect: d(response)/dx evaluated along the grid -------
+      # d/dx [b1*x + b2*I(x^2) + b3*I(x^3) + b_int*(x^k)*modx] =
+      #   b1 + 2*b2*x + 3*b3*x^2 + k*b_k*x^(k-1)*modx. Polynomial terms are
+      #   matched against fixest's double-wrapped "I(I(x^2))" spelling as
+      #   well as the plain one. This replaces the old centred prediction
+      #   curve, which froze polynomial columns at their sample means (flat
+      #   lines) and read as a nonsensical "predicted welfare" level.
+      grad_w <- function(nm, x, mv) {
+        if (identical(nm, pred_var)) return(1)
+        if (.s1_is_poly_term(nm, pred_var, 2)) return(2 * x)
+        if (.s1_is_poly_term(nm, pred_var, 3)) return(3 * x^2)
+        if (grepl(":", nm, fixed = TRUE)) {
+          parts <- strsplit(nm, ":", fixed = TRUE)[[1]]
+          w <- 1
+          has_x <- FALSE
+          for (pp in parts) {
+            if (identical(pp, pred_var)) {
+              has_x <- TRUE
+            } else if (.s1_is_poly_term(pp, pred_var, 2)) {
+              w <- w * (2 * x); has_x <- TRUE
+            } else if (.s1_is_poly_term(pp, pred_var, 3)) {
+              w <- w * (3 * x^2); has_x <- TRUE
+            } else {
+              w <- w * mv
+            }
+          }
+          return(if (has_x) w else 0)
+        }
+        0
+      }
+
+      slope_grid <- function(mv) {
+        W <- matrix(0, nrow = length(x_seq), ncol = length(betas),
+                    dimnames = list(NULL, names(betas)))
+        for (nm in colnames(mm)) {
+          if (!nm %in% colnames(W)) next
+          W[, nm] <- vapply(x_seq, function(xx) grad_w(nm, xx, mv), numeric(1))
+        }
+        ok <- !is.na(betas)
+        est <- as.numeric(W[, ok, drop = FALSE] %*% betas[ok])
+        se  <- sqrt(pmax(0, rowSums((W[, ok, drop = FALSE] %*%
+                                      vcov_m[ok, ok, drop = FALSE]) * W[, ok, drop = FALSE])))
+        data.frame(x = x_seq, est = est, se = se)
+      }
+
+      # Reporting-scale transform of the slope and its CI:
+      #   "pct"   - log outcome: % change per +1 unit = 100*(exp(slope)-1)
+      #   "pp"    - logit: dp/dx = p(1-p)*slope at the reference profile, in pp
+      #   "pp100" - linear probability: slope in probability units -> pp
+      #   "model" - raw slope (level outcomes)
+      .slope_scale <- function(d) {
+        if (identical(effect_scale, "pct")) {
+          f <- function(v) 100 * (exp(v) - 1)
+          data.frame(x = d$x, fit = f(d$est),
+                     lo = f(d$est - 1.96 * d$se), hi = f(d$est + 1.96 * d$se))
+        } else if (identical(effect_scale, "pp")) {
+          if (is.finite(profile_eta)) {
+            f <- 100 * stats::plogis(profile_eta) * (1 - stats::plogis(profile_eta))
+          } else {
+            f <- 1
+          }
+          data.frame(x = d$x, fit = f * d$est,
+                     lo = f * (d$est - 1.96 * d$se), hi = f * (d$est + 1.96 * d$se))
+        } else if (identical(effect_scale, "pp100")) {
+          data.frame(x = d$x, fit = 100 * d$est,
+                     lo = 100 * (d$est - 1.96 * d$se), hi = 100 * (d$est + 1.96 * d$se))
+        } else {
+          data.frame(x = d$x, fit = d$est,
+                     lo = d$est - 1.96 * d$se, hi = d$est + 1.96 * d$se)
+        }
+      }
+
+      mean_x <- mean(mm[[pred_var]], na.rm = TRUE)
+      extra_layers <- list()
+      if (isTRUE(show_mean_ref) && is.finite(mean_x)) {
+        extra_layers <- c(extra_layers, list(
+          ggplot2::geom_vline(xintercept = mean_x, colour = .wise_slate,
+                              linetype = "dashed"),
+          ggplot2::annotate("text", x = mean_x, y = Inf, label = "mean",
+                            vjust = 1.4, size = 3.2, colour = .wise_slate)
+        ))
+      }
+      if (isTRUE(show_rug)) {
+        rug_x <- mm[[pred_var]]
+        rug_x <- rug_x[is.finite(rug_x)]
+        if (length(rug_x) > 0) {
+          extra_layers <- c(extra_layers, list(
+            ggplot2::geom_rug(
+              data = data.frame(x = rug_x),
+              ggplot2::aes(x = x),
+              sides = "b", alpha = 0.12, colour = .wise_slate,
+              inherit.aes = FALSE
+            )
+          ))
+        }
       }
 
       x_seq <- seq(min(mm[[pred_var]], na.rm = TRUE),
                   max(mm[[pred_var]], na.rm = TRUE),
                   length.out = n_grid)
-
-      other_means <- lapply(mm, function(col) {
-        if (is.numeric(col)) mean(col, na.rm = TRUE)
-        else names(sort(table(col), decreasing = TRUE))[1]
-      })
 
       if (!is.null(modx_var) && modx_var %in% names(mm)) {
         modx_col    <- mm[[modx_var]]
@@ -1304,94 +1657,65 @@ make_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binned
           c(modx_mean - modx_sd, modx_mean, modx_mean + modx_sd)
         }
 
-        grid     <- expand.grid(.pred = x_seq, .modx = modx_vals, stringsAsFactors = FALSE)
-        new_data <- as.data.frame(lapply(other_means, rep, times = nrow(grid)))
-        new_data[[pred_var]] <- grid$.pred
-        new_data[[modx_var]] <- grid$.modx
-
-        # Recompute every interaction column from its parts. new_data already
-        # carries each interaction column at its sample mean (from
-        # other_means), so the previous `!nm %in% names(new_data)` guard
-        # left them stale and the predicted slope for pred_var was wrong.
-        for (nm in colnames(mm)) {
-          if (grepl(":", nm, fixed = TRUE)) {
-            parts <- strsplit(nm, ":")[[1]]
-            if (all(parts %in% names(new_data)))
-              new_data[[nm]] <- Reduce(`*`, new_data[parts])
-          }
-        }
-        if ("(Intercept)" %in% colnames(mm)) new_data[["(Intercept)"]] <- 1
-
-        preds        <- fixest_predict_manual(new_data)
-        new_data$fit <- preds$fit
-        new_data$se  <- preds$se
-
-        new_data$.modx_label <- factor(
-          if (is_cat_modx) as.character(new_data[[modx_var]])
-          else paste0(modx_lab, " = ", round(new_data[[modx_var]], 2))
+        plot_df <- do.call(rbind, lapply(modx_vals, function(mv) {
+          d <- .slope_scale(slope_grid(mv))
+          d$.modx_label <- modx_level_label(modx_lab, mv)
+          d
+        }))
+        plot_df$.modx_label <- factor(
+          plot_df$.modx_label,
+          levels = vapply(modx_vals, function(v) modx_level_label(modx_lab, v),
+                          character(1))
         )
 
-        ggplot2::ggplot(
-          new_data,
+        p <- ggplot2::ggplot(
+          plot_df,
           ggplot2::aes(
-            x      = .data[[pred_var]],
-            y      = .data$fit,
+            x      = x,
+            y      = fit,
             colour = .data$.modx_label,
             fill   = .data$.modx_label
           )
         ) +
+          ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                              colour = .wise_zero) +
           ggplot2::geom_ribbon(
-            ggplot2::aes(ymin = fit - 1.96 * se, ymax = fit + 1.96 * se),
+            ggplot2::aes(ymin = lo, ymax = hi),
             alpha = 0.15, colour = NA
           ) +
           ggplot2::geom_line(linewidth = 0.9) +
-          wise_scale_colour_okabe_ito(name = modx_lab) +
-          wise_scale_fill_okabe_ito(name = modx_lab) +
+          # Legend keys already carry the moderator name ("Urban: no").
+          wise_scale_colour_cat(name = NULL) +
+          wise_scale_fill_cat(name = NULL) +
           ggplot2::labs(
-            subtitle = paste("Impact of", pred_lab, "by", modx_lab),
             x     = pred_x_lab,
-            y     = paste("Predicted", y_lab)
+            y     = y_label %||% paste("Change in", y_lab, "per +1 unit"),
+            caption = cap_text
           ) +
           theme_wise() +
-          ggplot2::theme(
-            plot.subtitle      = ggplot2::element_text(face = "bold", hjust = 0.5, size = 11),
-            legend.position = "bottom"
-          )
+          ggplot2::theme(legend.position = "bottom")
+        if (length(extra_layers)) p <- p + extra_layers
+        p
 
       } else {
-        new_data             <- as.data.frame(lapply(other_means, rep, times = length(x_seq)))
-        new_data[[pred_var]] <- x_seq
+        d <- .slope_scale(slope_grid(0))
 
-        # Recompute interaction columns from their parts so the slope of
-        # pred_var properly reflects beta_main + beta_int * mean(modx).
-        for (nm in colnames(mm)) {
-          if (grepl(":", nm, fixed = TRUE)) {
-            parts <- strsplit(nm, ":")[[1]]
-            if (all(parts %in% names(new_data)))
-              new_data[[nm]] <- Reduce(`*`, new_data[parts])
-          }
-        }
-        if ("(Intercept)" %in% colnames(mm)) new_data[["(Intercept)"]] <- 1
-
-        preds        <- fixest_predict_manual(new_data)
-        new_data$fit <- preds$fit
-        new_data$se  <- preds$se
-
-        ggplot2::ggplot(new_data, ggplot2::aes(x = .data[[pred_var]], y = .data$fit)) +
+        p <- ggplot2::ggplot(d, ggplot2::aes(x = x, y = fit)) +
+          ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                              colour = .wise_zero) +
           ggplot2::geom_ribbon(
-            ggplot2::aes(ymin = fit - 1.96 * se, ymax = fit + 1.96 * se),
-            alpha = 0.2, fill = "steelblue"
+            ggplot2::aes(ymin = lo, ymax = hi),
+            alpha = 0.2, fill = .wise_blue
           ) +
-          ggplot2::geom_line(colour = "steelblue", linewidth = 0.9) +
+          ggplot2::geom_line(colour = .wise_blue, linewidth = 0.9) +
           ggplot2::labs(
-            subtitle = paste("Predicted", y_lab, "vs", pred_lab),
             x     = pred_x_lab,
-            y     = paste("Predicted", y_lab)
+            y     = y_label %||% paste("Change in", y_lab, "per +1 unit"),
+            caption = cap_text
           ) +
-          theme_wise() +
-          ggplot2::theme(
-            plot.subtitle = ggplot2::element_text(face = "bold", hjust = 0.5, size = 11)
-          )
+          theme_wise()
+        if (length(extra_layers)) p <- p + extra_layers
+        p
       }
     },
     error = function(e) blank_plot(paste0("fixest effect plot error: ", conditionMessage(e)))
@@ -1666,7 +1990,7 @@ make_regtable <- function(fit1, fit2, fit3,
 
   body_rows <- ""
   for (v in all_vars) {
-    lab <- v
+    lab <- .pretty_poly_label(v, label_fun)
     v1 <- lookup(c1, v)
     v2 <- lookup(c2, v)
     v3 <- lookup(c3, v)
@@ -1766,6 +2090,21 @@ make_regtable <- function(fit1, fit2, fit3,
 #' @return A `ggplot` object, or `NULL` invisibly.
 #'
 #' @export
+# Clean label for a cut()-style bin level: "[22.1, 26.6]" or "t(26.6, 28.4]"
+# -> "22.1 – 26.6". Falls back to the trimmed input for odd shapes.
+.cut_bin_label <- function(lvl) {
+  s <- trimws(lvl)
+  if (startsWith(s, "t(") || startsWith(s, "t[")) s <- substr(s, 2, nchar(s))
+  if (startsWith(s, "[") || startsWith(s, "(")) s <- substr(s, 2, nchar(s))
+  if (endsWith(s, "]") || endsWith(s, ")")) s <- substr(s, 1, nchar(s) - 1)
+  parts <- strsplit(s, ",", fixed = TRUE)[[1]]
+  if (length(parts) == 2) {
+    paste0(trimws(parts[1]), " \u2013 ", trimws(parts[2]))
+  } else {
+    trimws(s)
+  }
+}
+
 plot_resid_weather <- function(model, haz_var, weather_df, x_label = haz_var) {
   df <- tryCatch(stats::model.frame(model), error = function(e) NULL)
 
@@ -1786,7 +2125,9 @@ plot_resid_weather <- function(model, haz_var, weather_df, x_label = haz_var) {
       idx <- max.col(as.matrix(Xb), ties.method = "first")
       none_active <- rowSums(Xb != 0, na.rm = TRUE) == 0
 
-      x_from_bins <- bin_cols[idx]
+      # Term names carry the variable prefix ("tx[26.2, 30.5]"); strip it so
+      # the x labels match the configured data levels ("[26.2, 30.5]").
+      x_from_bins <- sub(paste0("^", haz_esc), "", bin_cols[idx])
       x_from_bins[none_active] <- get_first_bin_label(weather_df, haz_var)
 
       df <- data.frame(.haz_x = x_from_bins, stringsAsFactors = FALSE)
@@ -1810,31 +2151,119 @@ plot_resid_weather <- function(model, haz_var, weather_df, x_label = haz_var) {
       residuals = res,
       stringsAsFactors = FALSE
     )
+    # Clean bin labels on the x axis ("t(26.6, 28.4]" -> "26.6 – 28.4"),
+    # matching the effect-plot bin labels on the Results tab, and order the
+    # bins by their numeric lower bound.
+    lvls   <- levels(plot_data$x)
+    num_lo <- suppressWarnings(as.numeric(
+      regmatches(lvls, regexpr("[0-9]+(\\.[0-9]+)?", lvls))))
+    lvls   <- lvls[order(ifelse(is.na(num_lo), Inf, num_lo))]
+    new_lab <- vapply(lvls, .cut_bin_label, character(1))
+    plot_data$x <- factor(as.character(plot_data$x), levels = lvls,
+                          labels = new_lab)
 
     ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$x, y = .data$residuals)) +
-      ggplot2::geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
-      ggplot2::geom_jitter(width = 0.15, alpha = 0.12) +
-      ggplot2::stat_summary(fun = mean, geom = "point", color = "orange", size = 2.5) +
+      ggplot2::geom_hline(yintercept = 0, color = .wise_zero, linetype = "dashed") +
+      ggplot2::geom_jitter(width = 0.15, alpha = 0.12, colour = .wise_charcoal) +
+      ggplot2::stat_summary(fun = mean, geom = "point", color = .wise_marker_alt,
+                            size = 2.5) +
       theme_wise() +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30, hjust = 1, vjust = 0.5)) +
       ggplot2::labs(x = stringr::str_wrap(x_label, 40), y = "Residuals")
   } else {
     plot_data <- data.frame(x = as.numeric(x_vals), residuals = res)
 
     ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$x, y = .data$residuals)) +
-      ggplot2::geom_point(alpha = 0.1) +
-      ggplot2::geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
-      ggplot2::stat_summary_bin(fun = mean, bins = 20, color = "orange", size = 2, geom = "point") +
+      ggplot2::geom_point(alpha = 0.1, colour = .wise_charcoal) +
+      ggplot2::geom_hline(yintercept = 0, color = .wise_zero, linetype = "dashed") +
+      ggplot2::stat_summary_bin(fun = mean, bins = 20, color = .wise_marker_alt,
+                                size = 2, geom = "point") +
       theme_wise() +
       ggplot2::labs(x = stringr::str_wrap(x_label, 40), y = "Residuals")
   }
 }
 
 
+#' Plot calibration curve for a binary model
+#'
+#' Groups observations into deciles (rank-based bins, robust to ties) of
+#' predicted risk and plots the observed outcome rate against the mean
+#' predicted risk per bin, with a diagonal reference and a +/- 2-SE binomial
+#' band. Bins close to the diagonal indicate calibrated predictions.
+#'
+#' @param model  A fitted binary model (e.g. `glm`/`fixest` feglm with
+#'   `family = binomial`) for which `fitted()` returns predicted probabilities.
+#' @param n_bins Scalar integer, maximum number of bins (fewer when the
+#'   sample is small; at least 3).
+#'
+#' @return A `ggplot` object.
+#'
+#' @export
+plot_calibration <- function(model, n_bins = 10) {
+  predicted <- tryCatch(
+    stats::fitted(model),
+    error = function(e) tryCatch(stats::predict(model, type = "response"),
+                                 error = function(e2) NULL)
+  )
+  # stats::model.frame() errors on fixest objects; recover actual = fitted +
+  # residuals (response residuals of a binomial model reproduce the outcome).
+  actual <- tryCatch(stats::model.frame(model)[[1]],
+                     error = function(e) {
+                       f <- tryCatch(stats::fitted(model),
+                                     error = function(e2) NULL)
+                       r <- tryCatch(stats::residuals(model, type = "response"),
+                                     error = function(e2) NULL)
+                       if (is.null(f) || is.null(r)) NULL else f + r
+                     })
+
+  if (is.null(predicted) || is.null(actual)) {
+    return(blank_plot("Could not recover fitted values from model."))
+  }
+
+  n <- min(length(actual), length(predicted))
+  k <- max(3L, min(as.integer(n_bins), floor(n / 20)))
+  ord  <- order(as.numeric(predicted[seq_len(n)]))
+  brks <- unique(floor(seq(0, n, length.out = k + 1)))
+  if (length(brks) < 3) {
+    return(blank_plot("Too few observations for calibration bins."))
+  }
+  grp <- cut(seq_len(n), breaks = brks, include.lowest = TRUE)
+
+  bdf <- data.frame(
+    pred = as.numeric(predicted[seq_len(n)])[ord],
+    obs  = as.numeric(actual)[ord],
+    grp  = grp,
+    stringsAsFactors = FALSE
+  )
+  cal <- stats::aggregate(cbind(pred, obs) ~ grp, data = bdf, FUN = mean)
+  names(cal) <- c("grp", "pred", "obs")
+  cnt <- as.data.frame(table(bdf$grp))
+  cal$n  <- cnt$Freq[match(as.character(cal$grp), as.character(cnt$Var1))]
+  cal$se <- sqrt(pmax(cal$obs * (1 - cal$obs), 0) / pmax(cal$n, 1))
+
+  ggplot2::ggplot(cal, ggplot2::aes(x = .data$pred, y = .data$obs)) +
+    ggplot2::geom_abline(slope = 1, intercept = 0,
+                         color = .wise_zero, linetype = "dashed") +
+    ggplot2::geom_ribbon(ggplot2::aes(ymin = pmax(0, .data$obs - 2 * .data$se),
+                                      ymax = pmin(1, .data$obs + 2 * .data$se)),
+                         fill = .wise_blue, alpha = 0.15) +
+    ggplot2::geom_line(color = .wise_blue, linewidth = 0.6) +
+    ggplot2::geom_point(color = .wise_blue, size = 2) +
+    theme_wise() +
+    ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+    ggplot2::labs(
+      subtitle = "Observed vs predicted rate by decile of predicted risk",
+      x = "Predicted risk (bin mean)",
+      y = "Observed rate in bin"
+    )
+}
+
+
 #' Plot predicted vs actual distribution
 #'
 #' For linear models: overlaid histogram of actual vs predicted values.
-#' For logistic models: confusion-matrix tile plot with percentage labels.
+#' For logistic models: calibration curve (observed vs predicted rate by
+#' decile of predicted risk) instead of a threshold-dependent confusion matrix.
 #'
 #' @param model        A native `lm`/`glm` object.
 #' @param is_logistic  Scalar logical.
@@ -1856,20 +2285,14 @@ plot_pred_vs_actual <- function(model, is_logistic, outcome_label = "outcome") {
   )
 
   if (is.null(actual)) {
-    return(
-      ggplot2::ggplot() +
-        ggplot2::annotate("text", x = 0.5, y = 0.5,
-                          label = "Could not recover outcome values from model.",
-                          size = 3.5, color = "grey40", hjust = 0.5) +
-        ggplot2::theme_void()
-    )
+    return(blank_plot("Could not recover outcome values from model."))
   }
 
   if (!is_logistic) {
     predicted <- tryCatch(stats::fitted(model), error = function(e) stats::predict(model))
     n         <- min(length(actual), length(predicted))
     plot_data <- data.frame(
-      Type   = rep(c("Survey", "Predicted"), each = n),
+      Type   = rep(c("Actual", "Predicted"), each = n),
       Values = c(actual[seq_len(n)], predicted[seq_len(n)])
     )
     ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$Values, fill = .data$Type)) +
@@ -1877,34 +2300,17 @@ plot_pred_vs_actual <- function(model, is_logistic, outcome_label = "outcome") {
         ggplot2::aes(y = 100 * ggplot2::after_stat(count) / sum(ggplot2::after_stat(count))),
         position = "dodge", alpha = 0.7, bins = 30
       ) +
-      ggplot2::scale_fill_manual(values = c("Survey" = "steelblue", "Predicted" = "orange")) +
+      ggplot2::scale_fill_manual(
+        # Observed data in the neutral slate; model output in brand blue.
+        values = c("Actual" = .wise_slate, "Predicted" = .wise_blue)
+      ) +
       ggplot2::labs(x = stringr::str_wrap(outcome_label, 40),
                     y = "Share of households (%)") +
-      theme_wise()
+      theme_wise() +
+      ggplot2::theme(legend.title = ggplot2::element_blank())
 
   } else {
-    predicted  <- tryCatch(
-      stats::fitted(model),
-      error = function(e) stats::predict(model, type = "response")
-    )
-    conf_mat   <- table(
-      Predicted = factor(ifelse(predicted > 0.5, 1, 0), levels = c(0, 1)),
-      Actual    = factor(actual, levels = c(0, 1))
-    )
-    cm_df <- as.data.frame(conf_mat)
-    cm_df$Percent <- cm_df$Freq / sum(conf_mat) * 100
-    levels(cm_df$Actual)    <- c("No", "Yes")
-    levels(cm_df$Predicted) <- c("No", "Yes")
-
-    ggplot2::ggplot(cm_df, ggplot2::aes(x = .data$Actual, y = .data$Predicted,
-                                         fill = .data$Percent)) +
-      ggplot2::geom_tile(color = "white") +
-      ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", .data$Percent)),
-                         vjust = 1) +
-      ggplot2::scale_fill_gradient(low = "lightblue", high = "steelblue") +
-      ggplot2::labs(x = "Actual", y = "Predicted") +
-      theme_wise() +
-      ggplot2::theme(legend.position = "none")
+    plot_calibration(model)
   }
 }
 
@@ -1912,55 +2318,80 @@ plot_pred_vs_actual <- function(model, is_logistic, outcome_label = "outcome") {
 #' Compute model fit statistics as a data frame
 #'
 #' Returns a two-column data frame (`Statistic`, `Value`) using
-#' `fixest::fitstat()` / `fixest::r2()`.
+#' `fixest::fitstat()` / `fixest::r2()`. R-squared style statistics use the
+#' same formatting as the At-a-glance fit snippet (`<0.01` below 0.005,
+#' an em dash when unavailable) so the two never appear to disagree.
 #'
-#' @param model       A native fixest model object.
+#' @param model       A native fixest model object (or a list / fixest_multi
+#'   of per-quantile models for the RIF engine).
 #' @param is_logistic Scalar logical.
-#' @param engine      Scalar character engine key (kept for compat).
+#' @param engine      Scalar character engine key (`"rif"` switches to the
+#'   per-quantile table).
+#' @param taus        Optional numeric vector of RIF quantiles; defaults to
+#'   `seq(0.1, 0.9, by = 0.1)` when `engine = "rif"`.
 #'
-#' @return A data frame with columns `Statistic` and `Value`.
+#' @return A data frame with columns `Statistic` and `Value` (RIF: one row
+#'   per quantile with columns `Quantile`, `N`, `R²`, `Within R²`).
 #'
 #' @export
-calc_fit_stats <- function(model, is_logistic, engine = "fixest") {
+calc_fit_stats <- function(model, is_logistic, engine = "fixest", taus = NULL) {
 
-  fmt_num <- function(x, digits = 3) {
+  fmt_r2 <- function(x) {
     x <- suppressWarnings(as.numeric(x))
-    if (is.na(x)) return(NA_character_)
-    as.character(round(x, digits))
+    if (!is.finite(x)) "\u2014"
+    else if (x < 0.005) "<0.01"
+    else sprintf("%.2f", x)
+  }
+  fmt_int <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    if (!is.finite(x)) "\u2014" else formatC(x, format = "f", digits = 0, big.mark = ",")
   }
 
   # RIF: per-quantile R^2 table
   if (identical(engine, "rif") && (inherits(model, "fixest_multi") || is.list(model))) {
-    taus <- seq(0.1, 0.9, by = 0.1)
+    taus <- taus %||% seq(0.1, 0.9, by = 0.1)
     n <- min(length(model), length(taus))
     rows <- lapply(seq_len(n), function(i) {
       m <- model[[i]]
-      data.frame(
-        Statistic = paste0("\u03C4 = ", formatC(taus[i], format = "f", digits = 1)),
-        Nobs = tryCatch(format(stats::nobs(m), big.mark = ","), error = function(e) ""),
-        R2 = tryCatch(fmt_num(fixest::r2(m, "r2")), error = function(e) ""),
-        `Within R2` = tryCatch(fmt_num(fixest::r2(m, "wr2")), error = function(e) ""),
-        stringsAsFactors = FALSE, check.names = FALSE
+      row_i <- data.frame(
+        Quantile = paste0("\u03c4 = ", sprintf("%g", taus[i])),
+        N        = tryCatch(fmt_int(stats::nobs(m)), error = function(e) "\u2014"),
+        R2       = tryCatch(fmt_r2(fixest::r2(m, "r2")), error = function(e) "\u2014"),
+        stringsAsFactors = FALSE
       )
+      row_i[["Within R\u00b2"]] <- tryCatch(fmt_r2(fixest::r2(m, "wr2")),
+                                           error = function(e) "\u2014")
+      names(row_i) <- c("Quantile", "N", "R\u00b2", "Within R\u00b2")
+      row_i
     })
     return(do.call(rbind, rows))
   }
 
-  nobs_val <- tryCatch(format(stats::nobs(model), big.mark = ","),
-                       error = function(e) NA_character_)
+  nobs_val <- tryCatch(fmt_int(stats::nobs(model)), error = function(e) "\u2014")
 
   if (!is_logistic) {
-    r2_val  <- tryCatch(fmt_num(fixest::r2(model, "r2")),  error = function(e) NA_character_)
-    ar2_val <- tryCatch(fmt_num(fixest::r2(model, "ar2")), error = function(e) NA_character_)
-    wr2_val <- tryCatch(fmt_num(fixest::r2(model, "wr2")), error = function(e) NA_character_)
+    r2_val  <- tryCatch(fmt_r2(fixest::r2(model, "r2")),  error = function(e) "\u2014")
+    ar2_val <- tryCatch(fmt_r2(fixest::r2(model, "ar2")), error = function(e) "\u2014")
+    wr2_val <- tryCatch(fmt_r2(fixest::r2(model, "wr2")), error = function(e) "\u2014")
     data.frame(
-      Statistic = c("Observations", "R-squared", "Adj. R-squared", "Within R-squared"),
+      Statistic = c("Observations", "R\u00b2", "Adj. R\u00b2", "Within R\u00b2"),
       Value     = c(nobs_val, r2_val, ar2_val, wr2_val),
       stringsAsFactors = FALSE
     )
   } else {
-    aic_val <- tryCatch(fmt_num(stats::AIC(model), 0), error = function(e) NA_character_)
-    pr2_val <- tryCatch(fmt_num(fixest::r2(model, "pr2")), error = function(e) NA_character_)
+    aic_val  <- tryCatch(fmt_int(stats::AIC(model)), error = function(e) "\u2014")
+    pr2_val  <- tryCatch(fmt_r2(fixest::r2(model, "pr2")), error = function(e) {
+      # fixest::r2() only knows fixest models; fall back to McFadden from
+      # the log-likelihoods so stats::glm fits are covered too.
+      ll  <- tryCatch(as.numeric(stats::logLik(model)), error = function(e2) NA_real_)
+      ll0 <- tryCatch({
+        y  <- stats::model.response(stats::model.frame(model))
+        p0 <- mean(y)
+        if (p0 <= 0 || p0 >= 1) NA_real_
+        else sum(y * log(p0) + (1 - y) * log(1 - p0))
+      }, error = function(e2) NA_real_)
+      fmt_r2(1 - ll / ll0)
+    })
     data.frame(
       Statistic = c("Observations", "McFadden R\u00b2", "AIC"),
       Value     = c(nobs_val, pr2_val, aic_val),
@@ -1970,63 +2401,65 @@ calc_fit_stats <- function(model, is_logistic, engine = "fixest") {
 }
 
 
-#' Plot standardized coefficient importance (linear models)
+#' Plot each term's approximate contribution to explained variation
 #'
-#' Computes predictor importance as `abs(beta) * sd(X)` from the fitted model
-#' matrix (excluding intercept), then renders a horizontal bar chart of the top
-#' predictors.
+#' Standardized-coefficient decomposition: each term's squared standardized
+#' coefficient (|beta| * sd(x))^2 expressed as a share of their sum, as an
+#' indicative ranking of how much each term contributes to the model's fit.
+#' Collinearity is ignored and fixed effects are excluded, so shares are
+#' approximate.
 #'
-#' @param model A native fitted model object supporting `model.matrix()` and
-#'   `coef()`.
-#' @param var_info Optional data frame (unused; kept for interface compatibility).
+#' @param model     A native fitted model (`fixest` feols/feglm, incl. a single
+#'   RIF quantile model).
+#' @param label_fun Optional function mapping term names to readable labels
+#'   (polynomial terms are prettified automatically).
 #'
 #' @return A `ggplot` object.
 #'
 #' @export
-plot_relaimpo <- function(model, var_info = NULL) {
-  mm    <- resolve_model_matrix(model)
-  if (is.null(mm)) {
-    return(
-      ggplot2::ggplot() +
-        ggplot2::annotate("text", x = 0.5, y = 0.5,
-                          label = "Model matrix unavailable for importance plot.",
-                          size = 3.5, color = "grey40", hjust = 0.5) +
-        ggplot2::theme_void()
-    )
-  }
+plot_importance <- function(model, label_fun = identity) {
+  mm <- resolve_model_matrix(model)
+  if (is.null(mm)) return(blank_plot("Model matrix unavailable."))
+
   coefs <- stats::coef(model)
+  keep  <- names(coefs) != "(Intercept)" & names(coefs) %in% names(mm)
+  beta  <- coefs[keep]
+  if (!length(beta)) return(blank_plot("No estimable terms."))
 
-  keep <- names(coefs) != "(Intercept)"
-  beta <- coefs[keep]
-
-  # resolve_model_matrix() returns a data frame; subset by the coef names
-  # present (a slimmed/cached matrix carries the same columns as model.matrix).
-  beta <- beta[names(beta) %in% names(mm)]
   X <- mm[, names(beta), drop = FALSE]
   sd_x <- apply(X, 2, stats::sd, na.rm = TRUE)
   sd_x[is.na(sd_x)] <- 0
 
-  importance_df <- data.frame(
-    Variable   = names(beta),
-    Importance = abs(as.numeric(beta)) * as.numeric(sd_x),
+  imp  <- abs(as.numeric(beta)) * as.numeric(sd_x)
+  tot  <- sum(imp^2)
+  if (!is.finite(tot) || tot <= 0) {
+    return(blank_plot("No variation to decompose."))
+  }
+
+  df <- data.frame(
+    term  = names(beta),
+    share = 100 * imp^2 / tot,
     stringsAsFactors = FALSE
   )
+  df$label <- vapply(df$term, function(t) {
+    lab <- .pretty_poly_label(t, label_fun)
+    if (is.null(lab) || is.na(lab) || !nzchar(lab)) t else lab
+  }, character(1))
+  df <- df[order(-df$share), , drop = FALSE]
+  df <- utils::head(df, 15)
 
-  importance_df$label <- importance_df$Variable
-
-  importance_df <- importance_df |>
-    dplyr::arrange(dplyr::desc(.data$Importance)) |>
-    utils::head(30)
-
-  ggplot2::ggplot(
-    importance_df,
-    ggplot2::aes(x = reorder(.data$label, .data$Importance), y = .data$Importance)
-  ) +
-    ggplot2::geom_col(fill = "steelblue") +
-    ggplot2::coord_flip() +
+  ggplot2::ggplot(df, ggplot2::aes(x = .data$share, y = stats::reorder(.data$label, .data$share))) +
+    ggplot2::geom_col(fill = .wise_blue, width = 0.7) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = sprintf("%.0f%%", .data$share)),
+      hjust = -0.15, size = 3.2, colour = .wise_charcoal
+    ) +
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.15))) +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_blank()) +
     ggplot2::labs(
-      x = "",
-      y = "Standardized coefficient importance"
+      subtitle = "Squared standardized coefficients, as a share of their sum",
+      x = "Share of explained variation (%)",
+      y = ""
     ) +
     theme_wise()
 }

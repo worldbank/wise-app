@@ -324,6 +324,59 @@ make_test_fixtures_cross_res <- function(
   )
 }
 
+# These fixtures are immutable inputs. Cache each shape so the integration
+# tests do not repeat DuckDB/H3 setup and Parquet writes.
+.cached_weather_fixture <- local({
+  cache <- new.env(parent = emptyenv())
+
+  function(kind) {
+    if (identical(kind, "__dirs__")) {
+      return(if (is.null(cache$dirs)) character() else cache$dirs)
+    }
+
+    if (!exists(kind, envir = cache, inherits = FALSE)) {
+      dir <- tempfile(paste0("wiseapp-weather-", kind, "-"))
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      cache$dirs <- c(if (is.null(cache$dirs)) character() else cache$dirs, dir)
+
+      fx <- switch(
+        kind,
+        basic = make_test_fixtures(dir),
+        repeated = make_test_fixtures(dir, n_months = 18L),
+        cross_res = make_test_fixtures_cross_res(
+          dir, seed_cell = "85283473fffffff",
+          micro_res = 5L, weather_res = 4L
+        ),
+        finer_res = make_test_fixtures_cross_res(
+          dir, seed_cell = "8428347ffffffff",
+          micro_res = 4L, weather_res = 5L
+        ),
+        cross_res_cmip6 = {
+          value <- make_test_fixtures_cross_res(
+            dir, seed_cell = "85283473fffffff",
+            micro_res = 5L, weather_res = 4L
+          )
+          make_test_fixtures_cmip6_coarser(dir, value, cmip6_res = 3L)
+          value
+        },
+        stop("Unknown cached weather fixture: ", kind, call. = FALSE)
+      )
+      cache[[kind]] <- fx
+    }
+
+    cache[[kind]]
+  }
+})
+
+withr::defer(
+  unlink(.cached_weather_fixture("__dirs__"), recursive = TRUE, force = TRUE),
+  testthat::teardown_env()
+)
+
+cached_weather_fixture <- function(kind = "basic") {
+  .cached_weather_fixture(kind)
+}
+
 
 # ============================================================================ #
 # 1. Argument validation — climate scenario guards                             #
@@ -344,6 +397,18 @@ test_that("get_weather errors when ssp supplied but future_period missing", {
       perturbation_method = c(tx = "additive")
     ),
     regexp = "future_period is required"
+  )
+})
+
+test_that("bin breaks remain deterministic without the redundant pre-sort", {
+  ref <- data.frame(tx = c(20, 21, 22, 30, 31, 35))
+  selected <- sw_binned(method = "K-means", n_bins = 3)
+  first <- wiseapp:::.compute_breaks(ref, selected)
+  second <- wiseapp:::.compute_breaks(ref[c(6, 2, 4, 1, 5, 3), , drop = FALSE], selected)
+  expect_identical(first, second)
+  expect_equal(
+    cut(c(20, 21, 22, 30, 31, 35), breaks = first$tx, include.lowest = TRUE),
+    cut(c(20, 21, 22, 30, 31, 35), breaks = second$tx, include.lowest = TRUE)
   )
 })
 
@@ -459,6 +524,27 @@ test_that("outer bins capture values outside survey range", {
   bins        <- cut(sim_vals, breaks = breaks, include.lowest = TRUE)
   expect_false(any(is.na(bins)), info = "No values should fall outside the bins")
   expect_equal(length(levels(bins)), n_bins)
+})
+
+test_that("binned simulation levels match relabelled model levels", {
+  skip_if_not_installed("fixest")
+
+  breaks <- list(temp = c(-Inf, 20, 30, Inf))
+  attr(breaks$temp, "observed") <- c(10, 20, 30, 40)
+
+  train <- data.frame(
+    temp = rep(c(15, 25, 35), each = 10),
+    outcome = rep(c(1, 2, 4), each = 10)
+  )
+  train <- relabel_bin_levels(.apply_binning(train, breaks), breaks)
+  simulation <- .apply_binning(data.frame(temp = c(15, 25, 35)), breaks)
+
+  expect_identical(levels(simulation$temp), levels(train$temp))
+
+  fit <- fixest::feols(outcome ~ temp, data = train)
+  predicted <- stats::predict(fit, newdata = simulation)
+  expect_equal(as.numeric(predicted), c(1, 2, 4), tolerance = 1e-10)
+  expect_equal(dplyr::n_distinct(predicted), 3L)
 })
 
 test_that("K-means binning produces correct number of centers", {
@@ -579,8 +665,7 @@ test_that("get_weather returns data frame with expected columns (continuous)", {
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   result <- get_weather(
     survey_data       = fx$survey_data,
@@ -601,13 +686,41 @@ test_that("get_weather returns data frame with expected columns (continuous)", {
   expect_false(is.factor(hist$tx))
 })
 
+test_that("one- and two-thread weather output has canonical parity", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("duckdbfs")
+
+  fx <- cached_weather_fixture()
+  run <- function(threads) get_weather(
+    survey_data = fx$survey_data,
+    selected_surveys = fx$selected_surveys,
+    selected_weather = sw_continuous("tx"),
+    dates = fx$dates,
+    connection_params = fx$connection_params,
+    weather_threads = threads
+  )
+  one <- run("1")
+  two <- run("2")
+
+  expect_identical(one$historical, two$historical)
+  expect_identical(attr(one, "continuous_weather"), attr(two, "continuous_weather"))
+  expect_identical(
+    attr(one, "weather_collection_policy")$weather_threads$selected_threads,
+    1L
+  )
+  expect_identical(
+    attr(two, "weather_collection_policy")$weather_threads$selected_threads,
+    2L
+  )
+})
+
 test_that("get_weather returns only rows matching requested dates", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   result <- get_weather(
     survey_data       = fx$survey_data,
@@ -625,8 +738,7 @@ test_that("get_weather: binned (equal frequency) returns factor with correct lev
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   result <- get_weather(
     survey_data       = fx$survey_data,
@@ -645,8 +757,7 @@ test_that("get_weather: binned (equal width) returns factor with correct levels"
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   result <- get_weather(
     survey_data       = fx$survey_data,
@@ -665,8 +776,7 @@ test_that("get_weather: binned (K-means) returns factor", {
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   result <- get_weather(
     survey_data       = fx$survey_data,
@@ -684,8 +794,7 @@ test_that("get_weather: binned (Custom) produces factor whose interior breaks ar
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   # Use cuts that bracket the synthetic tx range (mean ~28, sd ~4)
   user_cuts <- c(22, 26, 30, 34)
@@ -712,8 +821,7 @@ test_that("get_weather: outer bins contain no NAs (values outside survey range)"
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   # Use simulation dates (wider range than survey dates) to produce
   # out-of-survey-range values that must be caught by outer bins.
@@ -742,8 +850,7 @@ test_that("get_weather: two variables, mixed continuous and binned", {
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   sw_mixed <- rbind(
     sw_continuous("tx"),
@@ -769,8 +876,7 @@ test_that("get_weather: bin cutoffs use only survey timestamps (not all dates)",
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures(tmp)
+  fx <- cached_weather_fixture()
 
   # Use only a subset of dates as the 'dates' argument (simulation years)
   # but ensure survey_data$timestamp is a strict subset
@@ -913,15 +1019,8 @@ test_that("get_weather joins correctly when weather is coarser than microdata", 
   skip_if_not_installed("duckdbfs")
   skip_if_not_installed("bit64")
 
-  tmp <- withr::local_tempdir()
-
   # micro res 5, weather res 4  (the common production case)
-  fx <- make_test_fixtures_cross_res(
-    tmp,
-    seed_cell   = "85283473fffffff",
-    micro_res   = 5L,
-    weather_res = 4L
-  )
+  fx <- cached_weather_fixture("cross_res")
 
   result <- get_weather(
     survey_data       = fx$survey_data,
@@ -945,16 +1044,9 @@ test_that("get_weather joins correctly when weather is finer than microdata", {
   skip_if_not_installed("duckdbfs")
   skip_if_not_installed("bit64")
 
-  tmp <- withr::local_tempdir()
-
   # micro res 4, weather res 5  (unusual but must be handled).
   # 8428347ffffffff is a valid res-4 cell (parent of 85283473fffffff).
-  fx <- make_test_fixtures_cross_res(
-    tmp,
-    seed_cell   = "8428347ffffffff",
-    micro_res   = 4L,
-    weather_res = 5L
-  )
+  fx <- cached_weather_fixture("finer_res")
 
   result <- get_weather(
     survey_data       = fx$survey_data,
@@ -1038,19 +1130,11 @@ test_that("get_weather climate scenario works when CMIP6 is coarser than microda
   skip_if_not_installed("duckdbfs")
   skip_if_not_installed("bit64")
 
-  tmp <- withr::local_tempdir()
-
   # micro res 5, weather res 4 → target res 4; CMIP6 at res 3 is coarser,
   # forcing the h3_cmip6 parent-mapping branch. Regression: this branch used
   # to reference the dropped `h3` string column, which made DuckDB bind it to
   # the CMIP6 join column (bigint) and fail with `h3_string_to_h3(BIGINT)`.
-  fx <- make_test_fixtures_cross_res(
-    tmp,
-    seed_cell   = "85283473fffffff",
-    micro_res   = 5L,
-    weather_res = 4L
-  )
-  make_test_fixtures_cmip6_coarser(tmp, fx, cmip6_res = 3L)
+  fx <- cached_weather_fixture("cross_res_cmip6")
 
   result <- get_weather(
     survey_data         = fx$survey_data,
@@ -1094,8 +1178,7 @@ test_that("get_weather is identical across repeated end-to-end calls", {
   skip_if_not_installed("duckdb")
   skip_if_not_installed("bit64")
 
-  tmp <- withr::local_tempdir()
-  fx <- make_test_fixtures(tmp, n_months = 18L)
+  fx <- cached_weather_fixture("repeated")
   selected <- sw_binned("tx", method = "K-means", n_bins = 3L)
 
   run <- function() {
@@ -1118,20 +1201,84 @@ test_that("get_weather is identical across repeated end-to-end calls", {
   expect_identical(a, b)
 })
 
+test_that("fast and bounded future collection preserve the weather contract", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("duckdbfs")
+  skip_if_not_installed("bit64")
+
+  fx <- cached_weather_fixture("cross_res_cmip6")
+
+  run <- function(weather_collect) get_weather(
+    survey_data         = fx$survey_data,
+    selected_surveys    = fx$selected_surveys,
+    selected_weather    = sw_continuous("tx"),
+    dates               = fx$dates,
+    connection_params   = fx$connection_params,
+    ssp                 = "ssp2_4_5",
+    future_period       = c("2025-01-01", "2025-12-31"),
+    perturbation_method = c(tx = "additive"),
+    weather_collect     = weather_collect
+  )
+
+  fast <- run("fast")
+  bounded <- run("bounded")
+  expect_identical(names(fast), names(bounded))
+  for (key in names(fast)) {
+    expect_identical(fast[[key]], bounded[[key]])
+  }
+})
+
+test_that("materialized multi-period future deltas preserve each period", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("duckdbfs")
+  skip_if_not_installed("bit64")
+
+  fx <- cached_weather_fixture("cross_res_cmip6")
+  proj_path <- file.path(
+    fx$connection_params$path, "hazard", "weather", "projections",
+    fx$selected_surveys$code,
+    paste0(fx$selected_surveys$code, "_cmip6_ssp245.parquet")
+  )
+  projection <- arrow::read_parquet(proj_path)
+  future_2025 <- projection[projection$timestamp >= as.Date("2025-01-01"), , drop = FALSE]
+  future_2026 <- future_2025
+  future_2026$timestamp <- as.Date(paste0("2026-", format(future_2025$timestamp, "%m"), "-01"))
+  arrow::write_parquet(rbind(projection, future_2026), proj_path)
+  run <- function(periods) get_weather(
+    survey_data = fx$survey_data,
+    selected_surveys = fx$selected_surveys,
+    selected_weather = sw_continuous("tx"),
+    dates = fx$dates,
+    connection_params = fx$connection_params,
+    ssp = "ssp2_4_5",
+    future_period = periods,
+    perturbation_method = c(tx = "additive")
+  )
+  first <- run(list(c("2025-01-01", "2025-12-31")))
+  both <- run(list(
+    c("2025-01-01", "2025-12-31"),
+    c("2026-01-01", "2026-12-31")
+  ))
+  first_key <- grep("2025_2025", names(first), value = TRUE)
+  second_key <- grep("2026_2026", names(both), value = TRUE)
+  expect_length(first_key, 1L)
+  expect_length(second_key, 1L)
+  expect_identical(first$historical, both$historical)
+  expect_identical(first[[first_key]], both[[first_key]])
+  # Output timestamps are the survey dates; the future-period window selects
+  # the projection source, not the returned survey timestamp.
+  expect_gt(nrow(both[[second_key]]), 0L)
+})
+
 test_that("SSP perturbation with equal-frequency bins is deterministic", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("duckdb")
   skip_if_not_installed("duckdbfs")
   skip_if_not_installed("bit64")
 
-  tmp <- withr::local_tempdir()
-  fx <- make_test_fixtures_cross_res(
-    tmp,
-    seed_cell = "85283473fffffff",
-    micro_res = 5L,
-    weather_res = 4L
-  )
-  make_test_fixtures_cmip6_coarser(tmp, fx, cmip6_res = 3L)
+  fx <- cached_weather_fixture("cross_res_cmip6")
   selected <- sw_binned("tx", method = "Equal frequency", n_bins = 3L)
 
   run <- function() {
@@ -1172,14 +1319,7 @@ test_that("forced weather disk cache is bit-identical, cold and warm (PERF-13)",
   skip_if_not_installed("duckdbfs")
   skip_if_not_installed("bit64")
 
-  tmp <- withr::local_tempdir()
-  fx  <- make_test_fixtures_cross_res(
-    tmp,
-    seed_cell   = "85283473fffffff",
-    micro_res   = 5L,
-    weather_res = 4L
-  )
-  make_test_fixtures_cmip6_coarser(tmp, fx, cmip6_res = 3L)
+  fx <- cached_weather_fixture("cross_res_cmip6")
 
   run <- function() {
     get_weather(
@@ -1258,4 +1398,94 @@ test_that("loc_panel is identical on the lazy view and its local temp table", {
                          group_cols = c("code", "year", "survname")))
 
   expect_identical(direct, from_temp)
+})
+
+test_that("baseline-wave filtering removes unused weather rows with parity", {
+  fx <- .cached_weather_fixture("basic")
+  old <- fx$selected_surveys
+  old$year <- old$year - 1L
+  old$survname <- "OLD"
+  old_path <- file.path(
+    fx$connection_params$path, "microdata", "h3", old$code,
+    paste0(old$code, "_", old$year, "_", old$survname, "_",
+           old$source, "_h3.parquet")
+  )
+  current_path <- file.path(
+    fx$connection_params$path, "microdata", "h3", fx$selected_surveys$code,
+    paste0(fx$selected_surveys$code, "_", fx$selected_surveys$year, "_",
+           fx$selected_surveys$survname, "_", fx$selected_surveys$source,
+           "_h3.parquet")
+  )
+  file.copy(current_path, old_path, overwrite = TRUE)
+  old_h3 <- arrow::read_parquet(old_path)
+  old_h3$year <- old$year
+  old_h3$survname <- old$survname
+  arrow::write_parquet(old_h3, old_path)
+
+  run <- function(ss) get_weather(
+    survey_data = fx$survey_data, selected_surveys = ss,
+    selected_weather = sw_continuous("tx"), dates = fx$dates,
+    connection_params = fx$connection_params
+  )$historical
+  full <- run(rbind(old, fx$selected_surveys))
+  filtered <- run(fx$selected_surveys)
+  common <- full[full$year == fx$selected_surveys$year, , drop = FALSE]
+  rownames(common) <- NULL
+  rownames(filtered) <- NULL
+
+  expect_gt(nrow(full), nrow(filtered))
+  expect_equal(common, filtered, tolerance = 1e-12)
+  expect_identical(names(common), names(filtered))
+})
+
+test_that("baseline-wave filtering preserves historical and future keys across sources", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("duckdbfs")
+  skip_if_not_installed("bit64")
+  fx <- cached_weather_fixture("cross_res_cmip6")
+  current <- fx$selected_surveys
+  h3_dir <- file.path(fx$connection_params$path, "microdata", "h3", current$code)
+  current_path <- file.path(
+    h3_dir, paste0(current$code, "_", current$year, "_", current$survname,
+                   "_", current$source, "_h3.parquet")
+  )
+  base_h3 <- arrow::read_parquet(current_path)
+  add_mapping <- function(year, survname, source) {
+    mapped <- base_h3
+    mapped$year <- year
+    mapped$survname <- survname
+    arrow::write_parquet(mapped, file.path(
+      h3_dir, paste0(current$code, "_", year, "_", survname, "_", source,
+                     "_h3.parquet")
+    ))
+    data.frame(code = current$code, year = year, survname = survname,
+               source = source, stringsAsFactors = FALSE)
+  }
+  old <- add_mapping(current$year - 1L, "OLD_WAVE", "archive")
+  alternate <- add_mapping(current$year, "ALT_ROUND", "alternate_source")
+  baseline <- rbind(current, alternate)
+  selected <- rbind(old, baseline)
+  run <- function(ss) get_weather(
+    survey_data = fx$survey_data, selected_surveys = ss,
+    selected_weather = sw_continuous("tx"), dates = fx$dates,
+    connection_params = fx$connection_params, ssp = "ssp2_4_5",
+    future_period = c("2025-01-01", "2025-12-31"),
+    perturbation_method = c(tx = "additive")
+  )
+  full <- run(selected)
+  filtered <- run(baseline)
+  expect_identical(names(filtered), names(full))
+  expect_true("historical" %in% names(filtered))
+  expect_true(any(grepl("ssp2_4_5", names(filtered), fixed = TRUE)))
+  for (key in names(filtered)) {
+    common <- full[[key]][full[[key]]$year == current$year &
+      full[[key]]$survname %in% baseline$survname, , drop = FALSE]
+    rownames(common) <- NULL
+    actual <- filtered[[key]]
+    rownames(actual) <- NULL
+    expect_equal(actual, common, tolerance = 1e-12, info = key)
+    expect_identical(names(actual), names(common), info = key)
+    expect_setequal(unique(actual$survname), baseline$survname)
+  }
 })

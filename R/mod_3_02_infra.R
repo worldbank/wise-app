@@ -239,6 +239,12 @@ mod_3_02_infra_server <- function(id,
       )
     })
 
+    lapply(c("elec_ui", "water_ui", "sanitation_ui", "piped_ui",
+             "piped_to_prem_ui", "imp_wat_san_ui", "health_ui"),
+           function(out_id) {
+             shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+           })
+
     # ---- Return API -----------------------------------------------------
 
     list(

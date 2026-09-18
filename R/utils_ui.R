@@ -153,16 +153,6 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
   if (is.null(hist_sim) || is.null(hist_sim$so)) return(NULL)
 
   run <- hist_sim$sim_summary %||% list()
-  so <- hist_sim$so
-  so_label <- if ("label" %in% names(so)) as.character(so$label[1]) else "Selected outcome"
-  if (is.na(so_label) || !nzchar(so_label)) so_label <- "Selected outcome"
-
-  sw <- run$weather %||% if (is.data.frame(selected_weather)) selected_weather else NULL
-  weather_labels <- if (!is.null(sw) && "label" %in% names(sw))
-    as.character(sw$label) else character(0)
-  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
-  weather_labels <- weather_labels[nzchar(weather_labels)]
-  if (length(weather_labels) == 0L) weather_labels <- "Selected weather"
 
   hist_years <- run$historical_years %||% tryCatch({
     if (!is.null(selected_hist) && "year_range" %in% names(selected_hist))
@@ -175,40 +165,10 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     as.character(hist_sim$hist_label %||% "Historical baseline")
   }
 
-  residuals <- as.character(hist_sim$residuals %||% "original")
-  residual_label <- switch(residuals,
-    original = "Original residuals",
-    resample = "Resampled residuals",
-    none     = "No residuals",
-    normal   = "Normal residuals",
-    residuals
-  )
-
   scenarios <- if (is.list(saved_scenarios)) names(saved_scenarios) else character(0)
   scenario_count <- length(scenarios)
-  scenario_pills <- if (scenario_count > 0L) {
-    vapply(scenarios, function(key) {
-      n <- saved_scenarios[[key]]$n_models %||% NA_integer_
-      n_txt <- if (is.finite(n)) paste0(" (", n, " models)") else ""
-      paste0(key, n_txt)
-    }, character(1))
-  } else "None"
-
-  model <- run$model %||% list()
-  model_label <- model$label %||% "Fitted model"
-  model_bits <- c(
-    if (is.finite(model$fixed_effects %||% NA_integer_))
-      paste0(model$fixed_effects, " FE"),
-    if (is.finite(model$covariates %||% NA_integer_))
-      paste0(model$covariates, " covariates")
-  )
 
   baseline <- run$baseline_survey %||% "Selected baseline survey"
-  baseline_n <- run$baseline_n %||% NA_integer_
-  baseline_pills <- c(
-    if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ",")),
-    residual_label
-  )
   total_runs <- run$total_runs %||% NA_integer_
   badge <- if (is.finite(total_runs)) {
     paste(format(total_runs, big.mark = ","), "simulation years")
@@ -218,31 +178,83 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     paste(scenario_count, "future", if (scenario_count == 1L) "scenario" else "scenarios")
   }
 
-  selection_summary_card(
-    title = "Selected Climate Scenario",
-    badge = badge,
-    rows = list(
-      list(
-        name = "Climate scenarios",
-        sub = paste0("Historical ", hist_period),
-        pills = scenario_pills
+  scenario_items <- lapply(scenarios, function(key) {
+    parts <- strsplit(key, " / ", fixed = TRUE)[[1]]
+    ssp <- parts[1] %||% key
+    period <- if (length(parts) >= 2L) parts[2] else ""
+    n <- suppressWarnings(as.numeric(saved_scenarios[[key]]$n_models %||% NA_real_))[1]
+    n_label <- if (is.finite(n)) paste(n, "models") else "model count unavailable"
+    shiny::tags$span(
+      class = "step2-summary-item",
+      shiny::tags$span(
+        class = "step2-summary-label step2-summary-scenario-label",
+        ssp
       ),
-      list(
-        name = "Weather",
-        sub = paste(weather_labels, collapse = ", ")
-      ),
-      list(
-        name = "Model",
-        sub = model_label,
-        pills = c(paste0("Outcome: ", so_label), model_bits)
-      ),
-      list(
-        name = "Baseline",
-        sub = baseline,
-        pills = baseline_pills
+      if (nzchar(period))
+        shiny::tags$span(class = "step2-summary-value", period),
+      shiny::tags$span(class = "selection-card-pill", n_label)
+    )
+  })
+  if (!length(scenario_items)) {
+    scenario_items <- list(
+      shiny::tags$span(
+        class = "step2-summary-item",
+        shiny::tags$span(class = "step2-summary-value", "Historical only")
+      )
+    )
+  }
+  separator <- shiny::tags$span(class = "step2-summary-separator", "·")
+  summary_row <- c(
+    scenario_items,
+    list(separator),
+    list(
+      shiny::tags$span(
+        class = "step2-summary-item",
+        shiny::tags$span(class = "step2-summary-label", "Reference climate"),
+        shiny::tags$span(class = "selection-card-pill", hist_period)
       )
     ),
-    compact = TRUE
+    list(separator),
+    list(
+      shiny::tags$span(
+        class = "step2-summary-item",
+        shiny::tags$span(class = "step2-summary-label", "Baseline survey"),
+        shiny::tags$span(class = "selection-card-pill", baseline)
+      )
+    )
+  )
+
+  selection_summary_card(
+    title = "Selected climate scenarios",
+    badge = badge,
+    rows = list(shiny::tags$div(
+      class = "selection-card-row step2-summary-row",
+      summary_row
+    ))
+  )
+}
+
+headline_cards_ui <- function(cards) {
+  if (is.null(cards) || !length(cards)) return(NULL)
+  shiny::tags$div(
+    class = "headline-cards",
+    lapply(cards, function(card) {
+      shiny::tags$div(
+        class = paste("headline-card", card$class %||% ""),
+        shiny::tags$div(
+          class = "headline-card-label",
+          card$label %||% "Result",
+          if (!is.null(card$info) && nzchar(card$info))
+            info_popover(shiny::p(card$info))
+        ),
+        shiny::tags$div(class = "headline-card-value", card$value %||% "Unavailable"),
+        if (!is.null(card$note_html)) {
+          shiny::tags$div(class = "headline-card-note", card$note_html)
+        } else if (!is.null(card$note) && nzchar(card$note)) {
+          shiny::tags$div(class = "headline-card-note", card$note)
+        }
+      )
+    })
   )
 }
 
@@ -253,7 +265,12 @@ policy_summary_card <- function(selected_policies = NULL,
                                 baseline_hist_sim = NULL,
                                 policy_saved_scenarios = list(),
                                 selected_weather = NULL,
-                                sp_scenario = NULL) {
+                                sp_scenario = NULL,
+                                policy_scenarios = list(),
+                                infra_scenario = NULL,
+                                digital_scenario = NULL,
+                                labor_scenario = NULL,
+                                education_scenario = NULL) {
   policies <- selected_policies %||% character(0)
   policies <- policies[!is.na(policies) & nzchar(policies)]
   labels <- vapply(policies, function(key) {
@@ -265,38 +282,17 @@ policy_summary_card <- function(selected_policies = NULL,
     }
   }, character(1))
 
-  hs <- baseline_hist_sim
-  run <- if (!is.null(hs)) hs$sim_summary %||% list() else list()
-  so_label <- if (!is.null(hs) && "label" %in% names(hs$so)) {
-    as.character(hs$so$label[1])
-  } else "Selected outcome"
-  sw <- run$weather %||% selected_weather
-  weather_labels <- if (!is.null(sw) && "label" %in% names(sw)) {
-    as.character(sw$label)
-  } else character(0)
-  weather_labels <- weather_labels[!is.na(weather_labels) & nzchar(weather_labels)]
-  baseline <- run$baseline_survey %||% "Selected baseline survey"
-  baseline_n <- run$baseline_n %||% NA_integer_
-  model <- run$model %||% list()
-  model_bits <- c(
-    if (is.finite(model$fixed_effects %||% NA_integer_))
-      paste0(model$fixed_effects, " FE"),
-    if (is.finite(model$covariates %||% NA_integer_))
-      paste0(model$covariates, " covariates")
-  )
-  historical_years <- run$historical_years %||% integer(0)
-  historical <- if (length(historical_years) >= 2L) {
-    paste0("Historical ", historical_years[1], "-", historical_years[2])
-  } else NULL
-  policy_pills <- if (length(labels)) {
-    paste0(policies, " \u00B7 ", labels)
-  } else "None"
-  sp <- sp_scenario %||% list()
-  if (is.function(sp)) sp <- sp()
-  sp_active <- is.list(sp) && (
-    isTRUE(sp$transfer_amount_usd > 0) || isTRUE(sp$budget_fixed > 0)
-  )
-  sp_label <- if (sp_active) {
+  deref <- function(x) {
+    if (is.function(x)) x <- tryCatch(x(), error = function(e) NULL)
+    if (is.list(x)) x else NULL
+  }
+  sp <- deref(sp_scenario)
+  infra <- deref(infra_scenario)
+  digital <- deref(digital_scenario)
+  labor <- deref(labor_scenario)
+  education <- deref(education_scenario)
+
+  sp_label <- if (has_sp_change(sp)) {
     amount <- if (isTRUE(sp$transfer_amount_usd > 0)) {
       paste0("$", format(sp$transfer_amount_usd, trim = TRUE, big.mark = ","), "/payment")
     } else {
@@ -306,49 +302,49 @@ policy_summary_card <- function(selected_policies = NULL,
       paste0(" x ", sp$transfer_n_payments, "/year")
     } else ""
     targeting <- sp$targeting %||% "universal"
-    paste("SP", amount, payments, "-", targeting)
+    paste("Social protection", amount, payments, "-", targeting)
   } else NULL
-  policy_pills <- c(sp_label, policy_pills[policy_pills != "None"])
-  if (!length(policy_pills)) policy_pills <- "None"
-  configured_count <- length(policy_pills[policy_pills != "None"])
-  climate_scenarios <- names(policy_saved_scenarios)
-
+  active <- c(
+    sp_label,
+    if (has_infra_change(infra)) "Infrastructure",
+    if (has_digital_change(digital)) "Digital inclusion",
+    if (has_labor_change(labor)) "Labor market",
+    if (has_education_change(education)) "Education"
+  )
+  configured_count <- length(active)
+  policy_pills <- if (configured_count > 0L) active else "None"
+  rows <- list(list(
+    name = "Policies",
+    sub = if (!configured_count) "no lever has been changed yet",
+    pills = policy_pills
+  ))
+  if (length(labels)) {
+    rows <- c(rows, list(list(
+      name = "Policy interaction",
+      pills = labels
+    )))
+  }
   selection_summary_card(
     title = "Selected Policy Scenarios",
     badge = paste(configured_count,
                   if (configured_count == 1L) "policy" else "policies"),
-    rows = list(
-      list(
-        name = "Climate scenarios",
-        sub = if (length(historical)) historical else "Historical climate",
-        pills = climate_scenarios
-      ),
-      list(
-        name  = "Policies",
-        sub   = NULL,
-        pills = policy_pills
-      ),
-      list(
-        name = "Model",
-        sub = model$label %||% "Fitted model",
-        pills = c(
-          paste0("Outcome: ", so_label),
-          if (length(weather_labels)) paste0(
-            "Weather: ", paste(weather_labels, collapse = ", ")
-          ),
-          model_bits
-        )
-      ),
-      list(
-        name = "Baseline",
-        sub = baseline,
-        pills = c(
-          if (is.finite(baseline_n)) paste0("N = ", format(baseline_n, big.mark = ","))
-        )
-      )
-    ),
-    compact = TRUE
+    rows = rows
   )
+}
+
+# ---- Variable label shortening -----------------------------------------------
+
+#' Drop the "Monthly " prefix from a variable label and capitalise the first
+#' letter, so "Monthly daily maximum temperature" reads
+#' "Daily maximum temperature" in cards, plots and equations.
+#'
+#' @param lab Character label (or vector of labels).
+#' @return Character, same length.
+#' @noRd
+wise_label_short <- function(lab) {
+  lab <- sub("^Monthly\\s+", "", as.character(lab))
+  first <- toupper(substring(lab, 1, 1))
+  ifelse(nzchar(lab), paste0(first, substring(lab, 2)), lab)
 }
 
 #' Human label for an analysis unit code
@@ -363,6 +359,40 @@ analysis_unit_label <- function(unit) {
     firm = "Firm level",
     NULL
   )
+}
+
+#' Format weather variable(s) into a concise phrase for card section headings
+#'
+#' @param weather_var String, character vector, data.frame (with label/name cols),
+#'   or NULL.
+#' @return Scalar character phrase suitable for "How is outcome predicted to vary with <phrase>..."
+#'   Returns empty string `""` if NULL, empty, or more than 2 variables.
+#' @noRd
+format_weather_heading_phrase <- function(weather_var) {
+  if (is.null(weather_var)) return("")
+  raw_labels <- if (is.data.frame(weather_var)) {
+    cols <- intersect(c("label", "name"), names(weather_var))
+    if (length(cols)) as.character(weather_var[[cols[1]]]) else character(0)
+  } else if (is.character(weather_var)) {
+    weather_var
+  } else if (is.list(weather_var)) {
+    cols <- intersect(c("label", "name"), names(weather_var))
+    if (length(cols)) as.character(weather_var[[cols[1]]]) else character(0)
+  } else {
+    character(0)
+  }
+  raw_labels <- raw_labels[!is.na(raw_labels) & nzchar(trimws(raw_labels))]
+  if (length(raw_labels) == 1 && grepl(",", raw_labels, fixed = TRUE)) {
+    raw_labels <- unlist(strsplit(raw_labels, ",\\s*"), use.names = FALSE)
+    raw_labels <- raw_labels[!is.na(raw_labels) & nzchar(trimws(raw_labels))]
+  }
+  if (length(raw_labels) == 1) {
+    tolower(trimws(raw_labels[1]))
+  } else if (length(raw_labels) == 2) {
+    paste(tolower(trimws(raw_labels[1])), "and", tolower(trimws(raw_labels[2])))
+  } else {
+    ""
+  }
 }
 
 # ---- Config flyout blocks (UI-02) ---------------------------------------------
@@ -608,6 +638,20 @@ render_step_badge <- function(has_result, is_stale = NULL,
   shiny::renderUI(step_status_badge(status(), step_label))
 }
 
+# Treat any successful import as making existing results stale, even if an
+# imported value happens to equal the current control value.
+stale_after_import <- function(has_result, is_stale = NULL, imported = NULL) {
+  own <- is_stale %||% shiny::reactive(FALSE)
+  if (is.null(imported)) return(own)
+  seen <- shiny::reactiveVal(0L)
+  shiny::observeEvent(has_result(), {
+    seen(shiny::isolate(imported()))
+  }, ignoreInit = FALSE)
+  shiny::reactive(
+    isTRUE(own()) || isTRUE(imported() > seen())
+  )
+}
+
 
 # ---- Table CSV export (UI-45) ------------------------------------------------
 #
@@ -640,11 +684,22 @@ wise_csv_button <- function(filename, enabled = TRUE) {
 
 #' Add the Buttons placeholder to a DT `dom` string
 #'
+#' When both the page-length picker (`l`) and search box (`f`) are present,
+#' wrap Buttons and those controls in one flex row. Tables without both retain
+#' the simple leading `B` form.
+#'
 #' @param dom A DataTables `dom` string (e.g. "t", "lfrtip").
-#' @return The same string with a leading "B" if it lacked one.
+#' @return A `dom` string including the Buttons placeholder.
 #' @noRd
 wise_csv_dom <- function(dom = "lfrtip") {
-  if (grepl("B", dom, fixed = TRUE)) dom else paste0("B", dom)
+  if (grepl("B", dom, fixed = TRUE)) return(dom)
+  has_len <- grepl("l", dom, fixed = TRUE)
+  has_search <- grepl("f", dom, fixed = TRUE)
+  if (!has_len || !has_search) return(paste0("B", dom))
+
+  # Pull l and f out of their original positions into the shared toolbar.
+  rest <- gsub("[lf]", "", dom)
+  paste0("<'wise-dt-controls'Blf>", rest)
 }
 
 #' Small "Download CSV" link for a non-DT table
@@ -671,15 +726,21 @@ csv_download_link <- function(output_id, label = "Download CSV") {
 #' @param filename_base Base name of the file, without extension.
 #' @param data_fun      Function of no arguments returning a data frame, or
 #'   NULL when there is nothing to export.
+#' @param stale         Optional reactive stale flag. Stale downloads fail
+#'   before writing a file.
 #'
 #' @return A shiny download handler.
 #' @noRd
-csv_download_handler <- function(filename_base, data_fun) {
+csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
   shiny::downloadHandler(
     filename = function() {
       paste0(filename_base, "_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
+      if (is.function(stale) && isTRUE(shiny::isolate(stale()))) {
+        if (file.exists(file)) unlink(file)
+        stop("Step 3 results are stale; rerun before downloading.", call. = FALSE)
+      }
       df <- tryCatch(data_fun(), error = function(e) NULL)
       if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) {
         df <- data.frame(Note = "No data available")
@@ -741,10 +802,22 @@ csv_download_handler <- function(filename_base, data_fun) {
 #' @noRd
 .label_lookup <- function(vl) {
   force(vl)
-  function(var_name) {
+  lookup <- function(var_name) {
     if (is.null(vl)) return(var_name)
     idx <- match(var_name, vl$name)
     if (is.na(idx)) var_name else as.character(vl$label[idx])
+  }
+  function(var_name) {
+    # Polynomial terms arrive as fixest's double-wrapped "I(I(x^2))" (or the
+    # plain "I(x^2)") - render as "<label of x>²/³" instead of raw syntax.
+    m <- regmatches(var_name,
+                    regexec("^I\\((?:I\\()?([^\\^]+)\\^([23])\\)\\)?$",
+                            var_name))[[1]]
+    if (length(m) == 3) {
+      base <- lookup(m[2])
+      return(paste0(base, if (m[3] == "2") "\u00b2" else "\u00b3"))
+    }
+    lookup(var_name)
   }
 }
 

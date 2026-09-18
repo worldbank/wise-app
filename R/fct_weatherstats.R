@@ -167,13 +167,38 @@ merge_survey_weather <- function(survey_data, weather_data) {
   }
   if (!any(keep)) return(NULL)
 
-  data.frame(
+  out <- data.frame(
     countryyear = as.character(hist_df$countryyear[keep]),
     bin         = as.character(cut(v[keep], breaks = breaks,
                                    include.lowest = TRUE)),
     w           = as.numeric(hist_df$n_hh[keep]),
     stringsAsFactors = FALSE
-  ) |>
+  )
+
+  # The survey series uses display-safe finite outer labels from
+  # `relabel_bin_levels()`, while this historical frame is cut from continuous
+  # values and would otherwise retain `-Inf`/`Inf` in the outer labels. Keep
+  # both series on the same bin keys before they are combined for plotting.
+  observed <- attr(breaks, "observed")
+  if (!is.null(observed)) {
+    raw_levels <- levels(cut(v[keep], breaks = breaks, include.lowest = TRUE))
+    finite_levels <- vapply(seq_along(raw_levels), function(i) {
+      parts <- trimws(strsplit(
+        substr(raw_levels[[i]], 2L, nchar(raw_levels[[i]]) - 1L),
+        ",", fixed = TRUE
+      )[[1L]])
+      if (length(parts) != 2L) return(raw_levels[[i]])
+      lo <- if (parts[[1L]] == "-Inf") observed[[i]] else as.numeric(parts[[1L]])
+      hi <- if (parts[[2L]] == "Inf") observed[[i + 1L]] else as.numeric(parts[[2L]])
+      paste0(substr(raw_levels[[i]], 1L, 1L),
+             formatC(lo, format = "f", digits = 1), ", ",
+             formatC(hi, format = "f", digits = 1),
+             substr(raw_levels[[i]], nchar(raw_levels[[i]]), nchar(raw_levels[[i]])))
+    }, character(1L))
+    out$bin <- finite_levels[match(out$bin, raw_levels)]
+  }
+
+  out |>
     dplyr::group_by(.data$countryyear, .data$bin) |>
     dplyr::summarise(w = sum(.data$w, na.rm = TRUE), .groups = "drop") |>
     as.data.frame()
@@ -282,9 +307,8 @@ plot_weather_bins_compare <- function(df, hv, label, hist_df = NULL,
       y = "Share of observations (%)"
     ) +
     ggplot2::theme(
-      axis.text.x     = ggplot2::element_text(angle = 45, hjust = 1),
-      legend.position = "top",
-      legend.text     = ggplot2::element_text(size = 9)
+      axis.text.x     = ggplot2::element_text(angle = 30, hjust = 1),
+      legend.position = "top"
     ) +
     ggplot2::guides(fill = ggplot2::guide_legend(nrow = length(sources)))
 }
@@ -493,8 +517,7 @@ plot_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
     ) +
     ggplot2::theme(
       legend.position = if (length(sources) > 1) "top" else "none",
-      legend.key      = ggplot2::element_rect(fill = "white", colour = "white"),
-      legend.text     = ggplot2::element_text(size = 9)
+      legend.key      = ggplot2::element_rect(fill = "white", colour = "white")
     )
 
   p
@@ -653,22 +676,22 @@ plot_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var) {
       ggplot2::geom_jitter(
         data = transform(point_df, x = factor(as.character(x), levels = x_levels)),
         width = 0.12, height = if (is_binary_y) 0.025 else 0,
-        alpha = 0.10, colour = "#264A79", size = 0.8
+        alpha = 0.10, colour = .wise_charcoal, size = 0.8
       ) +
       ggplot2::geom_line(
         data = summary_df,
         ggplot2::aes(x = .data$bin, y = .data$mean, group = 1),
-        colour = "#0071BC", linewidth = 0.7
+        colour = .wise_blue, linewidth = 0.7
       ) +
       ggplot2::geom_point(
         data = summary_df,
         ggplot2::aes(x = .data$bin, y = .data$mean, size = .data$n),
-        colour = "#00A6C7"
+        colour = .wise_cyan
       ) +
       ggplot2::scale_size_continuous(range = c(2, 5), guide = "none") +
       theme_wise() +
       ggplot2::theme(
-        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1)
+        axis.text.x = ggplot2::element_text(angle = 30, hjust = 1, vjust = 1)
       ) +
       ggplot2::labs(
         x = stringr::str_wrap(hv_label, 40),
@@ -699,17 +722,17 @@ plot_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var) {
     ggplot2::geom_point(
       data = point_df,
       ggplot2::aes(x = .data$x, y = .data$y),
-      alpha = 0.10, colour = "#264A79", size = 0.8
+      alpha = 0.10, colour = .wise_charcoal, size = 0.8
     ) +
     ggplot2::geom_line(
       data = summary_df,
       ggplot2::aes(x = .data$x, y = .data$mean),
-      colour = "#0071BC", linewidth = 0.9
+      colour = .wise_blue, linewidth = 0.9
     ) +
     ggplot2::geom_point(
       data = summary_df,
       ggplot2::aes(x = .data$x, y = .data$mean, size = .data$n),
-      colour = "#00A6C7"
+      colour = .wise_cyan
     ) +
     ggplot2::scale_size_continuous(range = c(2, 5), guide = "none") +
     theme_wise() +
@@ -808,18 +831,31 @@ join_hist_sample_cells <- function(hist_df, survey_weather) {
   sw$int_month <- as.integer(format(sw$timestamp, "%m"))
   if (!"economy" %in% names(sw)) sw$economy <- sw$code
 
+  # The three survey-side indexes intentionally retain their duplicate rows,
+  # but do not carry the household-level weather columns through each scan.
+  # Keeping one normalized, narrow frame also makes the duplicate-sensitive
+  # join contract explicit: the joins below remain many-to-many where the old
+  # implementation was many-to-many.
+  survey_index <- sw |>
+    dplyr::select(
+      dplyr::all_of(c(
+        "code", "year", "survname", "loc_id", "timestamp", "int_month",
+        "economy"
+      ))
+    )
+
   # One row per wave x location x calendar month, weighted by the households
   # sampled there.
-  cells <- sw |>
+  cells <- survey_index |>
     dplyr::count(
       .data$code, .data$year, .data$survname, .data$loc_id, .data$int_month,
       name = "n_hh"
     )
 
-  waves <- sw |>
+  waves <- survey_index |>
     dplyr::distinct(.data$code, .data$year, .data$survname, .data$economy)
 
-  wave_dates <- sw |>
+  wave_dates <- survey_index |>
     dplyr::distinct(.data$code, .data$year, .data$survname, .data$timestamp) |>
     dplyr::mutate(is_sample = TRUE)
 
@@ -1379,6 +1415,14 @@ isTRUE_vec <- function(x) !is.na(x) & x
   by_h3 <- stats::setNames(sub$value, as.character(sub$loc_id))
   v <- unname(by_h3[cells$h3])
 
+  # Cells that average several interview months are drawn with a dashed
+  # border and say so in their tooltip ("2 interview months averaged").
+  n_m_by <- stats::setNames(sub$n_months, as.character(sub$loc_id))
+  n_m    <- unname(n_m_by[cells$h3])
+  dashed <- !is.na(n_m) & n_m > 1
+  info   <- ifelse(dashed, paste0(n_m, " interview months averaged"),
+                   NA_character_)
+
   bounds <- NULL
   if (all(c("xmin", "ymin", "xmax", "ymax") %in% names(cells))) {
     bounds <- c(
@@ -1393,35 +1437,46 @@ isTRUE_vec <- function(x) !is.na(x) & x
     list(domain = pal_info$domain, colors = pal_info$colors)
   }
 
+  note_row <- function(...) {
+    paste0(
+      '<div style="background: rgba(255,255,255,0.88); padding: 3px 5px; ',
+      'border-radius: 4px; font-size: 10px; line-height: 1.3; color: #333; ',
+      'max-width: 160px; margin-top: 2px;">', ..., '</div>'
+    )
+  }
+
   payload <- hexmap_payload(
     h3     = cells$h3,
     v      = v,
     v_kind = if (binned) "binned" else "continuous",
     stops  = stops,
     bounds = bounds,
-    info   = NULL
+    info   = info,
+    dash   = dashed
   )
 
   n_missing <- sum(is.na(v))
+  n_avg <- sum(dashed, na.rm = TRUE)
   notes <- if (n_missing > 0) {
     # Same compact styling as .compact_legend_html()'s box: the notes render
     # as a second small pill directly under it (they are appended outside the
     # legend box, so they must carry their own styling or they inherit the
     # card's font and spill across the map).
-    row <- function(...) {
-      paste0(
-        '<div style="background: rgba(255,255,255,0.88); padding: 3px 5px; ',
-        'border-radius: 4px; font-size: 10px; line-height: 1.3; color: #333; ',
-        'max-width: 160px; margin-top: 2px;">', ..., '</div>'
-      )
-    }
-    row(
+    note_row(
       '<span style="display: inline-block; width: 10px; height: 10px; ',
       'background: #cccccc; border: 1px solid #aaa; ',
       'vertical-align: -1px;"></span> ',
       n_missing, " of ", nrow(cells), " areas without weather"
     )
   } else ""
+
+  if (n_avg > 0) {
+    notes <- paste0(notes, note_row(
+      '<span style="display: inline-block; width: 10px; height: 10px; ',
+      'border-top: 2px dashed #666; vertical-align: -1px;"></span> ',
+      n_avg, " of ", nrow(cells), " areas averaged"
+    ))
+  }
 
   list(
     payload = payload,
@@ -1553,7 +1608,7 @@ make_weather_stats_dt <- function(survey_weather, selected_weather,
         pageLength = 10,
         columnDefs = list(list(className = "dt-wrap", targets = "_all")),
         dom     = wise_csv_dom("lfrtip"),
-        buttons = wise_csv_button("weather_summary_stats")
+        buttons = wise_csv_button("weather_summary")
       )
     )
 
@@ -1741,7 +1796,7 @@ make_weather_binned_stats_dt <- function(survey_weather, selected_weather,
         pageLength = 10,
         columnDefs = list(list(className = "dt-wrap", targets = "_all")),
         dom     = wise_csv_dom("lfrtip"),
-        buttons = wise_csv_button("weather_binned_stats")
+        buttons = wise_csv_button("weather_binned_distribution")
       )
     )
 

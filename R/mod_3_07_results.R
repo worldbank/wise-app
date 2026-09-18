@@ -36,18 +36,28 @@ mod_3_07_results_ui <- function(id) {
 mod_3_07_results_server <- function(id,
                                      baseline_hist_sim,
                                      baseline_saved_scenarios,
-                                      policy_hist_sim,
-                                      policy_saved_scenarios,
-                                      selected_hist  = reactive(NULL),
-                                      sim_run_id     = reactive(0L),
-                                      tabset_id,
-                                      tabset_session = NULL,
+                                     policy_hist_sim,
+                                     policy_saved_scenarios,
+                                     selected_hist  = reactive(NULL),
+                                     sim_run_id     = reactive(0L),
+                                     tabset_id,
+                                     tabset_session = NULL,
                                       selected_policies = reactive(NULL),
+                                      policy_scenarios = reactive(list()),
                                       sp_scenario    = reactive(NULL),
+                                      infra_scenario = reactive(NULL),
+                                      digital_scenario = reactive(NULL),
+                                      labor_scenario = reactive(NULL),
+                                      education_scenario = reactive(NULL),
                                       residuals      = reactive("original"),
-                                     stale          = reactive(FALSE)) {
+                                      stale          = reactive(FALSE),
+                                      decomp_result  = reactive(NULL),
+                                      decomp_context = reactive(NULL),
+                                      baseline_svy   = reactive(NULL),
+                                     policy_svy     = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    session$userData$wise_step3_stale <- stale
     if (is.null(tabset_session)) {
       tabset_session <- session$parent %||% session
     }
@@ -65,11 +75,20 @@ mod_3_07_results_server <- function(id,
       baseline_saved_scenarios = baseline_saved_scenarios,
       policy_hist_sim          = policy_hist_sim,
       policy_saved_scenarios   = policy_saved_scenarios,
-       selected_hist            = selected_hist,
-       selected_policies        = selected_policies,
+      selected_hist            = selected_hist,
+      selected_policies        = selected_policies,
+       policy_scenarios         = policy_scenarios,
        sp_scenario              = sp_scenario,
+       infra_scenario           = infra_scenario,
+       digital_scenario         = digital_scenario,
+       labor_scenario           = labor_scenario,
+       education_scenario       = education_scenario,
        residuals                = residuals,
-      stale                    = stale
+      stale                    = stale,
+       decomp_result            = decomp_result,
+       decomp_context           = decomp_context,
+       baseline_svy             = baseline_svy,
+      policy_svy               = policy_svy
     )
 
     observeEvent(sim_run_id(), {
@@ -88,10 +107,19 @@ mod_3_07_results_server <- function(id,
           shiny::tabPanel(
             title = "Results",
             value = "results_tab",
-            .results_pane_ui(ns, bs$so)
+            # Insert the module UI after the tab exists in the browser. This
+            # mirrors Step 2 and lets Shiny bind the nested outputs/inputs.
+            shiny::div(id = ns("results_section"))
           ),
           select  = TRUE,
           session = tabset_session
+        )
+        w_var <- bs$weather_var %||% bs$sim_summary$weather %||% NULL
+        shiny::insertUI(
+          selector = paste0("#", ns("results_section")),
+          where = "afterBegin",
+          ui = .results_pane_ui(ns, bs$so, weather_var = w_var),
+          session = session
         )
         tabs_added(TRUE)
       }
@@ -100,12 +128,12 @@ mod_3_07_results_server <- function(id,
 
     }, ignoreInit = TRUE)
 
-    # Expose UI toggles so sibling tabs (Decomposition) can subscribe to
-    # the same "Show coefficient uncertainty" / "Show inter-model spread"
-    # state the user picked here.
+    # Expose the current uncertainty settings to sibling tabs.
     list(
       show_coef_uncertainty = reactive(isTRUE(input$show_coef_uncertainty)),
-      show_model_spread     = reactive(isTRUE(input$show_model_spread))
+      show_model_spread     = reactive(
+        !identical(input$ensemble_band %||% "minmax", "none")
+      )
     )
   })
 }

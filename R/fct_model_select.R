@@ -304,12 +304,12 @@ model_type_choices <- function(outcome_type) {
   if (identical(outcome_type, "logical")) {
     list(
       choices = c("Logistic regression", "Linear regression"),
-      label   = "Classification model:"
+      label   = "Classification model"
     )
   } else {
     list(
       choices = c("Linear regression", "Unconditional quantile regression (RIF)"),
-      label   = "Regression model:"
+      label   = "Regression model"
     )
   }
 }

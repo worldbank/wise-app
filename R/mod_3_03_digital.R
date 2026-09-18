@@ -139,6 +139,10 @@ mod_3_03_digital_server <- function(id,
       digital_access_ui("mobile", "Mobile phone ownership", "fa-mobile-screen")
     })
 
+    lapply(c("internet_ui", "mobile_ui"), function(out_id) {
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    })
+
     # ---- Return API -----------------------------------------------------
 
     list(

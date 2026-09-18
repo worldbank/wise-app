@@ -143,7 +143,7 @@
       if (length(reg_vals_fct) > 0)
         all_df <- rbind(all_df, data.frame(
           value  = reg_vals_fct,
-          source = "Regression input",
+           source = "Model support",
           stringsAsFactors = FALSE
         ))
     }
@@ -172,23 +172,23 @@
                                     else sort(unique(as.character(all_df$value))))
 
     all_df$source <- factor(all_df$source,
-                            levels = c("Full historical", "Regression input",
-                                       setdiff(unique(all_df$source),
-                                               c("Full historical", "Regression input"))))
+                             levels = c("Full historical", "Model support",
+                                        setdiff(unique(all_df$source),
+                                                c("Full historical", "Model support"))))
 
     sources    <- levels(all_df$source)
     colour_map <- vapply(sources, function(s) {
-      if (s == "Full historical")  return("#808080")
-      if (s == "Regression input") return("#000000")
+      if (s == "Full historical")  return(.wise_history)
+      if (s == "Model support") return(.wise_support)
       ssp_key <- .normalise_ssp(s)
       if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours))
         .ssp_colours[ssp_key] else "#cccccc"
     }, character(1))
     fill_map           <- colour_map
-    fill_map["Regression input"] <- NA  # no fill for regression - outline only
+    fill_map["Model support"] <- "#ffffff"  # white fill with a clear outline
 
     n_scen_shown <- length(unique(all_df$source)) -
-                    sum(c("Full historical", "Regression input") %in% all_df$source)
+                    sum(c("Full historical", "Model support") %in% all_df$source)
 
     p <- ggplot2::ggplot(all_df,
            ggplot2::aes(
@@ -218,23 +218,14 @@
       ) +
       ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
       ggplot2::labs(
-        title    = disp_label,
-        subtitle = paste0(
-          "Hist: ", length(hist_vals), " cells",
-          if (isTRUE(show_regression)) {
-            reg_n <- sum(all_df$source == "Regression input")
-            if (reg_n > 0) paste0("  |  Reg: ", reg_n, " cells") else ""
-          } else "",
-          if (n_scen_shown > 0) paste0("  |  Scen: ", n_scen_shown) else ""
-        ),
+        title    = NULL,
+        subtitle = NULL,
         x = disp_label,
         y = "Relative frequency"
       ) +
-      theme_wise(base_size = 11) +
+      theme_wise() +
       ggplot2::theme(
         legend.position = if (show_legend) "bottom" else "none",
-        plot.subtitle   = ggplot2::element_text(size = 9, colour = "grey40"),
-        plot.title      = ggplot2::element_text(size = 11, face = "bold"),
         axis.text.x     = ggplot2::element_text(angle = 30, hjust = 1)
       )
 
@@ -252,7 +243,7 @@
   } else numeric(0)
 
   if (length(hist_vals) == 0)
-    return(ggplot2::ggplot() + ggplot2::labs(title = "No finite values to plot."))
+    return(blank_plot("No finite values to plot."))
 
   # ---- SSP scenario overlays -------------------------------------------
   ssp_colour_map   <- character(0)
@@ -299,8 +290,8 @@
   colour_map   <- ssp_colour_map
   linetype_map <- ssp_linetype_map
   if (isTRUE(show_regression)) {
-    colour_map["Regression input"]   <- "black"
-    linetype_map["Regression input"] <- "dashed"
+    colour_map["Model support"]   <- .wise_support
+    linetype_map["Model support"] <- "dashed"
   }
 
   p <- ggplot2::ggplot()
@@ -315,7 +306,7 @@
 
   if (isTRUE(show_regression) && length(reg_vals) > 0) {
     p <- p + ggplot2::geom_density(
-      data      = data.frame(value = reg_vals, source = "Regression input",
+      data      = data.frame(value = reg_vals, source = "Model support",
                              stringsAsFactors = FALSE),
       mapping   = ggplot2::aes(x = .data$value, colour = .data$source),
       fill      = NA,
@@ -334,7 +325,7 @@
     )
   }
 
-  fill_map_all <- c("Full historical" = "#808080")
+  fill_map_all <- c("Full historical" = .wise_history)
 
   p <- p +
     ggplot2::scale_fill_manual(
@@ -355,21 +346,14 @@
   n_scen_shown <- length(ssp_df_list)
   p <- p +
     ggplot2::labs(
-      title = disp_label,
-      subtitle = paste0(
-        "Hist: ", length(hist_vals), " cells",
-        if (isTRUE(show_regression) && length(reg_vals) > 0)
-          paste0("  |  Reg: ", length(reg_vals), " cells") else "",
-        if (n_scen_shown > 0) paste0("  |  Scen: ", n_scen_shown) else ""
-      ),
+      title = NULL,
+      subtitle = NULL,
       x = disp_label,
       y = "Density"
     ) +
-    theme_wise(base_size = 11) +
+    theme_wise() +
     ggplot2::theme(
-      legend.position = if (show_legend) "bottom" else "none",
-      plot.subtitle   = ggplot2::element_text(size = 9, colour = "grey40"),
-      plot.title      = ggplot2::element_text(size = 11, face = "bold")
+      legend.position = if (show_legend) "bottom" else "none"
     )
 
   if (isTRUE(log_x)) p <- p + ggplot2::scale_x_log10()
@@ -460,6 +444,103 @@ plot_weather_density_panel <- function(survey_weather,
   patchwork::wrap_plots(panels, nrow = 1) +
     patchwork::plot_layout(guides = "collect") &
     ggplot2::theme(legend.position = "bottom")
+}
+
+#' Tidy data behind the weather-support density panels.
+#' @noRd
+weather_density_data <- function(survey_weather, weather_raw, weather_vars,
+                                 scenario_weather = NULL,
+                                 active_scenarios = NULL,
+                                 show_regression = TRUE) {
+  weather_vars <- intersect(weather_vars, names(weather_raw))
+  if (!length(weather_vars)) return(data.frame())
+  hist_filt <- .filter_hist_weather(weather_raw, survey_weather)
+  if (!"int_month" %in% names(survey_weather) && "timestamp" %in% names(survey_weather)) {
+    survey_weather$int_month <- as.integer(format(as.Date(survey_weather$timestamp), "%m"))
+  }
+  if ("timestamp" %in% names(survey_weather)) {
+    survey_weather$cal_year <- as.integer(format(as.Date(survey_weather$timestamp), "%Y"))
+  }
+  reg_filt <- hist_filt[hist_filt$cal_year %in% unique(survey_weather$cal_year), , drop = FALSE]
+  rows <- list()
+  add <- function(df, source) {
+    if (is.null(df)) return()
+    for (wv in weather_vars) {
+      x <- suppressWarnings(as.numeric(df[[wv]]))
+      rows[[length(rows) + 1L]] <<- data.frame(
+        weather_variable = wv, source = source, value = x,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+    add(reg_filt, "Model support")
+  add(hist_filt, "Full historical archive")
+  visible <- names(scenario_weather %||% list())
+  if (!is.null(active_scenarios)) visible <- intersect(visible, active_scenarios)
+  for (nm in visible) add(scenario_weather[[nm]], nm)
+  dplyr::bind_rows(rows) |>
+    dplyr::filter(is.finite(.data$value))
+}
+
+weather_support_summary <- function(regression_weather, scenario_weather,
+                                    weather_vars, lower = 0.01, upper = 0.99,
+                                    weather_specs = NULL,
+                                    warn_share = 0.05) {
+  if (is.null(regression_weather) || !is.data.frame(regression_weather)) {
+    return(data.frame())
+  }
+  scenarios <- scenario_weather %||% list()
+  rows <- lapply(intersect(weather_vars, names(regression_weather)), function(v) {
+    spec <- if (!is.null(weather_specs) && "name" %in% names(weather_specs))
+      weather_specs[weather_specs$name == v, , drop = FALSE] else NULL
+    is_binned <- !is.null(spec) && nrow(spec) &&
+      identical(as.character(spec$cont_binned[1]), "Binned")
+    if (is_binned) {
+      ref <- as.character(regression_weather[[v]])
+      ref <- ref[!is.na(ref) & nzchar(ref)]
+      supported <- unique(ref)
+      if (!length(supported)) return(NULL)
+      reference_label <- paste(supported, collapse = ", ")
+      robust <- c(NA_real_, NA_real_)
+    } else {
+      ref <- suppressWarnings(as.numeric(regression_weather[[v]]))
+      ref <- ref[is.finite(ref)]
+      if (!length(ref)) return(NULL)
+      robust <- as.numeric(stats::quantile(ref, c(lower, upper), names = FALSE,
+                                           na.rm = TRUE, type = 8))
+      supported <- NULL
+      reference_label <- NA_character_
+    }
+    out <- lapply(names(scenarios), function(nm) {
+      x_raw <- scenarios[[nm]][[v]]
+      x <- if (is_binned) {
+        x <- as.character(x_raw)
+        x[!is.na(x) & nzchar(x)]
+      } else {
+        x <- suppressWarnings(as.numeric(x_raw))
+        x[is.finite(x)]
+      }
+      if (!length(x)) return(NULL)
+      outside <- if (is_binned) !(x %in% supported) else
+        x < robust[[1L]] | x > robust[[2L]]
+      data.frame(
+        weather_variable = v, scenario = nm,
+        n_reference = length(ref), n_scenario = length(x),
+        robust_lo = robust[[1L]], robust_hi = robust[[2L]],
+        reference_label = reference_label,
+        is_binned = is_binned,
+        outside_n = sum(outside), outside_share = mean(outside),
+        warning = mean(outside) > warn_share,
+        warning_rule = if (is_binned) paste0("Reference bins; warn above ",
+                                              warn_share * 100, "% outside") else
+          paste0("Robust ", lower * 100, "%-", upper * 100,
+                 "% reference interval; warn above ", warn_share * 100, "% outside"),
+        stringsAsFactors = FALSE
+      )
+    })
+    dplyr::bind_rows(out)
+  })
+  dplyr::bind_rows(Filter(Negate(is.null), rows))
 }
 
 # ---------------------------------------------------------------------------- #

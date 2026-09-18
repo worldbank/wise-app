@@ -54,6 +54,25 @@ test_that("poor outcome with an LCU line falls back to direct comparison without
   expect_equal(df$poor, as.numeric(c(500, 1000, 5000, 1000) < 1000))
 })
 
+test_that("ensure_outcome_column derives poor without applying transforms", {
+  d <- make_prep_df()
+  d$poor <- NULL
+  out <- ensure_outcome_column(
+    d,
+    sel("poor", units = "LCU", type = "logical", povline = 1000)
+  )
+  expect_equal(out$poor, as.numeric(d$welfare < c(2, 2, 2, 4)))
+  expect_equal(out$welfare, d$welfare)
+})
+
+test_that("ensure_outcome_column is safe for missing or unavailable metadata", {
+  d <- make_prep_df()
+  d$poor <- NULL
+  expect_identical(ensure_outcome_column(d, sel("poor")), d)
+  expect_identical(ensure_outcome_column(d, sel("other")), d)
+  expect_identical(ensure_outcome_column(d, NULL), d)
+})
+
 test_that("poor indicator is not back-converted when the column already exists", {
   d <- make_prep_df()
   d$poor <- c(1, 0, 0, 0)

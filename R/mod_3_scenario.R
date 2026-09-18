@@ -112,10 +112,11 @@ mod_3_scenario_server <- function(id,
                                    analysis_unit   = reactive("hh"),
                                    skip_coef_draws = reactive(FALSE),
                                    residuals       = reactive("original"),
-                                   propagate_all_covariate_uncertainty =
-                                     reactive(FALSE),
-                                   survey_version  = reactive(0L),
-                                   sim_stale       = reactive(FALSE)) {
+                                    propagate_all_covariate_uncertainty =
+                                      reactive(FALSE),
+                                    survey_version  = reactive(0L),
+                                    sim_stale       = reactive(FALSE),
+                                    run_trigger     = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -124,41 +125,29 @@ mod_3_scenario_server <- function(id,
     output$policy_info_ui <- renderUI({
       pols <- selected_policies()
       if (is.null(pols) || length(pols) == 0) {
-        return(div(
-          class = "alert alert-warning",
-          style = "padding: 8px; margin-bottom: 10px; font-size: 13px;",
-          tags$strong("No policy scenarios selected."),
-          " Go to Step 1 \u2192 Policy scenarios to select one (if desired)."
+        return(selection_summary_card(
+          title = "Selected policy scenarios",
+          rows = list(list(
+            name = "No policy scenarios selected",
+            sub  = "Select a policy scenario in Step 1 to configure it here."
+          )),
+          compact = TRUE
         ))
       }
 
-      vl <- variable_list()
-      items <- lapply(pols, function(k) {
+      labels <- vapply(pols, function(k) {
         def <- POLICY_DEFINITIONS[[k]]
-        if (is.null(def)) return(NULL)
-        var_labels <- vapply(def$vars, function(v) {
-          lbl <- if (!is.null(vl) && v %in% vl$name) vl$label[vl$name == v][1] else v
-          paste0(lbl, " (", v, ")")
-        }, character(1))
-        tags$li(
-          tags$strong(def$label),
-          tags$br(),
-          tags$small(class = "text-muted", paste(var_labels, collapse = ", "))
-        )
-      })
+        if (is.null(def)) k else def$label
+      }, character(1))
 
-      div(
-        class = "alert alert-info",
-        style = "padding: 8px; margin-bottom: 10px; font-size: 13px;",
-        tags$strong("Active policy levers:"),
-        do.call(tags$ul, Filter(Negate(is.null), items)),
-        tags$small(
-          class = "text-muted",
-          paste(
-            "Adjust these inputs (and any others) in the sections below -",
-            "results update when you re-run the simulation."
-          )
-        )
+      selection_summary_card(
+        title = "Selected policy scenarios",
+        badge = paste(length(labels), if (length(labels) == 1) "scenario" else "scenarios"),
+        rows = list(selection_card_row(
+          name  = "Policy scenarios",
+          pills = labels
+        )),
+        compact = TRUE
       )
     })
 
@@ -205,7 +194,21 @@ mod_3_scenario_server <- function(id,
       "education",
       selected_model = selected_model,
       survey_data   = survey_data,
-      variable_list  = variable_list)
+       variable_list  = variable_list)
+
+    # Merge the dynamically rendered manual button with the root pipeline
+    # request. Initial action-button registration (0) is inert, and a request
+    # is consumed once so clearing it cannot replay the run.
+    policy_run_event <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$run_policy_sim, {
+      if (shiny::isTruthy(input$run_policy_sim)) {
+        policy_run_event(list(source = "manual", value = input$run_policy_sim))
+      }
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
+    shiny::observeEvent(run_trigger(), {
+      ext <- run_trigger()
+      if (!is.null(ext)) policy_run_event(list(source = "pipeline", value = ext))
+    }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
     # ---- Policy adjustment module ----------------------------------------
 
@@ -228,10 +231,9 @@ mod_3_scenario_server <- function(id,
       propagate_all_covariate_uncertainty = propagate_all_covariate_uncertainty,
       survey_version    = survey_version,
       sim_stale         = sim_stale,
-      # REACT-09: fire the child's run trigger on button click. req() blocks
-      # the NULL/zero state of the dynamically rendered button, so the trigger
-      # only fires on real clicks.
-      run_trigger       = reactive({ req(input$run_policy_sim); input$run_policy_sim })
+       # REACT-09: merge the manual button with the root pipeline request.
+       # Initial registration of a dynamic action button is deliberately inert.
+        run_trigger       = policy_run_event
     )
 
     # ---- Results tabs: Baseline & Policy (both re-simulated) -------------
@@ -244,11 +246,20 @@ mod_3_scenario_server <- function(id,
       selected_hist            = selected_hist,
       sim_run_id               = s6$sim_run_id,
       tabset_id                = "step3_output_tabs",
-       tabset_session           = session,
+      tabset_session           = session,
        selected_policies        = selected_policies,
+       policy_scenarios         = s6$policy_scenarios,
        sp_scenario              = s6$sp_scenario,
+       infra_scenario           = s6$infra_scenario,
+       digital_scenario         = s6$digital_scenario,
+       labor_scenario           = s6$labor_scenario,
+       education_scenario       = s6$education_scenario,
        residuals                = residuals,
-      stale                    = s6$stale
+      stale                    = s6$stale,
+      decomp_result            = s6$decomp_result,
+      decomp_context           = s6$decomp_context,
+      baseline_svy             = s6$baseline_svy,
+      policy_svy               = s6$policy_svy
     )
 
     # ---- Diagnostics tab: before/after variable analysis ----------------
@@ -256,15 +267,22 @@ mod_3_scenario_server <- function(id,
       "diagnostics",
       baseline_svy   = s6$baseline_svy,
       policy_svy     = s6$policy_svy,
+      diagnostic_summary = s6$diagnostic_summary,
       sim_run_id     = s6$sim_run_id,
       tabset_id      = "step3_output_tabs",
       tabset_session = session,
       analysis_unit  = analysis_unit,
       selected_policies = selected_policies,
+      policy_scenarios = s6$policy_scenarios,
       baseline_hist_sim = s6$baseline_hist_sim,
-      selected_weather = selected_weather,
-      sp_scenario = s6$sp_scenario,
-      policy_saved_scenarios = s6$policy_saved_scenarios
+       selected_weather = selected_weather,
+       sp_scenario = s6$sp_scenario,
+       infra_scenario = s6$infra_scenario,
+       digital_scenario = s6$digital_scenario,
+       labor_scenario = s6$labor_scenario,
+       education_scenario = s6$education_scenario,
+       policy_saved_scenarios = s6$policy_saved_scenarios,
+       stale = s6$stale
     )
 
     # ---- Decomposition tab: effect channels -----------------------------
@@ -272,14 +290,23 @@ mod_3_scenario_server <- function(id,
       "decomposition",
       decomp_result    = s6$decomp_result,
       decomp_scenarios = s6$decomp_scenarios,
+      decomp_context   = s6$decomp_context,
       model_fit        = model_fit,
       variable_list    = variable_list,
-      selected_policies = selected_policies,
+       selected_policies = selected_policies,
+      policy_scenarios = s6$policy_scenarios,
       baseline_hist_sim = s6$baseline_hist_sim,
-      selected_weather = selected_weather,
-      sp_scenario = s6$sp_scenario,
-      policy_saved_scenarios = s6$policy_saved_scenarios,
-      so               = reactive({
+      baseline_svy = s6$baseline_svy,
+      policy_svy = s6$policy_svy,
+       selected_weather = selected_weather,
+       sp_scenario = s6$sp_scenario,
+       infra_scenario = s6$infra_scenario,
+       digital_scenario = s6$digital_scenario,
+       labor_scenario = s6$labor_scenario,
+       education_scenario = s6$education_scenario,
+       policy_saved_scenarios = s6$policy_saved_scenarios,
+       stale = s6$stale,
+       so               = reactive({
         hs <- hist_sim()
         if (!is.null(hs)) hs$so else NULL
       }),
@@ -296,8 +323,14 @@ mod_3_scenario_server <- function(id,
           shiny::tabPanel(
             title = "Decomposition",
             value = "decomposition_tab",
-            mod_3_09_decomposition_ui(ns("decomposition"))
+            shiny::div(id = ns("decomposition_section"))
           ),
+          session = session
+        )
+        shiny::insertUI(
+          selector = paste0("#", ns("decomposition_section")),
+          where = "afterBegin",
+          ui = mod_3_09_decomposition_ui(ns("decomposition")),
           session = session
         )
         decomp_tab_added(TRUE)
@@ -365,10 +398,13 @@ mod_3_scenario_server <- function(id,
 
     list(
       policy_hist_sim        = s6$policy_hist_sim,
-      policy_saved_scenarios = s6$policy_saved_scenarios,
+       policy_saved_scenarios = s6$policy_saved_scenarios,
       # UI-47: consumed by the navbar step badge in app_server.
       stale                  = s6$stale,
-      sim_run_id             = s6$sim_run_id
+      sim_run_id             = s6$sim_run_id,
+      run_generation         = s6$run_generation,
+      run_status             = s6$run_status,
+      clear_weather_stores   = s6$clear_weather_stores
     )
   })
 }

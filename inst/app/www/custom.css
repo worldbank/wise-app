@@ -299,9 +299,36 @@
   padding: 0.06rem 0.5rem;
 }
 
+/* The weather variable moves into the header beside its history badge. */
+.weather-sidebar-title {
+  color: var(--bs-dark);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .selection-card-pills {
   display: inline-flex;
   gap: 0.3rem;
+}
+
+.model-summary-title {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.model-summary-equation-type {
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.model-summary-row .selection-card-name {
+  font-weight: 400;
+}
+
+.model-summary-row .model-summary-equation-type {
+  font-weight: 700;
 }
 
 .selection-card-pill {
@@ -486,6 +513,75 @@
 .settings-summary b {
   color: #333;
 }
+
+.headline-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.headline-card {
+  background: #ffffff;
+  border: 1px solid #d6e1ea;
+  border-top: 3px solid #173042;
+  border-radius: 4px;
+  padding: 10px 12px;
+  min-height: 80px;
+}
+
+/* Muted variant for cards that carry context rather than a headline finding
+   (robustness, sample/fit, uniform-effect notices). */
+.headline-card.neutral {
+  border-top-color: #9aa9b5;
+}
+
+/* Step 1 "At a glance": one labelled row of cards per weather variable. */
+.step1-headline-var {
+  color: #526575;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 14px 0 2px;
+}
+
+.step1-headline-note {
+  color: #718292;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin: 8px 0 4px;
+}
+
+.step1-outcome-def {
+  color: #526575;
+  font-size: 0.82rem;
+  margin: 2px 0 12px;
+}
+
+.headline-card-label {
+  color: #526575;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.headline-card-value {
+  color: #173042;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+
+.headline-card-note {
+  color: #718292;
+  font-size: 0.73rem;
+  line-height: 1.25;
+  margin-top: 3px;
+}
+
 
 /* ---- Configure flyout (weather variable settings) ------------------------
    Content stays in the DOM (conditionalPanel), but is presented as a
@@ -1052,6 +1148,44 @@ table.dataTable td.dt-wrap {
   word-break: break-word;
 }
 
+/* One row of DataTables chrome: download and length on the left, search on
+   the right. The controls wrap on narrow screens rather than forcing table
+   overflow. */
+.wise-dt-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  margin-bottom: 0.4rem;
+}
+
+.wise-dt-controls > .dataTables_filter,
+.wise-dt-controls > .dt-search {
+  margin-left: auto;
+  text-align: right;
+}
+
+.wise-dt-controls > .dataTables_length,
+.wise-dt-controls > .dataTables_filter,
+.wise-dt-controls > .dt-length,
+.wise-dt-controls > .dt-search,
+.wise-dt-controls > div.dt-buttons {
+  float: none;
+  margin-bottom: 0;
+  padding: 0;
+}
+
+.wise-dt-controls .dataTables_length label,
+.wise-dt-controls .dataTables_filter label,
+.wise-dt-controls .dt-length label,
+.wise-dt-controls .dt-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
 /* ---- Navbar export menu (UI-48) ------------------------------------------ */
 
 .navbar .dropdown-menu .export-menu-head {
@@ -1096,59 +1230,72 @@ table.dataTable td.dt-wrap {
   opacity: 0.3;
 }
 
-/* ---- Step 3 social-protection reach preview (UI-32) ----------------------
-   Live "who does this reach, what does it cost" feedback under the targeting
-   controls, so a cutoff can be chosen without running a full simulation. */
+/* Configuration-pipeline progress. Keep the stage list compact because it
+   lives inside a modal, while making each state distinguishable without color
+   alone through its icon and text. */
+.pipeline-stages {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+}
 
-.sp-reach {
-  margin-top: 0.5rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--bs-border-color, #dee2e6);
-  border-left: 3px solid var(--bs-primary);
-  border-radius: 0.25rem;
+.pipeline-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 0;
+  font-size: 0.88rem;
+}
+
+.pipeline-stage > svg {
+  width: 1rem;
+  text-align: center;
+}
+
+.pipeline-pending,
+.pipeline-skipped {
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.pipeline-running {
+  color: var(--bs-primary, #0d6efd);
+}
+
+.pipeline-done {
+  color: var(--bs-success, #198754);
+}
+
+.pipeline-failed {
+  color: var(--bs-danger, #dc3545);
+}
+
+.pipeline-note {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+.import-prereq {
   background: var(--bs-tertiary-bg, #f8f9fa);
+  border-left: 0.2rem solid var(--bs-primary, #0d6efd);
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.8rem;
+}
+
+.import-prereq-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.import-prereq-step,
+.import-prereq-note {
   font-size: 0.82rem;
+  margin: 0.25rem 0 0;
 }
 
-.sp-reach-title {
-  font-weight: 600;
-  margin-bottom: 0.35rem;
-}
-
-.sp-reach-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0 0.5rem;
-  padding: 0.12rem 0;
-  align-items: baseline;
-}
-
-.sp-reach-label {
+.import-prereq-note,
+.import-lede {
   color: var(--bs-secondary-color, #6c757d);
-}
-
-.sp-reach-value {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  text-align: right;
-  white-space: nowrap;
-}
-
-/* The qualifier sits under the pair it explains, spanning both columns. */
-.sp-reach-hint {
-  grid-column: 1 / -1;
-  color: var(--bs-secondary-color, #6c757d);
-  font-size: 0.75rem;
-  line-height: 1.25;
-}
-
-.sp-reach-note {
-  margin-top: 0.4rem;
-  padding-top: 0.35rem;
-  border-top: 1px dashed var(--bs-border-color, #dee2e6);
-  color: var(--bs-secondary-color, #6c757d);
-  font-size: 0.75rem;
-  line-height: 1.3;
 }
 
 /* ---- Table CSV export (UI-45) -------------------------------------------
@@ -1249,6 +1396,112 @@ button.wise-csv-btn .fa {
 .wise-equation {
   font-size: 1.35rem;
   margin: 0.5rem 0 0.75rem;
+}
+
+/* ---- Results aggregation panel (Step 2) ---------------------------------- */
+.results-aggregation-panel {
+  background: #ffffff;
+  border: 1px solid #d6e1ea;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.results-aggregation-panel .shiny-input-container {
+  margin-bottom: 0 !important;
+}
+
+.results-aggregation-panel .form-control {
+  min-height: 31px;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+}
+
+.results-section-card {
+  background: #ffffff;
+  border: 1px solid #d6e1ea;
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+
+/* ---- Diagnostic and decomposition pages ---------------------------------- */
+.diagnostic-page-heading {
+  color: #173042;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 1.2rem 0 0.45rem;
+}
+
+.diagnostic-section-heading {
+  color: #173042;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 1.35rem 0 0.5rem;
+}
+
+.diagnostic-section-card {
+  margin-bottom: 1.1rem;
+}
+
+.diagnostic-section-card > h4,
+.diagnostic-section-card > h5 {
+  color: #173042;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 0.65rem;
+}
+
+.diagnostic-note {
+  color: #718292;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0.55rem 0 0;
+}
+
+.diagnostic-filter-card {
+  background: #f8fafc;
+  border: 1px solid #d6e1ea;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  padding: 0.65rem 1rem 0.35rem;
+}
+
+.diagnostic-filter-card .form-check-inline {
+  margin-right: 0.6rem;
+}
+
+.diagnostic-section-card > .shiny-details,
+.diagnostic-section-card details {
+  margin-bottom: 0;
+}
+
+.diagnostic-section-card table.dataTable {
+  margin-top: 0.35rem !important;
+}
+
+.results-section-card .table {
+  margin-bottom: 0;
+}
+
+.results-section-card tr.historical-row td {
+  background-color: #f8fafc;
+  font-weight: 600;
+}
+
+.results-section-card tr.policy-row td {
+  background-color: #f0f7fb;
+  font-weight: 600;
+}
+
+.policy-effect-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background-color: #e1f0fa;
+  color: #0d47a1;
+  font-weight: 700;
+  font-size: 0.8rem;
 }
 
 /* ---- Compact results controls (Steps 2/3 Results tab) -------------------- */
@@ -1385,7 +1638,7 @@ button.wise-csv-btn .fa {
   align-items: center;
   justify-content: center;
   padding: 0.22rem 0.65rem;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 500;
   color: #495057;
   border-radius: 1.5rem;
@@ -1443,3 +1696,292 @@ button.wise-csv-btn .fa {
   justify-content: flex-start;
   width: 100%;
 }
+
+/* Compact social-protection controls: keep the label and selector on one row. */
+.sp-program-label {
+  margin-bottom: 0.2rem;
+}
+
+.sp-program-choice {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  white-space: nowrap;
+}
+
+.sp-program-suffix {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.sp-summary-program {
+  align-items: center;
+  color: var(--bs-primary, #0071bc);
+  display: inline-flex;
+  gap: 0.35rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.sp-summary-program-suffix {
+  color: var(--bs-primary, #0071bc);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sp-inline-control {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  min-width: 0;
+}
+
+.sp-inline-control > .sp-inline-label {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.sp-inline-control > .shiny-input-container {
+  flex: 1 1 auto;
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+
+.sp-inline-control > .sp-inline-label {
+  line-height: 1.25;
+}
+
+.sp-inline-control > .sp-inline-label + .shiny-input-container {
+  max-width: 10rem;
+}
+
+.sp-inline-control > .sp-inline-label + .shiny-input-container input.form-control {
+  min-height: 31px;
+  padding-bottom: 0.25rem;
+  padding-top: 0.25rem;
+}
+
+.sp-inline-control .selectize-control {
+  min-width: 0;
+}
+
+.sp-inline-control .selectize-input {
+  min-height: 31px;
+  padding-bottom: 0.25rem;
+  padding-top: 0.25rem;
+}
+
+.sp-inline-slider {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  min-width: 0;
+}
+
+.sp-inline-slider > .sp-inline-label {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.sp-inline-slider > .shiny-input-container {
+  flex: 1 1 auto;
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+
+.sp-budget-mode {
+  margin-bottom: 0.55rem;
+}
+
+.sp-budget-mode .toggle-slider {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+}
+
+.sp-budget-mode .toggle-slider .shiny-options-group {
+  max-width: none;
+  overflow: visible;
+  width: max-content;
+}
+
+/* The targeting rule is a full-width choice below its section label. */
+.sp-targeting-select .shiny-input-container {
+  margin-bottom: 0.45rem !important;
+}
+
+/* Targeting errors are secondary controls, so keep the collapsed disclosure
+   quieter than the main section labels. */
+.sp-targeting details {
+  border-color: rgba(108, 117, 125, 0.35);
+  border-radius: 0.2rem;
+  margin-bottom: 0.45rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.sp-targeting details summary {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.sp-targeting details[open] summary {
+  color: var(--bs-body-color);
+  margin-bottom: 0.45rem;
+}
+
+.sp-targeting details .shiny-input-container {
+  margin-bottom: 0.6rem;
+}
+
+.step2-projection-period {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+  margin-bottom: 0.35rem;
+}
+
+.step2-projection-label {
+  flex: 0 0 3.8rem;
+  font-weight: 500;
+}
+
+.step2-projection-period > .shiny-input-container {
+  flex: 1 1 auto;
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+
+/* Step 2 keeps the same compact sidebar rhythm as Step 1. */
+.step2-sidebar > .shiny-input-container,
+.step2-sidebar > .form-group,
+.step2-sidebar .step2-projection-period + .shiny-input-container {
+  margin-bottom: 0.35rem !important;
+}
+
+.step2-sidebar .shiny-input-container,
+.step2-sidebar .form-group {
+  margin-bottom: 0.25rem !important;
+}
+
+.step2-section-label {
+  color: var(--bs-body-color);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0;
+}
+
+/* The sidebar layout adds a gap between each direct child. Pull the first
+   control up to its heading for the three primary Step 2 sections. */
+.step2-sidebar > .step2-section-label + .shiny-html-output,
+.step2-sidebar > .step2-section-label + .shiny-input-container,
+.step2-sidebar > .step2-section-label + .step2-projection-period {
+  margin-top: -0.3rem;
+}
+
+.step2-sidebar > hr {
+  margin: 0.25rem 0 !important;
+}
+
+.step2-sidebar .checkbox-group,
+.step2-sidebar .checkbox-group .shiny-options-group {
+  margin-bottom: 0.25rem;
+}
+
+.step2-sidebar .checkbox-group .checkbox {
+  margin-bottom: 0.05rem;
+}
+
+.step2-sidebar .checkbox-inline,
+.step2-sidebar .checkbox-inline + .checkbox-inline {
+  margin-left: 0.5rem;
+  margin-right: 0;
+}
+
+.step2-sidebar .checkbox-group .shiny-options-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.step2-sidebar .checkbox-group .checkbox {
+  margin-right: 0;
+}
+
+.step2-sidebar .selection-card.compact {
+  margin-bottom: 0.3rem;
+}
+
+.step2-summary-row {
+  align-items: center;
+  column-gap: 0.35rem;
+  flex-wrap: wrap;
+  line-height: 1.4;
+}
+
+.step2-summary-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.step2-summary-label {
+  font-size: 0.88rem;
+  font-weight: 400;
+}
+
+.step2-summary-scenario-label {
+  font-weight: 600;
+}
+
+.step2-summary-value {
+  color: var(--bs-secondary-color, #5c6770);
+  font-size: 0.78rem;
+}
+
+.step2-summary-separator {
+  color: #9fb0be;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-row {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  padding: 0.05rem 0;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-label {
+  font-size: 0.78rem;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-value,
+.step2-sidebar .selection-card.compact .step2-summary-separator {
+  font-size: 0.72rem;
+}
+
+.step2-sidebar .selection-card.compact .step2-summary-row .selection-card-pill {
+  font-size: 0.68rem;
+}
+
+/* ---- Step 1 focused estimates table (T2) ---- */
+.wise-subheader { color: #526575; font-size: 0.85rem; margin: 2px 0 8px; }
+.wise-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; background: #fff; }
+.wise-table th, .wise-table td { border: none; border-bottom: 1px solid #edf2f6; padding: 6px 10px; text-align: right; }
+.wise-table thead th { border-bottom: 2px solid #173042; color: #526575; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; text-align: right; }
+.wise-table thead th:first-child, .wise-table td:first-child { text-align: left; }
+.wise-table td.num, .wise-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.wise-table .group td { background: #eef3f8; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #526575; text-align: left; }
+.wise-table tr.hi td { background: #eef7f2; }
+.wise-table .se { color: #718292; font-size: 0.8rem; }
+.wise-table .t2-note { color: #718292; font-size: 0.75rem; text-align: left; border-bottom: none; }
