@@ -116,7 +116,7 @@ test_that("Results shares metric decomposition reactively and withholds stale ch
       baseline_hist, policy_hist, baseline_scenarios, policy_scenarios,
       prepared, method, pov_line, requested_residuals,
       endpoint_series_baseline, endpoint_series_policy,
-      focus_scenario, analysis_unit
+      focus_scenario, analysis_unit, validation_cache = NULL
     ) {
       calls[[length(calls) + 1L]] <<- list(
         method = method, pov_line = pov_line,

@@ -2572,6 +2572,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     policy_endpoint_status()
     cache <- new.env(parent = emptyenv())
     cache$entries <- list()
+    cache$validated <- new.env(parent = emptyenv())
     cache
   })
   metric_cache_limit <- 6L
@@ -2614,7 +2615,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         baseline_hist, policy_hist,
         baseline_saved_scenarios(), policy_saved_scenarios(),
         source, method, pov_line, requested_residuals,
-        endpoint_baseline, endpoint_policy, focus, unit
+        endpoint_baseline, endpoint_policy, focus, unit,
+        validation_cache = metric_cache()$validated
       )
     }
     context_error <- NULL

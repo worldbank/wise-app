@@ -551,12 +551,36 @@
   out
 }
 
+# Build a data frame from a list of equal-shape scalar rows in one pass, instead
+# of one data.frame() per row (R2-PERF-06b). Empty input matches bind_rows().
+.policy_rows_to_frame <- function(rows) {
+  if (!length(rows)) return(dplyr::bind_rows(rows))
+  columns <- names(rows[[1L]])
+  frame <- data.frame(lapply(stats::setNames(columns, columns), function(column) {
+    unlist(lapply(rows, `[[`, column), use.names = FALSE)
+  }), stringsAsFactors = FALSE, check.names = FALSE)
+  dplyr::bind_rows(frame)
+}
+
 .policy_metric_pipeline <- function(baseline, policy, prepared, method, pov_line,
                                     requested_residuals, shared_baseline, shared_policy,
                                     scenario, member, owner = NULL,
-                                    exposure_cache = NULL) {
+                                    exposure_cache = NULL,
+                                    validation_cache = NULL) {
   context <- prepared$context
-  exposure <- .validate_policy_annual_exposure(baseline, context, owner, exposure_cache)
+  # R2-PERF-06b: the exposure checks are a per-row scan of every member. Within
+  # one run (the cache is dropped when any run input changes) a member that has
+  # passed once only needs its exposure rebuilt, not revalidated.
+  validation_key <- paste(scenario, member, sep = "\r")
+  if (is.environment(validation_cache) && isTRUE(validation_cache[[validation_key]])) {
+    exposure <- step2_exposure_resolve(baseline, owner, exposure_cache)
+    if (is.null(exposure) || !identical(exposure$status, "ok")) {
+      stop("Exact prediction-row weather exposure mapping unavailable.", call. = FALSE)
+    }
+  } else {
+    exposure <- .validate_policy_annual_exposure(baseline, context, owner, exposure_cache)
+    if (is.environment(validation_cache)) validation_cache[[validation_key]] <- TRUE
+  }
   # weather_raw is part of the alignment: schema-2 exposure tables are rebuilt
   # from it, so equal recipes must also share the same weather.
   for (field in c("svy_row_id", "sim_year", "weight", "id_vec", "weather_exposure",
@@ -628,19 +652,21 @@
       excluded_baseline = excluded[1L], excluded_after_main = excluded[2L],
       excluded_after_repositioning = excluded[3L], excluded_policy = excluded[4L],
       parity_error = error, requested_residuals = requested_residuals, effective_residuals = effective)
-    valid_deciles <- sort(unique(row_deciles[is.finite(row_deciles) & row_deciles >= 1 & row_deciles <= 10]))
-    for (decile in valid_deciles) {
-      selected <- which(row_deciles == decile)
+    in_decile <- is.finite(row_deciles) & row_deciles >= 1 & row_deciles <= 10
+    valid_deciles <- sort(unique(row_deciles[in_decile]))
+    decile_rows <- collapse::gsplit(which(in_decile), as.integer(row_deciles[in_decile]),
+      use.g.names = FALSE)
+    for (k in seq_along(valid_deciles)) {
+      decile <- valid_deciles[[k]]
+      selected <- decile_rows[[k]]
       decile_states <- lapply(state_values, function(mu) aggregate(
         mu[selected], if (is.null(w)) NULL else w[selected], pov_line
       ))
       names(decile_states) <- .policy_metric_fields[1:4]
-      decile_row <- as.data.frame(c(list(scenario = scenario, member = member,
-        model_id = member, sim_year = year, decile = as.integer(decile)),
-        .policy_metric_contributions(decile_states)), stringsAsFactors = FALSE)
-      decile_row$n_prediction_rows <- length(selected)
-      decile_row$n_retained_rows <- length(selected)
-      decile_annual[[length(decile_annual) + 1L]] <- decile_row
+      decile_annual[[length(decile_annual) + 1L]] <- c(list(scenario = scenario,
+        member = member, model_id = member, sim_year = year, decile = as.integer(decile)),
+        .policy_metric_contributions(decile_states),
+        list(n_prediction_rows = length(selected), n_retained_rows = length(selected)))
     }
     ids <- baseline$svy_row_id[rows]
     weighted_mean <- function(x) resolve_agg_fn("mean")(x, w, NULL)
@@ -649,7 +675,7 @@
       for (j in seq_len(ncol(product$interaction))) {
         r1 <- product$repositioning[ids, j]
         r2 <- product$interaction[ids, j]
-        mechanisms[[length(mechanisms) + 1L]] <- data.frame(scenario = scenario,
+        mechanisms[[length(mechanisms) + 1L]] <- list(scenario = scenario,
           member = member, model_id = member, sim_year = year, hazard = hazard,
           category = if (is.null(product$categories)) NA_character_ else product$categories[j],
           contrast = if (is.null(product$categories)) "continuous_coefficient_change" else "fitted_reference_category_contrast",
@@ -668,8 +694,8 @@
       }
     }
   }
-  list(annual = dplyr::bind_rows(annual), decile_annual = dplyr::bind_rows(decile_annual),
-    mechanisms = dplyr::bind_rows(mechanisms))
+  list(annual = dplyr::bind_rows(annual), decile_annual = .policy_rows_to_frame(decile_annual),
+    mechanisms = .policy_rows_to_frame(mechanisms))
 }
 
 # Pure run-owned calculation. Only small annual/summary tables escape; cumulative
@@ -680,7 +706,8 @@
                                          requested_residuals = "original",
                                          endpoint_series_baseline = NULL,
                                          endpoint_series_policy = NULL,
-                                         focus_scenario = NULL, analysis_unit = NULL) {
+                                         focus_scenario = NULL, analysis_unit = NULL,
+                                         validation_cache = NULL) {
   so <- baseline_hist$so
   hist_name <- baseline_hist$hist_label %||% "Historical"
   focus_scenario <- focus_scenario %||% if (length(baseline_scenarios)) names(baseline_scenarios)[1L] else hist_name
@@ -742,7 +769,8 @@
       members <- lapply(names(b$pipelines), function(id) .policy_metric_pipeline(
         b$pipelines[[id]], p$pipelines[[id]], prepared, method, pov_line,
         requested_residuals, b$shared_context, p$shared_context, nm, id,
-        owner = b, exposure_cache = exposure_cache))
+        owner = b, exposure_cache = exposure_cache,
+        validation_cache = validation_cache))
       annual_full <- dplyr::bind_rows(lapply(members, `[[`, "annual"))
       decile_annual_full <- dplyr::bind_rows(lapply(members, `[[`, "decile_annual"))
       annual <- annual_full

@@ -104,6 +104,8 @@
     names(baseline_scenarios)[[1L]]
   } else baseline_hist$hist_label %||% "Historical"
   methods <- c("mean", "headcount_ratio")
+  # As in the app: one validation cache per run, shared across method switches.
+  validation_cache <- new.env(parent = emptyenv())
   rows <- lapply(methods, function(method) {
     pov_line <- if (identical(method, "headcount_ratio")) 3 else NULL
     started <- proc.time()[["elapsed"]]
@@ -117,7 +119,8 @@
       pov_line = pov_line,
       requested_residuals = requested_residuals,
       focus_scenario = focus_scenario,
-      analysis_unit = analysis_unit
+      analysis_unit = analysis_unit,
+      validation_cache = validation_cache
     ), error = function(e) list(
       status = "error", reason = conditionMessage(e),
       annual = data.frame(), summary = data.frame(),

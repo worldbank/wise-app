@@ -350,6 +350,28 @@ test_that("R2-PERF-06: metric decomposition is memoised per method and poverty l
   })
 })
 
+test_that("R2-PERF-06b: exposure validation runs once per member per run and results are unchanged", {
+  fx <- metric_channel_fixture("fixest")
+  fx$hist$residuals <- "none"
+  fx$policy_hist$residuals <- "none"
+  calls <- 0L
+  original <- .validate_policy_annual_exposure
+  local_mocked_bindings(
+    .validate_policy_annual_exposure = function(...) { calls <<- calls + 1L; original(...) },
+    .package = "wiseapp")
+  run <- function(method, cache) .policy_metric_decomposition(fx$hist, fx$policy_hist,
+    list(), list(), fx$prepared, method, 3, "none", validation_cache = cache)
+  cache <- new.env(parent = emptyenv())
+  first <- run("mean", cache)
+  after_first <- calls
+  expect_gt(after_first, 0L)
+  second <- run("headcount_ratio", cache)
+  expect_identical(calls, after_first)
+  expect_identical(first, run("mean", NULL))
+  expect_identical(second$status, "ok")
+  expect_identical(second, run("headcount_ratio", NULL))
+})
+
 test_that("the real shared Results calculation follows edits without re-preparing or predicting", {
   fx <- metric_channel_fixture("fixest")
   fx$hist$residuals <- "none"
