@@ -217,7 +217,7 @@ Quick wins first (R2-A11Y-01/03, CR-A11Y-01..04), then the map table alternative
 | CR-A11Y-05 | L-M | S | ☐ | Tooltip role/`aria-describedby`/Escape; map tooltips dismissible | |
 | R2-A11Y-04 | L | S | ☐ | Darker Okabe-Ito variants or markers; darker label | |
 | R2-A11Y-05 | L | S | ◐ | Skip link, `<main>`, heading levels, `aria-live` status, specific names | 6b7c4e5: skip link, main landmark (add_main_landmark), h4/h5 -> h1/h2 with visual classes, polite live region on connection status, named info icons and CSV buttons. Left: info popovers without a title still generic. |
-| R2-A11Y-06 | L | S | ☐ | Pan buttons/keyboard pan; >= 24 px targets; remove dead click input | |
+| R2-A11Y-06 | L | S | ◐ | Pan buttons/keyboard pan; >= 24 px targets; remove dead click input 2026-10-07: dead click input removed (hexmap.js click handler and `reportInput`, the `data-hexmap-click` attribute, and the pointer cursor on hover, so cells no longer look clickable); hexmap tests + syntax check in node (filters hexmap/deploy-contract: 79 passed). Left: pan buttons or keyboard pan, >= 24 px targets for `.wise-info-icon` / `.wx-tip` (need a browser). |
 | CR-A11Y-06 | – | – | – | Fixed by bslib 0.12 | Prefer real `<button>` |
 | CR-A11Y-07 | – | – | – | Fixed in live UI | Dead `make_regtable()` only |
 | (info) alt text | L | S | ☑ | `fct_weatherstats.R:1905, 1912` when `alts` is NULL | b1d3249: weather_plot_layout() default alt names when alts missing; test. |

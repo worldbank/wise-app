@@ -50,13 +50,6 @@
     return Array.isArray(x) ? x : [x];
   }
 
-  function reportInput(name, value) {
-    if (!name) return;
-    if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
-      window.Shiny.setInputValue(name, value, { priority: "event" });
-    }
-  }
-
   // ---- Colour expressions --------------------------------------------------
   // Ramp input is the cell property the payload says to read: "v_log" when
   // the ramp is log-scaled, "v" otherwise. Cells without a value (JSON null)
@@ -176,7 +169,6 @@
   function showTip(state, e) {
     var f = e.features && e.features[0];
     if (!f) return;
-    state.map.getCanvas().style.cursor = "pointer";
     var p = f.properties || {};
     var unit = state.unit ? " " + state.unit : "";
     state.tip.innerHTML =
@@ -292,7 +284,6 @@
     var state = {
       map: null, ready: false, pending: null, fitPending: false,
       lastBounds: null, ramp: null, label: "", unit: "",
-      clickInput: container.getAttribute("data-hexmap-click"),
       tip: tip
     };
 
@@ -375,11 +366,6 @@
       map.triggerRepaint();
       map.on("mousemove", "hex-fill", function (e) { showTip(state, e); });
       map.on("mouseleave", "hex-fill", function () { hideTip(state); });
-      map.on("click", "hex-fill", function (e) {
-        var f = e.features && e.features[0];
-        var h = f && f.properties && f.properties.h3;
-        if (h) reportInput(state.clickInput, h);
-      });
     });
 
     // Cards expand to full screen; keep the canvas measured. The one-shot

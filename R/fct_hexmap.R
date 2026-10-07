@@ -72,9 +72,8 @@ hexmap_dependency <- function() {
 #' Hex-map container (UI-36 parity)
 #'
 #' A `<div>` with `role="region"` + `aria-label` that hexmap.js boots a
-#' MapLibre map into on the first payload it receives. The `data-hexmap-click`
-#' attribute names the Shiny input the JS writes: `<id>_hex_click` (last
-#' clicked cell's H3 index).
+#' MapLibre map into on the first payload it receives. Cells show a hover
+#' tooltip only; no click input is sent (nothing in the app reads one).
 #'
 #' @param id         Namespaced container id, e.g. `ns("density_map")`. The
 #'   same string must be passed as the `id` of the matching `hexmap_*`
@@ -107,8 +106,7 @@ hexmap_ui <- function(id, height = "400px", aria_label = "Map", legend = NULL) {
       class               = "hexmap-container",
       role                = "region",
       `aria-label`        = aria_label,
-      style               = "position: relative; height: 100%; width: 100%; overflow: hidden;",
-      `data-hexmap-click` = paste0(id, "_hex_click")
+      style               = "position: relative; height: 100%; width: 100%; overflow: hidden;"
     ),
     if (!is.null(legend)) {
       # Top-right keeps the legend clear of MapLibre's attribution control
