@@ -147,8 +147,8 @@
 #' Execute the pure serial Step 2 computation boundary
 #'
 #' @param input Named ordinary-object snapshot accepted by
-#'   \\code{fct_run_simulation()}. It must contain the fields validated by
-#'   \\code{step2_compute()}.
+#'   `fct_run_simulation()`. It must contain the fields validated by
+#'   `step2_compute()`.
 #' @param seed Integer base seed. RNG state is set inside the call and restored
 #'   before return.
 #' @param run_id Optional stable caller/run identifier.
@@ -161,6 +161,15 @@
 #' @param checkpoint_fn Optional cooperative cancellation checkpoint function.
 #' @param cache_dir Optional process/run-scoped weather-cache directory.
 #' @param weather_fn,pipeline_fn Injectable serial reference functions.
+#' @param weather_storage `"memory"` (default) or `"reference"`; reference mode
+#'   keeps future member weather in a run-scoped store and resolves it at
+#'   consumer boundaries (see `fct_run_simulation()`).
+#' @param weather_store_root Directory for the reference weather store; used
+#'   only when `weather_storage = "reference"`.
+#' @param weather_collect Future-weather collection strategy passed to
+#'   `get_weather()`: `"fast"` (default) or `"bounded"`.
+#' @param weather_threads DuckDB weather-query thread mode passed to
+#'   `get_weather()`: `"auto"` (default), `"1"` or `"2"`.
 #' @return A list with `result`, `signature`, `run`, and `events`.
 #' @export
 step2_compute <- function(input,

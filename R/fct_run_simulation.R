@@ -137,6 +137,16 @@
 #' This is deliberately independent of model fitting and prediction. The
 #' returned frames are the canonical products emitted by `get_weather()` and
 #' can be consumed by multiple calls to `fct_run_simulation()`.
+#'
+#' @inheritParams get_weather
+#' @param prepared_weather_cache Cross-run prepared-weather cache mode:
+#'   `"off"` (default here), `"auto"` or `"read_write"`.
+#' @param prepared_weather_cache_root Optional cache root for prepared weather.
+#' @param weather_fn Function used to load weather; defaults to `get_weather()`.
+#'
+#' @return A manifest list with `schema`, `signature`, `frames` (the frames
+#'   emitted by `get_weather()`), `cache_hit` and `cache_root`.
+#' @noRd
 prepare_weather_manifest <- function(
     survey_data, selected_surveys, selected_weather, dates, connection_params,
     ssp = NULL, future_period = NULL, perturbation_method = NULL,

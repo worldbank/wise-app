@@ -74,6 +74,24 @@ baseline_weight_column <- function(svy) {
 #' Each model/year is first reduced to a household value, then equally weighted
 #' across models and years. Deciles are assigned once from observed baseline
 #' welfare using survey weights and never re-ranked after simulation.
+#'
+#' @param svy Survey data frame with a weight column and the outcome column.
+#' @param outcome Scalar character name of the outcome column in `svy`.
+#' @param hist_pipeline Historical-weather pipeline result (from
+#'   `run_sim_pipeline()`).
+#' @param scenario_pipelines Named list of future-weather pipeline results, one
+#'   per climate model; a single result is wrapped in a list.
+#' @param is_log Logical. Whether predictions are on the log scale and are
+#'   back-transformed to levels before differencing.
+#' @param scenario Optional scenario label for the output; defaults to
+#'   `"Scenario"`.
+#' @param sim_year Optional simulation year(s) to restrict the pipelines to;
+#'   `NULL` uses all years.
+#'
+#' @return A data frame with one row per scenario and decile (weighted mean
+#'   `effect`, model, household and draw counts, weighted population); empty
+#'   when inputs are missing.
+#' @noRd
 step2_incidence_by_decile <- function(svy, outcome, hist_pipeline,
                                       scenario_pipelines, is_log = FALSE,
                                       scenario = NULL, sim_year = NULL) {
@@ -138,6 +156,16 @@ step2_incidence_by_decile <- function(svy, outcome, hist_pipeline,
 #' selector: the equal-model mean over simulated years or the shared adverse-year
 #' rule, in outcome units. Bases that are unavailable (too few simulated years)
 #' are omitted.
+#'
+#' @param compact Compact per-year decomposition scenarios object used by the
+#'   decomposition tab.
+#' @param so Optional selected outcome metadata, used for outcome units.
+#' @param bases Named character vector of weather-year bases to summarise;
+#'   defaults to `.decomp_basis_choices`.
+#'
+#' @return A data frame with columns scenario, basis, decile, effect and
+#'   n_models; empty when `compact` is not a compact decomposition object.
+#' @noRd
 step3_incidence_by_decile <- function(compact, so = NULL, bases = .decomp_basis_choices) {
   if (!.is_compact_decomp_scenarios(compact)) {
     return(data.frame())

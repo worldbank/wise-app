@@ -950,6 +950,34 @@
 #' The function deliberately receives only ordinary serializable values. The
 #' worker resolves credentials from its own environment and returns a compact
 #' manifest after atomically writing the large result artifact.
+#'
+#' @param snapshot Ordinary-object Step 2 snapshot; `snapshot$input` is the
+#'   input passed to `step2_compute()`.
+#' @param job_id Identifier of this job, recorded in the manifest and checked
+#'   when the artifact is read back.
+#' @param generation Integer generation of the run request; a worker whose
+#'   job has been retired stops publishing.
+#' @param artifact_dir Directory that receives the result artifact, manifest,
+#'   partials and progress file.
+#' @param control_dir Directory for the publication lock and retirement marker.
+#' @param lock_file Lock file that serialises publication of partials and the
+#'   final artifact.
+#' @param retired_file Marker file whose existence tells the worker its job
+#'   was retired and it must not publish.
+#' @param progress_file File to which the worker writes progress records for
+#'   the coordinator.
+#' @param dependency_signature_digest Digest of the inputs the job depends on,
+#'   recorded in progress and result records.
+#' @param weather_store_root Directory for the reference weather store.
+#' @param submitted_at_epoch Epoch seconds at which the job was submitted;
+#'   `NA` when unknown.
+#' @param seed Integer base seed passed to `step2_compute()`.
+#' @param run_id Stable run identifier; defaults to `job_id`.
+#' @param weather_storage,weather_collect,weather_threads Passed to
+#'   `step2_compute()`.
+#' @param weather_fn,pipeline_fn Injectable weather and pipeline functions.
+#' @param clear_credentials Logical. Drop credentials and views the task left
+#'   in the worker when it finishes.
 #' @export
 step2_async_worker <- function(snapshot,
                                job_id,

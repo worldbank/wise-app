@@ -466,7 +466,23 @@ make_regtable_specs_df <- function(fit1, fit2, fit3, weather_terms,
 #' RIF engine, one row per (term, tau) with a \code{Tau} column and
 #' \code{Translation} only at tau = 0.5.
 #'
-#' @inheritParams make_regtable_focused_df
+#' @param fit3 The full-specification model (fixest model, or the RIF
+#'   multi-quantile fit).
+#' @param weather_terms Character vector of weather term names in the model.
+#' @param interaction_terms Character vector of interaction term names.
+#' @param label_fun Function mapping variable names to readable labels.
+#' @param engine Scalar character engine key (e.g. `"fixest"`, `"rif"`).
+#' @param is_logistic,is_lpm Logical. Binary-outcome model (logit) or linear
+#'   probability model; either makes the translation a percentage-point effect.
+#' @param is_log_outcome Logical. Whether the outcome is log-transformed (the
+#'   translation is then a percent effect).
+#' @param rif_grid Coefficient grid across quantiles for RIF fits, else `NULL`.
+#' @param mf Optional named list returned by `fit_model()`; its training data
+#'   gives the weather SDs when `sd_x` is not supplied.
+#' @param scenarios_list Optional named list of precomputed
+#'   `step1_scenarios()` results, keyed by weather variable.
+#' @param sd_x Optional named numeric vector of weather-variable standard
+#'   deviations used for the per-+1-SD translation.
 #'
 #' @return A data frame (Variable, Group, Term, Effect, CI_low, CI_high, SE, p,
 #'   Translation; + Tau for RIF), or NULL on failure.

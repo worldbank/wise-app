@@ -1262,8 +1262,15 @@ step2_headline_df <- function(cards, metadata = NULL, summary = NULL) {
 #'   \code{"year_x_scenario"}.
 #' @param show_coef Logical. When `FALSE`, coefficient-band rows (labels
 #'   starting with `"Coef "`) are dropped.
-#' @param group_order Character. \code{"scenario_x_year"} (default) or
-#'   \code{"year_x_scenario"}.
+#' @param adverse_only Logical. When `TRUE`, keep only the decision return
+#'   periods for `method` and `so`, and drop the 1-in-50 row when the
+#'   historical record is shorter than 50 years.
+#' @param method Scalar character aggregation method (for example `"mean"`),
+#'   used to pick the decision return periods when `adverse_only = TRUE`.
+#' @param so Selected outcome metadata (list with `$name`, `$transform`), used
+#'   with `method` to pick the decision return periods.
+#' @param n_hist_years Optional integer length of the historical record in
+#'   years; `NULL` uses the largest observation count in the table.
 #'
 #' @return A data frame with columns: Scenario, Obs, one column per
 #'   return-period threshold label, sorted by \code{group_order}. Returns

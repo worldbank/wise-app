@@ -1420,6 +1420,8 @@ weather_plot_layout <- function(ns, n_vars, ids, height = "500px",
 #'   series (inclusive).
 #' @param wave_labels Optional named character vector replacing wave labels.
 #' @param height Widget height; a CSS length or a number of pixels.
+#' @param units Optional scalar character unit of `hv`, appended to the axis
+#'   label (for example `"deg C"`).
 #'
 #' @return An `echarts4r` widget, or `NULL` invisibly when there is nothing
 #'   to draw.
@@ -1992,7 +1994,11 @@ echart_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var,
 #' Client-side search/pagination replacement of the old DT renderer; the CSV
 #' download is the separate `wise_reactable_csv_button()` in the module UI.
 #'
-#' @inheritParams make_weather_stats_reactable
+#' @param survey_weather Reactive returning merged survey-weather data.
+#' @param selected_weather Reactive returning selected weather rows (needs
+#'   name/label).
+#' @param survey_reference Optional reactive returning the original survey
+#'   data, used for missingness denominators.
 #'
 #' @return A `shiny.render.function` (from `reactable::renderReactable`).
 #' @export
@@ -2019,7 +2025,11 @@ make_weather_stats_reactable <- function(survey_weather, selected_weather,
 
 #' Reactable renderer for the binned-weather level distribution (guidelines §6)
 #'
-#' @inheritParams make_weather_binned_stats_reactable
+#' @param survey_weather Reactive returning merged survey-weather data.
+#' @param selected_weather Reactive returning selected weather rows (needs
+#'   name/label).
+#' @param survey_reference Optional reactive returning the original survey
+#'   data, used for missingness denominators.
 #'
 #' @return A `shiny.render.function` (from `reactable::renderReactable`).
 #' @export

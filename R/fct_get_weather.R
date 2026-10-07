@@ -989,6 +989,14 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
 #'   default), `"1"`, or `"2"`. Automatic selection is conservative and remains
 #'   pinned to one thread until `WISEAPP_WEATHER_THREADS_AUTO_ENABLE=1` is set.
 #'   All returned finite weather values use the fixed 5-decimal output policy.
+#' @param weather_collect Future-weather collection strategy: `"fast"` (the
+#'   default; collect whole periods) or `"bounded"` (stream in bounded chunks).
+#'   A memory-budget preflight can force `"bounded"`, and so does a
+#'   `weather_consumer`.
+#' @param weather_consumer Optional function called as
+#'   `weather_consumer(key, data, info)` for the historical frame and each
+#'   future member as it is produced, instead of accumulating them in the
+#'   returned list. `info` carries the emission order and period membership.
 #' @return A named list of collected data frames with columns
 #'   `code, year, survname, loc_id, timestamp, <weather_vars>`:
 #'   * `"historical"` - unperturbed result filtered to `dates`.

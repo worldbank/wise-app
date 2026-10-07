@@ -1092,8 +1092,23 @@ calc_fit_stats <- function(model, is_logistic, engine = "fixest", taus = NULL) {
 #' whiskers, wrapped labels and specification colours. RIF coefficients are
 #' filtered to one selected welfare quantile.
 #'
+#' @param fit1,fit2,fit3 The three progressive model fits (weather only, plus
+#'   fixed effects, plus fixed effects and controls) from `fit_model()`.
+#' @param weather_terms Character vector of weather term names in the model.
+#' @param interaction_terms Character vector of interaction term names.
+#' @param outcome_label Display label of the outcome, used in axis text.
+#' @param label_fun Function mapping variable names to display labels.
+#' @param engine Scalar character engine key (e.g. `"fixest"`, `"rif"`).
+#' @param rif_grid Coefficient grid across quantiles for RIF fits, else `NULL`.
+#' @param pred_var Scalar character weather variable to plot; `NULL` plots all
+#'   `weather_terms`. Required for RIF fits.
+#' @param x_label Optional x-axis label; `NULL` uses a default.
+#' @param has_controls Logical. Whether the third specification includes
+#'   controls (changes its legend label).
 #' @param height Widget height; a CSS length or a number of pixels.
 #' @param tau Scalar quantile used for RIF coefficient stability plots.
+#' @param train_data Optional training data frame, used to centre polynomial
+#'   terms of `pred_var` at its mean for RIF fits.
 #'
 #' @return An `echarts4r` widget, or `NULL`.
 #'
@@ -1481,6 +1496,36 @@ echart_make_coefplot <- function(fit1, fit2, fit3,
 #' Captions render as a small slate sub-text anchored bottom-left (echarts
 #' has no plot.caption slot); call-side captions pass through unchanged.
 #'
+#' @param fit A fitted model (single `fixest` model, or the RIF
+#'   multi-quantile fit).
+#' @param pred_var Scalar character name of the weather variable plotted.
+#' @param interaction_terms Character vector of interaction term names; those
+#'   involving `pred_var` define the moderator.
+#' @param is_binned Logical. Whether `pred_var` enters the model as bins.
+#' @param label_fun Function mapping variable names to display labels.
+#' @param engine Scalar character engine key (e.g. `"fixest"`, `"rif"`).
+#' @param selected_weather Currently unused; kept so existing callers still
+#'   work.
+#' @param weather_df Optional data frame holding `pred_var`, used for the
+#'   observed-value rug, mean reference and bin ordering.
+#' @param rif_grid Coefficient grid across quantiles for RIF fits, else `NULL`.
+#' @param mode One of `"auto"`, `"main"` or `"moderated"`. For RIF fits with
+#'   interactions, `"main"` shows the across-moderator average and
+#'   `"moderated"` requires a moderator.
+#' @param is_logistic Logical. Whether the model is a binary-outcome model.
+#' @param x_label,y_label Optional axis labels; `NULL` uses defaults.
+#' @param caption Optional caption drawn bottom-left.
+#' @param show_rug Logical. Draw the observed-value rug (continuous only).
+#' @param show_mean_ref Logical. Draw the dashed mean reference
+#'   (continuous only).
+#' @param mark_taus Optional numeric quantiles at which to draw dashed
+#'   vertical reference marks on RIF curves.
+#' @param effect_scale One of `"model"`, `"pp"`, `"pp100"` or `"pct"`. `"pp"`
+#'   converts logistic effects to percentage points at `profile_eta`;
+#'   `"pp100"` multiplies estimates by 100; `"pct"` leaves values unchanged but
+#'   formats them as percent; `"model"` leaves model units.
+#' @param profile_eta Scalar linear-predictor value at which logistic effects
+#'   are converted to percentage points when `effect_scale = "pp"`.
 #' @param height Widget height; a CSS length or a number of pixels.
 #'
 #' @return An `echarts4r` widget.
@@ -2643,6 +2688,9 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
 #' coefficients, largest share at the top. The chart subtitle is
 #' carried by the section heading, so it is not repeated in the widget.
 #'
+#' @param model A fitted model object (a single `fixest` model, or the median
+#'   quantile model for RIF fits).
+#' @param label_fun Function mapping variable names to display labels.
 #' @param height Widget height; a CSS length or a number of pixels.
 #'
 #' @return An `echarts4r` widget.
@@ -2736,6 +2784,10 @@ echart_importance <- function(model, label_fun = identity, height = "400px") {
 #' Binary outcomes: binned residual means by decile of predicted risk with a
 #' +/- 2-SE band, as in the ggplot builder.
 #'
+#' @param model A fitted model object (single `fixest` model, or the median
+#'   quantile model for RIF fits).
+#' @param is_logistic Logical. `TRUE` draws binned residual means for binary
+#'   outcomes instead of the residual and Q-Q panels.
 #' @param height Widget height; a CSS length or a number of pixels.
 #'
 #' @return An `echarts4r` widget.
@@ -2949,6 +3001,11 @@ echart_residual_panels <- function(model, is_logistic = FALSE, height = "400px")
 #' (observed vs predicted rate by decile of predicted risk) with the diagonal
 #' reference and +/- 2-SE binomial band.
 #'
+#' @param model A fitted model object (single `fixest` model, or the median
+#'   quantile model for RIF fits).
+#' @param is_logistic Logical. `TRUE` draws the calibration curve for binary
+#'   outcomes, `FALSE` the actual-vs-predicted histogram.
+#' @param outcome_label Display label of the outcome, used in axis text.
 #' @param height Widget height; a CSS length or a number of pixels.
 #'
 #' @return An `echarts4r` widget.

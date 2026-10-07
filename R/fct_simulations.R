@@ -379,6 +379,16 @@ resolve_id_col <- function(a, b) {
 #'   \code{fit_model()}), attached to the pipeline output for diagnostics.
 #' @param rif_policy_deltas Optional precomputed RIF policy covariate deltas.
 #'   Reused across weather keys when supplied.
+#' @param weather_join_cache Optional cache from
+#'   \code{build_weather_join_cache()} that replaces the per-key survey-weather
+#'   join with a lookup. Not used on the RIF policy path.
+#' @param batch_rif_predictions Logical. RIF path only: predict baseline and
+#'   scenario rows in one call per quantile (see \code{predict_rif()}).
+#' @param direct_rif_predictions Logical. RIF path only: use the direct
+#'   baseline/scenario prediction pair (see \code{predict_rif()}).
+#' @param direct_rif_metadata Optional metadata for the direct RIF path.
+#' @param direct_rif_baseline_cache Optional cache of baseline RIF predictions
+#'   reused across weather keys on the direct path.
 #'
 #' @return Named list or \code{NULL} on prediction failure:
 #'   \describe{

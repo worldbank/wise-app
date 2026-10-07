@@ -1129,6 +1129,14 @@
 #' @param F_hat Optional pre-built empirical CDF of the training outcome
 #'   (RIF path only; see `.compute_rif_channels()`). When NULL it is
 #'   computed here.
+#' @param context Optional decomposition context from a previous call, reused
+#'   to skip work that does not depend on the policy. Requires `run_identity`;
+#'   a stale or mismatched context is an error.
+#' @param hazard_values Optional named list of hazard value vectors (one per
+#'   weather variable); when supplied it replaces the values derived from
+#'   `weather_raw`.
+#' @param run_identity Identity of the current run, compared with
+#'   `context$run_identity` when `context` is reused.
 #'
 #' @return A data frame with one row per household and decomposition columns,
 #'   or NULL if decomposition is not possible.

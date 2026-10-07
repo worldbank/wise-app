@@ -1651,6 +1651,7 @@ step1_headline_cards <- function(mf, snap, label_fun = identity,
 
 #' Tidy data frame behind the headline cards (export bundle / CSV)
 #'
+#' @inheritParams step1_headline_cards
 #' @param result Optional precomputed result from \code{step1_headline_cards()}.
 #'   When supplied, \code{mf}, \code{snap}, and \code{label_fun} are not used.
 #'

@@ -459,6 +459,17 @@ build_rif_grid <- function(fits_multi, taus, model_id) {
 #'   can build this once and pass it in to avoid rebuilding the same
 #'   empirical CDF on every key. When \code{NULL} (default), it is built
 #'   from \code{train_data} as before.
+#' @param batch_predictions Logical. When \code{TRUE}, baseline and scenario
+#'   rows are predicted in one \code{predict()} call per quantile (falling back
+#'   to two calls on any failure).
+#' @param direct_predictions Logical. When \code{TRUE}, use the direct
+#'   baseline/scenario prediction pair (see \code{direct_metadata}) instead of
+#'   per-quantile prediction.
+#' @param direct_metadata Optional metadata for the direct prediction path.
+#' @param direct_baseline_cache Optional cache of baseline predictions reused
+#'   across scenarios on the direct path.
+#' @param prediction_profile Optional profiling record; when supplied each
+#'   internal stage is timed and recorded in it.
 #'
 #' @return \code{newdata} augmented with \code{.fitted}, \code{.residual}, and outcome.
 #'   When \code{chol_list} is non-NULL, also carries \code{attr(., "F_loading")}.
