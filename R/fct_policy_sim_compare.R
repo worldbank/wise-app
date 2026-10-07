@@ -179,6 +179,10 @@ echart_before_after_hist <- function(baseline_vals, policy_vals,
 .wise_result_tooltip <- function(x_label) {
   htmlwidgets::JS(sprintf("function(p) {
     var d = p.data || {};
+    if (Array.isArray(d)) {
+      d = {outcome: d[0], scenario: p.seriesName,
+           source: String(p.seriesId || '').split('|')[2]};
+    }
     function esc(s) { return String(s).replace(/[&<>\"']/g, function(c) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]; }); }
     var percent = %s;
@@ -460,31 +464,35 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
   # object rather than the array ECharts requires for series.data.
   dot_rows <- unname(which(is.finite(df$value)))
   dot_rows <- dot_rows[.wise_stride_downsample(seq_along(dot_rows), max_points = 10000L)]
-  # Values are kept to 8 significant digits (far below pixel resolution) and
-  # the constant source tag "All" is omitted: both shorten every point.
-  dots <- lapply(dot_rows, function(i) {
-    base_y <- df$row_y[[i]] + if (has_source) df$y_off[[i]] else 0
-    x <- signif(df$value[[i]], 8L)
-    pt <- list(
-      value = c(x, round(base_y + jit[[i]], 4L)),
-      outcome = x, scenario = as.character(df$scenario[[i]]),
+  # Columnar draws (R2-PERF-05): one scatter series per scenario (and source),
+  # colour and opacity at series level, points as a two-column [outcome, y]
+  # matrix. The scenario is the series name and the source is the third part of
+  # the series id ("draws|<scenario>|<source>"), so no point carries its own
+  # strings or itemStyle. Values keep 8 significant digits, far below pixel
+  # resolution.
+  dot_src <- if (has_source) as.character(df$source[dot_rows]) else rep("All", length(dot_rows))
+  dot_scn <- as.character(df$scenario[dot_rows])
+  groups <- split(seq_along(dot_rows), paste(dot_scn, dot_src, sep = "\r"))
+  for (g in groups) {
+    rows <- dot_rows[g]
+    scen <- dot_scn[g[[1L]]]
+    src <- dot_src[g[[1L]]]
+    base_y <- df$row_y[rows] + if (has_source) df$y_off[rows] else 0
+    push(list(
+      type = "scatter",
+      name = scen,
+      id = paste("draws", scen, src, sep = "|"),
+      data = unname(cbind(
+        signif(df$value[rows], 8L), round(base_y + jit[rows], 4L)
+      )),
       itemStyle = list(
-        color = unname(scenario_palette[[as.character(df$scenario_key[[i]])]]),
-        opacity = 0.2
-      )
-    )
-    if (has_source) pt$source <- as.character(df$source[[i]])
-    pt
-  })
-  # Muted individual years sit behind the summaries and mean markers.
-  push(list(
-    type = "scatter",
-    name = "Draws",
-    data = dots,
-    symbol = "circle",
-    symbolSize = 5,
-    z = 1
-  ))
+        color = unname(scenario_palette[[scen]]), opacity = 0.2
+      ),
+      symbol = "circle",
+      symbolSize = 5,
+      z = 1
+    ))
+  }
 
   # Series means: open slate-ringed (baseline) and filled policy markers.
   mean_series <- function(src, size, fill_col, stroke_col) {

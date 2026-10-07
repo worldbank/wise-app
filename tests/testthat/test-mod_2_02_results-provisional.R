@@ -676,8 +676,10 @@ test_that("annual distribution pending categories are fixed, labelled and empty"
   expect_match(fmt, "SSP5-8.5", fixed = TRUE)
   expect_false(is.null(part$x$opts$yAxis$axisLabel$rich$pending))
   # No data for the pending scenario.
-  draws <- Filter(function(x) identical(x$name, "Draws"), part$x$opts$series)[[1L]]
-  expect_false(any(vapply(draws$data, function(d) d$scenario == scens[3], logical(1))))
+  draw_names <- vapply(Filter(function(x) startsWith(x$id %||% "", "draws|"),
+    part$x$opts$series), `[[`, character(1), "name")
+  expect_true(length(draw_names) > 0L)
+  expect_false(scens[3] %in% draw_names)
   # Pending label for an already-landed scenario is ignored.
   expect_identical(
     echart_annual_distribution(.pc_annual_tbl(scens), "Mean", pending = scens[3])$x$opts,

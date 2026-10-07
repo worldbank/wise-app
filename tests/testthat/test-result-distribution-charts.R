@@ -1,3 +1,19 @@
+# R2-PERF-05: draws are one scatter series per scenario (and source) with a
+# two-column [outcome, y] matrix; series name = scenario, id = draws|scenario|source.
+.draw_series <- function(chart) {
+  Filter(function(s) startsWith(s$id %||% "", "draws|"), chart$x$opts$series)
+}
+.draw_points <- function(chart) {
+  do.call(rbind, lapply(.draw_series(chart), function(s) {
+    m <- matrix(unlist(s$data), ncol = 2L)
+    data.frame(
+      scenario = s$name, source = strsplit(s$id, "|", fixed = TRUE)[[1L]][[3L]],
+      x = m[, 1L], y = m[, 2L], color = s$itemStyle$color,
+      opacity = s$itemStyle$opacity, stringsAsFactors = FALSE
+    )
+  }))
+}
+
 test_that("annual charts use closed violins, readable numeric axes, and honest tooltips", {
   tbl <- data.frame(
     scenario = rep(c("Historical", "SSP2-4.5 / 2030-2040"), each = 8),
@@ -13,8 +29,7 @@ test_that("annual charts use closed violins, readable numeric axes, and honest t
 
   for (chart in list(step2, step3)) {
     expect_s3_class(chart, "echarts4r")
-    dots <- Filter(function(s) identical(s$name, "Draws"), chart$x$opts$series)[[1L]]
-    expect_true(all(vapply(dots$data, function(p) identical(p$itemStyle$opacity, .2), logical(1))))
+    expect_true(all(.draw_points(chart)$opacity == .2))
     violins <- Filter(function(s) identical(s$type, "custom"), chart$x$opts$series)
     expect_length(violins, 4L)
     expect_true(all(vapply(violins, function(s) {
@@ -67,25 +82,30 @@ test_that("annual charts use closed violins, readable numeric axes, and honest t
   expect_equal(means$data[[2L]]$value[[2L]], 1)
   invalid <- echart_annual_distribution(transform(tbl, value = NA_real_))
   expect_match(invalid$x$opts$title[[1L]]$text, "No finite annual", fixed = TRUE)
-  dots <- Filter(function(s) identical(s$name, "Draws"), step3$x$opts$series)[[1L]]
+  dots <- .draw_series(step3)[[1L]]
+  pts <- .draw_points(step3)
   expect_equal(dots$symbolSize, 5)
   expect_lt(dots$z, min(vapply(boxes, function(s) s$z, numeric(1))))
   expect_gt(policy_means$z, dots$z)
   expect_identical(dots$symbol, "circle")
-  expect_true(all(vapply(dots$data, function(p) identical(p$itemStyle$opacity, .2), logical(1))))
-  expect_true(all(vapply(dots$data, function(p) is.null(p$mean), logical(1))))
+  expect_true(all(pts$opacity == .2))
   expect_true(all(vapply(violins, function(s) s$areaStyle$opacity <= .35, logical(1))))
-  policy_dots <- Filter(function(p) identical(p$source, "Policy"), dots$data)
-  baseline_dots <- Filter(function(p) identical(p$source, "Baseline"), dots$data)
-  expect_identical(policy_dots[[1L]]$itemStyle$color, baseline_dots[[1L]]$itemStyle$color)
-  centers <- vapply(dots$data, function(p) {
-    row <- if (identical(p$scenario, "Historical")) 2 else 1
-    row + if (identical(p$source, "Policy")) -.19 else .19
-  }, numeric(1))
-  jitter <- abs(vapply(dots$data, function(p) p$value[[2L]], numeric(1)) - centers)
+  expect_setequal(paste(pts$scenario, pts$source), c(
+    "Historical Baseline", "Historical Policy",
+    "SSP2-4.5 / 2030-2040 Baseline", "SSP2-4.5 / 2030-2040 Policy"
+  ))
+  expect_identical(
+    unique(pts$color[pts$source == "Policy" & pts$scenario == "Historical"]),
+    unique(pts$color[pts$source == "Baseline" & pts$scenario == "Historical"])
+  )
+  centers <- ifelse(pts$scenario == "Historical", 2, 1) +
+    ifelse(pts$source == "Policy", -.19, .19)
+  jitter <- abs(pts$y - centers)
   expect_gt(max(jitter), .17)
-  expect_lte(max(jitter), .20)
-  expect_gt(length(unique(vapply(dots$data, function(p) p$value[[2L]], numeric(1)))), 4)
+  expect_lte(max(jitter), .20 + 1e-9)
+  expect_gt(length(unique(pts$y)), 4)
+  # The tooltip reads columnar points (scenario = series name, source = id).
+  expect_match(as.character(step3$x$opts$tooltip$formatter), "Array.isArray(d)", fixed = TRUE)
   expect_match(as.character(step3$x$opts$tooltip$formatter), "d.is_mean ? 'Scenario mean'", fixed = TRUE)
   expect_match(step3$jsHooks$render[[1L]]$code, "ResizeObserver", fixed = TRUE)
 })
@@ -101,8 +121,7 @@ test_that("rate and binary mean charts format fractional outcomes as percentages
     chart <- echart_annual_distribution(data.frame(scenario = "Historical", value = c(.4, .42, .43)), label)
     expect_match(as.character(chart$x$opts$xAxis$axisLabel$formatter), "v*100", fixed = TRUE)
     expect_match(as.character(chart$x$opts$tooltip$formatter), "percent = true", fixed = TRUE)
-    draws <- Filter(function(s) identical(s$name, "Draws"), chart$x$opts$series)[[1L]]
-    expect_equal(draws$data[[1L]]$outcome, .4)
+    expect_equal(.draw_points(chart)$x[[1L]], .4)
   }
 })
 
@@ -132,13 +151,12 @@ test_that("annual scatter retains finite jittered coordinates at production draw
   )
   for (type in c("violin", "boxplot")) {
     chart <- echart_annual_distribution(tbl, plot_type = type)
-    draws <- Filter(function(s) identical(s$name, "Draws"), chart$x$opts$series)[[1L]]
-    expect_length(draws$data, 10000L)
-    expect_lt(draws$z, min(vapply(Filter(function(s) identical(s$type, "custom"),
+    pts <- .draw_points(chart)
+    expect_identical(nrow(pts), 10000L)
+    expect_lt(.draw_series(chart)[[1L]]$z, min(vapply(Filter(function(s) identical(s$type, "custom"),
       chart$x$opts$series), function(s) s$z, numeric(1))))
-    expect_true(all(vapply(draws$data, function(p) all(is.finite(p$value)), logical(1))))
-    expect_true(all(c("Historical", "SSP3-7.0 / 2025-2035") %in%
-      vapply(draws$data, `[[`, character(1), "scenario")))
+    expect_true(all(is.finite(pts$x) & is.finite(pts$y)))
+    expect_true(all(c("Historical", "SSP3-7.0 / 2025-2035") %in% pts$scenario))
   }
 })
 
@@ -154,21 +172,27 @@ test_that("matrix-derived named years serialize annual draws as a JSON array", {
   expect_false(is.null(names(tbl$value)))
   for (type in c("violin", "boxplot")) {
     chart <- echart_annual_distribution(tbl, plot_type = type)
-    draws <- Filter(function(s) identical(s$name, "Draws"), chart$x$opts$series)[[1L]]
-    expect_null(names(draws$data))
-    expect_length(draws$data, 72L)
-    expect_match(htmlwidgets:::toJSON(draws$data), "^\\[")
-    expect_equal(draws$data[[1L]]$outcome, unname(values[1L, 1L]))
+    draws <- .draw_series(chart)
+    expect_length(draws, 2L)
+    for (d in draws) {
+      expect_null(names(d$data))
+      expect_match(htmlwidgets:::toJSON(d$data), "^\\[")
+    }
+    pts <- .draw_points(chart)
+    expect_identical(nrow(pts), 72L)
+    expect_equal(pts$x[pts$scenario == "Historical"][[1L]], unname(values[1L, 1L]),
+      tolerance = 1e-7)
   }
   policy_tbl <- dplyr::bind_rows(
     dplyr::mutate(tbl, source = "Baseline"),
     dplyr::mutate(tbl, source = "Policy", value = value + .1)
   )
   policy_chart <- echart_step3_annual_distribution(policy_tbl)
-  policy_draws <- Filter(function(s) identical(s$name, "Draws"), policy_chart$x$opts$series)[[1L]]
-  expect_null(names(policy_draws$data))
-  expect_length(policy_draws$data, 144L)
-  expect_match(htmlwidgets:::toJSON(policy_draws$data), "^\\[")
+  expect_identical(nrow(.draw_points(policy_chart)), 144L)
+  for (d in .draw_series(policy_chart)) {
+    expect_null(names(d$data))
+    expect_match(htmlwidgets:::toJSON(d$data), "^\\[")
+  }
 })
 
 test_that("adverse chart intervals share their scenario marker dodge", {
