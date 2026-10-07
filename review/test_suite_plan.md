@@ -13,8 +13,10 @@ What is left to do from `review/test_suite_review.md`, kept deliberately small: 
 | CI roxygen2 pinned to `RoxygenNote` (8.x rewrites NAMESPACE layout) | Done (`4b42488`) |
 | httpfs loaded in the credential-test seed helper; kernel random-draw tolerance 1e-10 | Done (`70cc61d`, `fe599ae`) |
 | **First green GitHub run** | **Done: run 37618324871 on `fe599ae`; green again on `bfde4bc` (run 37621899857).** 0 failed, 1 skipped, 7627 expectations. Tests step about 6m20s to 6m35s, job about 11m47s to 12m44s. The R dependency cache was restored in both runs, so there is no separate warm figure. |
-| Headless-Chrome PNG test (`test-export-bundle.R:201`) skips on CI | **Accepted.** Chrome is found but "debugging port not open after 10 seconds"; `--no-sandbox` did not help and was removed. The test passes locally and the skip message now carries the reason. Revisit only if a rendering regression slips through. |
+| Headless-Chrome PNG test (`test-export-bundle.R:201`) skipped on CI in runs 37618324871 and 37621899857 | **Accepted.** Run 37632880820 showed 0 skips, cause not investigated. Chrome is found but "debugging port not open after 10 seconds"; `--no-sandbox` did not help and was removed. The test passes locally and the skip message now carries the reason. Revisit only if a rendering regression slips through. |
 | DuckDB extension cache step | Removed. On CI duckdb stores extensions in a per-session temp dir, not `~/.duckdb/extensions`, so the cache never saved or hit; extensions download in seconds each run. |
+| Step 2 cleanups 1 to 3 | Done (`6d891d3`, `336a699`, `2a69600`). Item 4 (renames) deferred: history-named files cost 0.1 to 0.7 s each, so renaming is maintainability only. |
+| Step 4 speed | Done as far as it pays off. `test-step2-partials.R` 26.5 s to 18.4 s (`82d0d65`); provisional seeding test folded (`26ce151`); delta Monte Carlo draws 2000 to 1000 (`fe37654`, file 9.7 s to 6.2 s). CI: Tests step 348 s on `82d0d65` (run 37632880820, 0 skipped, 7664 expectations), job 10m08s, down from 375 s and 12m44s. Check run 37635486269 (`fe37654`) for the effect of the last two commits. |
 | `R CMD check` WARNING (undocumented `@param`, R2-CQ-01) and 3 NOTEs | Open. `error-on` stays `"error"` until the WARNING is fixed. |
 
 ## Ground rules
@@ -109,7 +111,17 @@ Wider speed options, if more is wanted after memoising (in this order; each need
 - Drop non-essential tests only where the coverage method shows no `R/` line loses coverage and no distinct behaviour is pinned.
 - Speed up the slowest remaining tests by shrinking inputs (rows, draws, years) without changing what is asserted.
 
-CI reference at 2026-10-07: Tests step 6m33s cold against the 8-minute trigger, so Step 3 additions have only about 1.5 minutes of headroom.
+Findings from the 2026-10-07 speed pass (do not repeat this work):
+
+- The suite is dominated by real computation (pipelines, Results-module drives, real mirai workers, headless Chrome). The 76 tests of 1 s or more hold about 218 of 336 s locally; no single test is over about 4 s standalone.
+- Fixture builders in `test-policy-sim-compare-agg-cache.R` cost about 0.00 s each, and `.pv_run()` is built once in the provisional file, so memoised `fixture_*()` helpers would save nothing there.
+- Local timings are noisy (load average 5 to 11 from other apps); `test-fct_get_weather.R` took 57 s in one full run but 19 to 20 s alone and after the 19 files before it. Use standalone before/after per file, and CI for suite totals.
+- The gc test in `test-fct_get_weather.R` calls `gc()` only twice; it is not a gc cost.
+- Parked, small: share one `get_weather()` result among the `cross_res_cmip6` tests (about 2 s); merge per-method delta Monte Carlo tests (saves about 0.1 s, not worth it).
+- The history-named files from the review are 0.1 to 0.7 s each; removing them saves no time.
+- The Monte Carlo in `test-fct_aggregation_delta.R` is a brute-force oracle (`mc_se()`) for the live delta-method path, not legacy app code.
+
+CI reference: Tests step 348 s (about 6 min) on `82d0d65`. Step 3 additions should stay within a few seconds each.
 
 ---
 
