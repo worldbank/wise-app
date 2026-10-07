@@ -1287,11 +1287,8 @@ decompose_policy_effect <- function(svy_baseline,
   }
 
   # Assemble output data frame
-  weight_col <- grep("^weight$|^hhweight$|^wgt$|^pw$",
-    names(svy_baseline),
-    value = TRUE, ignore.case = TRUE
-  )[1]
-  row_weight <- if (!is.na(weight_col)) svy_baseline[[weight_col]] else rep(1, n)
+  weight_col <- survey_weight_column(names(svy_baseline))
+  row_weight <- if (!is.null(weight_col)) svy_baseline[[weight_col]] else rep(1, n)
 
   data.frame(
     id               = seq_len(n),
@@ -1478,11 +1475,8 @@ decompose_policy_effect <- function(svy_baseline,
   }
   var_total <- var_main + var_res2 # OLS has no res1 channel
 
-  weight_col <- grep("^weight$|^hhweight$|^wgt$|^pw$",
-    names(svy_baseline),
-    value = TRUE, ignore.case = TRUE
-  )[1]
-  row_weight <- if (!is.na(weight_col)) svy_baseline[[weight_col]] else rep(1, n)
+  weight_col <- survey_weight_column(names(svy_baseline))
+  row_weight <- if (!is.null(weight_col)) svy_baseline[[weight_col]] else rep(1, n)
 
   data.frame(
     id               = seq_len(n),

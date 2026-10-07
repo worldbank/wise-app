@@ -321,3 +321,12 @@ test_that("aggregation preparation reuses residual variance across years", {
   expected <- lapply(observed, function(x) x$var_resid)
   expect_true(all(is.finite(unlist(expected))))
 })
+
+# R2-BUG-24: one survey weight column, chosen by alias priority not column order.
+test_that("survey weight column is chosen by alias priority", {
+  expect_identical(wiseapp:::survey_weight_column(c("hhweight", "x", "weight")), "weight")
+  expect_identical(wiseapp:::survey_weight_column(c("pw", "WGT")), "WGT")
+  expect_null(wiseapp:::survey_weight_column(c("a", "b")))
+  svy <- data.frame(hhweight = 1, weight = 2)
+  expect_identical(wiseapp:::baseline_weight_column(svy), "weight")
+})

@@ -225,7 +225,7 @@
         ),
         shiny::p(
           "The navy curve is the historical baseline. Coloured curves show the",
-          "ensemble median across climate models, with shaded ribbons indicating inter-model spread."
+          "equal-weight mean across climate models, with shaded ribbons indicating inter-model spread."
         ),
         docs = TRUE
       ),
@@ -1600,11 +1600,11 @@ mod_2_02_results_server <- function(id,
         }
 
         # Retained chart center: summarise each model across its weather years,
-        # then take the median across models (not the expected headline center).
+        # then take the equal-weight mean across models (the headline centre).
         ens_mean <- if (is_hist) {
           mean(as.numeric(vals), na.rm = TRUE)
         } else {
-          stats::median(model_means, na.rm = TRUE)
+          mean(model_means, na.rm = TRUE)
         }
 
         tibble::tibble(
@@ -2086,7 +2086,7 @@ mod_2_02_results_server <- function(id,
       label = "Simulated welfare by scenario and period",
       step = 2L,
       fun = .committed_only(pointrange_chart),
-      description = "Simulated welfare by climate scenario and projection period; median across climate-model means, distinct from the equal-model-mean expected headline.",
+      description = "Simulated welfare by climate scenario and projection period; equal-weight mean across climate-model means, the same centre as the expected headline.",
       width = 10, height = 6.5
     )
 

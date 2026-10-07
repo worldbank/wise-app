@@ -23,14 +23,21 @@ weighted_baseline_deciles <- function(svy, outcome, weight = NULL) {
   out
 }
 
+# The one place that decides which survey column carries the weights. Known
+# aliases are taken in a fixed priority order (not column order), so every
+# consumer (Step 2 run, decomposition, incidence) picks the same column.
+survey_weight_column <- function(cols) {
+  aliases <- c("weight", "hhweight", "wgt", "pw")
+  hit <- match(aliases, tolower(cols))
+  hit <- hit[!is.na(hit)]
+  if (length(hit)) cols[[hit[[1L]]]] else NULL
+}
+
 baseline_weight_column <- function(svy) {
   if (is.null(svy) || !is.data.frame(svy)) {
     return(NULL)
   }
-  hits <- grep("^weight$|^hhweight$|^wgt$|^pw$", names(svy),
-    value = TRUE, ignore.case = TRUE
-  )
-  if (length(hits)) hits[[1L]] else NULL
+  survey_weight_column(names(svy))
 }
 
 .pipeline_household_values <- function(pipe, is_log = FALSE) {

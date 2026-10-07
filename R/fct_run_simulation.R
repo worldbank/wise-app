@@ -476,11 +476,7 @@ fct_run_simulation <- function(sw,
 
   # Key loop setup ----
 
-  weight_col_sim <- grep("^weight$|^hhweight$|^wgt$|^pw$",
-    names(svy),
-    value = TRUE, ignore.case = TRUE
-  )[1L]
-  if (is.na(weight_col_sim %||% NA)) weight_col_sim <- NULL
+  weight_col_sim <- survey_weight_column(names(svy))
   wt_detected <- grep("^weight$|^hhweight$|^wgt$|^pw$",
     names(svy),
     value = TRUE, ignore.case = TRUE

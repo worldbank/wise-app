@@ -1451,7 +1451,7 @@ model_robustness_data <- function(ts_tbl, band_q = c(lo = 0.10, hi = 0.90)) {
     )
   centers <- dplyr::group_by(x, .data$scenario) |>
     dplyr::summarise(
-      center = stats::median(.data$model_mean, na.rm = TRUE),
+      center = mean(.data$model_mean, na.rm = TRUE),
       ensemble_lo = stats::quantile(.data$model_mean, band_q[[1L]], na.rm = TRUE),
       ensemble_hi = stats::quantile(.data$model_mean, band_q[[2L]], na.rm = TRUE),
       n_models = dplyr::n_distinct(.data$model_id), .groups = "drop"
@@ -2043,8 +2043,8 @@ echart_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
 
 #' Interactive per-model trajectories with ensemble envelope
 #'
-#' Envelope statistics are the per (scenario, sim_year) median and quantiles
-#' at `ensemble_band_q`. Draws one thin translucent line per model, one bold median
+#' Envelope statistics are the per (scenario, sim_year) equal-weight mean and quantiles
+#' at `ensemble_band_q`. Draws one thin translucent line per model, one bold mean
 #' line per scenario/source, and a custom polygon for the inter-model ribbon.
 #' @noRd
 echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
@@ -2093,7 +2093,7 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
   env_df <- df |>
     dplyr::group_by(dplyr::across(dplyr::all_of(env_grp))) |>
     dplyr::summarise(
-      central = stats::median(.data$value, na.rm = TRUE),
+      central = mean(.data$value, na.rm = TRUE),
       lo = unname(stats::quantile(.data$value, ensemble_band_q[["lo"]], na.rm = TRUE)),
       hi = unname(stats::quantile(.data$value, ensemble_band_q[["hi"]], na.rm = TRUE)),
       n_models = dplyr::n(),
@@ -2177,7 +2177,7 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
     series <- c(series, list(raw))
   }
 
-  # Bold across-model median per scenario/source (legend entry).
+  # Bold across-model mean per scenario/source (legend entry).
   median_groups <- unique(env_df[intersect(c("scenario", "source"), names(env_df))])
   for (i in seq_len(nrow(median_groups))) {
     group <- median_groups[i, , drop = FALSE]
@@ -2196,7 +2196,7 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
       value = list(as.numeric(env$sim_year[[j]]), as.numeric(env$central[[j]])),
       scenario = scn,
       source = if (has_source) as.character(group$source[[1L]]) else NULL,
-      model = "Across-model median",
+      model = "Across-model mean",
       kind = "median"
     ))
     line$z <- 4
@@ -2423,7 +2423,7 @@ echart_exceedance <- function(curves_tbl,
     dplyr::group_by(dplyr::across(dplyr::all_of(grp_cols))) |>
     dplyr::summarise(
       exceed_prob = dplyr::first(.data$exceed_prob),
-      central = stats::median(.data$welfare_val, na.rm = TRUE),
+      central = mean(.data$welfare_val, na.rm = TRUE),
       intermod_lo = unname(stats::quantile(.data$welfare_val,
         ensemble_band_q[["lo"]], na.rm = TRUE
       )),

@@ -51,7 +51,7 @@ make_hist_sim_fixture <- function() {
   )
 }
 
-test_that("only Step 2 expected headlines use equal-model means and align with Step 3", {
+test_that("Step 2 headline and point-range charts share the equal-model-mean centre and align with Step 3", {
   pipe <- function(values, years) list(
     y_point = rep(values, each = 4) + rep(c(-.03, -.01, .01, .03), length(values)),
     sim_year = rep(years, each = 4),
@@ -76,7 +76,8 @@ test_that("only Step 2 expected headlines use equal-model means and align with S
     old_tail <- threshold_table_rv()
     old_curves <- timeseries_curves_rv()
     old_uncertainty <- variance_breakdown_rv()
-    expect_equal(old_bands$value[old_bands$scenario == scenario], 10)
+    # R2-BUG-26: one convention; chart centre = equal-model mean (1, 10, 100).
+    expect_equal(old_bands$value[old_bands$scenario == scenario], 37)
     headline <- headline_bands_rv()
     expect_equal(headline$value[headline$scenario == scenario], 37)
     expect_equal(headline_cards_data_rv()[[1]]$value_native[[2]], 37)
