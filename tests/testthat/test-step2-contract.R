@@ -118,7 +118,7 @@ test_that("Step 2 top-level result contract is stable", {
     c(
       "hist_sim_result", "new_scenarios", "n_keys",
        "total_runs", "t_elapsed", "t_weather", "failures", "n_keys_ok",
-       "payload_mode"
+       "data_quality", "payload_mode"
     )
   )
   expect_type(result$hist_sim_result, "list")

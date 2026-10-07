@@ -115,6 +115,9 @@ test_that("all keys succeeding returns an empty ledger and full provenance", {
 
   expect_length(res$failures, 0L)
   expect_identical(res$n_keys_ok, res$n_keys)
+  # Step 2 reports excluded rows: the tally is on the result.
+  expect_named(res$data_quality, c("n_predictions", "n_na_predictions", "n_na_weight", "n_bad_loading"))
+  expect_gt(res$data_quality$n_predictions, 0)
   # Two requested groups (SSP2 x {mean,hi}, SSP5 x {mean}) -> two scenarios
   expect_setequal(names(res$new_scenarios),
                   c("SSP2-4.5 / 2030-2040", "SSP5-8.5 / 2030-2040"))

@@ -1,3 +1,13 @@
+# Tell the user when rows were left out of the Step 2 results (missing
+# predictions, weights or coefficient loadings). Silent when nothing was.
+.notify_data_quality <- function(dq) {
+  msg <- step2_data_quality_notice(dq)
+  if (!is.null(msg)) {
+    shiny::showNotification(paste("Data check:", msg), type = "warning", duration = 15)
+  }
+  invisible(NULL)
+}
+
 #' 2_01_weathersim UI Function
 #'
 #' @description A shiny Module. Unified sidebar for configuring and running
@@ -1187,6 +1197,7 @@ mod_2_01_weathersim_server <- function(id,
                 "Climate scenario results are ready.", type = "message", duration = 3
               )
             }
+            .notify_data_quality(result$data_quality)
              invisible(TRUE)
            }),
            on_error = session_callback(function(error, job) {
@@ -1426,6 +1437,7 @@ mod_2_01_weathersim_server <- function(id,
             type = "message", duration = 3
           )
         }
+        .notify_data_quality(result$data_quality)
       },
       ignoreInit = TRUE
     )

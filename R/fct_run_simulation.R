@@ -26,6 +26,57 @@
   paste0(ssp_pretty, " / ", year_range[1], "-", year_range[2])
 }
 
+# Step 2 data-quality counts ----
+
+# Add one pipeline's excluded-row counts to the running tally. Missing weights
+# are counted on the historical pipeline only (every member shares them).
+.step2_data_quality_add <- function(dq, pipe, is_hist = FALSE) {
+  dq$n_predictions <- dq$n_predictions + length(pipe$y_point)
+  dq$n_na_predictions <- dq$n_na_predictions + sum(is.na(pipe$y_point))
+  if (isTRUE(is_hist) && !is.null(pipe$weight)) {
+    dq$n_na_weight <- dq$n_na_weight + sum(is.na(pipe$weight))
+  }
+  f <- pipe$F_loading
+  if (is.matrix(f)) {
+    dq$n_bad_loading <- dq$n_bad_loading + sum(!is.finite(rowSums(f)))
+  }
+  dq
+}
+
+#' One-line user notice for excluded rows, or `NULL` when nothing was excluded.
+#' @noRd
+step2_data_quality_notice <- function(dq) {
+  if (!is.list(dq)) {
+    return(NULL)
+  }
+  parts <- character(0)
+  if (isTRUE(dq$n_na_predictions > 0)) {
+    share <- if (isTRUE(dq$n_predictions > 0)) {
+      sprintf(" (%.1f%%)", 100 * dq$n_na_predictions / dq$n_predictions)
+    } else ""
+    parts <- c(parts, sprintf(
+      "%s household-year predictions%s have no value and are left out of the results",
+      format(dq$n_na_predictions, big.mark = ",", scientific = FALSE), share
+    ))
+  }
+  if (isTRUE(dq$n_na_weight > 0)) {
+    parts <- c(parts, sprintf(
+      "%s survey rows with a missing weight are left out",
+      format(dq$n_na_weight, big.mark = ",", scientific = FALSE)
+    ))
+  }
+  if (isTRUE(dq$n_bad_loading > 0)) {
+    parts <- c(parts, sprintf(
+      "%s rows have missing coefficient loadings and are left out of the coefficient uncertainty",
+      format(dq$n_bad_loading, big.mark = ",", scientific = FALSE)
+    ))
+  }
+  if (!length(parts)) {
+    return(NULL)
+  }
+  paste0(paste(parts, collapse = "; "), ".")
+}
+
 # Results-tab display settings the streamed partial tables are computed for.
 # Falls back like the module: unsupported method -> "mean"; poverty line from
 # the outcome metadata (as .results_content_ui()), else 3.00; bandwidth 0.05.
@@ -648,6 +699,12 @@ fct_run_simulation <- function(sw,
   shared_ctx <- NULL
   partial_display <- .step2_resolve_display(display, so, residuals, skip_coef_draws)
 
+  # Data-quality tally (shown to the user after the run): rows the aggregation
+  # will exclude, counted as each pipeline arrives.
+  data_quality <- list(
+    n_predictions = 0, n_na_predictions = 0, n_na_weight = 0, n_bad_loading = 0
+  )
+
   # Phase 3: compute the displayed table with the module's helper and hand it
   # to partial_fn. Never fails the run, except for cancellation.
   emit_partial <- function(kind, label, ordinal, pipes, n_models,
@@ -832,6 +889,7 @@ fct_run_simulation <- function(sw,
       weather_refs[[key]] <<- step2_weather_store_put(weather_store, key, weather_input)
     }
     n_pipeline_completed <<- n_pipeline_completed + 1L
+    data_quality <<- .step2_data_quality_add(data_quality, out, is_hist)
     if (is_hist) {
       n_hist_yrs <<- length(unique(format(weather_input$timestamp, "%Y")))
       hist_sim_result <<- list(
@@ -1154,7 +1212,8 @@ fct_run_simulation <- function(sw,
     t_elapsed       = t_elapsed_total,
     t_weather       = t_weather, # <- expose for UI notification
     failures        = failures, # <- REACT-12 failure ledger
-    n_keys_ok       = n_keys - n_failed
+    n_keys_ok       = n_keys - n_failed,
+    data_quality    = data_quality
   )
   if (identical(weather_storage, "reference")) {
     result$weather_storage <- weather_storage
