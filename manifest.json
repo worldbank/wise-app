@@ -923,6 +923,36 @@
         "Archs": "mice.so.dSYM"
       }
     },
+    "parallelly": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": {
+        "Package": "parallelly",
+        "Version": "1.46.1",
+        "Title": "Enhancing the 'parallel' Package",
+        "Imports": "parallel, tools, utils",
+        "Suggests": "commonmark, base64enc",
+        "VignetteBuilder": "parallelly",
+        "Authors@R": "c(\n        person(\"Henrik\", \"Bengtsson\",\n               role = c(\"aut\", \"cre\", \"cph\"),\n               email = \"henrikb@braju.com\",\n               comment = c(ORCID = \"0000-0002-7579-5165\")),\n        person(\"Mike\", \"Cheng\",\n               role = c(\"ctb\"),\n               email = \"mikefc@coolbutuseless.com\")\n    )",
+        "Description": "Utility functions that enhance the 'parallel' package and support the built-in parallel backends of the 'future' package.  For example, availableCores() gives the number of CPU cores available to your R process as given by the operating system, 'cgroups' and Linux containers, R options, and environment variables, including those set by job schedulers on high-performance compute clusters. If none is set, it will fall back to parallel::detectCores(). Another example is makeClusterPSOCK(), which is backward compatible with parallel::makePSOCKcluster() while doing a better job in setting up remote cluster workers without the need for configuring the firewall to do port-forwarding to your local computer.",
+        "License": "LGPL (>= 2.1)",
+        "LazyLoad": "TRUE",
+        "ByteCompile": "TRUE",
+        "URL": "https://parallelly.futureverse.org,\nhttps://github.com/futureverse/parallelly",
+        "BugReports": "https://github.com/futureverse/parallelly/issues",
+        "Language": "en-US",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.3",
+        "NeedsCompilation": "yes",
+        "Packaged": "2026-01-07 07:32:26 UTC; hb",
+        "Author": "Henrik Bengtsson [aut, cre, cph] (ORCID:\n    <https://orcid.org/0000-0002-7579-5165>),\n  Mike Cheng [ctb]",
+        "Maintainer": "Henrik Bengtsson <henrikb@braju.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2026-01-08 06:10:23 UTC",
+        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-01-08 07:02:50 UTC; unix",
+        "Archs": "parallelly.so.dSYM"
+      }
+    },
     "promises": {
       "Source": "CRAN",
       "Repository": "https://cran.rstudio.com",
@@ -4781,7 +4811,7 @@
       "checksum": "b544c98e7d55c33a6c62b5c905878c65"
     },
     "DESCRIPTION": {
-      "checksum": "5f0a51b3b2caf0c15bd6759e8d81df4e"
+      "checksum": "81276fbf97a37de2a8c1b28be30dc678"
     },
     "inst/app/_brand.yml": {
       "checksum": "66580c59f1e8321f5a6ab4dc5565cd0a"
@@ -4835,13 +4865,13 @@
       "checksum": "fb332cd6d7ae6db6e4a60068f803c6f9"
     },
     "NAMESPACE": {
-      "checksum": "6c6e405a3b5ffbca797d9e91590462a3"
+      "checksum": "e717c076540f08bd953b83858d648a79"
     },
     "R/_disable_autoload.R": {
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
     },
     "R/app_config.R": {
-      "checksum": "cd3e9e13f7f740e3501d28a4255ef68e"
+      "checksum": "75cbf80800a8fdd824db8fd3ee195a35"
     },
     "R/app_server.R": {
       "checksum": "39d68916285424b97faf9d0f8ea887fa"
@@ -4850,19 +4880,19 @@
       "checksum": "8fb3f7708018801cb12b7404d886b60a"
     },
     "R/fct_aggregation_delta.R": {
-      "checksum": "86f332f7db973b3d3c6f7cf793628af0"
+      "checksum": "ac296a2483853380acf0c7413867c427"
     },
     "R/fct_aggregation_kernel.R": {
       "checksum": "8ef9fcfca11ecd8b47bd67b317221b9b"
     },
     "R/fct_aggregation.R": {
-      "checksum": "b6cb64f36f4cf0ac6c75008b26cdcfea"
+      "checksum": "e6ca01aeb5e6a960a97c37821e0f697e"
     },
     "R/fct_connection.R": {
       "checksum": "f29572b99b101ccb713cb787d584fba4"
     },
     "R/fct_decomposition_summary.R": {
-      "checksum": "d0600e3b91096f287253070814fd5c08"
+      "checksum": "1df72ba17dffefd4121120f855819c9a"
     },
     "R/fct_export.R": {
       "checksum": "53e627fc730961d384e966282d66560b"
@@ -4871,7 +4901,7 @@
       "checksum": "1e707320709e9cc85449692d3b39a24e"
     },
     "R/fct_get_weather.R": {
-      "checksum": "7fc4eafcc1801fe0a1efd2f8e8a07704"
+      "checksum": "52d5169a9ccfed03cc6a3a7fa97530c2"
     },
     "R/fct_hexmap.R": {
       "checksum": "02f00deb5fa9f3b813c9b1f9a58a323e"
@@ -4901,19 +4931,19 @@
       "checksum": "55559006d37aa75e6bfcddbb30054017"
     },
     "R/fct_policy_decompose.R": {
-      "checksum": "098d6cc0b8d6c753b8741ee62bd20a31"
+      "checksum": "2767f1254e83ab437a06da9e06772ab7"
     },
     "R/fct_policy_diagnostics.R": {
-      "checksum": "21204c2390badae629a0d71592ee2cd0"
+      "checksum": "9093e9b397bb1ac5c77b4a53c21737c0"
     },
     "R/fct_policy_metric_decompose.R": {
-      "checksum": "2d4a40c7eea1270e4fd91fab38918d17"
+      "checksum": "544e597f2309f1095828192591303562"
     },
     "R/fct_policy_sim_compare.R": {
-      "checksum": "09a5da2c1736bb5c68f1f86d3a1f0595"
+      "checksum": "ca047b292847b11640f26c58a962560f"
     },
     "R/fct_policy_sim.R": {
-      "checksum": "bb8ed4316d3a062d48e31f068600d80f"
+      "checksum": "06a7fec668b6975439af529a13581222"
     },
     "R/fct_predict_outcomes.R": {
       "checksum": "f439f085a65306f9b099dd14719f1e35"
@@ -4925,10 +4955,10 @@
       "checksum": "bb9d65bb139517e69f7fbcf29b129f54"
     },
     "R/fct_results.R": {
-      "checksum": "0bff265193d804c0708f838504b9178b"
+      "checksum": "bc15ebbec6d738cb784fa5a1fc866ef4"
     },
     "R/fct_rif_sim.R": {
-      "checksum": "2db60e90293bfddda70b6ca0fa6b76bf"
+      "checksum": "170743ed615a3f0dbb10b8312276d751"
     },
     "R/fct_run_simulation.R": {
       "checksum": "fa50a2516db079ae061848affe0c6b58"
@@ -4937,25 +4967,25 @@
       "checksum": "fd9166bd2b9dd590f5deb3b82185df53"
     },
     "R/fct_sim_compare.R": {
-      "checksum": "19b30a0e1aaaaaa3dad44eea714715aa"
+      "checksum": "94d1c23b8747cd07075f8ff2970fb055"
     },
     "R/fct_sim_diag.R": {
       "checksum": "23548950372a810124d78cef91bb4558"
     },
     "R/fct_simulations.R": {
-      "checksum": "36ea2377e9dceea9f3c1915b66fdcbf4"
+      "checksum": "580e4e22b5797a6ebf105660c26e74e4"
     },
     "R/fct_step1_headline.R": {
       "checksum": "474fab76d9565895ede55b35ce81b554"
     },
     "R/fct_step2_async.R": {
-      "checksum": "9b4b8f24ee3e5ab172283f39f53f2f64"
+      "checksum": "ddccba1ae412c3fd6d63c3442d79d988"
     },
     "R/fct_step2_compute.R": {
       "checksum": "0434f9a1e238b1d4e18ba750e742b823"
     },
     "R/fct_step2_payload.R": {
-      "checksum": "c3ee6dcb68c9260f9cb609e22f9d8b65"
+      "checksum": "856f9c1679a475737e1a677cb92f302b"
     },
     "R/fct_surveystats.R": {
       "checksum": "1803d57eda1b89de105debd33215101f"
@@ -4982,16 +5012,16 @@
       "checksum": "4a3b59bed0148bc41a91ac6a39b47e35"
     },
     "R/mod_1_02_surveystats.R": {
-      "checksum": "b7b0d6b92aa60f73ef5e9e4e76f2a341"
+      "checksum": "790a213d8ba8415663c745216d7fdc78"
     },
     "R/mod_1_03_outcome.R": {
-      "checksum": "961fe9b8be0fa28b715b587016b5d2b5"
+      "checksum": "4fdbf8ff7ca46fda38a99e2f9ddc88dd"
     },
     "R/mod_1_04_weather.R": {
       "checksum": "02c1dead545c9108131997cbe43023de"
     },
     "R/mod_1_05_weatherstats.R": {
-      "checksum": "f2b1f182497b05acbd4393443ebf1d64"
+      "checksum": "38ec72332bf61434f1280b5f480747fb"
     },
     "R/mod_1_06_model.R": {
       "checksum": "a30cdfd91c86a1692422701ba1122629"
@@ -5009,7 +5039,7 @@
       "checksum": "80c99eff2c6240fc75bfe8d6348b6f3f"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "2865258ee7dbbe91f8b7ec2541a84e00"
+      "checksum": "3579e03b4d4e167923b0d898b9e6db4d"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "b95a856b762fc8ec4930c51c8f23d75e"
@@ -5018,7 +5048,7 @@
       "checksum": "1635bad43e613277099a7e78d0d79488"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "93d89facd5ab43241dda987d592d7ce9"
+      "checksum": "3ee8d80902f80c20589d73d0e2e753cd"
     },
     "R/mod_3_02_infra.R": {
       "checksum": "e04dbcb6082a3498ed2cfa7c4e17b5f2"
@@ -5039,7 +5069,7 @@
       "checksum": "1498b5a7fc65e6db1f3925310d89b883"
     },
     "R/mod_3_08_diagnostics.R": {
-      "checksum": "52c16e26326e9d4cb63cfe828a30b6a9"
+      "checksum": "d53da8f896857f418850aeb84f73556e"
     },
     "R/mod_3_09_decomposition.R": {
       "checksum": "89465ecb0bfae87e0860ecbfd1f4eba7"
@@ -5051,7 +5081,7 @@
       "checksum": "6729f575d994859c1ff72617f5ded89d"
     },
     "R/run_app.R": {
-      "checksum": "142359a416facef5cdcdc67438348db0"
+      "checksum": "d24d77137e681543456f5e0d978721dc"
     },
     "R/utils_log.R": {
       "checksum": "ac1c5dc4c4003eadaaabde2eb3e623cd"
@@ -5066,7 +5096,7 @@
       "checksum": "cb43cbd6c94d4daf359f4619b4b8a900"
     },
     "R/utils_ui.R": {
-      "checksum": "78466126fa546662a7a22d6c1bcd5d14"
+      "checksum": "e2454110e8dd794233b4a9e679c2c04a"
     },
     "src/RcppExports.cpp": {
       "checksum": "d86839517cba2338b433402e7b916ac3"
