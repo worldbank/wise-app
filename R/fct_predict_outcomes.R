@@ -18,10 +18,13 @@
 #' For logistic models the function preserves a meaningful \code{.resid} column
 #' regardless of engine:
 #' \itemize{
-#'   \item \strong{parsnip/glm}: \code{broom::augment} returns deviance
-#'     residuals. \code{.resid} is passed through directly.
-#'   \item \strong{fixest/feglm}: deviance residuals are extracted via
-#'     \code{residuals(model, type = "deviance")} and stored in
+#'   \item \strong{parsnip/glm}: if \code{broom::augment} returns a
+#'     \code{.resid} column it is passed through directly; otherwise the
+#'     response residual (observed 0/1 minus predicted probability) is
+#'     computed from \code{train_data}.
+#'   \item \strong{fixest/feglm}: response residuals (observed minus
+#'     predicted probability) are extracted via
+#'     \code{residuals(model, type = "response")} and stored in
 #'     \code{train_aug$.resid}.
 #' }
 #' When \code{residuals != "none"}, these residuals are used for simulation.
@@ -134,10 +137,6 @@ predict_outcome <- function(model,
   is_parsnip_logistic <- is_parsnip &&
     inherits(model$spec, c("logistic_reg", "multinom_reg"))
 
-  # For fixest: distinguish feglm (logistic) vs feols (linear)
-  is_fixest_logistic <- is_fixest &&
-    inherits(model, "feglm")
-
   # 2. Compute fitted values on newdata  -> stored in .fitted ----
 
   if (is_fixest) {
@@ -210,21 +209,11 @@ predict_outcome <- function(model,
     if (is_fixest) {
       # fixest stores residuals internally; extract them and bind to train_data.
       # For feols:  residuals() returns OLS residuals (observed - fitted).
-      # For feglm:  residuals(, type = "deviance") are the canonical residuals
-      #             used for diagnostic purposes.  For simulation we keep them
-      #             so the caller can choose how to use them.
-      resid_type <- if (is_fixest_logistic) "deviance" else "response"
-      resid_vec <- tryCatch(
-        stats::residuals(model, type = resid_type),
-        error = function(e) {
-          warning(sprintf(
-            "Could not extract '%s' residuals from fixest model (%s); ",
-            resid_type, conditionMessage(e),
-            "falling back to response residuals."
-          ))
-          stats::residuals(model, type = "response")
-        }
-      )
+      # For feglm:  response residuals (observed - predicted probability), the
+      #             scale on which they are added to .fitted below. A feglm
+      #             object has class "fixest" only, so feols and feglm are
+      #             handled identically.
+      resid_vec <- stats::residuals(model, type = "response")
 
       fitted_train <- tryCatch(
         stats::predict(model, newdata = train_data, type = "response"),
@@ -277,7 +266,10 @@ predict_outcome <- function(model,
         outcome_col <- outcome_col[outcome_col %in% names(train_aug)]
 
         if (length(outcome_col) == 1L) {
-          obs <- as.numeric(train_aug[[outcome_col]])
+          obs <- train_aug[[outcome_col]]
+          # A factor outcome is coded 0/1 by its second level; as.numeric()
+          # would give the level codes 1/2 and shift every residual by 1.
+          obs <- if (is.factor(obs)) as.numeric(obs == levels(obs)[2L]) else as.numeric(obs)
           train_aug <- dplyr::mutate(train_aug, .resid = obs - .data$.fitted)
         } else {
           warning(

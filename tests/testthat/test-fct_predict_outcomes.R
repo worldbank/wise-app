@@ -126,7 +126,7 @@ test_that("fixest: unseen FE level keeps its row with NA prediction", {
   expect_true(is.na(out$.fitted[[2]]))
 })
 
-test_that("fixest feglm: probabilities, deviance residuals, explicit engine", {
+test_that("fixest feglm: probabilities, response residuals, explicit engine", {
   tr <- make_po_data()
   fit <- fixest::feglm(z ~ x | g, data = tr, family = "binomial", notes = FALSE)
   nd <- tr[1:6, c("id", "x", "g")]
@@ -135,9 +135,7 @@ test_that("fixest feglm: probabilities, deviance residuals, explicit engine", {
   expect_true(all(out$.fitted > 0 & out$.fitted < 1))
 
   o2 <- predict_outcome(fit, nd, residuals = "original", id = "id", train_data = tr)
-  # fixest::feglm objects have class "fixest" only, so the `feglm` check never
-  # matches and response residuals (observed - probability) are used, not the
-  # deviance residuals the roxygen text describes.
+  # Response residuals (observed - probability), the scale added to .fitted.
   expect_equal(o2$.residual, tr$z[1:6] - out$.fitted)
 })
 
@@ -171,6 +169,14 @@ test_that("parsnip logistic: .pred_1 is the probability and a residual draw is m
   )
   expect_equal(nrow(o2), 6L)
   expect_false(anyNA(o2$.residual))
+
+  # Residual is observed 0/1 minus probability, not factor codes (1/2) minus it.
+  o3 <- predict_outcome(fit, tr[c("id", "x")],
+    residuals = "original", id = "id", train_data = tr[c("id", "x", "zf")]
+  )
+  p_all <- unname(predict(glm(z ~ x, binomial, tr), tr, type = "response"))
+  expect_equal(o3$.residual, tr$z - p_all, tolerance = 1e-8)
+  expect_true(all(abs(o3$.residual) < 1))
 })
 
 test_that("parsnip logistic with several non-newdata columns falls back to centred-fitted residuals", {
