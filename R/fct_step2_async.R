@@ -923,7 +923,9 @@
       !identical(as.numeric(file.info(result_file)$size), as.numeric(manifest$result_bytes))) {
     stop("Step 2 result artifact is missing.", call. = FALSE)
   }
-  result <- qs2::qs_read(result_file, nthreads = .WISE_STEP2_QS2_THREADS, validate_checksum = TRUE)
+  result <- step2_unshare_constants(
+    qs2::qs_read(result_file, nthreads = .WISE_STEP2_QS2_THREADS, validate_checksum = TRUE)
+  )
   if (!is.list(result) || !is.list(result$hist_sim_result) ||
       !is.list(result$.run) || !identical(result$.run$id, job$id) ||
       !identical(result$.run$schema, 1L) ||
@@ -1107,7 +1109,8 @@ step2_async_worker <- function(snapshot,
   tmp_result <- paste0(result_file, ".tmp")
   checkpoint_fn()
   event_fn(list(stage = "publish", status = "started", phase = "writing_result"))
-  qs2::qs_save(computed$result, tmp_result, nthreads = .WISE_STEP2_QS2_THREADS)
+  qs2::qs_save(step2_share_constants(computed$result), tmp_result,
+    nthreads = .WISE_STEP2_QS2_THREADS)
   lock <- filelock::lock(lock_file, timeout = Inf)
   on.exit(.wise_step2_async_unlock(lock), add = TRUE)
   checkpoint_fn()

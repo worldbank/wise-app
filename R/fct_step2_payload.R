@@ -661,6 +661,88 @@ compact_step2_result <- function(result,
   result
 }
 
+# Artifact-time sharing of household-constant vectors (R2-PERF-01) ----
+# Every pipeline of a Step 2 result repeats the same household-constant vectors
+# (id_vec, weight, svy_row_id, sim_year and the exposure row maps). R's
+# serialisation does not preserve sharing, so each copy is written to the
+# artifact and materialised again after the read. Writing each distinct vector
+# once and re-sharing it on read keeps the result bit-identical while cutting
+# artifact size and post-read memory; consumers see the usual structure.
+.STEP2_SHARED_PIPE_FIELDS <- c("id_vec", "weight", "svy_row_id", "sim_year")
+.STEP2_SHARED_EXPOSURE_FIELDS <- c("row_index", "prediction_row_id")
+.STEP2_SHARED_MIN_LENGTH <- 1000L
+
+step2_share_constants <- function(result) {
+  if (!is.list(result)) return(result)
+  store <- list()
+  intern <- function(x) {
+    for (i in seq_along(store)) if (identical(store[[i]], x)) return(i)
+    store[[length(store) + 1L]] <<- x
+    length(store)
+  }
+  shareable <- function(x) is.atomic(x) && length(x) >= .STEP2_SHARED_MIN_LENGTH
+  share_pipe <- function(p) {
+    if (!is.list(p)) return(p)
+    for (f in .STEP2_SHARED_PIPE_FIELDS) {
+      if (shareable(p[[f]])) {
+        p[[f]] <- structure(intern(p[[f]]), class = "wiseapp_shared_ref")
+      }
+    }
+    ex <- p$weather_exposure
+    if (is.list(ex) && identical(ex$schema, 2L)) {
+      for (f in .STEP2_SHARED_EXPOSURE_FIELDS) {
+        if (shareable(ex[[f]])) {
+          ex[[f]] <- structure(intern(ex[[f]]), class = "wiseapp_shared_ref")
+        }
+      }
+      p$weather_exposure <- ex
+    }
+    p
+  }
+  if (is.list(result$hist_sim_result)) {
+    result$hist_sim_result$pipeline <- share_pipe(result$hist_sim_result$pipeline)
+  }
+  if (!is.null(result$new_scenarios)) {
+    result$new_scenarios <- lapply(result$new_scenarios, function(s) {
+      if (is.list(s) && is.list(s$pipelines)) s$pipelines <- lapply(s$pipelines, share_pipe)
+      s
+    })
+  }
+  result$.shared_constants <- store
+  result
+}
+
+step2_unshare_constants <- function(result) {
+  store <- if (is.list(result)) result$.shared_constants else NULL
+  if (is.null(store)) return(result)
+  result$.shared_constants <- NULL
+  restore <- function(x) if (inherits(x, "wiseapp_shared_ref")) store[[unclass(x)]] else x
+  unshare_pipe <- function(p) {
+    if (!is.list(p)) return(p)
+    for (f in .STEP2_SHARED_PIPE_FIELDS) {
+      if (inherits(p[[f]], "wiseapp_shared_ref")) p[[f]] <- restore(p[[f]])
+    }
+    ex <- p$weather_exposure
+    if (is.list(ex)) {
+      for (f in .STEP2_SHARED_EXPOSURE_FIELDS) {
+        if (inherits(ex[[f]], "wiseapp_shared_ref")) ex[[f]] <- restore(ex[[f]])
+      }
+      p$weather_exposure <- ex
+    }
+    p
+  }
+  if (is.list(result$hist_sim_result)) {
+    result$hist_sim_result$pipeline <- unshare_pipe(result$hist_sim_result$pipeline)
+  }
+  if (!is.null(result$new_scenarios)) {
+    result$new_scenarios <- lapply(result$new_scenarios, function(s) {
+      if (is.list(s) && is.list(s$pipelines)) s$pipelines <- lapply(s$pipelines, unshare_pipe)
+      s
+    })
+  }
+  result
+}
+
 .results_defensive_copy <- function(value) {
   if (is.null(value)) {
     return(NULL)
