@@ -99,7 +99,7 @@ Goal: correct policy results. Keep separate from B3 so output changes are attrib
 | R2-BUG-13 | M | S-M | ☑ | NA outcome/covariate rows: restrict to referenced rows, treat NA as untreated, report count | 14121f1: NA baseline outcome/lever delta/transfer rows get zero deltas (untreated); n_na_untreated returned by apply_policy_delta_to_baseline() and shown as notification. Before: decomposition errored (nonfinite main channel); after: ok, other rows equal clean run. Only decomposition path checked, not a full end-to-end NA-welfare Step 3. |
 | R2-BUG-14 | M | S | ☑ | Block Step 3 when Step 2 is stale, or snapshot `mf` into `hist_sim` | bce425f: Step 3 blocked (run + prerequisite banner) when model_fit()$.sig differs from hist_sim$.sig$fit_sig; legacy results without a signature not blocked; test-step3-stale-model. Gap: seed not in fit signature (ranger/xgboost seed-only refit not caught; needs mod_1_07 .fit_sig_from_live). |
 | R2-BUG-17 | L | S | ☑ | `idx[sample.int(length(idx), k)]` in all nine places | 6a71600: idx[sample.int(length(idx), k)] at all 9 sites; test-policy-sample-single. |
-| R2-BUG-26 | L | S | ☐ | Weighted ECDF in legacy decile decomposition; weighted policy input diagnostics; consistent ensemble ranking | |
+| R2-BUG-26 | L | S | ◐ | Weighted ECDF in legacy decile decomposition; weighted policy input diagnostics; consistent ensemble ranking | Done: weighted ECDF in legacy decile decomposition (`.weighted_ecdf_at`), weighted `policy_input_diagnostics`. Left: ensemble band/centre ranking consistency (needs a spec). |
 
 ## B5 - Robustness, CI and test hygiene (§10.1-10.3)
 
@@ -180,15 +180,15 @@ Triage each: fix, or mark `✗` with a reason. Group by file to keep diffs small
 | CR-BUG-15 | L | S | ☑ | Move S3 methods out of module closure | 073f290: methods at top level, registered as S3 in NAMESPACE (needed for testServer dispatch); laziness test. |
 | CR-BUG-17 | L | S | ☑ | `ORDER BY` before `head(1)` for H3 resolution | 6ebfcb5: .h3_resolution() over all rows, errors on mixed resolutions; test. CMIP6 path still falls back silently to target resolution on error (flag). |
 | CR-BUG-18 | L | S | ☑ | Consistent `skip_coef_draws` flag; safe env parsing | |
-| CR-BUG-19 | L | S | ◐ | `detectCores()` -> `availableCores()` | mod_1_06 fixed earlier (6ee04f3). Left: fct_get_weather.R:53 detectCores (NA-safe, not container-aware); parallelly installed but undeclared. |
+| CR-BUG-19 | L | S | ✔ | `detectCores()` -> `availableCores()` | `.wx_available_cpu_count()` uses `parallelly::availableCores()` (now in Suggests, base fallback). |
 | R2-BUG-18 | L | S | ☑ | `withr::with_seed()`; `tempfile()` ids | 1c0d9db: withr::with_seed jitter in utils_mod_1_helpers.R; test. Left: runif ids in fct_step2_async.R:130, fct_step2_payload.R:403. Wave 2: 792efe2 async job and lease ids from basename(tempfile()); .Random.seed unchanged test. |
 | R2-BUG-19 | L | S | ☑ | RIF coefficient plot: add covariance term | 3cd6bc3: sqrt(w'Vw) from RIF sub-fit VCV (diag fallback); test. Pre-existing: echart_weather_effect_plot RIF poly curve uses x_mean 0 and misses I(I(temp^2)) term (linear only). |
 | R2-BUG-20 | L | S | ☑ | NA-safe role-flag comparisons | 1edd698: %in% NA-safe role filters (model_select, fit_model Lasso pool, surveystats); model card role counts; tests. |
 | R2-BUG-21 | L | S | ☑ | Weather-load short-circuit must consider outcome | 9037208: outcome in mod_1_05 short-circuit key (re-runs weather load, ~1.5 s warm); test. |
 | R2-BUG-22 | L | S | ☑ | Bin ordering regex: handle minus signs | 1098d5f: signed/-Inf bin ordering regex; fixed regmatches misalignment; test. |
 | R2-BUG-23 | L | S | ☑ | Pre-2015 period starts; accurate artifact-cap error | e3a5a9c: period sliders start at 2015, pre-2015 periods excluded with warning; Step 2 result over 2 GB gives a clear size-cap error; tests. |
-| R2-BUG-24 | L | S | ☐ | Contrast SD residual variance; fallback error scaling; incidence weights; residual-mode checks | |
-| R2-BUG-25 | L | S | ☐ | `batch/02_weather_stats.R:218` signature | Same as RED-06 task |
+| R2-BUG-24 | L | S | ◐ | Contrast SD residual variance; fallback error scaling; incidence weights; residual-mode checks | Done: contrast SD keeps residual variance; fallback coefficient SD no longer divided by years; single/multi residual-mode fallback aligned. Left: incidence weight column is still regex-guessed (needs the survey weight name passed through). |
+| R2-BUG-25 | L | S | ✔ | `batch/02_weather_stats.R:218` signature | Fixed with RED-06 row (batch/02 call + smoke tests). |
 | CR-PERF-07 | M | M | ☐ | Slim `model_fit` | Overlaps R2-PERF-02 |
 | Info: LASSO leakage | – | – | – | Checked, not borne out on real metadata; keep a central exclusion list anyway | |
 | CR-BUG-09 | – | – | – | Fixed before this review | |

@@ -49,6 +49,22 @@ get_golem_config <- function(
   if (is.na(value) || value < 1L) NA_integer_ else value
 }
 
+#' Number of CPU cores this process may use.
+#'
+#' `WISEAPP_THREADS` when set, otherwise `parallelly::availableCores(omit = 1)`,
+#' which respects cgroup and scheduler limits that `parallel::detectCores()`
+#' ignores and leaves one core for the Shiny process (never less than 1).
+#' @noRd
+.wise_cpu_count <- function() {
+  n <- .env_positive_int("WISEAPP_THREADS")
+  if (is.na(n)) {
+    n <- tryCatch(as.integer(parallelly::availableCores(omit = 1L)[[1L]]),
+      error = function(e) NA_integer_
+    )
+  }
+  if (length(n) != 1L || is.na(n) || n < 1L) 1L else n
+}
+
 #' Cap the compute threads of fixest and collapse in this process.
 #'
 #' Controlled by `WISEAPP_THREADS`. Unset leaves the package defaults, which use

@@ -965,7 +965,7 @@ detect_manipulated_vars <- function(baseline_svy, policy_svy,
 
 #' Build a Diagnostics Summary for Policy-Adjusted Inputs
 #'
-#' Computes mean / sd / n_nonNA for each covariate in both the baseline and
+#' Computes (survey-weighted when a `weight` column exists) mean / sd for each covariate in both the baseline and
 #' policy-adjusted survey frames, so the Step 3 Results tab can display
 #' what changed.
 #'
@@ -997,16 +997,38 @@ policy_input_diagnostics <- function(baseline_svy, policy_svy, vars = NULL) {
     return(NULL)
   }
 
+  w <- if ("weight" %in% names(baseline_svy)) {
+    suppressWarnings(as.numeric(baseline_svy[["weight"]]))
+  } else {
+    NULL
+  }
+  if (!is.null(w) && length(w) != nrow(policy_svy)) w <- NULL
+
+  .wtd_mean <- function(x, w) {
+    ok <- is.finite(x) & (is.null(w) | is.finite(w %||% 1) & (w %||% 1) > 0)
+    if (!any(ok)) return(NaN)
+    if (is.null(w)) mean(x[ok]) else stats::weighted.mean(x[ok], w[ok])
+  }
+  .wtd_sd <- function(x, w) {
+    ok <- is.finite(x) & (is.null(w) | is.finite(w %||% 1) & (w %||% 1) > 0)
+    if (sum(ok) < 2L) return(NA_real_)
+    if (is.null(w)) return(stats::sd(x[ok]))
+    m <- stats::weighted.mean(x[ok], w[ok])
+    sqrt(sum(w[ok] * (x[ok] - m)^2) / sum(w[ok]) * sum(ok) / (sum(ok) - 1))
+  }
+
   rows <- lapply(vars, function(v) {
     xb <- suppressWarnings(as.numeric(baseline_svy[[v]]))
     xp <- suppressWarnings(as.numeric(policy_svy[[v]]))
+    mb <- .wtd_mean(xb, w)
+    mp <- .wtd_mean(xp, w)
     data.frame(
       variable = v,
-      mean_baseline = mean(xb, na.rm = TRUE),
-      mean_policy = mean(xp, na.rm = TRUE),
-      delta_mean = mean(xp, na.rm = TRUE) - mean(xb, na.rm = TRUE),
-      sd_baseline = stats::sd(xb, na.rm = TRUE),
-      sd_policy = stats::sd(xp, na.rm = TRUE),
+      mean_baseline = mb,
+      mean_policy = mp,
+      delta_mean = mp - mb,
+      sd_baseline = .wtd_sd(xb, w),
+      sd_policy = .wtd_sd(xp, w),
       stringsAsFactors = FALSE
     )
   })

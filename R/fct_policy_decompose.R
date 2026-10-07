@@ -19,6 +19,29 @@
 
 # Shared helpers ----
 
+
+#' Weighted empirical CDF evaluated at each observation
+#'
+#' Right-continuous weighted ECDF: the weight share of observations with a
+#' value less than or equal to each `y[i]`. Non-finite or non-positive weights
+#' count as zero; with no positive weight the unweighted ECDF is used.
+#' @noRd
+.weighted_ecdf_at <- function(y, w = NULL) {
+  n <- length(y)
+  w <- if (is.null(w)) rep(1, n) else suppressWarnings(as.numeric(w))
+  w[!is.finite(w) | w < 0] <- 0
+  if (sum(w) <= 0) w <- rep(1, n)
+  ord <- order(y)
+  cw <- cumsum(w[ord]) / sum(w)
+  ys <- y[ord]
+  # Ties share the cumulative weight of their last member.
+  last_of_tie <- c(ys[-1L] != ys[-n], TRUE)
+  tie_cw <- cw[last_of_tie]
+  out <- numeric(n)
+  out[ord] <- tie_cw[cumsum(c(TRUE, ys[-1L] != ys[-n]))]
+  out
+}
+
 #' Compute covariate deltas between baseline and policy survey data
 #'
 #' @param svy_baseline Baseline survey data frame.
@@ -1260,10 +1283,11 @@ decompose_policy_effect <- function(svy_baseline,
     names(svy_baseline),
     value = TRUE, ignore.case = TRUE
   )[1]
+  row_weight <- if (!is.na(weight_col)) svy_baseline[[weight_col]] else rep(1, n)
 
   data.frame(
     id               = seq_len(n),
-    weight           = if (!is.na(weight_col)) svy_baseline[[weight_col]] else rep(1, n),
+    weight           = row_weight,
     tau_i_pre        = channels$tau_i_pre,
     tau_i_post       = channels$tau_i_post,
     decile           = pmin(pmax(ceiling(channels$tau_i_pre * 10), 1L), 10L),
@@ -1450,13 +1474,14 @@ decompose_policy_effect <- function(svy_baseline,
     names(svy_baseline),
     value = TRUE, ignore.case = TRUE
   )[1]
+  row_weight <- if (!is.na(weight_col)) svy_baseline[[weight_col]] else rep(1, n)
 
   data.frame(
     id               = seq_len(n),
-    weight           = if (!is.na(weight_col)) svy_baseline[[weight_col]] else rep(1, n),
+    weight           = row_weight,
     tau_i_pre        = NA_real_,
     tau_i_post       = NA_real_,
-    decile           = pmin(pmax(ceiling(stats::ecdf(y_baseline)(y_baseline) * 10), 1L), 10L),
+    decile           = pmin(pmax(ceiling(.weighted_ecdf_at(y_baseline, row_weight) * 10), 1L), 10L),
     sp_eligible      = sp_transfer > 0,
     delta_main       = delta_main,
     delta_sp         = delta_sp,

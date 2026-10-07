@@ -293,7 +293,9 @@ paired_effect_summary <- function(effect_tbl,
       g <- Reduce(`+`, gradients) / nrow(x)
       sqrt(sum(g * g, na.rm = TRUE))
     } else {
-      sqrt(mean(x$effect_sd^2, na.rm = TRUE) / max(nrow(x), 1L))
+      # Coefficient error is shared by every year of a model, so it does not
+      # shrink with the number of years.
+      sqrt(mean(x$effect_sd^2, na.rm = TRUE))
     }
     tibble::tibble(
       model_id = x$model_id[[1L]],

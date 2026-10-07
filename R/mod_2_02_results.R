@@ -1426,7 +1426,15 @@ mod_2_02_results_server <- function(id,
           next
         }
         F_diff <- sweep(F_mat, 2L, F_ref, "-")
-        tbl$value_all_sd[[k]] <- sqrt(rowSums(F_diff * F_diff))
+        # value_all_sd is sqrt(var_coef + var_resid). The contrast replaces
+        # only the coefficient part; residual variance of the scenario stays.
+        sd_level <- as.numeric(tbl$value_all_sd[[k]])
+        var_resid <- if (length(sd_level) == nrow(F_mat)) {
+          pmax(sd_level^2 - rowSums(F_mat * F_mat), 0)
+        } else {
+          0
+        }
+        tbl$value_all_sd[[k]] <- sqrt(rowSums(F_diff * F_diff) + var_resid)
       }
       tbl
     }

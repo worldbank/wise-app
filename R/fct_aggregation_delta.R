@@ -727,7 +727,8 @@ aggregate_pipeline_per_year_multi <- function(pipe,
   train_aug <- context$train_aug
   id_col <- context$id_col
   res_mode <- residuals %||% "original"
-  if (is.null(train_aug) && !identical(res_mode, "none")) {
+  if ((is.null(train_aug) || !".resid" %in% names(train_aug)) &&
+      !identical(res_mode, "none")) {
     res_mode <- "none"
   }
 

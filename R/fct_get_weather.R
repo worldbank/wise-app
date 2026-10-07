@@ -55,8 +55,7 @@ WISEAPP_WX_ROUND_DIGITS <- 5L
   if (is.finite(configured)) {
     return(max(1L, floor(configured)))
   }
-  detected <- tryCatch(parallel::detectCores(logical = TRUE), error = function(e) NA_integer_)
-  if (length(detected) != 1L || !is.finite(detected)) 1L else max(1L, as.integer(detected))
+  .wise_cpu_count()
 }
 
 .wx_round_weather_values <- function(df, vars, digits = WISEAPP_WX_ROUND_DIGITS) {
