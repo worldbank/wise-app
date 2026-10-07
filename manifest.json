@@ -4603,7 +4603,7 @@
       "checksum": "a71cc88580fefab7e9ea73716bcb2736"
     },
     "R/fct_run_simulation.R": {
-      "checksum": "04439efc5ec32a7e076434b66ed0b445"
+      "checksum": "50ca5b1c3e89f83e418a0d2721e89400"
     },
     "R/fct_sample.R": {
       "checksum": "fd40e70126abdf8fe64c2204499b84fc"
@@ -4648,28 +4648,28 @@
       "checksum": "2b2d44992f3ea77c9156cef2dbe67536"
     },
     "R/mod_0_overview.R": {
-      "checksum": "47225a9ec312b2e4d93e6cad9fff2690"
+      "checksum": "2a050ff71774da1819c41d7c32a7eda9"
     },
     "R/mod_1_01_sample.R": {
       "checksum": "6b0232f5579a6e8e1ac7f37c9806c697"
     },
     "R/mod_1_02_surveystats.R": {
-      "checksum": "790a213d8ba8415663c745216d7fdc78"
+      "checksum": "9aa002c9e6c347b12fb6552ab4fe0c15"
     },
     "R/mod_1_03_outcome.R": {
-      "checksum": "4fdbf8ff7ca46fda38a99e2f9ddc88dd"
+      "checksum": "c9fdbd72247b61b65ee392a071eacc5b"
     },
     "R/mod_1_04_weather.R": {
       "checksum": "02c1dead545c9108131997cbe43023de"
     },
     "R/mod_1_05_weatherstats.R": {
-      "checksum": "38ec72332bf61434f1280b5f480747fb"
+      "checksum": "906bcff78c4eda881d9adb02be6879a6"
     },
     "R/mod_1_06_model.R": {
-      "checksum": "ce1c7ce103ddf3ffb76c8529a6d2fe65"
+      "checksum": "f0bc0921ae220df5bcf9c5fbb50c94a7"
     },
     "R/mod_1_07_results.R": {
-      "checksum": "19120dff0e394e2bfe1c9081e2af3c69"
+      "checksum": "d077dd398f34f09b3ae2af596bf29cb7"
     },
     "R/mod_1_08_modelfit.R": {
       "checksum": "900d712362d93cd3a39cd61b33fcc3bf"
@@ -4678,7 +4678,7 @@
       "checksum": "38470f5047f98fcaee239887a2c8798a"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "a54dbe1e77cde2f7705bb65b96d5cb46"
+      "checksum": "324a742a3cd231ec712c967bfc5caf09"
     },
     "R/mod_2_02_results.R": {
       "checksum": "adb69de19f38555779f0665336e02c56"
@@ -4705,7 +4705,7 @@
       "checksum": "ce6dac4360eef6248ccbe939f6017ab4"
     },
     "R/mod_3_06_policy_sim.R": {
-      "checksum": "91ada82d9470c97a8614dc7bb1b6af71"
+      "checksum": "442e9eecf14af525b30a94c90055a41e"
     },
     "R/mod_3_07_results.R": {
       "checksum": "1498b5a7fc65e6db1f3925310d89b883"
