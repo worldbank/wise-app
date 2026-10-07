@@ -307,6 +307,49 @@ test_that("unselected policy missingness does not change baseline adverse suppor
   expect_true(all(result$return_period$scope == "baseline_anchored"))
 })
 
+test_that("R2-PERF-06: metric decomposition is memoised per method and poverty line", {
+  fx <- metric_channel_fixture("fixest")
+  fx$hist$residuals <- "none"
+  fx$policy_hist$residuals <- "none"
+  technical <- list2env(as.list(fx$prepared$context), parent = emptyenv())
+  lockEnvironment(technical, bindings = TRUE)
+  calls <- 0L
+  original <- .policy_metric_decomposition
+  local_mocked_bindings(
+    .policy_metric_decomposition = function(...) {
+      calls <<- calls + 1L
+      original(...)
+    }, .package = "wiseapp")
+  api <- NULL
+  shiny::testServer(function(input, output, session) {
+    api <<- .wire_results_pane(input, output, session,
+      shiny::reactive(fx$hist), shiny::reactive(list()),
+      shiny::reactive(fx$policy_hist), shiny::reactive(list()),
+      selected_hist = shiny::reactive(NULL), residuals = shiny::reactive("normal"),
+      decomp_context = shiny::reactive(technical), annual_channels = shiny::reactive(fx$prepared))
+  }, {
+    session$setInputs(cmp_agg_method = "mean")
+    mean_first <- api$metric_decomposition()
+    expect_identical(calls, 1L)
+    session$setInputs(cmp_agg_method = "headcount_ratio", cmp_pov_line = 3)
+    session$elapse(500); session$flushReact()
+    pov3 <- api$metric_decomposition()
+    expect_identical(calls, 2L)
+    session$setInputs(cmp_pov_line = 5)
+    session$elapse(500); session$flushReact()
+    api$metric_decomposition()
+    expect_identical(calls, 3L)
+    # Revisits are served from the cache, bit-identical to the first result.
+    session$setInputs(cmp_agg_method = "mean")
+    session$elapse(500); session$flushReact()
+    expect_identical(api$metric_decomposition(), mean_first)
+    session$setInputs(cmp_agg_method = "headcount_ratio", cmp_pov_line = 3)
+    session$elapse(500); session$flushReact()
+    expect_identical(api$metric_decomposition(), pov3)
+    expect_identical(calls, 3L)
+  })
+})
+
 test_that("the real shared Results calculation follows edits without re-preparing or predicting", {
   fx <- metric_channel_fixture("fixest")
   fx$hist$residuals <- "none"

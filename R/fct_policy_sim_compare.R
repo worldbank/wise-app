@@ -2554,6 +2554,20 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     )
   })
 
+  # R2-PERF-06: the decomposition re-runs the whole member x year pipeline, so
+  # results are memoised per (method, poverty line, residuals, focus, unit,
+  # selected series). The cache is a fresh environment whenever any run input
+  # changes, so entries never outlive the run they were computed for.
+  metric_cache <- reactive({
+    baseline_hist_sim(); policy_hist_sim(); annual_channels(); decomp_context()
+    baseline_saved_scenarios(); policy_saved_scenarios(); stale()
+    policy_endpoint_status()
+    cache <- new.env(parent = emptyenv())
+    cache$entries <- list()
+    cache
+  })
+  metric_cache_limit <- 6L
+
   metric_decomposition <- reactive({
     baseline_hist <- baseline_hist_sim()
     policy_hist <- policy_hist_sim()
@@ -2610,15 +2624,29 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       }, error = function(e) conditionMessage(e))
     }
     source <- if (is.null(context_error) && !isTRUE(stale())) prepared else NULL
-    result <- tryCatch(calculate(source), error = function(e) {
-      # The helper still owns endpoint summarization when channel inputs are
-      # missing or invalid. A second call with no prepared source must not
-      # expose partial/stale channel values from the failed calculation.
-      tryCatch(calculate(NULL), error = function(endpoint_error) {
-        fallback$reason <<- conditionMessage(e)
-        fallback
+    cache <- metric_cache()
+    cache_key <- digest::digest(list(
+      method, pov_line, requested_residuals, focus, unit,
+      endpoint_baseline, endpoint_policy, is.null(source)
+    ), algo = "xxhash64")
+    result <- cache$entries[[cache_key]]
+    if (is.null(result)) {
+      failed <- FALSE
+      result <- tryCatch(calculate(source), error = function(e) {
+        # The helper still owns endpoint summarization when channel inputs are
+        # missing or invalid. A second call with no prepared source must not
+        # expose partial/stale channel values from the failed calculation.
+        failed <<- TRUE
+        tryCatch(calculate(NULL), error = function(endpoint_error) {
+          fallback$reason <<- conditionMessage(e)
+          fallback
+        })
       })
-    })
+      if (!failed && is.list(result)) {
+        entries <- c(cache$entries, setNames(list(result), cache_key))
+        cache$entries <- utils::tail(entries, metric_cache_limit)
+      }
+    }
     if (is.null(result) || !is.list(result)) result <- fallback
 
     if (isTRUE(stale())) {
