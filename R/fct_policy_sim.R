@@ -897,6 +897,23 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   }
 }
 
+# Welfare quantile for ex-ante targeting. Weighted by the survey weight (when
+# present) so that "poorest p%" covers p% of the population, matching the
+# weighted budget. Rows with a missing or non-positive weight are left out of
+# the weighted quantile; without any usable weight the quantile is unweighted.
+.sp_welfare_quantile <- function(welfare, weight, p) {
+  welfare <- as.numeric(welfare)
+  w <- if (is.null(weight)) NULL else suppressWarnings(as.numeric(weight))
+  ok <- !is.na(welfare)
+  if (!is.null(w)) {
+    ok <- ok & !is.na(w) & w > 0
+  }
+  if (!is.null(w) && any(ok)) {
+    return(unname(collapse::fquantile(welfare[ok], p, w = w[ok])))
+  }
+  unname(stats::quantile(welfare, p, na.rm = TRUE))
+}
+
 .determine_sp_eligibility <- function(svy, sp, apply_errors = TRUE) {
   n <- nrow(svy)
   targeting <- sp$targeting %||% "exante_poor"
@@ -904,9 +921,8 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   if (targeting == "universal") {
     eligible <- rep(TRUE, n)
   } else if (targeting == "exante_poor") {
-    q <- stats::quantile(svy$welfare,
-      (sp$targeting_threshold %||% 20) / 100,
-      na.rm = TRUE
+    q <- .sp_welfare_quantile(
+      svy$welfare, svy[["weight"]], (sp$targeting_threshold %||% 20) / 100
     )
     eligible <- !is.na(svy$welfare) & svy$welfare <= q
   } else if (targeting == "pmt") {

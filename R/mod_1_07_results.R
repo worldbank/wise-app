@@ -790,6 +790,7 @@ mod_1_07_results_server <- function(id,
         focused_footnotes <- c(
           "\u2020 p<0.1 \u00b7 * p<0.05 \u00b7 ** p<0.01 \u00b7 *** p<0.001",
           "95% CI = estimate \u00b1 1.96 \u00d7 SE",
+          "Models are fitted without survey weights; weights apply to simulation aggregates and policy targeting.",
           if (is_logit) {
             "pp effect evaluated at the median-risk household profile; log-odds shown in the Effect column."
           } else if (any(is_bin_vec)) {
