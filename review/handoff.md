@@ -4,7 +4,7 @@ Status lives in `review/REVIEW-2026-10-06-tracking.md` (Log and Decision log are
 
 ## Next
 - Housekeeping done 2026-10-07: secret rotated, Connect and visual checks done, stale branches and worktrees removed.
-- R2-BUG-06, R2-BUG-07, CR-BUG-06 implemented 2026-10-07, uncommitted on dev (full suite passes); no BFA numbers yet (Step 3 bench harness fixtures do not fit BFA; needs a manual Step 3 run in the app). Next: R2-PERF-06 (memoise metric_decomposition).
+- R2-BUG-06, R2-BUG-07, CR-BUG-06 implemented 2026-10-07, uncommitted on dev (full suite passes); no BFA numbers yet (Step 3 bench harness fixtures do not fit BFA; needs a manual Step 3 run in the app). R2-PERF-06 (memoised metric_decomposition) done. Benchmark on BFA 1x1 OLS unless a larger payload is required. Next: R2-PERF-01 / R2-PERF-04 (B6 ranks 3-4).
 - Decisions pending: drop spatial from the DuckDB bundle; CR-BUG-04, R2-BUG-08, R2-BUG-16; the deferred list below; two old git stashes (perf-w2-step3-decompose, perf-w1-step3-kernel).
 - Follow-ups: R2-BUG-14 seed in fit signature (mod_1_07); R2-BUG-13 end-to-end check; CR-SEC-08 remaining display sites; R2-A11Y-05 untitled popovers; surface n_coef_dropped / n_na_dropped / n_na_untreated in the UI.
 
