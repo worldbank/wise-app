@@ -4,13 +4,16 @@ This file provides guidance to coding agents (Kilo, Claude Code, Codex, etc.) wh
 
 **Performance/optimization work**: read and follow `review/optimization_guidelines.md` — it defines the app's optimization standards, app-specific constraints, and benchmarking requirements.
 
+**Code hygiene work**: follow `review/code_hygiene.md`. **Open review items** (security, performance, accessibility, code quality) are tracked in `review/REVIEW-2026-10-06-tracking.md`; finished work is in `review/archive/`.
+
 ## What This Is
 
 **WISE-APP** (Weather Impact Simulation and Evaluation for Adaptation Policy and Planning) is an R Shiny web application built by the World Bank. It estimates relationships between weather and household welfare, simulates welfare outcomes under climate scenarios, and evaluates policy/adaptation strategies.
 
 - R package name: `wiseapp`
 - Framework: [Golem](https://thinkr-open.github.io/golem/) (production-ready Shiny scaffolding)
-- R version: 4.5.3 (configured by the local development environment)
+- Version: 0.3.0 (`DESCRIPTION` and `inst/golem-config.yml` must match; `manifest.json` checksums follow)
+- R version: 4.5.3 (configured by the local development environment); `DESCRIPTION` requires R >= 4.4.0
 - License: MIT
 
 ## Development Commands
@@ -47,7 +50,7 @@ Development workflow scripts are in `dev/01_start.R`, `dev/02_dev.R`, and `dev/0
 
 ## Architecture
 
-### 3-Step Pipeline (tabs in the UI)
+### Pipeline (tabs in the UI: Overview plus three steps)
 
 1. **Step 0 – Overview** (`mod_0_overview`): Data source configuration (local/S3/GCS/Azure/HuggingFace/Databricks), loads survey metadata.
 2. **Step 1 – Modelling** (`mod_1_modelling` + 8 sub-modules): Select sample → explore data → define outcome variable → pick weather variables → configure model → view results.
@@ -65,7 +68,8 @@ R/
 ├── run_app.R                  # Entry point
 ├── mod_*.R                    # 24 Shiny modules (each has a UI and server function)
 ├── fct_*.R                    # 41 business logic files (no Shiny dependencies)
-└── utils_*.R                  # shared math, UI, plot-theme, and Step 1 helpers
+└── utils_*.R                  # 5 files: shared math, UI, plot-theme, logging, and Step 1 helpers
+src/welfare_stats.cpp          # Rcpp kernel: all aggregation statistics in one sort per group
 ```
 
 **`fct_` files are the core engine:**
@@ -113,7 +117,7 @@ DuckDB is the unified query engine with extension-based storage support:
 |---------|---------------------------|-------------|
 | S3 | httpfs | AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY |
 | GCS | httpfs | GCS_ACCESS_KEY_ID / GCS_SECRET_ACCESS_KEY |
-| Azure | azure + delta | Account key or service principal |
+| Azure | azure + delta (not bundled; installed on first use, local/dev runs only) | Account key or service principal |
 | Databricks | httpfs | OAuth2 M2M (DATABRICKS_HOST/CLIENT_ID/SECRET) |
 | Local | none | File paths |
 
@@ -129,6 +133,11 @@ See `fct_connection.R` and `fct_load_data.R` for implementation details.
 - **Progressive models**: Three nested specifications (weather only → + FE → + FE + controls) fitted identically for comparison.
 - **Log-transform handling**: When welfare outcome is log-transformed, predictions are automatically back-transformed (`exp()`) throughout the pipeline.
 - **Coefficient uncertainty propagation**: Cholesky factor of VCV matrix (`compute_chol_vcov`) enables fast Monte Carlo draws via factor loading matrix (`compute_factor_loading`), ~200x speedup over full-dimension draws.
+
+### UI Conventions
+- **Tables** are `reactable` with client-side CSV download (raw values exported; rounding lives in the column format). **Charts** are `echarts4r` built by `echart_*` functions, with the ggplot builders kept as static, export and test references; registered on-screen figures export through the echarts closure. Shared styling is in `utils_plot_theme.R`. Maps use only the MapLibre bridge (`fct_hexmap.R`). See `review/optimization_guidelines.md` sections 6 and 7.
+- User-facing error text goes through `wise_user_error()` (full condition logged with an id, short classified message shown); do not show `conditionMessage()` directly in modules.
+- Stage timing is logged one line per stage by `.wise_log_stage()` (`utils_log.R`).
 
 ### Policy Analysis
 - **Policy decomposition**: Total effect = Main effect + Resilience effect (Repositioning + Interaction) — see `fct_policy_decompose.R`.
@@ -150,13 +159,15 @@ Target platform: **Posit Connect**. Automatic startup data-source selection is c
 
 Runtime egress: the app serves its fonts locally (`inst/app/fonts/`), but the hex map loads its basemap style and tiles from CARTO (`tiles.basemaps.cartocdn.com`, see `inst/app/vendor/hexmap.js`). The server must allow HTTPS to that host for map views; everything else needs only the configured data source.
 
-Bundled DuckDB extensions (`inst/duckdb_extensions/`) are built for the exact `duckdb` version pinned in `DESCRIPTION` (currently 1.5.6) and are checked against pinned SHA-256 values in `R/fct_load_data.R` before they are installed on Connect. To upgrade DuckDB, rebuild the binaries and update the pin, the version constant and the checksums together.
+Bundled DuckDB extensions (`inst/duckdb_extensions/`: `h3` and `httpfs`) are built for the exact `duckdb` version pinned in `DESCRIPTION` (currently 1.5.6) and are checked against pinned SHA-256 values in `R/fct_load_data.R` before they are installed on Connect. To upgrade DuckDB, rebuild the binaries and update the pin, the version constant and the checksums together.
 
 Optional resource limits (unset = package/DuckDB defaults). Every Connect process runs a main R process plus a mirai daemon, each with its own in-memory DuckDB, so cap them on shared hosts:
 - `WISEAPP_DUCKDB_MEMORY_LIMIT` (for example `4GB`) and `WISEAPP_DUCKDB_THREADS` (per DuckDB instance); `WISEAPP_DUCKDB_TEMP_DIR` (spill directory, default a per-process temp dir)
 - `WISEAPP_THREADS` (fixest and collapse threads)
 - `WISEAPP_ASYNC_TIMEOUT_MIN` (Step 2 run limit, default 90) and `WISEAPP_ASYNC_METADATA_TIMEOUT_SEC` (default 300); `0` disables
 - `WISEAPP_STAGE_LOG=0` turns off the one-line-per-run stage log
+- Weather disk cache: `WISEAPP_WEATHER_CACHE_DIR` (location, created 0700), `WISEAPP_WEATHER_CACHE_MAX_MB` (LRU budget), `WISEAPP_WEATHER_CACHE_DISABLE=1` (off)
+- `WISEAPP_ASYNC_SYNC=1` runs Step 2 and metadata tasks in the main process (debugging only; this removes the async protection)
 
 Data-source allowlists (CR-SEC-02): `WISEAPP_ALLOWED_SOURCES` (comma-separated source types) restricts which sources the app accepts. Unset, a configured `WISEAPP_DATA_SOURCE` is the only enabled type, and on Posit Connect without one only `databricks` is; local and dev runs allow every type. For connections typed into the UI, `WISEAPP_ALLOWED_LOCAL_ROOTS`, `WISEAPP_ALLOWED_BUCKETS` (S3/GCS buckets, Azure containers, Hugging Face repos) and `WISEAPP_ALLOWED_VOLUME_ROOTS` (Databricks volume paths) restrict the location; an unset list does not restrict that field. Values containing control characters or `..` segments are always refused for UI connections. Environment-configured connections are trusted.
 
@@ -175,7 +186,7 @@ Key environment variables for production:
 
 ## Testing
 
-Tests are in `tests/testthat/` (112 files, named after the `fct_`/`mod_` file or concept they cover, e.g. `test-fct_hexmap.R`, `test-active-mask.R`) plus `tests/spelling.R`. New tests go in `test-<R file>.R`. Areas with dedicated coverage: connection/data loading, model fitting + coefficient uncertainty decomposition, prediction, aggregation delta, RIF helpers, hexmap payload contract, policy decomposition uncertainty, metric-aware decomposition, Step 3 lever modules, `app_server` wiring (stubbed step modules), weather selection/stats, export bundles, determinism.
+Tests are in `tests/testthat/` (119 files, named after the `fct_`/`mod_` file or concept they cover, e.g. `test-fct_hexmap.R`, `test-active-mask.R`) plus `tests/spelling.R`. New tests go in `test-<R file>.R`. Areas with dedicated coverage: connection/data loading, model fitting + coefficient uncertainty decomposition, prediction, aggregation delta, RIF helpers, hexmap payload contract, policy decomposition uncertainty, metric-aware decomposition, Step 3 lever modules, `app_server` wiring (stubbed step modules), weather selection/stats, export bundles, determinism.
 
 - **Run from the source tree**, as CI does: `devtools::test()` or `testthat::test_local()` (about 4 to 6 minutes serial). `R CMD check` runs with `--no-tests`.
 - **Environment is pinned** by `tests/testthat/setup-env.R` (weather caches in a per-run temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R` (UTF-8). Do not rely on the developer's `.Renviron`.

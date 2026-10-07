@@ -2,14 +2,14 @@
 
 Scope: brainstorm and plan for extending the Step 3 social protection (SP) module (`mod_3_01_sp`) with shock-responsive cash transfers and richer program design options.
 
-Status: proposal only. No code has been changed. Written for the WISE-APP maintainers and the policy team who will decide what to build.
+Status: proposal only. No shock-responsive code has been written. Reviewed 2026-10-07: the design and decisions are unchanged; line references were refreshed and the prerequisite fixes noted below have landed (R2-BUG-04, CR-BUG-02, R2-BUG-06/07/12, CR-BUG-04). Written for the WISE-APP maintainers and the policy team who will decide what to build.
 
 Evidence note: statements about the code come from reading the files cited. Literature claims are limited to what a quick search confirmed (section 9). Anything I could not verify is marked "to verify" rather than filled in from memory.
 
 ## 1. Summary and recommendation
 
-1. **Today SP is a static, weather-blind welfare top-up.** One daily amount per household is computed once, from the baseline survey, and added to every household-year in every weather draw and climate member. It cannot represent "pay only when a shock happens" because the transfer never sees the weather. The "Shock-responsive" toggle in the UI is display-only and is coerced to "regular" (`mod_3_01_sp.R:500-505`).
-2. **The one structural change that unlocks almost everything** is making the transfer a function of (household, simulation year, climate member). The cleanest hook is the annual correction loop that already visits every prediction row with its weather exposure (`.apply_policy_annual_pipeline()`, `fct_policy_metric_decompose.R:214`), fed by a small pre-computed "trigger state" table per (member, year, location). Details in section 4.
+1. **Today SP is a static, weather-blind welfare top-up.** One daily amount per household is computed once, from the baseline survey, and added to every household-year in every weather draw and climate member. It cannot represent "pay only when a shock happens" because the transfer never sees the weather. The "Shock-responsive" toggle in the UI is display-only and is coerced to "regular" in `sp_scenario_spec()` (`mod_3_01_sp.R:514-523`), with a display-only alert at `:150-160`.
+2. **The one structural change that unlocks almost everything** is making the transfer a function of (household, simulation year, climate member). The cleanest hook is the annual correction loop that already visits every prediction row with its weather exposure (`.apply_policy_annual_pipeline()`, `fct_policy_metric_decompose.R:233`, via `.policy_annual_channel_block()`, `:188`), fed by a small pre-computed "trigger state" table per (member, year, location). Details in section 4.
 3. **Recommended build order**
    - **Phase 0, independent quick wins** (also improve the regular program): admin cost markup, cost-effectiveness metrics, a realistic targeting-error model, per-capita vs per-household amounts. First fix the SP currency bug R2-BUG-04, because every dollar-denominated trigger or amount inherits it.
    - **Phase 1, shock-responsive MVP (decided scope):** two hazard-based triggers only, a weather variable threshold and an exceedance probability (return period) threshold, evaluated per survey location (`loc_id`); a fixed payout per activation; targeting by the existing static rules (universal, ex-ante poor, proxy, with errors) applied within triggered locations; and the new outputs policymakers care about most: activation frequency, annual cost distribution (expected and 1-in-20-year cost), and basis risk. The dynamic SP effect is folded into the Main channel, clearly labelled.
@@ -26,13 +26,13 @@ Decisions already taken (7 October 2026): see section 10.
 
 | Stage | Where | What happens |
 |---|---|---|
-| UI and spec | `mod_3_01_sp.R:496-550` | `sp_scenario_spec()` returns a flat list: `sp_type`, `budget_mode`, `budget_fixed`, `targeting`, `targeting_threshold`, `pmt_variable`, `pmt_cutoff`, `inclusion_error_pct`, `exclusion_error_pct`, `transfer_amount_usd`, `transfer_frequency`, `transfer_n_payments`, `transfer_timing`, `timeliness_weeks`. `is_regular` is hard-coded `TRUE`, so the last three timing fields are dead. |
-| Eligibility | `.determine_sp_eligibility()`, `fct_policy_sim.R:863` | Universal, bottom x% of survey welfare, or a proxy variable cutoff. Inclusion and exclusion errors flip uniformly random units, counted by rows, not weights. Drawn once, under the stream `wise_seed(seed, "policy", "sp")`. |
-| Amount | `.sp_transfer_values()`, `fct_policy_sim.R:441` | `transfer_first`: `amount * n_payments / 365` per day. `budget_first`: budget divided by weighted eligible units, over 365. Both divided by `hhsize` because welfare is per capita. |
-| Write | `apply_policy_to_svy()`, `fct_policy_sim.R:1327` | Result stored in one survey column, `.wiseapp_sp_transfer` (`SP_TRANSFER_COL`). |
-| Welfare effect, RIF | `.compute_rif_channels()`, `fct_policy_decompose.R:186` | `delta_sp` is `log(exp(y_baseline) + sp) - y_baseline`, folded into `delta_main`, which also moves the household's quantile rank (`tau_i_post`) and hence the repositioning channel. |
-| Welfare effect, OLS | `.decompose_ols()` and `run_sim_pipeline()`, `fct_simulations.R:634-655` | Same level-scale add, re-logged for log outcomes. |
-| Annual broadcast | `.prepare_policy_annual_channels()`, `fct_policy_metric_decompose.R:35`; `.policy_annual_channel_block()`, `:188` | `delta_sp[ids]` is looked up by baseline household id and broadcast across all (year, member) rows. The prepared object is locked and invariant to weather by design. |
+| UI and spec | `mod_3_01_sp.R:514-570` | `sp_scenario_spec()` returns a flat list: `sp_type`, `budget_mode`, `budget_fixed`, `targeting`, `targeting_threshold`, `pmt_variable`, `pmt_cutoff`, `inclusion_error_pct`, `exclusion_error_pct`, `transfer_amount_usd`, `transfer_frequency`, `transfer_n_payments`, `transfer_timing`, `timeliness_weeks`. `is_regular` is hard-coded `TRUE`, so the last three timing fields are dead. A `currency` field (outcome units) was added by R2-BUG-04. |
+| Eligibility | `.determine_sp_eligibility()`, `fct_policy_sim.R:917` | Universal, bottom x% of survey welfare (a survey-weighted quantile since CR-BUG-04, `.sp_welfare_quantile()`; weights fall back to unweighted when absent), or a proxy variable cutoff. Inclusion and exclusion errors flip uniformly random units, counted by rows, not weights. Drawn once, under the stream `wise_seed(seed, "policy", "sp")`. |
+| Amount | `.sp_transfer_values()`, `fct_policy_sim.R:453` | `transfer_first`: `amount * n_payments / 365` per day. `budget_first`: budget divided by weighted eligible units, over 365. Both divided by `hhsize` because welfare is per capita. An LCU amount is divided by per-row `ppp2021`, so the stored column is always on the 2021 PPP welfare scale (R2-BUG-04). |
+| Write | `apply_policy_to_svy()`, `fct_policy_sim.R:996` | Result stored in one survey column, `.wiseapp_sp_transfer` (`SP_TRANSFER_COL`). |
+| Welfare effect, RIF | `.compute_rif_channels()`, `fct_policy_decompose.R:144` (`delta_sp` at `:214`) | `delta_sp` is `log(exp(y_baseline) + sp) - y_baseline`, with `sp` converted to the model scale (`.policy_sp_transfer()`, CR-BUG-02), folded into `delta_main`, which also moves the household's quantile rank (`tau_i_post`) and hence the repositioning channel. |
+| Welfare effect, OLS | `.decompose_ols()` (`fct_policy_decompose.R:1322`) and `run_sim_pipeline()` (`fct_simulations.R:420`, SP block near `:644`) | Same level-scale add, re-logged for log outcomes. |
+| Annual broadcast | `.prepare_policy_annual_channels()`, `fct_policy_metric_decompose.R:35`; `.policy_annual_channel_block()`, `:188` | `delta_sp[ids]` is looked up by baseline household id and broadcast across all (year, member) rows. Since R2-BUG-07 the block recomputes `delta_sp` per prediction row for log outcomes, against the predicted year-t level (`log(exp(y_t) + T) - y_t`, `y_t = pipeline$y_point`); the transfer `T` itself is still the one static per-household value. The prepared object is otherwise locked and invariant to weather by design. Repositioning and interaction use `W_t - W_svy` (R2-BUG-06). |
 | Reach and cost preview | `.sp_scenario_reach()`, `fct_policy_sim.R:523` | UI-32. Reuses the run's eligibility and arithmetic exactly (tested in `test-sp-reach.R`). |
 | Diagnostics | `.sp_transfer_totals()`, `fct_policy_sim.R:364` | Annual cost as the weighted sum of the column times 365. |
 
@@ -45,14 +45,14 @@ Cannot:
 - Any dependence on weather, year or climate member. SP therefore contributes only to the "main effect"; it has no weather-dependent (resilience) channel of its own.
 - A cost that varies across years. The cost is one number, so there is no financing-need distribution.
 - Eligibility that changes over time (ex-post targeting, geographic targeting at trigger).
-- Admin cost. The comment at `mod_3_01_sp.R:325-333` describes an admin percentage, but there is no input and no use of it in `.sp_transfer_values()`.
+- Admin cost. The comment at `mod_3_01_sp.R:328-333` describes an admin percentage, but there is no input and no use of it in `.sp_transfer_values()`.
 
 ### 2.3 Details that matter for the redesign
 
 - **Dead fields are an advantage.** `transfer_frequency`, `transfer_timing` and `timeliness_weeks` already exist in the spec list, and `sp_type` is already part of the run signature. New fields can follow the same pattern.
 - **Frequency is accounting, not timing.** `amount * n_payments / 365` is the right convention for an annual-mean daily welfare outcome. It also means within-year timing is invisible to the model, which constrains the anticipatory design (section 5.3).
 - **Welfare is per capita per day.** A per-household flat transfer is divided by household size, so large households get less per person. That is a real design choice (flat per household vs per capita) and is currently not exposed.
-- **Currency.** R2-BUG-04 (`review/REVIEW-2026-10-06.md`): the amount is entered in the outcome's currency label but added to PPP welfare. Any trigger or budget expressed in dollars inherits the same problem until it is fixed.
+- **Currency.** R2-BUG-04 (`review/REVIEW-2026-10-06.md`) is fixed (134170e): the spec carries `currency`, an LCU amount is converted per row to the stored 2021 PPP scale, and costs are reported back in the entry currency. New dollar-denominated triggers, amounts and cost outputs must read `sp$currency` and use the helpers from CR-BUG-02 (`outcome_level_scale()`, `.policy_sp_transfer()`) rather than the raw column.
 - **The survey welfare already contains existing transfers.** The simulated program is incremental. Vertical expansion (section 7) needs to know who already gets a transfer, and the harmonized microdata may not carry that flag. To verify per data source.
 
 ## 3. Design space and where each of your ideas lands
@@ -112,14 +112,14 @@ Relevance: how often a policymaker asks for it. Effort: S under a week, M one to
 
 ### 4.1 Why the current structure cannot be stretched
 
-The transfer is a vector with one entry per baseline survey row. The prepared annual channels are explicitly weather-invariant (`prepared$delta_sp[ids]`), and the quantile-repositioning logic uses the transfer to compute `tau_i_post` once per household. A trigger depends on (year, member), so the transfer becomes a quantity indexed by prediction row, not survey row.
+The transfer is a vector with one entry per baseline survey row. The prepared annual channels are weather-invariant, and the block reads the transfer as `prepared$context$sp_transfer[ids]` (`fct_policy_metric_decompose.R:215-221`), while the quantile-repositioning logic uses the transfer to compute `tau_i_post` once per household. A trigger depends on (year, member), so the transfer becomes a quantity indexed by prediction row, not survey row. The R2-BUG-07 change already makes the SP effect a per-row computation in the block, so the dynamic hook replaces one input (`transfer[ids]` with a per-row dynamic transfer) rather than adding a new step.
 
 ### 4.2 Recommended design: a trigger state table plus a dynamic transfer layer
 
 1. **New pure file `fct_sp_shock.R`** (no Shiny, as with the other `fct_` files) with:
    - `sp_trigger_state(pipeline, exposure, reference, spec)` returns a table keyed by (member, sim_year, location) with `active` (logical) and optionally `intensity` (for example exceedance size or modelled loss).
    - `sp_dynamic_transfer(pipeline, state, static_eligibility, spec, seed)` returns a daily-equivalent transfer per prediction row.
-2. **Hook** inside `.apply_policy_annual_pipeline()`: after the channel block for each chunk, add the dynamic transfer on the level scale, re-logged for log outcomes (the same arithmetic as `run_sim_pipeline()`, `fct_simulations.R:645-655`). The weather exposure per prediction row (`exposure$table[[v]][idx]`) and household id are already available in that loop.
+2. **Hook** inside `.apply_policy_annual_pipeline()`: after the channel block for each chunk, add the dynamic transfer on the level scale, re-logged for log outcomes (the same arithmetic as `run_sim_pipeline()`, `fct_simulations.R` near `:644`, and the block's R2-BUG-07 formula against the predicted year-t level). The weather exposure per prediction row (`exposure$table[[v]][idx]`) and household id are already available in that loop.
 3. **Pre-pass.** Aggregate triggers (regional or national) depend on all rows of a (member, year). Compute the state table in one cheap pass before the chunk loop (a `rowsum` by year and location), then look it up per chunk. This avoids breaking the 100k-row chunking.
 4. **Determinism.** Draw per-activation errors from a stream keyed by (household id, year, member), never by row position. This follows R2-BUG-12 and the existing `lever_seed()` pattern, and keeps preview/run parity testable.
 
@@ -161,7 +161,7 @@ Other trigger inputs:
 
 - **Only the model's weather terms.** Triggers can use only the weather variables in the Step 1 model, which is sensible since those drive welfare.
 - **Adverse direction per weather variable.** Outcome direction exists in the metric registry (`fct_metric_registry.R`), but weather variables have no direction. Heat and drought are high or low tails, and standardized indices such as SPEI are negative. This needs a small per-variable "adverse tail" setting.
-- **Fixed historical threshold under climate change.** Define the threshold on the historical distribution and apply it unchanged to SSP members. This matches how Step 2 already defines return periods (`step2_adverse_return_period()`, `fct_sim_compare.R:496`) and mirrors real contracts. The policy-relevant consequence is that a fixed 1-in-10 trigger fires more often under warming, so cost rises. That is the headline result for finance planners.
+- **Fixed historical threshold under climate change.** Define the threshold on the historical distribution and apply it unchanged to SSP members. This matches how Step 2 already defines return periods (`step2_adverse_return_period()`, `fct_sim_compare.R:537`) and mirrors real contracts. The policy-relevant consequence is that a fixed 1-in-10 trigger fires more often under warming, so cost rises. That is the headline result for finance planners.
 - **Limited historical record.** A 1-in-20 trigger from 30 historical years is estimated from one or two events. Decision: apply the Step 2 rule (offer 1-in-N only when the historical record has at least N finite years) and show the number of years behind each trigger.
 - **Two triggers, two spatial behaviours.** A common weather value fires more often where the variable is typically more extreme, so cost concentrates in those locations. A return-period trigger uses each location's own 1-in-N level, so every location has the same activation probability. Label both clearly and show activation frequency by location.
 - **Location-level basis risk.** Basis risk is scored at the trigger's own level: a location has a loss event when its mean modelled household weather loss (4.4) passes a user-set share of welfare. Report false positives (trigger without a loss event) and false negatives (loss event without a trigger), with a household-level view as secondary.
@@ -281,10 +281,10 @@ Cost-effectiveness metrics can be built first for the regular program, which del
 
 ### Phase 0: independent improvements (about 1 to 2 weeks in total)
 
-- Fix R2-BUG-04 (currency), per the existing tracker (`review/REVIEW-2026-10-06-tracking.md`, batch B4).
+- R2-BUG-04 (currency) is fixed (134170e, with CR-BUG-02 in 0228c1c); nothing to do beyond reading `sp$currency` in new code. The BFA LCU re-run for the Decision log is still owed (see `review/REVIEW-2026-10-06-tracking.md`, "Waiting on the user").
 - Admin cost markup, with evidence-backed presets after a source pass.
 - Per-capita vs per-household amount option.
-- Noisy-score targeting error model; revisit defaults.
+- Distance-weighted targeting error model (P0-4; replaces the earlier noisy-score idea); revisit defaults.
 - Cost-effectiveness metrics for the static program (cost per person lifted out of poverty, leakage, adequacy).
 
 ### Phase 1: shock-responsive MVP (about 3 to 5 weeks)
@@ -341,7 +341,6 @@ Decided (7 October 2026):
 | 7 | Return-period input | Entered as years (1-in-x), consistent with Step 2; the annual probability is shown beside it. |
 | 8 | Historical record limit | Same rule as Step 2 (`filter_historically_supported_return_periods()`, `fct_metric_registry.R:328`): offer 1-in-N only when the historical record has at least N finite years. Show the number of historical years behind each trigger. A pooled climate-member record is not in v1. |
 | 9 | Weather vs return-period threshold | The weather-variable trigger takes one common value everywhere (a national-style rule that fires more often in places where the variable is typically more extreme). The return-period trigger is location-specific by construction (each location's own 1-in-N level, equal activation probability everywhere). Do not offer location-specific weather thresholds; they would overlap with the return-period trigger. |
-
 | 10 | Payout scope vs trigger | One control with three choices: (a) per-location activation, pay triggered locations only (default); (b) national gate, pay triggered locations only; (c) national gate, pay all targeted households nationwide. "Any location fires, pay everyone" is not offered. Details in 4.6. |
 | 11 | Ex-ante poor rule within triggered locations | National line (bottom x% of the whole survey frame, as today), then restricted to triggered locations. A rich triggered location may have few recipients. Keeps the preview arithmetic and the national eligibility meaning. |
 | 12 | Budget modes for shock-responsive | Phase 1 supports "$ per household per activation" only. Total cost varies with activations, and the annual cost distribution is the output. Envelope budgets (cap with pro-rata scale-down, or envelope per activation) are deferred. Regular programs keep both budget modes. |
