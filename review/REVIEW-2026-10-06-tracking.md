@@ -144,7 +144,7 @@ Goal: measured wins, in the report's rank order. Prerequisite: B3/B4 merged and 
 | 11 | R2-PERF-14 | S | ☑ | Drop `spatial` extension (bbox from `h3_cell_to_lat/lng`) | Bbox parity | 968776d: bbox from h3_cell_to_boundary_wkt(); spatial no longer loaded. Parity identical over 72 files / 1.82M cells. Saves 2.7 s INSTALL+LOAD per cold process (0.05 s / 18 MB cached). Spatial extension later dropped from the bundle by the user (inst/duckdb_extensions now holds h3 and httpfs only). |
 | 12 | CR-PERF-15 | S | – | Tracked in B5 | | |
 | 13 | CR-PERF-13 / R2-PERF-08 | S | – | Tracked in B5 | | |
-| 14 | R2-PERF-11 | S | ☐ | Memoise LASSO by inputs | Bit-identical | 3.0 s per click |
+| 14 | R2-PERF-11 | S | ☑ | Memoise LASSO by inputs | Bit-identical | `.memoise_last()` in mod_1_06 keeps the last selection keyed by a hash of the prepared data, outcome, weather, FE, interactions, candidate list and every LASSO setting; the fixed seed makes a hit identical to a refit. Test counts computations (test-lasso-memoise.R); mod_1_06 filter 48 passed. Timing not re-measured (the saved cost is the 3.0 s LASSO fit per repeated click). |
 | 15 | R2-PERF-05, R2-PERF-12 | S | ☐ | Step 2 chart payloads; Diagnostics weather re-reads | Visual | |
 | 16 | CR-PERF-03 | L | ☐ | Factorised per-key predictor behind a flag | Pre-agreed tolerance | Agree tolerances first |
 | 17 | R2-PERF-09 | S | ☐ | Re-measure fast vs bounded weather collection | Bit-identical | |

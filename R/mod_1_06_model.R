@@ -1,3 +1,15 @@
+# Keep the last (key, value) pair: returns the stored value when `key` repeats,
+# otherwise computes, stores and returns it. A failed compute stores nothing.
+.memoise_last <- function(cache, key, compute) {
+  if (identical(cache$key, key)) {
+    return(cache$value)
+  }
+  value <- compute()
+  cache$key <- key
+  cache$value <- value
+  value
+}
+
 #' 1_06_model UI Function
 #'
 #' @description A shiny Module.
@@ -741,6 +753,7 @@ mod_1_06_model_server <- function(id,
     # result is now held in a plain reactiveVal that only the run-button
     # observer below writes, so reading the model spec can never start a fit.
     lasso_store <- reactiveVal(NULL)
+    lasso_cache <- new.env(parent = emptyenv())
 
     # Selecting a different covariate method, or changing anything the
     # selection depends on, drops the stored result: a Lasso set chosen for
@@ -794,7 +807,14 @@ mod_1_06_model_server <- function(id,
           ]
         }
 
-        run_lasso_selection(
+        # R2-PERF-11: repeat clicks with identical inputs reuse the last
+        # selection (about 3 s on BFA) instead of refitting.
+        lasso_key <- rlang::hash(list(
+          df, selected_outcome(), weather_vars, fe_vars, int_vars, vl_for_lasso,
+          input$model_type, alpha_val, lambda_choice, nfolds_val, standardize_val,
+          use_mice_val, m_val, maxit_val, threshold_val
+        ))
+        .memoise_last(lasso_cache, lasso_key, function() run_lasso_selection(
           df = df,
           selected_outcome = selected_outcome(),
           weather_vars = weather_vars,
@@ -814,7 +834,7 @@ mod_1_06_model_server <- function(id,
           parallel_seed = 123L,
           cv_selection = "random",
           glmnet_tol = 1e-4
-        )
+        ))
       })
     }
 
