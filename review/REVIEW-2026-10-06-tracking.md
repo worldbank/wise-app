@@ -21,15 +21,15 @@ Batch order: B1 -> B2 -> B3 -> B4 are the report's "Now" list (§11 items 1-5). 
 
 | Batch | Scope | Items | Status | Branch / PR |
 |---|---|---:|---|---|
-| B1 | Deployment blockers and dependency drift | 8 | ◐ | R2-OPS-05 open (Azure/delta, duckdb LTS) |
-| B2 | Security | 15 | ◐ | CR-SEC-02/03/07, CR-SEC-08 rest, CR-SEC-09 rest, R2-SEC-07 open |
+| B1 | Deployment blockers and dependency drift | 8 | ◐ | R2-OPS-05: only the move to DuckDB 1.4.x LTS is open (Azure/delta decided: not bundled) |
+| B2 | Security | 15 | ◐ | CR-SEC-02/03 partly done (DuckDB lock_configuration and per-session secrets left); CR-SEC-07 open (folds into CR-PERF-04); CR-SEC-09 rest deferred; R2-SEC-07 won't fix |
 | B3 | Headline numerics (Steps 1-2) | 9 | ☑ | all items done (BFA before/after for R2-BUG-01..03 in Decision log) | |
-| B4 | Step 3 levers and decomposition | 10 | ◐ | R2-BUG-26 open; BFA before/after for CR-BUG-02/R2-BUG-04/06/07 pending | |
+| B4 | Step 3 levers and decomposition | 10 | ☑ | all items done; BFA before/after numbers for CR-BUG-02/R2-BUG-04/06/07 still to be supplied by the user for the Decision log | |
 | B5 | Robustness, CI and test hygiene | 15 | ◐ | CI green; R CMD check NOTEs, test-suite follow-ups and shinytest2 open |
-| B6 | Performance (ranked, §5.6) | 23 | ◐ | R2-PERF-06, CR-PERF-10, R2-PERF-14 done; R2-PERF-01/04 partial |
-| B7 | Remaining Medium and Low bugs | 33 | ◐ | CR-BUG-04, R2-BUG-08/16/24/25, CR-BUG-19, CR-PERF-07 open | |
-| B8 | Accessibility | 16 | ◐ | quick wins done; CR-A11Y-05/08/09, R2-A11Y-04/05/06 open |
-| B9 | Code quality and docs | 11 | ◐ | CR-CQ-01/02/03/04/07/09/10 open | |
+| B6 | Performance (ranked, §5.6) | 23 | ◐ | done: R2-PERF-02/05/06/11/12/14, CR-PERF-08/09/10/12/14; partial: R2-PERF-01/04; closed: R2-PERF-13; open: CR-PERF-04, R2-PERF-03/07/09/10, CR-PERF-03, igraph |
+| B7 | Remaining Medium and Low bugs | 33 | ◐ | only CR-PERF-07 (slim the live `model_fit`) open | |
+| B8 | Accessibility | 16 | ◐ | quick wins done; open: CR-A11Y-05/08/09, R2-A11Y-04; partial: R2-A11Y-05/06 (browser needed) |
+| B9 | Code quality and docs | 11 | ◐ | open: CR-CQ-01/02/03/04/07; CR-CQ-10 partial (AGENTS.md refresh) | |
 
 ## B1 - Deployment blockers and dependency drift (§10.1, §3)
 
