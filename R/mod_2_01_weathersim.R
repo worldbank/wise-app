@@ -1005,8 +1005,11 @@ mod_2_01_weathersim_server <- function(id,
       captured_baseline <- if (length(baseline_labels)) {
         paste(baseline_labels, collapse = ", ")
       } else "Selected baseline survey"
+      # R2-PERF-02: the worker gets a slim copy of the model fit (no fit1/fit2,
+      # no captured fitting environments); the live fit stays untouched.
+      mf_worker <- step2_slim_model_fit(mf)
       snapshot <- list(input = list(
-        sw = sw, so = so, svy = svy, ss = ss, mf = mf,
+        sw = sw, so = so, svy = svy, ss = ss, mf = mf_worker,
         cp = .wise_step2_async_connection_params(cp),
         fp_list = fp_list, ssps = ssps, residuals = sh_residuals,
         skip_coef_draws = !isTRUE(input$include_coef_uncertainty),
@@ -1026,7 +1029,7 @@ mod_2_01_weathersim_server <- function(id,
         ),
         propagate_all_covariate_uncertainty =
           isTRUE(input$propagate_all_covariate_uncertainty),
-        fit_multi = if (is_rif) mf$fit3 else NULL,
+        fit_multi = if (is_rif) mf_worker$fit3 else NULL,
         taus = if (is_rif) mf$taus else NULL,
         weather_cols = if (is_rif) mf$weather_terms else NULL,
         display = isolate(display_settings())

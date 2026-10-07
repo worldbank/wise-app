@@ -5,6 +5,69 @@
 # callers: ordinary-object inputs, explicit RNG, process-local setup, stage
 # events, validation, and immutable run metadata.
 
+# Slim model snapshot for the Step 2 worker (R2-PERF-02) ----
+#
+# The worker only predicts with `fit3`, builds residuals from `train_data`, and
+# signs the run from `.snap$model`. Everything else on the live model fit
+# (`fit1`, `fit2`, the fit-time survey snapshot) is dropped, and the
+# environments captured by fixest fits (`call_env` holds the whole fitting
+# frame, about 70 MB per fit at BFA scale) are replaced by the global
+# environment. Predictions, fitted values, residuals and `vcov()` do not use
+# them; `model.matrix()` on a stripped fit does, which is why the worker never
+# calls it. Applied to a copy: the caller's model is untouched.
+
+.step2_strip_environments <- function(x, depth = 0L) {
+  if (is.environment(x)) {
+    return(globalenv())
+  }
+  if (inherits(x, "formula")) {
+    environment(x) <- globalenv()
+    return(x)
+  }
+  if (is.call(x)) {
+    # Fit calls (`fit$call`) hold evaluated arguments, such as a `cluster`
+    # formula carrying the fitting frame.
+    for (i in seq_along(x)) {
+      el <- x[[i]]
+      if (is.environment(el) || inherits(el, "formula")) {
+        x[[i]] <- .step2_strip_environments(el, depth + 1L)
+      }
+    }
+    return(x)
+  }
+  if (is.name(x) || is.function(x)) {
+    return(x)
+  }
+  if (is.list(x) && !is.data.frame(x) && depth < 6L) {
+    for (i in seq_along(x)) {
+      if (!is.null(x[[i]])) x[[i]] <- .step2_strip_environments(x[[i]], depth + 1L)
+    }
+  }
+  if (!is.null(attr(x, ".Environment"))) attr(x, ".Environment") <- globalenv()
+  x
+}
+
+.step2_is_fixest_fit <- function(fit) {
+  inherits(fit, "fixest") ||
+    (is.list(fit) && length(fit) > 0L && all(vapply(fit, inherits, logical(1), "fixest")))
+}
+
+step2_slim_model_fit <- function(mf) {
+  keep <- intersect(
+    c("engine", "weather_terms", "interaction_terms", "fe_terms", "fit3",
+      "formulas", "train_data", "y_var", "model_type", "taus", "rif_grid",
+      "fallbacks", ".sig"),
+    names(mf)
+  )
+  out <- mf[keep]
+  if (!is.null(mf$.snap$model)) out$.snap <- list(model = mf$.snap$model)
+  if (.step2_is_fixest_fit(out$fit3)) {
+    out$fit3 <- .step2_strip_environments(out$fit3)
+  }
+  if (!is.null(out$formulas)) out$formulas <- .step2_strip_environments(out$formulas)
+  out
+}
+
 .step2_compute_required <- c(
   "sw", "so", "svy", "ss", "mf", "cp", "fp_list", "ssps",
   "residuals", "skip_coef_draws", "sim_dates", "perturbation_method",
