@@ -408,16 +408,6 @@ test_that("cancelled live run reverts to the committed run or removes the tab", 
   out
 }
 
-test_that("adopted partials seed the committed cache: no re-aggregation, same tables", {
-  seeded <- .pv_committed_render(.pv_adopted())
-  unseeded <- .pv_committed_render(NULL)
-
-  expect_identical(seeded$tables, unseeded$tables)
-  expect_gt(unseeded$calls, 0L)
-  expect_identical(seeded$calls, 0L)
-  expect_gte(seeded$cache$hits, 2L)
-})
-
 test_that("all streamed methods are seeded: switching methods after adoption re-aggregates nothing", {
   methods <- c("median", "gini", "headcount_ratio", "gap", "total")
   seeded <- .pv_committed_render(.pv_adopted(), switch_methods = methods)
@@ -426,6 +416,7 @@ test_that("all streamed methods are seeded: switching methods after adoption re-
   expect_identical(seeded$tables, unseeded$tables)
   expect_gt(unseeded$calls, 0L)
   expect_identical(seeded$calls, 0L)
+  expect_gte(seeded$cache$hits, 2L)
   # The seeded methods fit: nothing was evicted by the 8-entry default.
   expect_length(seeded$cache$evictions, 0L)
   expect_gt(seeded$cache$max_entries, 8L)
