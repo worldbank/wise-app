@@ -27,6 +27,8 @@ wiseapp::run_app()
 source("R/run_app.R"); run_app()
 
 # Document (regenerate man/ and NAMESPACE)
+# Use the roxygen2 version in DESCRIPTION's RoxygenNote (7.3.3); CI pins it,
+# and 8.x rewrites the NAMESPACE layout.
 devtools::document()
 
 # Load all R code during development
