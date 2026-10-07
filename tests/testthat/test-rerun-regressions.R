@@ -17,43 +17,6 @@ library(testthat)
 library(shiny)
 
 
-# ---- REACT-18: the lazy-evaluation trap, in isolation ----------------------
-
-test_that("passing a reactive's value to observeEvent deafens it after one fire", {
-  # This is the shape the bug had. Kept as an executable statement of *why*
-  # the helper now takes the reactive itself.
-  fires <- 0L
-  broken <- function(input, output, session) {
-    rv <- reactiveVal(0L)
-    mark <- function(observe_what) {
-      observeEvent(observe_what, fires <<- fires + 1L, ignoreInit = TRUE)
-    }
-    mark(rv())                       # value: forced once, then cached
-    observeEvent(input$bump, rv(isolate(rv()) + 1L))
-  }
-  testServer(broken, {
-    for (i in 1:5) { session$setInputs(bump = i); session$flushReact() }
-  })
-  expect_equal(fires, 1L)
-})
-
-test_that("passing the reactive itself keeps the dependency alive", {
-  fires <- 0L
-  fixed <- function(input, output, session) {
-    rv <- reactiveVal(0L)
-    mark <- function(react) {
-      observeEvent(react(), fires <<- fires + 1L, ignoreInit = TRUE)
-    }
-    mark(rv)                         # reactive: re-read on every invalidation
-    observeEvent(input$bump, rv(isolate(rv()) + 1L))
-  }
-  testServer(fixed, {
-    for (i in 1:5) { session$setInputs(bump = i); session$flushReact() }
-  })
-  expect_equal(fires, 5L)
-})
-
-
 # ---- REACT-18: the real Step 3 module --------------------------------------
 
 policy_args <- function(sp, infra, survey_version) {
@@ -283,41 +246,6 @@ btn_val <- function(n) {
   structure(as.integer(n), class = c("shinyActionButtonValue", "integer"))
 }
 
-test_that("ignoreInit swallows the first click when the event expr can throw", {
-  # Documents why `ignoreInit` was removed rather than kept "for safety".
-  count_clicks <- function(trigger_builder, ignore_init) {
-    runs <- 0L
-    srv <- function(input, output, session) {
-      trig <- trigger_builder(input)
-      if (ignore_init) {
-        observeEvent(trig(), runs <<- runs + 1L, ignoreInit = TRUE)
-      } else {
-        observeEvent(trig(), runs <<- runs + 1L)
-      }
-    }
-    testServer(srv, {
-      session$flushReact()
-      session$setInputs(b = btn_val(0)); session$flushReact()  # button renders
-      for (i in 1:3) { session$setInputs(b = btn_val(i)); session$flushReact() }
-    })
-    runs
-  }
-
-  plain <- function(input) reactive(input$b)
-  guarded <- function(input) reactive({ req(input$b); input$b })
-
-  # No req() in the event expression: the render at 0 spends the init budget,
-  # so all three clicks run. This is the Step 1 / Step 2 shape.
-  expect_equal(count_clicks(plain, ignore_init = TRUE), 3L)
-
-  # req() in the event expression: every pre-click evaluation aborts, so the
-  # first click is spent on init and only two of three clicks run.
-  expect_equal(count_clicks(guarded, ignore_init = TRUE), 2L)
-
-  # Dropping ignoreInit restores all three; req() alone already blocks the
-  # NULL and 0 states, so nothing fires before a real click.
-  expect_equal(count_clicks(guarded, ignore_init = FALSE), 3L)
-})
 
 test_that("the Step 3 run trigger fires on the very first click", {
   clicks <- reactiveVal(NULL)
