@@ -90,14 +90,7 @@ default_lcu_poverty_line <- function(df) {
         return(1.00)
       }
       df_lcu <- df |> dplyr::mutate(welfare_lcu = .data$welfare * .data$ppp2021)
-      if ("weight" %in% names(df_lcu)) {
-        p20 <- Hmisc::wtd.quantile(df_lcu$welfare_lcu,
-          weights = df_lcu$weight,
-          probs = 0.2, na.rm = TRUE
-        )
-      } else {
-        p20 <- stats::quantile(df_lcu$welfare_lcu, probs = 0.2, na.rm = TRUE)
-      }
+      p20 <- .sp_welfare_quantile(df_lcu$welfare_lcu, df_lcu[["weight"]], 0.2)
       round(as.numeric(p20), 2)
     },
     error = function(e) {
