@@ -164,7 +164,7 @@ collect_deterministic <- function(data, keys = NULL) {
 
   type <- connection_params$type %||% "local"
   switch(type,
-    "local" = file.path(connection_params$path %||% "data/", path),
+    "local" = file.path(connection_params$path %||% .default_data_path(), path),
     "s3" = paste0(
       "s3://", connection_params$bucket, "/",
       connection_params$prefix %||% "", path
@@ -628,7 +628,7 @@ collect_deterministic <- function(data, keys = NULL) {
 #'   \code{"local"}, \code{"s3"}, \code{"gcs"}, \code{"azure"},
 #'   \code{"hf"}, \code{"databricks"}. Credential fields are optional and fall
 #'   back to environment variables. Defaults to
-#'   \code{list(type = "local", path = "/data")}.
+#'   \code{list(type = "local", path = <data_path in golem-config.yml>)}.
 #'
 #' @param format \code{"parquet"} or \code{"csv"}. Detected from extension
 #'   when \code{NULL} (default).
@@ -667,7 +667,7 @@ collect_deterministic <- function(data, keys = NULL) {
 #' @noRd
 load_data <- function(
   paths,
-  connection_params = list(type = "local", path = "/data"),
+  connection_params = list(type = "local", path = .default_data_path()),
   format = NULL,
   unify_schemas = FALSE,
   collect = FALSE,

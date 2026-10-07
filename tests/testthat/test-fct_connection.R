@@ -587,3 +587,12 @@ test_that("object-store secrets carry a SCOPE and a per-scope name", {
   expect_match(captured[2], "SCOPE  'gs://bkt'", fixed = TRUE)
   expect_match(captured[3], "abfss://ctr@acct.dfs.core.windows.net", fixed = TRUE)
 })
+
+# CR-CQ-09: one default local data path, read from golem-config.yml.
+test_that("the default local data path comes from the packaged config", {
+  expect_identical(.default_data_path(), get_golem_config("data_path"))
+  expect_identical(.default_data_path(), "data/")
+  expect_identical(.resolve_data_path("survey_list.csv", list(type = "local")),
+                   file.path("data/", "survey_list.csv"))
+  expect_identical(formals(load_data)$connection_params$path, quote(.default_data_path()))
+})

@@ -152,7 +152,7 @@ overview_metadata_cache_store <- function(connection_params, value) {
     list(
       type = type,
       path = normalizePath(
-        path.expand(connection_params$path %||% "data/"),
+        path.expand(connection_params$path %||% .default_data_path()),
         winslash = "/",
         mustWork = FALSE
       ),
@@ -182,7 +182,7 @@ overview_metadata_cache_store <- function(connection_params, value) {
 
 
 .overview_metadata_local_signatures <- function(connection_params) {
-  root <- path.expand(connection_params$path %||% "data/")
+  root <- path.expand(connection_params$path %||% .default_data_path())
   paths <- file.path(root, OVERVIEW_METADATA_FILES)
   info <- file.info(paths)
   out <- lapply(seq_along(paths), function(i) {

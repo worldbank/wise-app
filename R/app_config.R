@@ -23,6 +23,13 @@ get_golem_config <- function(
 
 # Deployment environment helpers ----
 
+#' Default folder for the local data source (`data_path` in golem-config.yml).
+#' @noRd
+.default_data_path <- function() {
+  path <- tryCatch(get_golem_config("data_path"), error = function(e) NULL)
+  if (is.character(path) && length(path) == 1L && nzchar(path)) path else "data/"
+}
+
 #' Return the configured automatic data source, or `NULL` when unset.
 #' @noRd
 .data_source <- function() {
