@@ -4483,7 +4483,7 @@
       "checksum": "417d85083d6b84b9b61e59d58a9a7774"
     },
     "inst/app/www/custom.css": {
-      "checksum": "e637dc5265d1351ecb5e77c3c893c532"
+      "checksum": "b0c71dd28238578845c911ee7cecf1c7"
     },
     "inst/app/www/custom.js": {
       "checksum": "78bb4e6717b0658e7f1610cadb9dab14"
@@ -4576,7 +4576,7 @@
       "checksum": "167cda9752865524d8e393d24f17ea97"
     },
     "R/fct_policy_diagnostics.R": {
-      "checksum": "9093e9b397bb1ac5c77b4a53c21737c0"
+      "checksum": "cc43e99dba2223d4883bc11cfc100d7e"
     },
     "R/fct_policy_metric_decompose.R": {
       "checksum": "544e597f2309f1095828192591303562"
@@ -4585,7 +4585,7 @@
       "checksum": "9058b9c94c323beed327deac72d746f7"
     },
     "R/fct_policy_sim.R": {
-      "checksum": "565880e2f6cb8bb5291073d3a2a4e7cb"
+      "checksum": "fd50780e77e9cc5577477b6a095eb959"
     },
     "R/fct_predict_outcomes.R": {
       "checksum": "111469956f2f7ae240ba96b7f3d3775a"
@@ -4616,6 +4616,9 @@
     },
     "R/fct_simulations.R": {
       "checksum": "2a1b1d39402140e3e8b536d4bc3e6537"
+    },
+    "R/fct_sp_effectiveness.R": {
+      "checksum": "6f676ab0c9cabd5622d4d4fed4ab63d0"
     },
     "R/fct_step1_headline.R": {
       "checksum": "c34ddd4edc08f0142be921eff986fb86"
@@ -4690,7 +4693,7 @@
       "checksum": "1635bad43e613277099a7e78d0d79488"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "3ee8d80902f80c20589d73d0e2e753cd"
+      "checksum": "c2a68b9070d481ff2da50b6604f21650"
     },
     "R/mod_3_02_infra.R": {
       "checksum": "e04dbcb6082a3498ed2cfa7c4e17b5f2"
@@ -4711,13 +4714,13 @@
       "checksum": "1498b5a7fc65e6db1f3925310d89b883"
     },
     "R/mod_3_08_diagnostics.R": {
-      "checksum": "d53da8f896857f418850aeb84f73556e"
+      "checksum": "066411ef686923737830c77cf00972c8"
     },
     "R/mod_3_09_decomposition.R": {
       "checksum": "89465ecb0bfae87e0860ecbfd1f4eba7"
     },
     "R/mod_3_scenario.R": {
-      "checksum": "2e089760a0f912e74e3d1bdf35c526cb"
+      "checksum": "436842c6bd432da3294b4706edc03399"
     },
     "R/RcppExports.R": {
       "checksum": "6729f575d994859c1ff72617f5ded89d"
