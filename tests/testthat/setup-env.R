@@ -4,6 +4,14 @@
 # that need a different value still set it with withr::local_envvar().
 .wise_test_root <- withr::local_tempdir(.local_envir = testthat::teardown_env())
 
+# webshot2 reuses this browser across screenshots, so close it after the suite.
+withr::defer({
+  if (requireNamespace("chromote", quietly = TRUE) &&
+      chromote::has_default_chromote_object()) {
+    try(chromote::default_chromote_object()$close(), silent = TRUE)
+  }
+}, envir = testthat::teardown_env())
+
 withr::local_envvar(
   WISEAPP_WEATHER_CACHE_DIR = file.path(.wise_test_root, "weather-cache"),
   WISEAPP_PREPARED_WEATHER_CACHE_DIR = file.path(.wise_test_root, "prepared-weather-cache"),
