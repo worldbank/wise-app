@@ -2346,7 +2346,11 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       return(hit)
     }
 
-    suite_key <- .agg_cache_key(tag, "__suite__", poverty_line)
+    # R2-PERF-04: line-free and line-dependent metrics are separate suites, so
+    # a poverty-line change recomputes only the latter.
+    group <- .aggregation_suite_group(method, .agg_suite_methods())
+    suite_line <- if (group$poverty_dependent) poverty_line else "none"
+    suite_key <- .agg_cache_key(tag, paste0("__suite__", group$poverty_dependent), suite_line)
     suite_cache <- attr(ws, "suite_cache")
     suite <- .agg_cache_get(suite_cache, suite_key)
     if (!is.null(suite)) {
@@ -2356,14 +2360,14 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     }
 
     baseline_skip_coef <- is.null(pl$F_loading)
-    suite_pov <- poverty_line %||% 3
+    suite_pov <- if (group$poverty_dependent) poverty_line %||% 3 else "none"
     shared_key <- shared_aggregation_cache_key(
       list(
         arm = tag,
         signature = hs$.step2_sig %||% hs$.sig %||% list(pipeline = "step2")
       ),
       suite_pov, 0.05, TRUE, active_residuals(hs), baseline_skip_coef,
-      isTRUE(hs$so$transform == "log"), .agg_suite_methods()
+      isTRUE(hs$so$transform == "log"), group$methods
     )
     shared <- shared_aggregation_cache_get(aggregation_cache, shared_key)
     if (!is.null(shared)) {
@@ -2375,10 +2379,10 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
 
     agg <- aggregate_pipeline_tables_multi(
       pipelines = pl,
-      methods = .agg_suite_methods(),
+      methods = group$methods,
       weighted = TRUE,
-       pov_lines = setNames(lapply(.agg_suite_methods(), function(x) suite_pov),
-                           .agg_suite_methods()),
+       pov_lines = setNames(lapply(group$methods, function(x) poverty_line %||% 3),
+                           group$methods),
       residuals = active_residuals(hs),
       is_log = isTRUE(hs$so$transform == "log"),
       band_q = c(lo = 0.10, hi = 0.90),
@@ -2442,7 +2446,11 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       return(hit)
     }
 
-    suite_key <- .agg_cache_key(tag, "__suite__", poverty_line)
+    # R2-PERF-04: line-free and line-dependent metrics are separate suites, so
+    # a poverty-line change recomputes only the latter.
+    group <- .aggregation_suite_group(method, .agg_suite_methods())
+    suite_line <- if (group$poverty_dependent) poverty_line else "none"
+    suite_key <- .agg_cache_key(tag, paste0("__suite__", group$poverty_dependent), suite_line)
     suite_cache <- attr(ws, "suite_cache")
     suite <- .agg_cache_get(suite_cache, suite_key)
     if (!is.null(suite)) {
@@ -2470,10 +2478,10 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           }
            combined <- aggregate_pipeline_tables_multi(
              pipelines = pipes,
-             methods = .agg_suite_methods(),
+             methods = group$methods,
              weighted = use_w,
-             pov_lines = setNames(lapply(.agg_suite_methods(), function(x) poverty_line %||% 3),
-                                  .agg_suite_methods()),
+             pov_lines = setNames(lapply(group$methods, function(x) poverty_line %||% 3),
+                                  group$methods),
             residuals = active_residuals(hs_for_dev),
             is_log = isTRUE(s$so$transform == "log"),
             band_q = c(lo = 0.10, hi = 0.90),

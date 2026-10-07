@@ -1212,6 +1212,19 @@ shared_aggregation_cache_put <- function(cache, key, value) {
   invisible(value)
 }
 
+# R2-PERF-04: a poverty-line change must recompute only the metrics that use
+# the line. Split a method set into the two groups so each is suite-cached on
+# its own (the line-free group is keyed without the line).
+.aggregation_suite_group <- function(method, methods) {
+  # prosperity_gap uses a fixed threshold, not the selected line.
+  line_dependent <- function(m) {
+    isTRUE(.WISE_METRIC_REGISTRY[[m]]$poverty_line) && !identical(m, "prosperity_gap")
+  }
+  uses_line <- vapply(methods, line_dependent, logical(1), USE.NAMES = FALSE)
+  dependent <- line_dependent(method)
+  list(methods = methods[uses_line == dependent], poverty_dependent = dependent)
+}
+
 shared_aggregation_cache_key <- function(run_signature, poverty_line,
                                          bandwidth_p0, weighted, residuals,
                                          skip_coef, is_log, methods) {

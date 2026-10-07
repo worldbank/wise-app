@@ -1054,11 +1054,13 @@ mod_2_02_results_server <- function(id,
       is_log <- isTRUE(ws$hs$so$transform == "log")
        build_for <- function(weighted) {
              if ((isTRUE(weighted) || !isTRUE(has_w)) && !identical(method, "prosperity_gap")) {
-              suite_pov <- pl_v %||% 3
-              suite_key <- paste0("hist_suite_", weighted, "_", format(suite_pov), "_", format(bandwidth_p0()))
+              # R2-PERF-04: line-free and line-dependent metrics are separate suites.
+              group <- .aggregation_suite_group(method, agg_methods())
+              suite_pov <- if (group$poverty_dependent) pl_v %||% 3 else "none"
+              suite_key <- paste0("hist_suite_", weighted, "_", format(suite_pov), "_", format(bandwidth_p0()), "_", group$poverty_dependent)
             shared_key <- shared_aggregation_cache_key(
               ws$hs$.sig %||% list(pipeline = "step2"), suite_pov,
-              bandwidth_p0(), weighted, ws$res, ws$skip, is_log, agg_methods()
+              bandwidth_p0(), weighted, ws$res, ws$skip, is_log, group$methods
             )
             suite <- shared_aggregation_cache_get(shared_aggregation_cache, shared_key)
             if (!is.null(suite)) return(setNames(list(suite[[method]]), method))
@@ -1066,9 +1068,9 @@ mod_2_02_results_server <- function(id,
            if (is.null(suite)) {
              suite <- aggregate_pipeline_tables_multi(
                pipelines = pl,
-               methods = agg_methods(),
+               methods = group$methods,
                weighted = weighted,
-                pov_lines = setNames(lapply(agg_methods(), function(x) suite_pov), agg_methods()),
+                pov_lines = setNames(lapply(group$methods, function(x) pl_v %||% 3), group$methods),
                residuals = ws$res,
                is_log = is_log,
                band_q = bq,
@@ -1127,15 +1129,16 @@ mod_2_02_results_server <- function(id,
         has_w <- !is.null(pipes[[1L]]$weight)
          build_for <- function(weighted) {
              if ((isTRUE(weighted) || !isTRUE(has_w)) && !identical(method, "prosperity_gap")) {
-              suite_pov <- pl_v %||% 3
-              suite_key <- paste0("scenario_suite_", names(sc)[[s_idx]], "_", format(suite_pov), "_", format(bandwidth_p0()))
+              group <- .aggregation_suite_group(method, agg_methods())
+              suite_pov <- if (group$poverty_dependent) pl_v %||% 3 else "none"
+              suite_key <- paste0("scenario_suite_", names(sc)[[s_idx]], "_", format(suite_pov), "_", format(bandwidth_p0()), "_", group$poverty_dependent)
              suite <- get0(suite_key, envir = ws$weighted_suite_cache)
              if (is.null(suite)) {
                suite <- aggregate_pipeline_tables_multi(
                  pipelines = pipes,
-                 methods = agg_methods(),
+                 methods = group$methods,
                  weighted = weighted,
-                  pov_lines = setNames(lapply(agg_methods(), function(x) pl_v %||% 3), agg_methods()),
+                  pov_lines = setNames(lapply(group$methods, function(x) pl_v %||% 3), group$methods),
                  residuals = ws$res,
                  is_log = is_log,
                  band_q = bq,
