@@ -4474,7 +4474,7 @@
       "checksum": "00dd3b36de0c9fa61b9baa88d345e7fa"
     },
     "inst/app/vendor/hexmap.js": {
-      "checksum": "935c3a4ca66e7bec4ce944162a1fcfae"
+      "checksum": "6afc0a20db5eb5e85e8f978b19c3f81b"
     },
     "inst/app/vendor/maplibre-gl.css": {
       "checksum": "9ec5b4801e005a61a8a2ebbfa352272f"
@@ -4504,7 +4504,7 @@
       "checksum": "8806c00b82b6550bdaa5c801ae5e0efd"
     },
     "inst/golem-config.yml": {
-      "checksum": "fb332cd6d7ae6db6e4a60068f803c6f9"
+      "checksum": "5bb3055e20d115be34fcb5aaee2d0b74"
     },
     "NAMESPACE": {
       "checksum": "e717c076540f08bd953b83858d648a79"
@@ -4513,7 +4513,7 @@
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
     },
     "R/app_config.R": {
-      "checksum": "75cbf80800a8fdd824db8fd3ee195a35"
+      "checksum": "f975ca4264d19f684e8a5f85ff94f722"
     },
     "R/app_server.R": {
       "checksum": "39d68916285424b97faf9d0f8ea887fa"
@@ -4546,13 +4546,13 @@
       "checksum": "c224a221511302e2418014a140272a02"
     },
     "R/fct_hexmap.R": {
-      "checksum": "02f00deb5fa9f3b813c9b1f9a58a323e"
+      "checksum": "70cfbfbd01fac72dc0b0679bf4906381"
     },
     "R/fct_incidence.R": {
       "checksum": "32b001560d542ecc728e4a7ddd1309a1"
     },
     "R/fct_load_data.R": {
-      "checksum": "29073716c9a01706de44c93785f462fd"
+      "checksum": "c83c15fa2490cc4163a55b1bd2ec3c66"
     },
     "R/fct_loc_panel.R": {
       "checksum": "b2407043eb1f27a5b8ca7701cf027047"
@@ -4570,7 +4570,7 @@
       "checksum": "43d3eb9d40972350641ef8ce97326b8b"
     },
     "R/fct_overview_metadata.R": {
-      "checksum": "55559006d37aa75e6bfcddbb30054017"
+      "checksum": "0a3cc2e335a6c00859257c194b3ccd66"
     },
     "R/fct_policy_decompose.R": {
       "checksum": "167cda9752865524d8e393d24f17ea97"
