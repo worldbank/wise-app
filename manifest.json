@@ -4880,7 +4880,7 @@
       "checksum": "8fb3f7708018801cb12b7404d886b60a"
     },
     "R/fct_aggregation_delta.R": {
-      "checksum": "ac296a2483853380acf0c7413867c427"
+      "checksum": "90904ec9de61185cb932c6bbd21be60c"
     },
     "R/fct_aggregation_kernel.R": {
       "checksum": "8ef9fcfca11ecd8b47bd67b317221b9b"
@@ -4898,7 +4898,7 @@
       "checksum": "53e627fc730961d384e966282d66560b"
     },
     "R/fct_fit_model.R": {
-      "checksum": "1e707320709e9cc85449692d3b39a24e"
+      "checksum": "87b35cab30740239a53661fbb9377931"
     },
     "R/fct_get_weather.R": {
       "checksum": "52d5169a9ccfed03cc6a3a7fa97530c2"
@@ -4940,13 +4940,13 @@
       "checksum": "544e597f2309f1095828192591303562"
     },
     "R/fct_policy_sim_compare.R": {
-      "checksum": "ca047b292847b11640f26c58a962560f"
+      "checksum": "23a51265ed7cc8ccad654a2ef56e0fd4"
     },
     "R/fct_policy_sim.R": {
-      "checksum": "06a7fec668b6975439af529a13581222"
+      "checksum": "565880e2f6cb8bb5291073d3a2a4e7cb"
     },
     "R/fct_predict_outcomes.R": {
-      "checksum": "f439f085a65306f9b099dd14719f1e35"
+      "checksum": "111469956f2f7ae240ba96b7f3d3775a"
     },
     "R/fct_provenance.R": {
       "checksum": "5f4700b82e24dcead1d8f88c7feb0373"
@@ -4967,7 +4967,7 @@
       "checksum": "fd9166bd2b9dd590f5deb3b82185df53"
     },
     "R/fct_sim_compare.R": {
-      "checksum": "94d1c23b8747cd07075f8ff2970fb055"
+      "checksum": "9a15d17d765f8459aaf2ca4732f9343a"
     },
     "R/fct_sim_diag.R": {
       "checksum": "23548950372a810124d78cef91bb4558"
@@ -5027,7 +5027,7 @@
       "checksum": "a30cdfd91c86a1692422701ba1122629"
     },
     "R/mod_1_07_results.R": {
-      "checksum": "2196487b4419c49f425b5dda45a98b65"
+      "checksum": "19120dff0e394e2bfe1c9081e2af3c69"
     },
     "R/mod_1_08_modelfit.R": {
       "checksum": "900d712362d93cd3a39cd61b33fcc3bf"
@@ -5039,7 +5039,7 @@
       "checksum": "80c99eff2c6240fc75bfe8d6348b6f3f"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "3579e03b4d4e167923b0d898b9e6db4d"
+      "checksum": "1693ba0d758f81337f5d0c7465e40a1b"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "b95a856b762fc8ec4930c51c8f23d75e"
