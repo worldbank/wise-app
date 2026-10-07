@@ -97,6 +97,39 @@
   out
 }
 
+# Rows of the social-protection transfer summary, shared by the on-screen table
+# and the export so they cannot drift. Raw values; callers format them. With no
+# administration cost the rows are the original two (cost and per-recipient
+# amount); with administration the cost is split into transfers, administration
+# and total.
+.policy_transfer_summary_rows <- function(d) {
+  unit_label <- if (identical(d$analysis_unit, "hh")) "household" else "unit"
+  basis <- if (length(d$transfer_households) && is.finite(d$transfer_households)) {
+    "recipient households"
+  } else {
+    "recipient population"
+  }
+  per_recipient <- paste0("Annual transfer per recipient ", unit_label)
+  if (isTRUE(d$admin_share > 0)) {
+    data.frame(
+      Type = c(
+        paste0("Estimated annual transfer cost (", basis, ")"),
+        "Estimated annual administration cost",
+        "Estimated total annual cost",
+        per_recipient
+      ),
+      Value = c(d$transfer_sum, d$admin_sum, d$total_cost_sum, d$transfer_pp),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    data.frame(
+      Type = c(paste0("Estimated annual cost (", basis, ")"), per_recipient),
+      Value = c(d$transfer_sum, d$transfer_pp),
+      stringsAsFactors = FALSE
+    )
+  }
+}
+
 .policy_treatment_explanation <- function(sp) {
   if (is.null(sp) || !is.list(sp)) {
     return(paste(
@@ -127,12 +160,17 @@
 
   incl <- sp$inclusion_error_pct %||% 0
   excl <- sp$exclusion_error_pct %||% 0
+  placement <- if (.sp_error_concentration(sp) > 0) {
+    " Errors fall preferentially on units near the cutoff."
+  } else {
+    ""
+  }
   paste(
     targeting_text,
     paste0(
       "The run then applies the selected targeting errors: ", incl,
       "% inclusion error can treat ineligible units, and ", excl,
-      "% exclusion error can miss eligible units."
+      "% exclusion error can miss eligible units.", placement
     ),
     "Treatment is a positive transfer after that draw; this is counterfactual assignment."
   )
@@ -277,6 +315,23 @@
         wise_reactable_csv_button(ns("policy_component_table"), "policy_component_summary")
       ),
       reactable::reactableOutput(ns("policy_component_table")),
+      shiny::h5(
+        "Cost and targeting effectiveness",
+        info_popover(
+          title = "Cost and targeting effectiveness",
+          shiny::p(
+            "Computed from the baseline and policy survey frames for this run's",
+            "single targeting draw, at the poverty line chosen in Results.",
+            "Leakage and adequacy are shares of transfer spending and of the",
+            "poverty gap; they say nothing about modelled welfare effects."
+          )
+        )
+      ),
+      shiny::div(
+        class = "wise-reactable-controls",
+        wise_reactable_csv_button(ns("sp_effectiveness_table"), "policy_sp_effectiveness")
+      ),
+      reactable::reactableOutput(ns("sp_effectiveness_table")),
       shiny::h5("Eligibility versus realized social-protection treatment"),
       shiny::tags$p(
         class = "diagnostic-note",
@@ -308,6 +363,8 @@
 #' @param diagnostic_summary Reactive immutable summary snapshot published by
 #'   the policy runner after a successful run.
 #' @param selected_policies Reactive selected policy scenario keys.
+#' @param poverty_line Reactive Results poverty line (outcome currency), used by
+#'   the cost and targeting table. NULL or NA leaves line-based figures unavailable.
 #' @param baseline_hist_sim Reactive Step 2-style baseline simulation result.
 #' @param selected_weather Reactive selected weather specification.
 #' @param policy_saved_scenarios Reactive named future scenario list.
@@ -333,6 +390,7 @@ mod_3_08_diagnostics_server <- function(id,
                                         selected_outcome = reactive(NULL),
                                         variable_list = reactive(NULL),
                                         sp_scenario = reactive(NULL),
+                                        poverty_line = reactive(NULL),
                                         infra_scenario = reactive(NULL),
                                         digital_scenario = reactive(NULL),
                                         labor_scenario = reactive(NULL),
@@ -404,21 +462,7 @@ mod_3_08_diagnostics_server <- function(id,
       # Step 3 sidebar's reach preview (fmt_num()) so the same quantity never
       # appears at two precisions. Raw values live in the data; rounding is
       # applied by colFormat.
-      df <- data.frame(
-        Type = c(
-          if (length(d$transfer_households) && is.finite(d$transfer_households)) {
-            "Estimated annual cost (recipient households)"
-          } else {
-            "Estimated annual cost (recipient population)"
-          },
-          paste0(
-            "Annual transfer per recipient ",
-            if (identical(d$analysis_unit, "hh")) "household" else "unit"
-          )
-        ),
-        Value = c(d$transfer_sum, d$transfer_pp),
-        stringsAsFactors = FALSE
-      )
+      df <- .policy_transfer_summary_rows(d)
       .wise_diag_reactable(df, formats = list(
         Value = list(
           digits = 1, prefix = .sp_currency_prefix(d$transfer_currency),
@@ -428,6 +472,66 @@ mod_3_08_diagnostics_server <- function(id,
     })
 
     outputOptions(output, "transfer_summary_ui", suspendWhenHidden = FALSE)
+
+    # Cost and targeting effectiveness (P0-5) ----
+
+    sp_effectiveness_display <- reactive({
+      d <- diag_data()
+      if (is.null(d) || (is.list(d) && !is.null(d$status))) {
+        return(NULL)
+      }
+      sp <- sp_scenario()
+      base <- baseline_svy()
+      pol <- policy_svy()
+      if (is.null(base) || is.null(pol)) {
+        return(NULL)
+      }
+      ideal <- tryCatch(
+        if (!is.null(sp)) .determine_sp_eligibility(base, sp, apply_errors = FALSE),
+        error = function(e) NULL
+      )
+      res <- sp_effectiveness(
+        base, pol,
+        # The Results line is NULL when a non-poverty metric is selected, so
+        # fall back to the line Step 1 stored with the baseline run.
+        poverty_line = tryCatch(
+          poverty_line() %||% baseline_hist_sim()$pov_line,
+          error = function(e) NULL
+        ),
+        analysis_unit = d$analysis_unit %||% "hh",
+        currency = d$transfer_currency %||% "PPP",
+        admin_share = d$admin_share %||% 0,
+        eligibility = ideal
+      )
+      .sp_effectiveness_display(res, d$transfer_currency %||% "PPP")
+    })
+
+    output$sp_effectiveness_table <- reactable::renderReactable({
+      df <- sp_effectiveness_display()
+      if (is.null(df) || nrow(df) == 0L) {
+        return(.wise_diag_reactable(
+          data.frame(Note = "No social protection transfer to evaluate.")
+        ))
+      }
+      .wise_diag_reactable(df)
+    })
+
+    outputOptions(output, "sp_effectiveness_table", suspendWhenHidden = FALSE)
+
+    wise_export_table(
+      key = "policy_sp_effectiveness",
+      label = "Social protection cost and targeting effectiveness",
+      step = 3L,
+      fun = function() {
+        df <- sp_effectiveness_display()
+        if (is.null(df) || nrow(df) == 0L) NULL else df
+      },
+      stale = stale,
+      description = paste(
+        "Cost per person, realised targeting errors, coverage of the poor,",
+        "leakage and adequacy for the social protection transfer."
+      )
+    )
 
     # Summary statistics table ----
 
@@ -484,24 +588,12 @@ mod_3_08_diagnostics_server <- function(id,
         if (is.null(d) || !is.null(d$status)) {
           return(NULL)
         }
-        data.frame(
-          Type = c(
-            if (length(d$transfer_households) && is.finite(d$transfer_households)) {
-              "Estimated annual cost (recipient households)"
-            } else {
-              "Estimated annual cost (recipient population)"
-            },
-            paste0(
-              "Annual transfer per recipient ",
-              if (identical(d$analysis_unit, "hh")) "household" else "unit"
-            )
-          ),
-          Value = fmt_num(
-            c(d$transfer_sum, d$transfer_pp),
-            prefix = .sp_currency_prefix(d$transfer_currency)
-          ),
-          stringsAsFactors = FALSE
+        rows <- .policy_transfer_summary_rows(d)
+        rows$Value <- fmt_num(
+          rows$Value,
+          prefix = .sp_currency_prefix(d$transfer_currency)
         )
+        rows
       },
       stale = stale,
       description = paste(

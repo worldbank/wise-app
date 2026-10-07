@@ -216,18 +216,24 @@ mod_3_01_sp_server <- function(id,
             with_grid_num(11)
         ),
 
-        # Proxy variable and cutoff (only for Proxy targeting)
-        conditionalPanel(
-          condition = paste0("input['", ns("targeting"), "'] == 'pmt'"),
-          uiOutput(ns("pmt_variable_ui")),
-          uiOutput(ns("pmt_cutoff_ui"))
-        ),
-
-        # Inclusion/exclusion errors (only for non-universal targeting)
+        # Targeting details flyout (P0-1): proxy rule, errors and how errors
+        # are placed. Universal targeting has no rule detail and no errors.
         conditionalPanel(
           condition = paste0("input['", ns("targeting"), "'] != 'universal'"),
-          tags$details(
-            tags$summary("Errors"),
+          config_flyout_block(
+            ns("targeting_toggle"),
+            "Targeting details",
+            toggle_label = "Targeting details",
+            display_label = textOutput(ns("targeting_summary"), inline = TRUE),
+
+            # Proxy variable and cutoff (only for Proxy targeting)
+            conditionalPanel(
+              condition = paste0("input['", ns("targeting"), "'] == 'pmt'"),
+              uiOutput(ns("pmt_variable_ui")),
+              uiOutput(ns("pmt_cutoff_ui"))
+            ),
+
+            # Inclusion/exclusion errors
             sliderInput(
               inputId = ns("inclusion_error_pct"),
               label = tags$div(
@@ -257,6 +263,35 @@ mod_3_01_sp_server <- function(id,
                 )
               ),
               min = 0, max = 30, value = 10, step = 5, post = "%"
+            ),
+            selectInput(
+              inputId = ns("error_concentration"),
+              label = tags$span(
+                "Where errors fall",
+                info_popover(
+                  title = "Where errors fall",
+                  tags$p(
+                    "The error rates above fix how many", unit_word(plural = TRUE),
+                    "are wrongly included or excluded. This setting chooses which",
+                    "ones. \"Random\" picks any unit with equal chance.",
+                    "The other settings make units close to the cutoff likelier to",
+                    "be misclassified, as in proxy-means tests. Closeness is the",
+                    "difference in welfare (or proxy) percentile rank, not weighted.",
+                    "Proxy variables with only two values always use random errors."
+                  ),
+                  tags$p(
+                    "Error counts are shares of sampled rows, not of the weighted",
+                    "population, so weighted error rates can differ slightly from",
+                    "the sliders."
+                  )
+                )
+              ),
+              choices = c(
+                "Random" = "0",
+                "Near the cutoff" = "5",
+                "Mostly near the cutoff" = "20"
+              ),
+              selected = "0"
             )
           )
         ),
@@ -436,11 +471,17 @@ mod_3_01_sp_server <- function(id,
     #   - show only number of payments
 
     output$sp_timing_ui <- renderUI({
-      conditionalPanel(
-        condition = paste0(
-          "input['", ns("budget_mode"), "'] == 'transfer_first'"
-        ),
-        tagList(
+      config_flyout_block(
+        ns("payment_toggle"),
+        "Payment settings",
+        toggle_label = "Payment settings",
+        display_label = textOutput(ns("payment_summary"), inline = TRUE),
+
+        # Number of payments - only when the amount is set per payment
+        conditionalPanel(
+          condition = paste0(
+            "input['", ns("budget_mode"), "'] == 'transfer_first'"
+          ),
           tags$label(
             class = "control-label",
             tags$i(class = "fa fa-clock me-1"),
@@ -456,8 +497,6 @@ mod_3_01_sp_server <- function(id,
               )
             )
           ),
-
-          # Number of payments - shown when regular (either via type or frequency)
           tags$div(
             class = "sp-inline-slider",
             tags$span(
@@ -474,8 +513,104 @@ mod_3_01_sp_server <- function(id,
               11
             )
           )
+        ),
+
+        uiOutput(ns("amount_basis_ui")),
+
+        numericInput(
+          inputId = ns("admin_cost_pct"),
+          label = tags$span(
+            tags$i(class = "fa fa-building-columns me-1"),
+            "Administration cost (% of total cost)",
+            info_popover(
+              title = "Administration cost",
+              tags$p(
+                "Share of total program spending used for delivery and",
+                "administration. Only the rest reaches recipients, so welfare",
+                "effects use the net transfer, while the cost shown includes",
+                "administration."
+              ),
+              tags$p(
+                "With an amount per payment, total cost = transfers /",
+                "(1 - share). With a total budget, the budget is total cost and",
+                "recipients receive (1 - share) of it.",
+                "The default of 0 means no administration cost."
+              )
+            )
+          ),
+          value = 0, min = 0, max = 50, step = 1
         )
       )
+    })
+
+    # Amount basis (household analysis only) ----
+    output$amount_basis_ui <- renderUI({
+      au <- tryCatch(analysis_unit(), error = function(e) "hh")
+      if (!identical(au, "hh")) {
+        return(tags$p(
+          class = "text-muted small",
+          "Amounts are per unit; a per-person basis applies to household analysis only."
+        ))
+      }
+      tagList(
+        tags$label(
+          class = "control-label",
+          tags$i(class = "fa fa-people-roof me-1"),
+          "Amount basis",
+          info_popover(
+            title = "Amount basis",
+            tags$p(
+              tags$b("Per household:"),
+              "each recipient household receives the amount, shared across its",
+              "members, so larger households gain less per person."
+            ),
+            tags$p(
+              tags$b("Per person:"),
+              "each member of a recipient household receives the amount, so cost",
+              "and welfare gain grow with household size. A total budget is",
+              "shared across recipient people."
+            )
+          )
+        ),
+        pill_toggle(
+          inputId = ns("amount_basis"),
+          label = NULL,
+          aria_label = "Amount basis",
+          choices = c("Per household" = "per_household", "Per person" = "per_capita"),
+          selected = shiny::isolate(input$amount_basis) %||% "per_household"
+        )
+      )
+    })
+
+    # One-line summaries shown beside the flyout buttons ----
+    output$targeting_summary <- renderText({
+      tg <- input$targeting %||% "universal"
+      if (identical(tg, "universal")) {
+        return("")
+      }
+      conc <- suppressWarnings(as.numeric(input$error_concentration %||% 0))
+      paste0(
+        if (identical(tg, "pmt")) "Proxy rule; " else "",
+        "errors ", input$inclusion_error_pct %||% 10, "% / ",
+        input$exclusion_error_pct %||% 10, "%",
+        if (is.finite(conc) && conc > 0) ", near cutoff" else ""
+      )
+    })
+
+    output$payment_summary <- renderText({
+      admin <- suppressWarnings(as.numeric(input$admin_cost_pct %||% 0))
+      basis <- input$amount_basis %||% "per_household"
+      parts <- c(
+        if (identical(input$budget_mode %||% "transfer_first", "transfer_first")) {
+          paste0(input$transfer_n_payments %||% 6L, " payments/year")
+        },
+        if (identical(basis, "per_capita") &&
+          identical(tryCatch(analysis_unit(), error = function(e) "hh"), "hh")) {
+          "per person"
+        },
+        if (is.finite(admin) && admin > 0) paste0("admin ", admin, "%")
+      )
+      if (length(parts)) paste(parts, collapse = ", ") else ""
     })
 
     # Scenario specification ----
@@ -489,7 +624,8 @@ mod_3_01_sp_server <- function(id,
     lapply(
       c(
         "sp_type_ui", "sp_budget_amount_ui", "sp_targeting_ui",
-        "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui"
+        "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui", "amount_basis_ui",
+        "targeting_summary", "payment_summary"
       ),
       function(out_id) {
         shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
@@ -537,9 +673,23 @@ mod_3_01_sp_server <- function(id,
         pmt_cutoff = input$pmt_cutoff %||% NA_real_,
         inclusion_error_pct = input$inclusion_error_pct %||% 10,
         exclusion_error_pct = input$exclusion_error_pct %||% 10,
+        # 0 = errors fall on random units; larger = nearer the cutoff
+        error_concentration = suppressWarnings(
+          as.numeric(input$error_concentration %||% 0)
+        ),
         # Transfer amount, in `currency` (outcome units)
         currency = sp_currency(),
         transfer_amount_usd = input$transfer_amount_usd %||% 0,
+        # Per-person basis only exists for household analysis units
+        amount_basis = if (identical(
+          tryCatch(analysis_unit(), error = function(e) "hh"), "hh"
+        )) {
+          input$amount_basis %||% "per_household"
+        } else {
+          "per_household"
+        },
+        # Administration as a percentage of total cost
+        admin_cost_pct = input$admin_cost_pct %||% 0,
         # Timing - regular programs always have n payments
         transfer_frequency =
           if (is_regular) {
@@ -686,7 +836,7 @@ mod_3_01_sp_server <- function(id,
 
       selection_summary_card(
         title = program_title,
-        rows = list(
+        rows = Filter(Negate(is.null), list(
           selection_card_row(
             name  = paste("Recipient", unit_pl),
             pills = fmt_count(r$n_recipient_units)
@@ -703,21 +853,41 @@ mod_3_01_sp_server <- function(id,
             name  = "Share of total population",
             pills = fmt_num(r$share_pct, suffix = "%")
           ),
-          selection_card_row(
-            name  = paste("Annual transfer per", unit_sg),
-            pills = fmt_num(
-              r$transfer_per_unit,
-              digits = 2, prefix = .sp_currency_prefix(preview_spec$currency)
+          if (identical(r$amount_basis, "per_capita") &&
+            identical(preview_unit, "hh")) {
+            selection_card_row(
+              name  = "Annual transfer per person",
+              pills = fmt_num(
+                r$transfer_per_person,
+                digits = 2, prefix = .sp_currency_prefix(preview_spec$currency)
+              )
             )
-          ),
+          } else {
+            selection_card_row(
+              name  = paste("Annual transfer per", unit_sg),
+              pills = fmt_num(
+                r$transfer_per_unit,
+                digits = 2, prefix = .sp_currency_prefix(preview_spec$currency)
+              )
+            )
+          },
           selection_card_row(
             name  = cost_label,
             pills = fmt_num(
               r$transfer_total,
               digits = 0, prefix = .sp_currency_prefix(preview_spec$currency)
             )
-          )
-        ),
+          ),
+          if (isTRUE(r$admin_cost > 0)) {
+            selection_card_row(
+              name  = "Of which administration",
+              pills = fmt_num(
+                r$admin_cost,
+                digits = 0, prefix = .sp_currency_prefix(preview_spec$currency)
+              )
+            )
+          }
+        )),
         info = paste(
           count_hint,
           targeting_info,

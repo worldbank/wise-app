@@ -752,6 +752,11 @@ body .btn {
 }
 
 @media (max-width: 991px) {
+  /* A flyout beside an inline summary label must take its own full row. */
+  .config-flyout-anchor.config-flyout-inline .config-flyout {
+    flex: 0 0 100%;
+  }
+
   .config-flyout {
     position: static;
     width: auto;

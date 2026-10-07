@@ -358,8 +358,13 @@ has_sp_change <- function(sp) {
 #' @param svy_policy    Survey frame after `apply_policy_to_svy()`.
 #' @param analysis_unit `"hh"`, `"ind"` or `"firm"`.
 #' @param currency      `"PPP"` (default) or `"LCU"`; see `sp$currency`.
+#' @param admin_share   Administrative cost as a share of total cost, in
+#'   `[0, 0.9]` (see `.sp_admin_share()`). The transfer column holds net
+#'   transfers only, so admin cost is `transfer / (1 - a) - transfer`.
 #'
-#' @return A named list: `total` (annual population cost), `per_unit` (annual
+#' @return A named list: `total` (annual population cost of the transfers
+#'   themselves), `admin_cost` and `total_cost` (transfers plus admin; equal to
+#'   `total` when `admin_share` is 0), `per_unit` (annual
 #'   amount per recipient), `n_recipients` (sample rows receiving a transfer),
 #'   `n_recipients_weighted` (people represented),
 #'   `n_households_weighted` (recipient households represented in household
@@ -367,20 +372,23 @@ has_sp_change <- function(sp) {
 #'   (whether survey weights were used).
 #' @keywords internal
 .sp_transfer_totals <- function(svy_policy, analysis_unit = "hh",
-                                currency = "PPP") {
+                                currency = "PPP", admin_share = 0) {
   if (is.null(svy_policy) || !is.data.frame(svy_policy) ||
     !SP_TRANSFER_COL %in% names(svy_policy)) {
-    return(.sp_transfer_totals_values(NULL, svy_policy, analysis_unit, currency))
+    return(.sp_transfer_totals_values(
+      NULL, svy_policy, analysis_unit, currency, admin_share
+    ))
   }
   .sp_transfer_totals_values(
-    svy_policy[[SP_TRANSFER_COL]], svy_policy, analysis_unit, currency
+    svy_policy[[SP_TRANSFER_COL]], svy_policy, analysis_unit, currency,
+    admin_share
   )
 }
 
 .sp_transfer_totals_values <- function(v, svy, analysis_unit = "hh",
-                                       currency = "PPP") {
+                                       currency = "PPP", admin_share = 0) {
   zero <- list(
-    total = 0, per_unit = 0, n_recipients = 0L,
+    total = 0, admin_cost = 0, total_cost = 0, per_unit = 0, n_recipients = 0L,
     n_recipients_weighted = 0, weighted = FALSE
   )
   if (is.null(svy) || !is.data.frame(svy) || is.null(v) ||
@@ -433,8 +441,17 @@ has_sp_change <- function(sp) {
     0
   }
 
+  admin_share <- if (is.finite(admin_share) && admin_share > 0) {
+    min(admin_share, 0.9)
+  } else {
+    0
+  }
+  admin_cost <- total * admin_share / (1 - admin_share)
+
   list(
     total                 = total,
+    admin_cost            = admin_cost,
+    total_cost            = total + admin_cost,
     per_unit              = per_unit,
     n_recipients          = sum(elig),
     n_recipients_weighted = if (any(elig)) sum(w[elig]) else 0,
@@ -471,9 +488,17 @@ has_sp_change <- function(sp) {
     .povline_to_ppp(x, svy, identical(.sp_currency(sp$currency), "LCU"))
   }
 
+  # Per household (default): the amount is shared across the household's
+  # members, so the per-capita welfare gain is amount / hhsize. Per capita:
+  # every member of a recipient household receives the amount, so the
+  # per-capita gain is the amount itself and cost scales with household size.
+  # Only household analysis units have a hhsize to scale by.
+  per_capita <- identical(.sp_amount_basis(sp), "per_capita")
+  amount_scale <- if (per_capita) rep_len(1, nrow(svy)) else hhsize_scale
+
   if (sp$budget_mode == "transfer_first") {
     daily_transfer <- (sp$transfer_amount_usd * sp$transfer_n_payments) / 365
-    return(to_welfare_scale(ifelse(eligible, daily_transfer / hhsize_scale, 0)))
+    return(to_welfare_scale(ifelse(eligible, daily_transfer / amount_scale, 0)))
   }
 
   if (sp$budget_mode == "budget_first") {
@@ -482,18 +507,23 @@ has_sp_change <- function(sp) {
     w_elig <- if ("weight" %in% names(svy)) {
       w <- suppressWarnings(as.numeric(svy$weight[eligible]))
       valid <- is.finite(w) & w > 0
-      if (identical(analysis_unit, "hh")) {
+      if (identical(analysis_unit, "hh") && !per_capita) {
         hs <- hhsize_scale[eligible]
         sum(w[valid] / hs[valid], na.rm = TRUE)
       } else {
+        # Per-capita budgets are shared over recipient people, and household
+        # row weights already count people.
         sum(w[valid], na.rm = TRUE)
       }
     } else {
       0
     }
-    divisor <- if (w_elig > 0) w_elig else n_eligible
-    daily_transfer <- (sp$budget_fixed / divisor) / 365
-    return(to_welfare_scale(ifelse(eligible, daily_transfer / hhsize_scale, 0)))
+    n_units <- if (per_capita) sum(hhsize_scale[eligible]) else n_eligible
+    divisor <- if (w_elig > 0) w_elig else n_units
+    # The budget is total spend; admin cost takes its share first.
+    net_budget <- sp$budget_fixed * (1 - .sp_admin_share(sp))
+    daily_transfer <- (net_budget / divisor) / 365
+    return(to_welfare_scale(ifelse(eligible, daily_transfer / amount_scale, 0)))
   }
 
   NULL
@@ -504,6 +534,19 @@ has_sp_change <- function(sp) {
 .sp_currency <- function(currency) {
   currency <- toupper(as.character(currency %||% "PPP")[1L])
   if (is.na(currency) || !identical(currency, "LCU")) "PPP" else "LCU"
+}
+
+# Administrative cost as a share of total cost (`sp$admin_cost_pct`, percent).
+# Clamped to [0, 0.9]; missing or invalid is 0, so scenarios that predate the
+# field behave exactly as before.
+.sp_admin_share <- function(sp) {
+  a <- suppressWarnings(as.numeric(sp$admin_cost_pct %||% 0)[1L]) / 100
+  if (!is.finite(a) || a <= 0) 0 else min(a, 0.9)
+}
+
+# Amount basis of an SP scenario: "per_household" (default) or "per_capita".
+.sp_amount_basis <- function(sp) {
+  if (identical(sp$amount_basis, "per_capita")) "per_capita" else "per_household"
 }
 
 # Display prefix for SP amounts and costs in the entry currency.
@@ -547,7 +590,13 @@ has_sp_change <- function(sp) {
 #'     \item{share_pct}{Weighted recipient share of the population, 0-100.}
 #'     \item{weighted}{TRUE when survey weights were used.}
 #'     \item{transfer_per_unit}{Annual transfer per recipient.}
-#'     \item{transfer_total}{Annual population-level cost.}
+#'     \item{transfer_total}{Annual population-level cost, including
+#'       administration.}
+#'     \item{transfer_cost, admin_cost}{The transfer and administration parts
+#'       of `transfer_total`.}
+#'     \item{amount_basis}{`"per_household"` or `"per_capita"`.}
+#'     \item{transfer_per_person}{Annual net transfer per recipient person
+#'       (NA when there are no recipients).}
 #'     \item{budget_first}{TRUE when the per-unit amount was derived from a
 #'       fixed budget rather than set directly.}
 #'   }
@@ -577,7 +626,7 @@ has_sp_change <- function(sp) {
   }
   eligible <- values$eligible
   totals <- .sp_transfer_totals_values(
-    values$transfer, svy, analysis_unit, sp$currency
+    values$transfer, svy, analysis_unit, sp$currency, .sp_admin_share(sp)
   )
 
   # Eligibility is reported separately from receipt: a scenario with a zero
@@ -618,7 +667,17 @@ has_sp_change <- function(sp) {
     share_pct = if (w_total > 0) 100 * w_elig / w_total else NA_real_,
     weighted = weighted,
     transfer_per_unit = totals$per_unit,
-    transfer_total = totals$total,
+    # Total annual cost, including administration (equal to the transfer cost
+    # when admin_cost_pct is 0).
+    transfer_total = totals$total_cost,
+    transfer_cost = totals$total,
+    admin_cost = totals$admin_cost,
+    amount_basis = .sp_amount_basis(sp),
+    transfer_per_person = {
+      rec <- is.finite(values$transfer) & values$transfer > 0
+      persons <- if (weighted) sum(w[rec]) else sum(hhsize[rec])
+      if (persons > 0) totals$total / persons else NA_real_
+    },
     budget_first = identical(
       sp$budget_mode %||% "transfer_first",
       "budget_first"
@@ -714,7 +773,10 @@ has_sp_change <- function(sp) {
   }
 
   sp_currency <- .sp_currency(sp$currency)
-  totals <- .sp_transfer_totals(policy_diag, analysis_unit, sp_currency)
+  admin_share <- .sp_admin_share(sp)
+  totals <- .sp_transfer_totals(
+    policy_diag, analysis_unit, sp_currency, admin_share
+  )
   vars <- detect_manipulated_vars(
     svy_baseline, policy_diag,
     candidates = candidates
@@ -745,6 +807,10 @@ has_sp_change <- function(sp) {
     policy_values = policy_values,
     changed_counts = changed_counts,
     transfer_sum = totals$total,
+    admin_sum = totals$admin_cost,
+    total_cost_sum = totals$total_cost,
+    admin_share = admin_share,
+    amount_basis = .sp_amount_basis(sp),
     transfer_pp = totals$per_unit,
     transfer_households = totals$n_households_weighted,
     transfer_currency = sp_currency,
@@ -759,7 +825,8 @@ has_sp_change <- function(sp) {
       svy_baseline, policy_diag,
       analysis_unit = analysis_unit,
       candidates = unique(c(candidates, SP_TRANSFER_COL)),
-      currency = sp_currency
+      currency = sp_currency,
+      admin_share = admin_share
     )
   )
 }
@@ -914,6 +981,50 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   unname(stats::quantile(welfare, p, na.rm = TRUE))
 }
 
+# How strongly targeting errors concentrate near the cutoff (`sp$error_concentration`).
+# 0 (default, missing or invalid) is uniform random flips; larger values make
+# rows near the cutoff likelier to flip. Clamped to [0, 50].
+.sp_error_concentration <- function(sp) {
+  k <- suppressWarnings(as.numeric(sp$error_concentration %||% 0)[1L])
+  if (!is.finite(k) || k <= 0) 0 else min(k, 50)
+}
+
+# Distance of each row from the targeting cutoff, as a difference in
+# percentile rank (0 at the cutoff, up to 1). The percentile rank is
+# unweighted, which keeps the distance independent of survey weights. NULL when
+# no distance exists (universal targeting, binary proxy variables, or an
+# unusable cutoff), in which case flips stay uniform.
+.sp_cutoff_distance <- function(svy, sp, targeting) {
+  pct_rank <- function(x) {
+    ok <- !is.na(x)
+    out <- rep(NA_real_, length(x))
+    if (any(ok)) {
+      out[ok] <- (rank(x[ok], ties.method = "average") - 0.5) / sum(ok)
+    }
+    out
+  }
+  if (identical(targeting, "exante_poor")) {
+    p <- (sp$targeting_threshold %||% 20) / 100
+    return(abs(pct_rank(as.numeric(svy$welfare)) - p))
+  }
+  if (identical(targeting, "pmt")) {
+    pmt_var <- sp$pmt_variable
+    pmt_cut <- suppressWarnings(as.numeric(sp$pmt_cutoff %||% NA))
+    if (is.null(pmt_var) || is.na(pmt_var) || is.na(pmt_cut) ||
+      !(pmt_var %in% names(svy))) {
+      return(NULL)
+    }
+    col <- svy[[pmt_var]]
+    uniq <- sort(unique(col[!is.na(col)]))
+    if (length(uniq) <= 2) {
+      return(NULL)
+    }
+    cut_rank <- mean(col <= pmt_cut, na.rm = TRUE)
+    return(abs(pct_rank(as.numeric(col)) - cut_rank))
+  }
+  NULL
+}
+
 .determine_sp_eligibility <- function(svy, sp, apply_errors = TRUE) {
   n <- nrow(svy)
   targeting <- sp$targeting %||% "exante_poor"
@@ -948,19 +1059,34 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
 
   # Inclusion / exclusion errors (not applied for universal). Diagnostics can
   # request the ideal targeting rule by leaving these errors unapplied.
+  #
+  # The counts are exact: n_flip is the slider share of the non-eligible
+  # (inclusion) or eligible (exclusion) rows, counted by rows, not survey
+  # weights (P0-8 tracks the weighted variant). Which rows flip is uniform
+  # unless `sp$error_concentration` > 0, which makes rows near the cutoff
+  # likelier to flip (see .sp_cutoff_distance()). At 0 the draw is the same
+  # sample.int() call as before, so existing results are unchanged.
   if (isTRUE(apply_errors) && targeting != "universal") {
     incl_rate <- (sp$inclusion_error_pct %||% 0) / 100
     excl_rate <- (sp$exclusion_error_pct %||% 0) / 100
     non_elig <- which(!eligible)
     elig <- which(eligible)
+    conc <- .sp_error_concentration(sp)
+    cut_dist <- if (conc > 0) .sp_cutoff_distance(svy, sp, targeting) else NULL
+    pick <- function(idx, k) {
+      k <- min(k, length(idx))
+      if (is.null(cut_dist)) {
+        return(idx[sample.int(length(idx), k)])
+      }
+      d <- cut_dist[idx]
+      d[!is.finite(d)] <- 1
+      idx[sample.int(length(idx), k, prob = exp(-conc * d))]
+    }
     if (length(non_elig) > 0 && incl_rate > 0) {
-      n_flip <- round(length(non_elig) * incl_rate)
-      eligible[non_elig[sample.int(length(non_elig), min(n_flip, length(non_elig)))]] <-
-        TRUE
+      eligible[pick(non_elig, round(length(non_elig) * incl_rate))] <- TRUE
     }
     if (length(elig) > 0 && excl_rate > 0) {
-      n_flip <- round(length(elig) * excl_rate)
-      eligible[elig[sample.int(length(elig), min(n_flip, length(elig)))]] <- FALSE
+      eligible[pick(elig, round(length(elig) * excl_rate))] <- FALSE
     }
   }
 

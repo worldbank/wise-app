@@ -67,7 +67,7 @@ R/
 ├── app_config.R               # Environment detection (dev/Posit Connect/Databricks)
 ├── run_app.R                  # Entry point
 ├── mod_*.R                    # 24 Shiny modules (each has a UI and server function)
-├── fct_*.R                    # 41 business logic files (no Shiny dependencies)
+├── fct_*.R                    # 42 business logic files (no Shiny dependencies)
 └── utils_*.R                  # 5 files: shared math, UI, plot-theme, logging, and Step 1 helpers
 src/welfare_stats.cpp          # Rcpp kernel: all aggregation statistics in one sort per group
 ```
@@ -81,6 +81,7 @@ src/welfare_stats.cpp          # Rcpp kernel: all aggregation statistics in one 
 - `fct_sim_compare.R` – visualization and comparison functions (exceedance curves, threshold tables)
 - `fct_results.R` – output formatting, coefficient plots, tables
 - `fct_policy_sim.R` – policy scenario variable discovery and placeholder UI
+- `fct_sp_effectiveness.R` – social protection cost and targeting metrics (coverage, leakage, adequacy, realised errors) shown in the Step 3 diagnostics
 - `fct_policy_decompose.R` – **policy effect decomposition** (main effect + resilience: repositioning + interaction)
 - `fct_policy_metric_decompose.R` / `fct_decomposition_summary.R` – metric-aware Step 3 decomposition (per-metric channels) and its summaries
 - `fct_metric_registry.R` – metric metadata (labels, units, direction, change kind, supported engines and uncertainty sources)
