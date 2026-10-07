@@ -12,8 +12,9 @@ What is left to do from `review/test_suite_review.md`, kept deliberately small: 
 | CI-safe suite: `duckdbfs` and redundant skips removed, `make_h3_con()` skips, `setup-env.R`, workflow with `--no-tests` then `test_local()` | Done (`598027f`) |
 | CI roxygen2 pinned to `RoxygenNote` (8.x rewrites NAMESPACE layout) | Done (`4b42488`) |
 | httpfs loaded in the credential-test seed helper; kernel random-draw tolerance 1e-10 | Done (`70cc61d`, `fe599ae`) |
-| **First green GitHub run** | **Done: run 37618324871 on `fe599ae`.** 0 failed, 1 skipped, 7583 expectations. Cold: Tests step 6m33s, job 11m47s. Warm time not yet measured (the extension cache is first saved by that run). |
-| Headless-Chrome PNG test skips on CI | In progress: workflow passes `--no-sandbox` to chromote and the skip message now carries the real error. Verify on the next run that the test runs; if it still skips, read the message. |
+| **First green GitHub run** | **Done: run 37618324871 on `fe599ae`; green again on `bfde4bc` (run 37621899857).** 0 failed, 1 skipped, 7627 expectations. Tests step about 6m20s to 6m35s, job about 11m47s to 12m44s. The R dependency cache was restored in both runs, so there is no separate warm figure. |
+| Headless-Chrome PNG test (`test-export-bundle.R:201`) skips on CI | **Accepted.** Chrome is found but "debugging port not open after 10 seconds"; `--no-sandbox` did not help and was removed. The test passes locally and the skip message now carries the reason. Revisit only if a rendering regression slips through. |
+| DuckDB extension cache step | Removed. On CI duckdb stores extensions in a per-session temp dir, not `~/.duckdb/extensions`, so the cache never saved or hit; extensions download in seconds each run. |
 | `R CMD check` WARNING (undocumented `@param`, R2-CQ-01) and 3 NOTEs | Open. `error-on` stays `"error"` until the WARNING is fixed. |
 
 ## Ground rules
@@ -36,8 +37,8 @@ What is left to do from `review/test_suite_review.md`, kept deliberately small: 
    - **Dependency install:** `duckdb == 1.5.6` must resolve from Package Manager. If it does not, check that 1.5.6 is current; as a fallback, use a dated Package Manager snapshot.
    - **`R CMD check` warnings or errors** that never ran before (the workflow tolerates warnings; `error-on: "error"`). Roughly 25 functions lack `@param` entries (tracked as R2-CQ-01 in `review/REVIEW-2026-10-06-tracking.md`).
    - **`roxygenise()` changes `NAMESPACE`**, which fails the `git diff --exit-code NAMESPACE` step. Commit a regenerated `NAMESPACE`.
-   - **`h3` extension** download or version mismatch on the runner (the extension cache is keyed on `DESCRIPTION`).
-   - **Headless Chrome:** the PNG export test skips itself if no Chrome is found. If it skips on CI, add `browser-actions/setup-chrome` so it runs.
+   - **`h3` extension** download or version mismatch on the runner.
+   - **Headless Chrome:** the PNG export test skips itself if no Chrome is found. On CI it skips (accepted, see status).
    - **Real mirai worker tests:** outside a `load_all()` session the worker runs `library(wiseapp)` from default library paths. `test_local()` uses `load_all`, so this should work; verify the two worker tests (`test-step2-async.R`, `test-fct-overview-metadata.R`) actually ran.
    - **Locale or timezone** differences from macOS. `setup-locale.R` already forces a UTF-8 character locale.
 4. Look for silent skips in the CI log: the number of skipped tests should be near zero. A drop in test count versus the local run means something skipped.
@@ -136,7 +137,7 @@ CI reference at 2026-10-07: Tests step 6m33s cold against the 8-minute trigger, 
 | Risk | Mitigation |
 |---|---|
 | First CI run reveals many `R CMD check` warnings | `error-on: "error"` is already set; list the warnings in an issue and tighten later. |
-| `h3` extension download fails on the runner | The fixture skips with a message; the extension directory is cached. |
+| `h3` extension download fails on the runner | The fixture skips with a message. |
 | Silent skips make CI look greener than it is | Compare the CI test and skip counts with a local run. |
 | Memoised fixtures leak mutations between tests (Step 4) | Fixtures are read-only by convention; mutate copies. |
 | Rename PRs conflict with feature branches | Pure `git mv`, at a quiet point. |
