@@ -136,6 +136,7 @@ See `fct_connection.R` and `fct_load_data.R` for implementation details.
 - **SP cash transfer column**: `.wiseapp_sp_transfer` is the single source of truth for social protection transfers.
 
 ### Simulation Pipeline
+- **`year` type contract**: `year` is a fixed-effect factor in the fitted models. Survey-weather frames carry it as a factor (`merge_survey_weather`), Step 2 projections and policy joins as character (`.step2_survey_projection`, `fct_simulations.R`), and period/sample helpers as numeric. fixest predicts identically from factor, character or integer `year`, but base-R and `model.matrix` engines (ranger, xgboost, lm-style fits) reject or mis-encode a type that differs from training, so do not unify the type without parity runs on every engine (CR-CQ-07).
 - **Historical simulation**: Weather data joined to survey panel (one first-of-month date per (survey month × year) combination).
 - **Future simulation**: SSP scenarios (SSP2-4.5, SSP3-7.0, SSP5-8.5) with additive/multiplicative perturbations per variable units.
 - **Residual handling**: Options for display-time residual simulation (`original`, `normal`, `resample`, `none`).
