@@ -4486,7 +4486,7 @@
       "checksum": "e637dc5265d1351ecb5e77c3c893c532"
     },
     "inst/app/www/custom.js": {
-      "checksum": "676a17232eba5ef6b5ad5f43656b2422"
+      "checksum": "78bb4e6717b0658e7f1610cadb9dab14"
     },
     "inst/app/www/favicon.png": {
       "checksum": "7375aa747c52ad9545b733a059fab9db"
@@ -4606,7 +4606,7 @@
       "checksum": "04439efc5ec32a7e076434b66ed0b445"
     },
     "R/fct_sample.R": {
-      "checksum": "fd9166bd2b9dd590f5deb3b82185df53"
+      "checksum": "fd40e70126abdf8fe64c2204499b84fc"
     },
     "R/fct_sim_compare.R": {
       "checksum": "c0440f8a49e9571ee836e74add10d199"
@@ -4624,7 +4624,7 @@
       "checksum": "5eeb421020572678fbc400f19b0b18b9"
     },
     "R/fct_step2_compute.R": {
-      "checksum": "2c091bb21099c66690984168cb35c16d"
+      "checksum": "12c15e838f5a2413a61ae204429e2093"
     },
     "R/fct_step2_payload.R": {
       "checksum": "856f9c1679a475737e1a677cb92f302b"
@@ -4651,7 +4651,7 @@
       "checksum": "47225a9ec312b2e4d93e6cad9fff2690"
     },
     "R/mod_1_01_sample.R": {
-      "checksum": "4a3b59bed0148bc41a91ac6a39b47e35"
+      "checksum": "6b0232f5579a6e8e1ac7f37c9806c697"
     },
     "R/mod_1_02_surveystats.R": {
       "checksum": "790a213d8ba8415663c745216d7fdc78"
@@ -4678,7 +4678,7 @@
       "checksum": "38470f5047f98fcaee239887a2c8798a"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "80c99eff2c6240fc75bfe8d6348b6f3f"
+      "checksum": "a54dbe1e77cde2f7705bb65b96d5cb46"
     },
     "R/mod_2_02_results.R": {
       "checksum": "adb69de19f38555779f0665336e02c56"
