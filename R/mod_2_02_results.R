@@ -209,7 +209,7 @@
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-        "Median across climate models; distinct from the equal-model-mean expected headline. Adverse tail direction is mapped automatically according to the selected outcome metric. Horizontal bars show inter-model ensemble spread across climate projections."
+        "Points are equal-weight means across climate models of each model's expected and adverse-year values. Adverse tail direction is mapped automatically according to the selected outcome metric. Horizontal bars show inter-model ensemble spread across climate projections."
       )
     ),
 
@@ -1821,9 +1821,9 @@ mod_2_02_results_server <- function(id,
           }
           v_ord <- v[ord]
           s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
-          # Use empirical plotting positions so the rarest point is exactly
-          # 1-in-n, rather than implying support beyond the simulated years.
-          probs <- seq_along(ord) / n_pts
+          # Hazen plotting positions, (rank - 0.5) / n: the same convention as
+          # the threshold table's rank_interp(), so "1 in 10" agrees in both.
+          probs <- (seq_along(ord) - 0.5) / n_pts
 
           # Limit strictly to adverse tail: 0.50 AEP or less
           keep <- probs <= 0.50

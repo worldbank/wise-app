@@ -2034,7 +2034,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-        "Central estimates summarize each model's weather years at the selected return period, then take the median across climate models for baseline and policy; distinct from the equal-model-mean expected-effect headline. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled)."
+        "Central estimates summarize each model's weather years at the selected return period, then take the equal-weight mean across climate models for baseline and policy. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled)."
       )
     ),
   )
@@ -2952,9 +2952,9 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         }
         v_ord <- v[ord]
         s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
-        # Use empirical plotting positions so the rarest point is exactly
-        # 1-in-n, rather than implying support beyond the simulated years.
-        probs <- seq_along(ord) / n_pts
+        # Hazen plotting positions, (rank - 0.5) / n: the same convention as
+        # the threshold table's rank_interp(), so "1 in 10" agrees in both.
+        probs <- (seq_along(ord) - 0.5) / n_pts
 
         # Limit to adverse tail direction only: 0.50 AEP or less
         keep <- probs <= 0.50

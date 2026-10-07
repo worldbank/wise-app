@@ -549,6 +549,36 @@ test_that("all Module 2 summaries use the same complete scenario set", {
   )
 })
 
+test_that("exceedance curve uses Hazen plotting positions (R2-BUG-16)", {
+  hist <- make_hist_sim_fixture()
+  n_years <- 10L
+  n <- 400L
+  set.seed(16)
+  hist$pipeline$sim_year <- rep(2020:2029, each = n / n_years)
+  hist$pipeline$y_point <- rnorm(n, 1.2, 0.4) + rep(rnorm(n_years, 0, 0.2), each = n / n_years)
+  hist$pipeline$F_loading <- matrix(rnorm(2 * n) * 0.01, nrow = n)
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id = "results", hist_sim = shiny::reactiveVal(hist),
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist = shiny::reactiveVal(NULL),
+      tabset_id = "step2_output_tabs"
+    ),
+    {
+      session$setInputs(
+        cmp_agg_method = "mean", cmp_deviation = "none",
+        ensemble_band = "none", uncertainty_band = "p10_p90"
+      )
+      session$flushReact()
+      curves <- exceedance_curves_rv()
+      expect_gt(nrow(curves), 2L)
+      # Same convention as rank_interp(): k = n * (1 - p) + 0.5.
+      expect_equal(curves$exceed_prob, (curves$rank - 0.5) / n_years)
+    }
+  )
+})
+
 test_that("formatted threshold table preserves output across repeated builds", {
   testServer(
     mod_2_02_results_server,
