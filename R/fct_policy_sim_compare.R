@@ -453,23 +453,28 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
 
   # Raw weather-year draws use deterministic jitter without changing RNG state.
   dot_spread <- if (has_source) 0.20 else 0.36
-  jit <- (((seq_len(nrow(df)) * 37L) %% 101L) / 100 - 0.5) * 2 * dot_spread
+  # Rounded to 4 decimals (1e-4 of a row height): invisible, but it shortens
+  # every serialized point.
+  jit <- round((((seq_len(nrow(df)) * 37L) %% 101L) / 100 - 0.5) * 2 * dot_spread, 4L)
   # Matrix-derived outcomes retain year names; a named list serializes as an
   # object rather than the array ECharts requires for series.data.
   dot_rows <- unname(which(is.finite(df$value)))
   dot_rows <- dot_rows[.wise_stride_downsample(seq_along(dot_rows), max_points = 10000L)]
+  # Values are kept to 8 significant digits (far below pixel resolution) and
+  # the constant source tag "All" is omitted: both shorten every point.
   dots <- lapply(dot_rows, function(i) {
     base_y <- df$row_y[[i]] + if (has_source) df$y_off[[i]] else 0
-    src <- if (has_source) as.character(df$source[[i]]) else "All"
-    list(
-      value = c(df$value[[i]], base_y + jit[[i]]),
-      outcome = df$value[[i]], scenario = as.character(df$scenario[[i]]),
-      source = src,
+    x <- signif(df$value[[i]], 8L)
+    pt <- list(
+      value = c(x, round(base_y + jit[[i]], 4L)),
+      outcome = x, scenario = as.character(df$scenario[[i]]),
       itemStyle = list(
         color = unname(scenario_palette[[as.character(df$scenario_key[[i]])]]),
         opacity = 0.2
       )
     )
+    if (has_source) pt$source <- as.character(df$source[[i]])
+    pt
   })
   # Muted individual years sit behind the summaries and mean markers.
   push(list(
