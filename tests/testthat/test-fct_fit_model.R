@@ -38,3 +38,33 @@ test_that("RIF is computed on the complete-case estimation sample (CR-BUG-03)", 
     expect_equal(mean(td[[col]]), q_est, tolerance = 5e-3)
   }
 })
+
+test_that("LASSO selection conditions on fixed effects (R2-BUG-08)", {
+  set.seed(808)
+  n_fe <- 60L
+  n <- 3000L
+  g <- sample.int(n_fe, n, replace = TRUE)
+  fe_eff <- stats::rnorm(n_fe, sd = 3)
+  # x_proxy tracks the fixed effect only; x_true matters within a group.
+  x_proxy <- fe_eff[g] + stats::rnorm(n, sd = 0.1)
+  x_true <- stats::rnorm(n)
+  x_noise <- stats::rnorm(n)
+  weather <- stats::rnorm(n)
+  y <- fe_eff[g] + 0.8 * x_true + 0.3 * weather + stats::rnorm(n, sd = 0.5)
+  df <- data.frame(
+    welfare = y, weather = weather, loc = g,
+    x_proxy = x_proxy, x_true = x_true, x_noise = x_noise
+  )
+  vl <- data.frame(
+    name = c("welfare", "weather", "loc", "x_proxy", "x_true", "x_noise"),
+    ind = 0, hh = c(0, 0, 0, 1, 1, 1), area = 0, firm = 0,
+    outcome = c(1, 0, 0, 0, 0, 0)
+  )
+  sel <- run_lasso_selection(
+    df, list(name = "welfare", type = "numeric"),
+    weather_vars = "weather", fe_vars = "loc", valid_vl = vl,
+    nfolds = 5, mi_m = 3
+  )
+  expect_true("x_true" %in% sel$selected_covariates)
+  expect_false("x_proxy" %in% sel$selected_covariates)
+})

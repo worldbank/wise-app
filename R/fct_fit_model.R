@@ -253,6 +253,25 @@ ENGINE_REGISTRY <- list(
 
 # Stability LASSO variable selection ----
 
+# Residualise a vector or matrix on the fixed effects (Frisch-Waugh-Lovell).
+# With `drop_absorbed`, columns whose variation is entirely absorbed by the FE
+# (residual SD negligible against the raw SD) are removed.
+.lasso_partial_out <- function(x, fe_df, drop_absorbed = FALSE) {
+  is_vec <- is.null(dim(x))
+  m <- if (is_vec) matrix(x, ncol = 1L) else as.matrix(x)
+  if (ncol(m) == 0L) {
+    return(m)
+  }
+  res <- as.matrix(fixest::demean(m, fe_df, notes = FALSE))
+  colnames(res) <- colnames(m)
+  if (isTRUE(drop_absorbed)) {
+    sd_raw <- apply(m, 2L, stats::sd)
+    sd_res <- apply(res, 2L, stats::sd)
+    res <- res[, sd_res > 1e-8 * pmax(sd_raw, .Machine$double.eps), drop = FALSE]
+  }
+  if (is_vec) as.numeric(res) else res
+}
+
 #' Run stability LASSO variable selection
 #'
 #' @param df data.frame with analysis variables
@@ -424,11 +443,20 @@ run_lasso_selection <- function(
   cv_selection <- match.arg(cv_selection)
 
   # 6. Build design matrices (X_core + X_lasso) ----
-  core_formula <- if (length(core_main_terms) == 0 && length(interaction_terms) == 0) {
+  # R2-BUG-08: for the linear model the fixed effects are partialled out of
+  # the outcome, the core terms and every candidate (Frisch-Waugh-Lovell), so
+  # selection conditions on the FE the final model absorbs. The FE are then
+  # left out of the core design instead of entering as one linear column
+  # (integer ids) or dense dummies. The logistic path keeps the FE in the
+  # design because demeaning is not exact for a nonlinear link.
+  fwl <- !is_logit && length(fe_vars) > 0
+  fe_df <- if (fwl) df[, fe_vars, drop = FALSE] else NULL
+  core_model_terms <- if (fwl) setdiff(core_main_terms, fe_vars) else core_main_terms
+  core_formula <- if (length(core_model_terms) == 0 && length(interaction_terms) == 0) {
     stats::as.formula("~ 1")
   } else {
     stats::as.formula(paste(
-      "~", paste(c(core_main_terms, interaction_terms), collapse = " + ")
+      "~", paste(c(core_model_terms, interaction_terms), collapse = " + ")
     ))
   }
   mm_core <- stats::model.matrix(core_formula, data = df)
@@ -440,6 +468,10 @@ run_lasso_selection <- function(
   rm(mm_core)
 
   y_vec <- df[[y_var]]
+  if (fwl) {
+    y_vec <- as.numeric(.lasso_partial_out(y_vec, fe_df))
+    X_core <- .lasso_partial_out(X_core, fe_df, drop_absorbed = TRUE)
+  }
 
   has_matrixStats <- requireNamespace("matrixStats", quietly = TRUE)
   drop_constant <- function(X) {
@@ -468,6 +500,9 @@ run_lasso_selection <- function(
   # cv.glmnet compute time (confirmed via dev/archive/bench_lasso.R).
   if (!has_na) {
     X_lasso <- drop_constant(as.matrix(df[, candidate_vars, drop = FALSE]))
+    if (fwl && ncol(X_lasso) > 0) {
+      X_lasso <- .lasso_partial_out(X_lasso, fe_df, drop_absorbed = TRUE)
+    }
     if (ncol(X_lasso) == 0) stop("All candidate variables are constant.")
     lasso_names <- colnames(X_lasso)
 
@@ -537,6 +572,9 @@ run_lasso_selection <- function(
     selection_results <- lapply(seq_len(m), function(i) {
       withr::with_seed(wise_seed(parallel_seed, "lasso", "imputation", i), {
         X_lasso <- drop_constant(as.matrix(completed_cands_list[[i]]))
+        if (fwl && ncol(X_lasso) > 0) {
+          X_lasso <- .lasso_partial_out(X_lasso, fe_df, drop_absorbed = TRUE)
+        }
         if (ncol(X_lasso) == 0) {
           return(character(0))
         }
