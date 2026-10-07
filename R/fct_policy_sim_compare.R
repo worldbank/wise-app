@@ -2346,9 +2346,19 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       return(hit)
     }
 
+    # R2-PERF-04b: the baseline arm is Step 2's own historical run, so it uses
+    # Step 2's suite key (same run signature, methods set and parameters) and
+    # reuses, or leaves behind, the suite Step 2 Results computes. Without a run
+    # signature or weights the arm-specific key below applies.
+    step2_methods <- unname(hist_aggregate_choices(hs$so$type, hs$so$name))
+    share_step2 <- identical(tag, "baseline_hist") && !is.null(hs$.sig) &&
+      !is.null(pl$weight) && method %in% step2_methods
+
     # R2-PERF-04: line-free and line-dependent metrics are separate suites, so
     # a poverty-line change recomputes only the latter.
-    group <- .aggregation_suite_group(method, .agg_suite_methods())
+    group <- .aggregation_suite_group(
+      method, if (share_step2) step2_methods else .agg_suite_methods()
+    )
     suite_line <- if (group$poverty_dependent) poverty_line else "none"
     suite_key <- .agg_cache_key(tag, paste0("__suite__", group$poverty_dependent), suite_line)
     suite_cache <- attr(ws, "suite_cache")
@@ -2362,7 +2372,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     baseline_skip_coef <- is.null(pl$F_loading)
     suite_pov <- if (group$poverty_dependent) poverty_line %||% 3 else "none"
     shared_key <- shared_aggregation_cache_key(
-      list(
+      if (share_step2) hs$.sig else list(
         arm = tag,
         signature = hs$.step2_sig %||% hs$.sig %||% list(pipeline = "step2")
       ),

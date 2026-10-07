@@ -711,6 +711,75 @@ test_that("Step 3 shared cache keeps baseline and policy historical arms distinc
   })
 })
 
+test_that("R2-PERF-04b: the Step 3 baseline arm reuses the suite Step 2 stored under its key", {
+  baseline <- make_step3_hist_fixture()
+  baseline$.sig <- list(run = "step2-run-A")
+  policy <- baseline
+  policy$.sig <- list(run = "step3-policy-A")
+  policy$pipeline$y_point <- policy$pipeline$y_point + 5
+  shared <- new_shared_aggregation_cache()
+  # What Step 2 Results stores for this run (mod_2_02_results.R hist builder).
+  methods <- unname(hist_aggregate_choices("numeric", "welfare"))
+  group <- .aggregation_suite_group("mean", methods)
+  step2_suite <- aggregate_pipeline_tables_multi(
+    pipelines = baseline$pipeline, methods = group$methods, weighted = TRUE,
+    pov_lines = setNames(lapply(group$methods, function(m) 3), group$methods),
+    residuals = "none", is_log = TRUE, band_q = c(lo = 0.10, hi = 0.90),
+    skip_coef = FALSE, bandwidth_p0 = 0.05, model_ids = "Historical",
+    scenario = "Historical", shared_context = baseline$shared_context)
+  step2_key <- shared_aggregation_cache_key(baseline$.sig, "none", 0.05, TRUE,
+    "none", FALSE, TRUE, group$methods)
+  shared_aggregation_cache_put(shared, step2_key, step2_suite)
+
+  calls <- 0L
+  original <- aggregate_pipeline_tables_multi
+  local_mocked_bindings(
+    aggregate_pipeline_tables_multi = function(...) { calls <<- calls + 1L; original(...) },
+    .package = "wiseapp")
+  internals <- NULL
+  shiny::testServer(function(input, output, session) {
+    internals <<- .wire_results_pane(input, output, session,
+      shiny::reactiveVal(baseline), shiny::reactiveVal(list()),
+      shiny::reactiveVal(policy), shiny::reactiveVal(list()),
+      selected_hist = shiny::reactiveVal(NULL), residuals = shiny::reactiveVal("none"),
+      aggregation_cache = shared)
+  }, {
+    session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none")
+    session$flushReact()
+    expect_identical(internals$baseline_agg_hist()$out, step2_suite[["mean"]])
+    # The policy arm has its own key and is the only suite computed; the
+    # baseline arm was served from Step 2's entry.
+    expect_true(all(internals$policy_agg_hist()$out$value >
+      internals$baseline_agg_hist()$out$value))
+    expect_identical(calls, 1L)
+  })
+})
+
+test_that("R2-PERF-04b: a Step 3 baseline computation leaves a suite Step 2 can reuse", {
+  baseline <- make_step3_hist_fixture()
+  baseline$.sig <- list(run = "step2-run-B")
+  shared <- new_shared_aggregation_cache()
+  internals <- NULL
+  shiny::testServer(function(input, output, session) {
+    internals <<- .wire_results_pane(input, output, session,
+      shiny::reactiveVal(baseline), shiny::reactiveVal(list()),
+      shiny::reactiveVal(baseline), shiny::reactiveVal(list()),
+      selected_hist = shiny::reactiveVal(NULL), residuals = shiny::reactiveVal("none"),
+      aggregation_cache = shared)
+  }, {
+    session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none")
+    session$flushReact()
+    out <- internals$baseline_agg_hist()$out
+    methods <- unname(hist_aggregate_choices("numeric", "welfare"))
+    group <- .aggregation_suite_group("mean", methods)
+    key <- shared_aggregation_cache_key(baseline$.sig, "none", 0.05, TRUE,
+      "none", FALSE, TRUE, group$methods)
+    stored <- shared_aggregation_cache_get(shared, key)
+    expect_false(is.null(stored))
+    expect_identical(stored[["mean"]], out)
+  })
+})
+
 test_that("historical matrix transforms use the canonical cache key and preserve values", {
   hist <- make_step3_hist_fixture()
   hist$hist_label <- "Hist run 1991-2020"
