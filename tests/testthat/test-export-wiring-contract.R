@@ -1,6 +1,9 @@
-# Static contract for the export affordances embedded in module UI/server code.
-# This deliberately checks literal keys only; dynamic keys have an explicit
-# expected family below so the contract remains readable and intentional.
+# Static contract for the export affordances embedded in module UI/server code
+# (guidelines section 6): every CSV button, whatever helper renders it, must be
+# backed by an export-bundle registration of the same key, so the download a
+# user gets from a table is the data the bundle carries. This deliberately
+# checks literal keys only; dynamic keys have an explicit expected family below
+# so the contract remains readable and intentional.
 
 library(testthat)
 
@@ -40,6 +43,29 @@ test_that("every literal CSV export key is registered", {
     character(0),
     info = "Every visible/download CSV key must have a bundle export registration."
   )
+})
+
+test_that("every reactable CSV button has an export-bundle registration", {
+  text <- .export_wiring_text()
+  button_keys <- .literal_keys(
+    text,
+    "wise_reactable_csv_button\\(\\s*ns\\(\"[^\"]+\"\\),\\s*\"[^\"]+\""
+  )
+  expect_gt(length(unique(button_keys)), 10)
+
+  table_keys <- .literal_keys(text, "wise_export_table\\(\\s*key\\s*=\\s*\"[^\"]+\"")
+  expect_gt(length(unique(table_keys)), 10)
+
+  # mod_1_02 registers its survey summary keys through a paste0() loop; the
+  # family is covered when that dynamic registration exists. Every other button
+  # key must appear literally in the bundle.
+  dynamic_family <- grepl('key\\s*=\\s*paste0\\("survey_summary_"', text, perl = TRUE)
+  missing <- setdiff(
+    unique(button_keys),
+    c(table_keys, if (dynamic_family) grep("^survey_summary_", button_keys, value = TRUE))
+  )
+  expect_equal(missing, character(0),
+    info = paste("CSV buttons without bundle registration:", paste(missing, collapse = ", ")))
 })
 
 test_that("all explicit export registrations use unique keys", {
