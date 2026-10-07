@@ -278,7 +278,7 @@ mod_1_02_surveystats_server <- function(
         df <- tryCatch(
           load_data(ss$fname, connection_params(), collect = TRUE, unify_schemas = TRUE),
           error = function(e) {
-            notify(paste("Failed to load survey data:", conditionMessage(e)), type = "error", duration = 8)
+            notify(wise_user_error(e, "Loading survey data"), type = "error", duration = 8)
             NULL
           }
         )
@@ -320,7 +320,7 @@ mod_1_02_surveystats_server <- function(
           error = function(e) {
             notify(paste(
               "Some map data could not be loaded. Survey results are still available:",
-              conditionMessage(e)
+              wise_user_error(e)
             ), type = "warning", duration = 5)
             NULL
           }
@@ -346,7 +346,7 @@ mod_1_02_surveystats_server <- function(
             error = function(e) {
               notify(paste(
                 "Map data could not be prepared locally. Survey results are still available:",
-                conditionMessage(e)
+                wise_user_error(e)
               ), type = "warning", duration = 5)
               h3_df
             }
@@ -379,7 +379,7 @@ mod_1_02_surveystats_server <- function(
               notify(
                 paste(
                   "The sample coverage map could not be prepared. Other survey results are still available:",
-                  conditionMessage(e)
+                  wise_user_error(e)
                 ),
                 type = "warning", duration = 5
               )
@@ -424,7 +424,7 @@ mod_1_02_surveystats_server <- function(
               load_ok <<- FALSE
               notify(paste0(
                 "Location-level uncertainty estimates are unavailable, so standard ",
-                "survey-design uncertainty is being used. Details: ", conditionMessage(e)
+                "survey-design uncertainty is being used. Details: ", wise_user_error(e)
               ), type = "warning", duration = 8)
             }
           )
@@ -885,7 +885,7 @@ mod_1_02_surveystats_server <- function(
               session = tabset_session
             ),
             error = function(e) {
-              notify(paste("Failed to add Survey stats tab:", conditionMessage(e)), type = "error")
+              notify(wise_user_error(e, "Adding the Survey stats tab"), type = "error")
             }
           )
 

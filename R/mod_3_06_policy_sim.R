@@ -458,7 +458,7 @@ mod_3_06_policy_sim_server <- function(id,
           .wise_log_stage("step3_run", "failed", run_id = paste0("step3-", isolate(sim_run_id()) + 1L),
             elapsed = proc.time()[["elapsed"]] - run_started)
           shiny::showNotification(
-            paste0("Policy simulation failed: ", conditionMessage(e)),
+            wise_user_error(e, "Policy simulation"),
             type = "error", duration = 8
           )
         }

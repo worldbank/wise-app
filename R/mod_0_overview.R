@@ -438,8 +438,10 @@ mod_0_overview_server <- function(id) {
     if (.auto_connect()) {
       observe({
         auto_connect_fail <- function(e) {
-          msg <- conditionMessage(e)
-          message("[overview] automatic data-source connection failed: ", msg)
+          # CR-SEC-08: the full condition goes to the server log (with an id);
+          # the user sees a short classified message.
+          msg <- wise_user_error(e, "Automatic data-source connection")
+          message("[overview] automatic data-source connection failed (", class(e)[1L], ")")
           # Persist the failure state before any transient UX: the status
           # card must update even if the notification itself fails (e.g.
           # session already closing — this handler also runs from promise
@@ -454,7 +456,7 @@ mod_0_overview_server <- function(id) {
               )
           ))
           showNotification(
-            paste("Automatic data-source connection failed:", msg),
+            msg,
             type = "error", duration = 15, session = session
           )
         }
@@ -564,7 +566,7 @@ mod_0_overview_server <- function(id) {
             message = paste0(
               "Could not load metadata from the ", params$type, " source."
             ),
-            detail = conditionMessage(metadata)
+            detail = wise_user_error(metadata, "Loading metadata")
           ))
           showNotification(
             paste0(

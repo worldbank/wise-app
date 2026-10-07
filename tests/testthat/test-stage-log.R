@@ -88,3 +88,24 @@ test_that("Step 2 failure notifications go through wise_user_error (CR-SEC-08)",
   expect_false(any(grepl("Simulation failed: \", conditionMessage", text, fixed = TRUE)))
   expect_length(grep("wise_user_error(", text, fixed = TRUE), 3L)
 })
+
+# CR-SEC-08: user-facing failure messages go through wise_user_error() instead of
+# showing raw conditions (hosts, paths, SQL).
+test_that("module notifications do not show raw condition messages", {
+  skip_if_not(dir.exists(file.path(testthat::test_path("..", "..", "R"))))
+  mods <- c("mod_0_overview", "mod_1_02_surveystats", "mod_1_03_outcome",
+            "mod_1_05_weatherstats", "mod_1_06_model", "mod_1_07_results",
+            "mod_3_06_policy_sim")
+  for (m in mods) {
+    src <- readLines(file.path(testthat::test_path("..", "..", "R"), paste0(m, ".R")))
+    expect_false(any(grepl("conditionMessage\\(", src)), info = m)
+  }
+})
+
+test_that("wise_user_error hides hosts and paths and carries an id", {
+  e <- simpleError("Could not open /Users/me/secret/file.parquet at https://x.cloud.databricks.com/api")
+  out <- suppressMessages(wise_user_error(e, "Loading survey data"))
+  expect_match(out, "^Loading survey data failed: ")
+  expect_match(out, "\\(error id [0-9a-f]{8}\\)$")
+  expect_false(grepl("secret|databricks", out))
+})

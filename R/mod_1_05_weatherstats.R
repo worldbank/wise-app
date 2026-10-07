@@ -223,7 +223,7 @@ mod_1_05_weatherstats_server <- function(
           error = function(e) {
             removeNotification(notif_load)
             shiny::showNotification(
-              paste("Failed to load weather data:", conditionMessage(e)),
+              wise_user_error(e, "Loading weather data"),
               type = "error", duration = 8
             )
             NULL
@@ -271,7 +271,7 @@ mod_1_05_weatherstats_server <- function(
           error = function(e) {
             removeNotification(notif_merge)
             shiny::showNotification(
-              paste("Failed to merge survey and weather data:", conditionMessage(e)),
+              wise_user_error(e, "Merging survey and weather data"),
               type = "error", duration = 8
             )
             NULL
@@ -1549,7 +1549,7 @@ mod_1_05_weatherstats_server <- function(
         },
         error = function(e) {
           shiny::showNotification(
-            paste("Failed to load historical weather:", conditionMessage(e)),
+            wise_user_error(e, "Loading historical weather"),
             type = "error", duration = 8
           )
           NULL

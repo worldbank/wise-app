@@ -194,7 +194,7 @@ mod_1_07_results_server <- function(id,
         fit_list <- tryCatch(
           do.call(fit_model, fit_args),
           error = function(e) {
-            shiny::showNotification(paste("Model failed:", conditionMessage(e)),
+            shiny::showNotification(wise_user_error(e, "Model fit"),
               type = "error", duration = 10
             )
             NULL

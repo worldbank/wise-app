@@ -888,7 +888,7 @@ mod_1_06_model_server <- function(id,
           },
           error = function(e) {
             showNotification(
-              paste("Lasso failed:", conditionMessage(e)),
+              wise_user_error(e, "Lasso"),
               type = "error",
               duration = 5
             )

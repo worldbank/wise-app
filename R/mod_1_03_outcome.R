@@ -692,10 +692,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
             ),
             error = function(e) {
               shiny::showNotification(
-                paste(
-                  "Failed to add Outcome stats tab:",
-                  conditionMessage(e)
-                ),
+                wise_user_error(e, "Adding the Outcome stats tab"),
                 type = "error"
               )
             }
