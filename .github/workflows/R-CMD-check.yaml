@@ -53,7 +53,7 @@ jobs:
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
-          error-on: '"error"'
+          error-on: '"warning"'
           # Tests run once, in the "Tests" step, from the checkout: manifest.json,
           # batch/ and the R/ sources that the contract tests scan are not part
           # of the built package.
