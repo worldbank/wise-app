@@ -4453,7 +4453,7 @@
       "checksum": "b544c98e7d55c33a6c62b5c905878c65"
     },
     "DESCRIPTION": {
-      "checksum": "cc12500bde5db68e733212ec6aad0987"
+      "checksum": "5f4128ee8024d1492051c978dccdcc4d"
     },
     "inst/app/_brand.yml": {
       "checksum": "66580c59f1e8321f5a6ab4dc5565cd0a"
@@ -4504,7 +4504,7 @@
       "checksum": "8806c00b82b6550bdaa5c801ae5e0efd"
     },
     "inst/golem-config.yml": {
-      "checksum": "5bb3055e20d115be34fcb5aaee2d0b74"
+      "checksum": "44be73bbe45ca39f0e4f310f24998709"
     },
     "NAMESPACE": {
       "checksum": "e717c076540f08bd953b83858d648a79"
