@@ -121,6 +121,7 @@ w3a_direct_per_year <- function(pipe, method, weighted, residuals, is_log, seed)
     out$sim_year <- yr
     # R2-BUG-28: per-year count of excluded NA predictions.
     out$n_na_dropped <- sum(idx & is.na(pipe$y_point))
+    out$n_na_weight_dropped <- 0L
     out
   })
 }

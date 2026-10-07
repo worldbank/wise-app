@@ -79,6 +79,7 @@ test_that("point-estimate fast path returns exact values without uncertainty wor
       x <- aggregate_point_estimate(mu, method, pipe$weights[idx], pov)
       x$sim_year <- fast[[i]]$sim_year
       x$n_na_dropped <- 0L
+      x$n_na_weight_dropped <- 0L
       x
     })
     expect_identical(fast, oracle, info = method)
@@ -398,6 +399,42 @@ test_that("NA household-year predictions are counted per year (R2-BUG-28)", {
                    aggregate_pipeline_per_year(clean, "mean",
                                                residuals = "none")[[2]]$value)
   expect_silent(aggregate_pipeline_per_year(clean, "mean", residuals = "none"))
+})
+
+test_that("rows with an NA survey weight are dropped and counted", {
+  pipe <- make_pipeline(N = 60, K = 3)
+  pipe$weight <- pipe$weights
+  pipe$sim_year <- rep(c(2030L, 2031L, 2032L), each = 20L)
+  pipe$weight[c(2L, 25L, 26L)] <- NA
+  clean <- pipe
+  keep <- !is.na(pipe$weight)
+  clean$y_point <- pipe$y_point[keep]
+  clean$weight <- pipe$weight[keep]
+  clean$sim_year <- pipe$sim_year[keep]
+  clean$F_loading <- pipe$F_loading[keep, , drop = FALSE]
+  clean$weights <- NULL
+
+  for (m in c("mean", "median", "headcount_ratio")) {
+    pov <- if (m == "headcount_ratio") 3 else NULL
+    res <- suppressMessages(
+      aggregate_pipeline_per_year(pipe, m, pov_line = pov, residuals = "none")
+    )
+    ref <- aggregate_pipeline_per_year(clean, m, pov_line = pov,
+      residuals = "none")
+    info <- paste("method", m)
+    expect_false(anyNA(vapply(res, `[[`, numeric(1), "value")), label = info)
+    expect_equal(vapply(res, `[[`, numeric(1), "value"),
+      vapply(ref, `[[`, numeric(1), "value"), label = info)
+    expect_equal(vapply(res, `[[`, numeric(1), "var_coef"),
+      vapply(ref, `[[`, numeric(1), "var_coef"), label = info)
+  }
+  expect_message(
+    res <- aggregate_pipeline_per_year(pipe, "mean", residuals = "none"),
+    "3 row\\(s\\) with a missing survey weight excluded .*2030: 1, 2031: 2"
+  )
+  expect_identical(vapply(res, `[[`, integer(1), "n_na_weight_dropped"),
+                   c(1L, 2L, 0L))
+  expect_identical(vapply(res, `[[`, integer(1), "n_na_dropped"), c(0L, 0L, 0L))
 })
 
 test_that("F_loading = NULL gives zero coefficient variance", {

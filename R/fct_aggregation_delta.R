@@ -501,11 +501,11 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
 
   years <- sort(unique(pipe$sim_year))
   rows <- lapply(years, function(year) which(pipe$sim_year == year))
-  valid <- lapply(rows, function(idx) !is.na(pipe$y_point[idx]))
+  pred_ok <- lapply(rows, function(idx) !is.na(pipe$y_point[idx]))
   # R2-BUG-28: NA household-year predictions are excluded from each year's
   # statistics. Count them per year (this pipeline = one model/member) and
-  # report; which rows are used is unchanged.
-  n_na_dropped <- vapply(valid, function(v) sum(!v), integer(1))
+  # report.
+  n_na_dropped <- vapply(pred_ok, function(v) sum(!v), integer(1))
   if (sum(n_na_dropped) > 0L) {
     message(sprintf(
       "[wiseapp] %d NA household-year prediction(s) excluded from per-year statistics (%s).",
@@ -513,6 +513,26 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
       paste(sprintf("%s: %d", years, n_na_dropped)[n_na_dropped > 0L],
             collapse = ", ")
     ))
+  }
+  # Rows with a missing survey weight would turn every point estimate and the
+  # coefficient variance into NA; drop them the same way and report the count.
+  valid <- pred_ok
+  n_na_weight_dropped <- integer(length(rows))
+  if (!is.null(pipe$weight)) {
+    valid <- lapply(seq_along(rows), function(i) {
+      pred_ok[[i]] & !is.na(pipe$weight[rows[[i]]])
+    })
+    n_na_weight_dropped <- vapply(seq_along(rows), function(i) {
+      sum(pred_ok[[i]] & !valid[[i]])
+    }, integer(1))
+    if (sum(n_na_weight_dropped) > 0L) {
+      message(sprintf(
+        "[wiseapp] %d row(s) with a missing survey weight excluded from per-year statistics (%s).",
+        sum(n_na_weight_dropped),
+        paste(sprintf("%s: %d", years, n_na_weight_dropped)[n_na_weight_dropped > 0L],
+              collapse = ", ")
+      ))
+    }
   }
   weights <- lapply(seq_along(rows), function(i) {
     idx <- rows[[i]][valid[[i]]]
@@ -566,6 +586,7 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
     rows = rows,
     valid = valid,
     n_na_dropped = n_na_dropped,
+    n_na_weight_dropped = n_na_weight_dropped,
     weights = weights,
     weights_normalized = weights_normalized,
     residuals = residual_vectors,
@@ -680,6 +701,7 @@ aggregate_pipeline_per_year <- function(pipe,
     )
     m$sim_year <- yr
     m$n_na_dropped <- prep$n_na_dropped[[i]]
+    m$n_na_weight_dropped <- prep$n_na_weight_dropped[[i]]
     m
   })
 }
@@ -830,6 +852,7 @@ aggregate_pipeline_per_year_multi <- function(pipe,
       )
       value$sim_year <- yr
       value$n_na_dropped <- prep$n_na_dropped[[i]]
+      value$n_na_weight_dropped <- prep$n_na_weight_dropped[[i]]
       out[[method]][[i]] <- value
     }
   }
