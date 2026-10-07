@@ -478,6 +478,13 @@ model_term_names <- function(sm) {
 
 # Shared echarts4r plumbing for the Step 1 module charts (guidelines §7) ----
 
+# Two-column numeric matrix of chart points. htmlwidgets serialises it as a JSON
+# array of [x, y] pairs, the shape ECharts expects, at a small fraction of the
+# cost of one R list per point (CR-PERF-08).
+.e_xy_matrix <- function(x, y) {
+  unname(cbind(as.numeric(x), as.numeric(y)))
+}
+
 # Base widget with a safe two-column, two-row dummy frame (echarts4r 0.5.x
 # rejects single-column and <2-row frames in e_charts()); builders overwrite
 # the axis/series/legend opts wholesale, so the dummy is never drawn.

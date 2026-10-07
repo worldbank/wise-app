@@ -1834,10 +1834,8 @@ echart_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var,
     )
     e$x$opts$series <- list(
       list(
-        type = "scatter", data = lapply(seq_len(nrow(pt)), function(i) {
-          xi <- match(pt$x[i], x_levels)
-          list(if (is.na(xi)) NA_real_ else xi - 1L, pt$y[i])
-        }),
+        type = "scatter",
+        data = .e_xy_matrix(match(pt$x, x_levels) - 1L, pt$y),
         symbolSize = 5, itemStyle = list(
           color = .wise_charcoal, opacity = 0.10
         ), silent = TRUE, z = 1
@@ -1919,18 +1917,14 @@ echart_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var,
     e$x$opts$series <- list(
       list(
         type = "scatter",
-        data = lapply(seq_len(nrow(scat)), function(i) {
-          list(scat$x[i], scat$y[i])
-        }),
+        data = .e_xy_matrix(scat$x, scat$y),
         symbolSize = 4, itemStyle = list(
           color = .wise_charcoal, opacity = 0.10
         ), silent = TRUE, z = 1
       ),
       list(
         type = "line",
-        data = lapply(seq_len(nrow(summary_df)), function(i) {
-          list(summary_df$x[i], summary_df$mean[i])
-        }),
+        data = .e_xy_matrix(summary_df$x, summary_df$mean),
         lineStyle = list(color = .wise_blue, width = 2),
         symbol = "none", z = 3, silent = TRUE
       ),

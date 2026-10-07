@@ -2874,9 +2874,9 @@ echart_residual_panels <- function(model, is_logistic = FALSE, height = "400px")
 
       # Panel 1: scatter + loess smooth (ggplot geom_smooth(method = "loess")
       # defaults: span 0.75, degree 2, formula y ~ x).
-      pts1 <- lapply(seq_len(nrow(df)), function(i) {
-        list(df$fitted[i], df$residuals[i])
-      })
+      # CR-PERF-08: points as an [x, y] matrix (a JSON array of pairs) instead
+      # of one R list per point, which cost seconds of serialisation at N = 13k.
+      pts1 <- .e_xy_matrix(df$fitted, df$residuals)
       smooth <- tryCatch({
         keep <- is.finite(df$fitted) & is.finite(df$residuals)
         xs <- sort(unique(df$fitted[keep]))
@@ -2886,9 +2886,14 @@ echart_residual_panels <- function(model, is_logistic = FALSE, height = "400px")
           )
           # predict() returns a named vector; unname it so each point
           # serialises as [x, y] rather than [x, {"<name>": y}].
+          # The smooth is drawn on at most 300 evenly spaced fitted values;
+          # a line through 13k points is visually identical but much larger.
+          if (length(xs) > 300L) {
+            xs <- xs[unique(round(seq(1, length(xs), length.out = 300L)))]
+          }
           pr <- unname(stats::predict(lo, newdata = data.frame(fitted = xs)))
           ok <- is.finite(pr)
-          lapply(seq_along(xs)[ok], function(i) list(xs[i], pr[i]))
+          .e_xy_matrix(xs[ok], pr[ok])
         } else {
           NULL
         }
@@ -2911,7 +2916,7 @@ echart_residual_panels <- function(model, is_logistic = FALSE, height = "400px")
       # Panel 2: normal QQ precomputed with stat_qq's methods (ppoints/qnorm)
       # and the stat_qq_line quartile reference.
       qq <- stats::qqnorm(df$residuals, plot.it = FALSE)
-      pts2 <- lapply(seq_along(qq$x), function(i) list(qq$x[i], qq$y[i]))
+      pts2 <- .e_xy_matrix(qq$x, qq$y)
       qs <- stats::quantile(df$residuals, c(0.25, 0.75), names = FALSE, na.rm = TRUE)
       xs <- stats::qnorm(c(0.25, 0.75))
       series2 <- list(list(
