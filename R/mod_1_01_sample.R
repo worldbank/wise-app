@@ -33,9 +33,10 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
 
     # List available files at the connection endpoint ----
 
+    # CR-PERF-09: only the selected unit's folder is listed.
     available_files <- reactive({
-      req(connection_params())
-      list_available_files(connection_params())
+      req(connection_params(), input$unit)
+      list_available_files(connection_params(), input$unit)
     })
 
     # Level of analysis selector ----

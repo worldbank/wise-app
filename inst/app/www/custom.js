@@ -16,8 +16,15 @@
     });
   }
 
+  // CR-PERF-14: one scan per animation frame, however many mutations fire.
+  var scheduled = false;
   function scan() {
-    document.querySelectorAll('ul.nav-tabs').forEach(refresh);
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(function () {
+      scheduled = false;
+      document.querySelectorAll('ul.nav-tabs').forEach(refresh);
+    });
   }
 
   document.addEventListener('DOMContentLoaded', function () {

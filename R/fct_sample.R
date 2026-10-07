@@ -15,11 +15,15 @@
 #'   `build_connection_params()`. Must contain at least `type` and, when
 #'   `type = "local"`, a non-empty `path` element.
 #'
-#' @return A character vector of filenames (basenames, no path) for local
-#'   connections, or `NULL` for remote connections.
+#' @param unit Optional unit of analysis (`"ind"`, `"hh"`, `"firm"`). When
+#'   given, only `microdata/<unit>/` is listed (the names keep their
+#'   `microdata/<unit>/` prefix), which avoids walking the whole data tree.
+#'
+#' @return A character vector of file paths relative to the data folder for
+#'   local connections, or `NULL` for remote connections.
 #'
 #' @export
-list_available_files <- function(connection_params) {
+list_available_files <- function(connection_params, unit = NULL) {
   if (is.null(connection_params) || !is.list(connection_params)) {
     return(NULL)
   }
@@ -29,7 +33,12 @@ list_available_files <- function(connection_params) {
     if (!nzchar(path) || !dir.exists(path)) {
       return(character(0))
     }
-    list.files(path, recursive = TRUE)
+    if (is.null(unit)) {
+      return(list.files(path, recursive = TRUE))
+    }
+    prefix <- file.path("microdata", unit)
+    files <- list.files(file.path(path, prefix), recursive = TRUE)
+    if (length(files)) file.path(prefix, files) else character(0)
   } else {
     # Remote sources (S3, GCS, Azure, HF) cannot cheaply list files without
     # provider-specific ListObjects calls. Return NULL to skip existence filter.
