@@ -83,7 +83,91 @@ build_connection_params <- function(type, ...) {
     stop("Unknown connection type: ", paste(format(type), collapse = ", "),
          call. = FALSE)
   }
+  if (!type %in% .allowed_connection_types()) {
+    stop("Data source '", type, "' is not enabled on this server.",
+         call. = FALSE)
+  }
   type
+}
+
+#' Split a comma-separated environment variable into trimmed, non-empty values.
+#' @noRd
+.env_list <- function(name) {
+  x <- trimws(strsplit(Sys.getenv(name, ""), ",", fixed = TRUE)[[1L]])
+  x[nzchar(x)]
+}
+
+#' Connection types enabled on this server (CR-SEC-02).
+#'
+#' `WISEAPP_ALLOWED_SOURCES` (comma-separated) wins. Otherwise a configured
+#' automatic source (`WISEAPP_DATA_SOURCE`) is the only enabled type, and on
+#' Posit Connect without one only Databricks is. Local and dev runs allow every
+#' type.
+#' @noRd
+.allowed_connection_types <- function() {
+  allowed <- tolower(.env_list("WISEAPP_ALLOWED_SOURCES"))
+  if (!length(allowed)) {
+    allowed <- if (!is.null(.data_source())) {
+      .data_source()
+    } else if (.on_posit_connect()) {
+      "databricks"
+    } else {
+      .CONNECTION_TYPES
+    }
+  }
+  intersect(.CONNECTION_TYPES, allowed)
+}
+
+# Does `value` equal or sit below `root` on a path-segment boundary?
+.path_under <- function(value, root) {
+  root <- sub("/+$", "", root)
+  identical(value, root) || startsWith(value, paste0(root, "/"))
+}
+
+#' Check user-entered connection fields against the server allowlists.
+#'
+#' Environment-origin connections are operator configuration and are trusted.
+#' For UI connections, tokens must not contain control characters or `..`
+#' segments, and the optional allowlists apply: `WISEAPP_ALLOWED_LOCAL_ROOTS`
+#' (folders), `WISEAPP_ALLOWED_BUCKETS` (S3/GCS buckets, Azure containers and
+#' Hugging Face repos) and `WISEAPP_ALLOWED_VOLUME_ROOTS` (Databricks volume
+#' paths). An unset allowlist does not restrict that field.
+#' @return The params, invisibly; errors when not allowed.
+#' @noRd
+.assert_connection_allowed <- function(params) {
+  type <- .check_connection_type(params$type %||% "local")
+  if (!identical(params$origin, "ui")) return(invisible(params))
+  fail <- function(what) {
+    stop(what, " is not allowed on this server.", call. = FALSE)
+  }
+  tokens <- unlist(params[setdiff(
+    names(params), c("type", "origin", "key_id", "secret", "key",
+                     "client_id", "client_secret", "tenant_id")
+  )])
+  tokens <- tokens[nzchar(tokens)]
+  if (any(grepl("[[:cntrl:]]", tokens))) fail("A value with control characters")
+  if (any(grepl("(^|[/\\\\])\\.\\.([/\\\\]|$)", tokens))) fail("A path with '..'")
+
+  roots <- .env_list("WISEAPP_ALLOWED_LOCAL_ROOTS")
+  if (identical(type, "local") && length(roots)) {
+    p <- normalise_local_path(params$path)
+    ok <- any(vapply(normalizePath(roots, winslash = "/", mustWork = FALSE),
+                     function(r) .path_under(p, r), logical(1)))
+    if (!ok) fail("This folder")
+  }
+  buckets <- .env_list("WISEAPP_ALLOWED_BUCKETS")
+  unit <- switch(type, s3 = params$bucket, gcs = params$bucket,
+                 azure = params$container, hf = params$repo, NULL)
+  if (length(buckets) && !is.null(unit) && !unit %in% buckets) {
+    fail("This bucket or container")
+  }
+  vol <- .env_list("WISEAPP_ALLOWED_VOLUME_ROOTS")
+  if (identical(type, "databricks") && length(vol) &&
+      !any(vapply(vol, function(r) .path_under(sub("/+$", "", params$volume_path %||% ""), r),
+                  logical(1)))) {
+    fail("This volume path")
+  }
+  invisible(params)
 }
 
 #' Read one connection field. Only environment-origin params fall back to the
@@ -149,6 +233,10 @@ auto_connection_params <- function() {
 validate_connection_params <- function(params) {
   if (is.null(params) || !is.list(params) || length(params$type) != 1L ||
       !isTRUE(params$type %in% .CONNECTION_TYPES)) {
+    return(FALSE)
+  }
+  if (inherits(tryCatch(.assert_connection_allowed(params), error = identity),
+               "error")) {
     return(FALSE)
   }
   field <- function(name, env_var) .connection_field(params, name, env_var)

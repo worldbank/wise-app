@@ -317,6 +317,17 @@ mod_0_overview_server <- function(id) {
                         role = "status", `aria-live` = "polite"))
       }
 
+      # CR-SEC-02: only sources enabled on this server are offered.
+      all_sources <- c(
+        "Local folder" = "local", "Databricks" = "databricks",
+        "GCS" = "gcs", "S3" = "s3"
+      )
+      source_choices <- all_sources[all_sources %in% .allowed_connection_types()]
+      if (!length(source_choices)) {
+        return(div(class = "alert alert-warning", role = "alert",
+          "No data source is enabled on this server."))
+      }
+
       bslib::layout_columns(
         col_widths = c(4, 8),
         div(
@@ -325,13 +336,8 @@ mod_0_overview_server <- function(id) {
             tags$span("Source:", class = "connection-source-label"),
             wave_toggle_slider(
               ns("connection_type"),
-              choices = c(
-                "Local folder" = "local",
-                "Databricks" = "databricks",
-                "GCS" = "gcs",
-                "S3" = "s3"
-              ),
-              selected = "local",
+              choices = source_choices,
+              selected = unname(source_choices[[1L]]),
               aria_label = "Data source"
             )
           ),

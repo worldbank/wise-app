@@ -157,6 +157,8 @@ Optional resource limits (unset = package/DuckDB defaults). Every Connect proces
 - `WISEAPP_ASYNC_TIMEOUT_MIN` (Step 2 run limit, default 90) and `WISEAPP_ASYNC_METADATA_TIMEOUT_SEC` (default 300); `0` disables
 - `WISEAPP_STAGE_LOG=0` turns off the one-line-per-run stage log
 
+Data-source allowlists (CR-SEC-02): `WISEAPP_ALLOWED_SOURCES` (comma-separated source types) restricts which sources the app accepts. Unset, a configured `WISEAPP_DATA_SOURCE` is the only enabled type, and on Posit Connect without one only `databricks` is; local and dev runs allow every type. For connections typed into the UI, `WISEAPP_ALLOWED_LOCAL_ROOTS`, `WISEAPP_ALLOWED_BUCKETS` (S3/GCS buckets, Azure containers, Hugging Face repos) and `WISEAPP_ALLOWED_VOLUME_ROOTS` (Databricks volume paths) restrict the location; an unset list does not restrict that field. Values containing control characters or `..` segments are always refused for UI connections. Environment-configured connections are trusted.
+
 Key environment variables for production:
 - `WISEAPP_DATA_SOURCE` (automatic source selector: `local`, `s3`, `gcs`, `azure`, `hf`, or `databricks`)
 - `WISEAPP_DATA_PATH` (local data backend)

@@ -663,6 +663,7 @@ load_data <- function(
   order_by = NULL,
   preserve_order = FALSE
 ) {
+  .assert_connection_allowed(connection_params)
   if (length(paths) == 0) {
     return(tibble::tibble())
   }
