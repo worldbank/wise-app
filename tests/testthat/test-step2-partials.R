@@ -258,70 +258,10 @@ test_that("preview output is unchanged when partial_fn is also supplied", {
 # ---- PARITY with the Results module ----------------------------------------
 
 # Drive the real module with the final result of the same run and return the
-# table it displays for the method (hist or scenario label).
-module_displayed_table <- function(result, method, pl_in, bw_in,
-                                   which = "Historical") {
-  out <- NULL
-  mth <- method
-  lbl <- which
-  # Unrelated downstream outputs warn on these minimal fixtures; only the
-  # aggregation tables matter here.
-  suppressWarnings(shiny::testServer(
-    mod_2_02_results_server,
-    args = list(
-      id = "results",
-      hist_sim = shiny::reactiveVal(result$hist_sim_result),
-      saved_scenarios = shiny::reactiveVal(result$new_scenarios),
-      selected_hist = shiny::reactiveVal(NULL),
-      tabset_id = "step2_output_tabs",
-      residuals = shiny::reactive(result$hist_sim_result$residuals),
-      skip_coef_draws = shiny::reactive(FALSE)
-    ),
-    {
-      session$setInputs(
-        cmp_agg_method = mth, pov_line = pl_in, bandwidth_p0 = bw_in
-      )
-      session$elapse(500)
-      session$flushReact()
-      out <<- if (identical(lbl, "Historical")) {
-        hist_agg_rv()[[weight_key()]][[mth]]
-      } else {
-        scenario_agg_rv()[[lbl]][[weight_key()]][[mth]]
-      }
-    }
-  ))
-  out
-}
-
-test_that("partial tables are identical to the module's displayed tables", {
-  for (weighted in c(TRUE, FALSE)) {
-    for (method in c("mean", "headcount_ratio", "gini", "prosperity_gap")) {
-      info <- paste0(if (weighted) "weighted/" else "unweighted/", method)
-      run <- collect_partials(
-        weighted = weighted,
-        display = list(method = method, pov_line = 2.5, bandwidth_p0 = 0.05)
-      )
-      expect_length(run$partials, 3L)
-      for (p in run$partials) {
-        expect_identical(p$display$method, method, info = info)
-        expect_identical(
-          p$display$weight_key, if (weighted) "weighted" else "unweighted",
-          info = info
-        )
-        shown <- module_displayed_table(
-          run$result, method, 2.5, 0.05, which = p$label
-        )
-        expect_gt(nrow(p$table), 0L)
-        expect_true(all(is.finite(p$table$value)), info = info)
-        expect_false(is.null(p$table$F_agg_all[[1L]]), info = info)
-        expect_identical(p$table, shown, info = paste(info, p$label))
-      }
-    }
-  }
-})
-
-# Same as module_displayed_table() for several methods in one session:
-# returns list(method = list(label = table)) in committed mode.
+# tables it displays: list(method = list(label = table)), one session for all
+# methods and labels.
+# Unrelated downstream outputs warn on these minimal fixtures; only the
+# aggregation tables matter here.
 module_displayed_tables <- function(result, methods, pl_in, bw_in, labels) {
   out <- list()
   suppressWarnings(shiny::testServer(
@@ -355,8 +295,40 @@ module_displayed_tables <- function(result, methods, pl_in, bw_in, labels) {
   out
 }
 
+test_that("partial tables are identical to the module's displayed tables", {
+  for (weighted in c(TRUE, FALSE)) {
+    for (method in c("mean", "headcount_ratio", "gini", "prosperity_gap")) {
+      info <- paste0(if (weighted) "weighted/" else "unweighted/", method)
+      run <- collect_partials(
+        weighted = weighted,
+        display = list(method = method, pov_line = 2.5, bandwidth_p0 = 0.05)
+      )
+      expect_length(run$partials, 3L)
+      labels <- vapply(run$partials, `[[`, character(1), "label")
+      shown <- module_displayed_tables(run$result, method, 2.5, 0.05, labels)
+      for (p in run$partials) {
+        expect_identical(p$display$method, method, info = info)
+        expect_identical(
+          p$display$weight_key, if (weighted) "weighted" else "unweighted",
+          info = info
+        )
+        expect_gt(nrow(p$table), 0L)
+        expect_true(all(is.finite(p$table$value)), info = info)
+        expect_false(is.null(p$table$F_agg_all[[1L]]), info = info)
+        expect_identical(p$table, shown[[method]][[p$label]],
+          info = paste(info, p$label))
+      }
+    }
+  }
+})
+
 test_that("every streamed method's table is identical to the module's", {
   for (weighted in c(TRUE, FALSE)) {
+    # The module's tables depend on the final result, not on the method a
+    # partial displayed, so one all-method session serves both display runs.
+    # The second run is still compared with the first run's session, so a
+    # result that differed between runs would fail rather than pass silently.
+    shown <- NULL
     for (display_method in c("mean", "prosperity_gap")) {
       info <- paste0(if (weighted) "weighted/" else "unweighted/", display_method)
       run <- collect_partials(
@@ -371,7 +343,9 @@ test_that("every streamed method's table is identical to the module's", {
         setdiff(all_methods, "prosperity_gap")
       }
       labels <- vapply(run$partials, `[[`, character(1), "label")
-      shown <- module_displayed_tables(run$result, expected, 2.5, 0.05, labels)
+      if (is.null(shown)) {
+        shown <- module_displayed_tables(run$result, all_methods, 2.5, 0.05, labels)
+      }
       for (p in run$partials) {
         expect_setequal(names(p$tables), expected)
         expect_setequal(p$display$methods, expected)
