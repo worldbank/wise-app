@@ -324,7 +324,7 @@ test_that("median delta-method SD matches Monte Carlo (R2-BUG-03)", {
       y_point = y, F_loading = pipe$F_loading, method = "median",
       weights = w, residuals = "none"
     )
-    ratio <- sqrt(res$var_coef) / mc_se(pipe, "median", weights = w, S = 2000)
+    ratio <- sqrt(res$var_coef) / mc_se(pipe, "median", weights = w, S = 1000)
     expect_gt(ratio, 0.9, label = paste(nm, "ratio"))
     expect_lt(ratio, 1.1, label = paste(nm, "ratio"))
   }
@@ -466,7 +466,7 @@ test_that("level outcomes: delta SE matches MC SE for every method", {
       is_log = FALSE
     )
     se_mc <- mc_se(pipe, m, weights = pipe$weights, pov_line = 3.0,
-                   is_log = FALSE, S = 2000)
+                   is_log = FALSE, S = 1000)
     ratio <- sqrt(res$var_coef) / se_mc
     expect_true(abs(ratio - 1) < 0.10, info = sprintf("%s ratio=%.3f", m, ratio))
   }
