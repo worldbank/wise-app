@@ -170,4 +170,10 @@ Key environment variables for production:
 
 ## Testing
 
-Tests are in `tests/testthat/` (80 files, named after the `fct_`/`mod_` file or concept they cover, e.g. `test-fct_hexmap.R`, `test-active-mask.R`) plus `tests/spelling.R`. Areas with dedicated coverage: connection/data loading, model fitting + coefficient uncertainty decomposition, aggregation delta, RIF helpers, hexmap payload contract, policy decomposition uncertainty, metric-aware decomposition, weather selection/stats, export bundles, determinism.
+Tests are in `tests/testthat/` (112 files, named after the `fct_`/`mod_` file or concept they cover, e.g. `test-fct_hexmap.R`, `test-active-mask.R`) plus `tests/spelling.R`. New tests go in `test-<R file>.R`. Areas with dedicated coverage: connection/data loading, model fitting + coefficient uncertainty decomposition, prediction, aggregation delta, RIF helpers, hexmap payload contract, policy decomposition uncertainty, metric-aware decomposition, Step 3 lever modules, `app_server` wiring (stubbed step modules), weather selection/stats, export bundles, determinism.
+
+- **Run from the source tree**, as CI does: `devtools::test()` or `testthat::test_local()` (about 4 to 6 minutes serial). `R CMD check` runs with `--no-tests`.
+- **Environment is pinned** by `tests/testthat/setup-env.R` (weather caches in a per-run temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R` (UTF-8). Do not rely on the developer's `.Renviron`.
+- **Fixtures:** a builder moves into a `helper-*.R` file only when two or more test files use it.
+- **Coverage:** use `covr::package_coverage(type = "none", code = ...)` with `testthat::test_dir("tests/testthat", load_package = "installed", package = "wiseapp", ...)`, excluding the files that start real mirai workers or headless Chrome (`step2-async*`, `fct-overview-metadata`, `export-bundle`, `mod-0-overview`); their trace files corrupt covr. Code run inside workers is not counted.
+- **Not covered by R tests:** MapLibre rendering, `conditionalPanel` visibility, `update*Input()` on config import, and the real Step 0 to 3 flow (they need a browser).
