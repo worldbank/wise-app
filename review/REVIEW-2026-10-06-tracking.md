@@ -118,7 +118,7 @@ Goal: availability fix plus guardrails so B1-type regressions cannot recur. Safe
 | Test: check-only failures | L | S | ☑ | `test-export-wiring-contract.R`, `test-csv-export-wiring-contract.R`, `test-pipeline-runner.R`, `test-bench-step3.R`, `test-step2-async.R:298` | Source-tree tests skip when R/ or dev/ is absent; async worker test mirrors production load. |
 | R CMD check warnings/notes | L | S | ◐ | Undeclared test pkgs (`arrow`, `bit64`, `chromote`, `data.table`, `later`), global-binding notes, top-level `docs/` | Fixed: non-ASCII, undeclared test pkgs, ^docs$/^\.github$. Left: Rd @param gaps (~25 functions), global-binding notes. |
 | Run-stage log | L | S | ☑ | One structured log line per stage (run id, stage, keys, cache state, elapsed, peak RSS, outcome); no credentials/household data | R/utils_log.R .wise_log_stage(); Step 2 settle/worker and Step 3 run; allowlisted, sanitized fields; WISEAPP_STAGE_LOG=0 disables. |
-| RED-06 / batch dupes | M | M | ◐ | One parameterised batch driver over `step2_compute()`; fix `batch/02_weather_stats.R:218` | Fixed batch/02 weather_agg_for call (R2-BUG-25) and added parse + signature smoke tests. Consolidating the five 04_run_sim copies not done (needs a decision). |
+| RED-06 / batch dupes | M | M | ◐ | One parameterised batch driver over `step2_compute()`; fix `batch/02_weather_stats.R:218` | Fixed batch/02 weather_agg_for call (R2-BUG-25) and added parse + signature smoke tests. Consolidating the five 04_run_sim copies deferred by user decision 2026-10-07. |
 | R2-CQ-01 | L | S | ◐ | Track `man/` or mark helpers `@noRd`; update `NEWS.md` | NEWS.md updated; CI runs document() so man/ stays untracked. Rd @param gaps remain. |
 
 ## B6 - Performance (§5.6, ranked)
