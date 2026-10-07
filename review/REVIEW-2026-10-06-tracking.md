@@ -145,7 +145,7 @@ Goal: measured wins, in the report's rank order. Prerequisite: B3/B4 merged and 
 | 12 | CR-PERF-15 | S | – | Tracked in B5 | | |
 | 13 | CR-PERF-13 / R2-PERF-08 | S | – | Tracked in B5 | | |
 | 14 | R2-PERF-11 | S | ☑ | Memoise LASSO by inputs | Bit-identical | `.memoise_last()` in mod_1_06 keeps the last selection keyed by a hash of the prepared data, outcome, weather, FE, interactions, candidate list and every LASSO setting; the fixed seed makes a hit identical to a refit. Test counts computations (test-lasso-memoise.R); mod_1_06 filter 48 passed. Timing not re-measured (the saved cost is the 3.0 s LASSO fit per repeated click). |
-| 15 | R2-PERF-05, R2-PERF-12 | S | ☐ | Step 2 chart payloads; Diagnostics weather re-reads | Visual | |
+| 15 | R2-PERF-05, R2-PERF-12 | S | ◐ | Step 2 chart payloads; Diagnostics weather re-reads | Visual | R2-PERF-12 done: scenario weather frames are cached for all selected weather variables and a variable click only subsets columns (cache key no longer holds the clicked variable; test counts `step2_resolve_weather` calls: 4 before, 2 after across a switch), and the historical filter runs once per run/survey in a reactive shared by the density chart and the support fallback (`hist_filtered` argument; chart options `identical()` with and without it). Filters mod_2_03, diagnostic, weather-charts, sim-diag: 188 passed. Timing not measured on real data. R2-PERF-05 open. |
 | 16 | CR-PERF-03 | L | ☐ | Factorised per-key predictor behind a flag | Pre-agreed tolerance | Agree tolerances first |
 | 17 | R2-PERF-09 | S | ☐ | Re-measure fast vs bounded weather collection | Bit-identical | |
 | 18 | R2-PERF-07 | S-M | ☐ | `stop_mirai()` on cancel; checkpoints between SQL stages | n/a | |

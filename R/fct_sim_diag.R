@@ -549,7 +549,8 @@ echart_weather_density_panel <- function(survey_weather,
                                          show_regression = FALSE,
                                          height = "340px",
                                          weather_specs = NULL,
-                                         stored_breaks = NULL) {
+                                         stored_breaks = NULL,
+                                         hist_filtered = NULL) {
   if (is.null(weather_vars) || !is.character(weather_vars) ||
     !length(weather_vars)) {
     return(echart_blank("No selected weather variables found in weather_raw.",
@@ -584,7 +585,9 @@ echart_weather_density_panel <- function(survey_weather,
 
   e <- .e_diag_base(height)
 
-  hist_filt <- .filter_hist_weather(weather_raw, survey_weather)
+  # `hist_filtered` lets a caller that already ran the (merge-heavy) filter pass
+  # the result in; it must come from the same weather_raw and survey_weather.
+  hist_filt <- hist_filtered %||% .filter_hist_weather(weather_raw, survey_weather)
   if (!"int_month" %in% names(survey_weather) && "timestamp" %in% names(survey_weather)) {
     survey_weather$int_month <- as.integer(format(as.Date(survey_weather$timestamp), "%m"))
   }

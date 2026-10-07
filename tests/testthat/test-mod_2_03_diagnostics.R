@@ -149,3 +149,51 @@ test_that("diagnostics UI mounts chart outputs without the support table", {
   expect_false(grepl("diagnostics-weather_support_table", html, fixed = TRUE))
   expect_false(grepl("Reactable.downloadDataCSV", html, fixed = TRUE))
 })
+
+# R2-PERF-12: switching the weather variable must not re-resolve scenario weather.
+test_that("scenario weather is resolved once across weather variable switches", {
+  f <- make_diag_weather_fixture()
+  saved <- shiny::reactiveVal(list(
+    `SSP2-4.5 / 2030-2040` = list(weather_raw = f$scenarios[[1]]),
+    `SSP5-8.5 / 2030-2040` = list(weather_raw = f$scenarios[[1]])
+  ))
+  calls <- 0L
+  local_mocked_bindings(
+    step2_resolve_weather = function(raw, entry) { calls <<- calls + 1L; raw },
+    .package = "wiseapp"
+  )
+  shiny::testServer(
+    mod_2_03_diagnostics_server,
+    args = list(
+      id = "diagnostics", hist_sim = shiny::reactiveVal(list(weather_raw = f$weather_raw)),
+      saved_scenarios = saved, survey_weather = shiny::reactiveVal(f$survey),
+      selected_weather = shiny::reactiveVal(
+        data.frame(name = c("temp", "rain"), label = c("Temp", "Rain"))
+      ),
+      tabset_id = "tabs"
+    ),
+    {
+      session$setInputs(diag_weather_vars = "temp", diag_weather_scenario = "all")
+      first <- scenario_weather_data()
+      expect_identical(calls, 2L)
+      expect_true("temp" %in% names(first[[1]]))
+      expect_false("rain" %in% names(first[[1]]))
+      session$setInputs(diag_weather_vars = "rain")
+      second <- scenario_weather_data()
+      expect_identical(calls, 2L)
+      expect_true("rain" %in% names(second[[1]]))
+      expect_false("temp" %in% names(second[[1]]))
+    }
+  )
+})
+
+test_that("a precomputed historical filter gives the same density panel", {
+  f <- make_diag_weather_fixture()
+  args <- list(f$survey, f$weather_raw, "temp",
+    scenario_weather = f$scenarios, show_regression = TRUE)
+  plain <- do.call(echart_weather_density_panel, args)
+  pre <- do.call(echart_weather_density_panel, c(args, list(
+    hist_filtered = .filter_hist_weather(f$weather_raw, f$survey)
+  )))
+  expect_identical(pre$x$opts, plain$x$opts)
+})

@@ -188,30 +188,39 @@ mod_2_03_diagnostics_server <- function(id,
           schema = if (is_ref) wr$schema else NULL
         )
       })
+      # R2-PERF-12: the resolved frames hold every selected weather variable,
+      # so the cache key excludes the clicked variable and a variable switch
+      # only subsets columns instead of re-reading each scenario's weather.
+      sw_all <- if (!is.null(selected_weather)) selected_weather() else NULL
+      all_vars <- sort(unique(c(vars, as.character(sw_all$name))))
       cache_key <- digest::digest(list(
-        generation, visible, vars,
+        generation, visible, all_vars,
         scenario_signature
       ))
-      if (identical(cache_key, diagnostic_cache_key)) {
-        return(diagnostic_cache_value)
+      if (!identical(cache_key, diagnostic_cache_key)) {
+        full <- lapply(sc[visible], function(e) {
+          raw <- step2_resolve_weather(e$weather_raw, e)
+          if (is.null(raw) || !is.data.frame(raw)) {
+            return(NULL)
+          }
+          keep <- unique(c(
+            intersect(STEP2_WEATHER_KEY_COLUMNS, names(raw)),
+            intersect(all_vars, names(raw))
+          ))
+          raw[, keep, drop = FALSE]
+        })
+        names(full) <- visible
+        diagnostic_cache_key <<- cache_key
+        diagnostic_cache_value <<- Filter(Negate(is.null), full)
       }
-      out <- lapply(sc[visible], function(e) {
-        raw <- step2_resolve_weather(e$weather_raw, e)
-        if (is.null(raw) || !is.data.frame(raw)) {
-          return(NULL)
-        }
+      out <- lapply(diagnostic_cache_value, function(raw) {
         keep <- unique(c(
           intersect(STEP2_WEATHER_KEY_COLUMNS, names(raw)),
           intersect(vars, names(raw))
         ))
         raw[, keep, drop = FALSE]
       })
-      names(out) <- visible
-      out <- Filter(Negate(is.null), out)
-      out <- if (length(out)) out else NULL
-      diagnostic_cache_key <<- cache_key
-      diagnostic_cache_value <<- out
-      out
+      if (length(out)) out else NULL
     })
 
     # renderUI / render* outputs ----
@@ -256,6 +265,14 @@ mod_2_03_diagnostics_server <- function(id,
       if (identical(selected, "all")) NULL else selected
     })
 
+    # R2-PERF-12: the historical filter (a merge over weather_raw) runs once per
+    # run/survey, not on every variable click and again for the support table.
+    hist_weather_filtered <- reactive({
+      req(hist_sim(), survey_weather())
+      req(!is.null(hist_sim()$weather_raw))
+      .filter_hist_weather(hist_sim()$weather_raw, survey_weather())
+    })
+
     weather_density_chart <- function() {
       req(hist_sim(), survey_weather())
       req(!is.null(hist_sim()$weather_raw))
@@ -281,7 +298,8 @@ mod_2_03_diagnostics_server <- function(id,
         show_regression  = TRUE,
         height           = "340px",
         weather_specs    = sw,
-        stored_breaks    = breaks
+        stored_breaks    = breaks,
+        hist_filtered    = hist_weather_filtered()
       )
       req(!is.null(ch))
       ch
@@ -313,7 +331,7 @@ mod_2_03_diagnostics_server <- function(id,
         return(stored)
       }
       req(survey_weather(), !is.null(hist_sim()$weather_raw))
-      ref <- .filter_hist_weather(hist_sim()$weather_raw, survey_weather())
+      ref <- hist_weather_filtered()
       scenarios <- scenario_weather_data()
       weather_support_summary(
         ref, scenarios, vars,
