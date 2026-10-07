@@ -195,23 +195,26 @@ test_that(".register_db_secret quotes bearer tokens safely in secret SQL", {
   )
 
   # Quote-free token: byte-identical to the previous naive interpolation
-  .register_db_secret(NULL, "tok-123", "h1")
+  scope <- "https://h.cloud.databricks.com/api/2.0/fs/files"
+  .register_db_secret(NULL, "tok-123", "h1", scope)
   expect_identical(
     captured[1],
-    "CREATE OR REPLACE SECRET db_http_h1 (TYPE http, BEARER_TOKEN 'tok-123');"
+    paste0("CREATE OR REPLACE SECRET db_http_h1 ",
+           "(TYPE http, BEARER_TOKEN 'tok-123', SCOPE '", scope, "');")
   )
 
   # Adversarial token: apostrophe doubled, no unescaped terminator
-  .register_db_secret(NULL, "O'Brien'; CREATE SECRET pwn; --", "h1")
+  .register_db_secret(NULL, "O'Brien'; CREATE SECRET pwn; --", "h1", scope)
   expect_identical(
     captured[2],
     paste0(
       "CREATE OR REPLACE SECRET db_http_h1 ",
-      "(TYPE http, BEARER_TOKEN 'O''Brien''; CREATE SECRET pwn; --');"
+      "(TYPE http, BEARER_TOKEN 'O''Brien''; CREATE SECRET pwn; --', SCOPE '",
+      scope, "');"
     )
   )
   expect_identical(.duck$db_secrets$h1,
-                   digest::digest("O'Brien'; CREATE SECRET pwn; --"))
+                   digest::digest(list("O'Brien'; CREATE SECRET pwn; --", scope)))
   expect_length(captured, 2)
 })
 
@@ -486,7 +489,7 @@ test_that("extension loading calls .on_posit_connect() without an exists() guard
   # The S3 secret type needs httpfs, which a clean runner does not have yet.
   tryCatch(.duck_load_ext("httpfs"),
     error = function(e) testthat::skip(paste("httpfs extension unavailable:", conditionMessage(e))))
-  .register_db_secret(con, "user-token", "ab12")
+  .register_db_secret(con, "user-token", "ab12", "https://h.example/api")
   .register_cached_secret(con, "s3_secret", list(k = "user-key"),
     "CREATE OR REPLACE SECRET s3_secret (TYPE S3, KEY_ID 'user-key', SECRET 'user-secret');")
   DBI::dbExecute(con, "CREATE OR REPLACE VIEW _ld_sec02 AS SELECT 1 AS x;")
@@ -549,4 +552,38 @@ test_that("only UI connections outside sync mode clear worker credentials", {
   expect_false(.wise_async_clears_credentials(NULL))
   withr::local_envvar(WISEAPP_ASYNC_SYNC = "1")
   expect_false(.wise_async_clears_credentials(list(type = "s3", origin = "ui")))
+})
+
+# CR-SEC-03: secrets are scoped to the bucket/container/host they were created
+# for, with one secret name per scope.
+test_that("object-store secrets carry a SCOPE and a per-scope name", {
+  expect_false(identical(.secret_name("s3_secret", "s3://a"),
+                         .secret_name("s3_secret", "s3://b")))
+  expect_identical(.secret_name("s3_secret", "s3://a"),
+                   .secret_name("s3_secret", "s3://a"))
+
+  restore_duck <- .duck_state_restore()
+  withr::defer(restore_duck())
+  captured <- character(0)
+  local_mocked_bindings(
+    .register_cached_secret = function(con, name, creds, sql) {
+      captured <<- c(captured, sql)
+      invisible(NULL)
+    },
+    .duck_load_ext = function(...) invisible(NULL),
+    .duck_con = function() NULL,
+    .package = "wiseapp"
+  )
+  for (params in list(
+    list(type = "s3", bucket = "bkt", key_id = "k", secret = "s", origin = "ui"),
+    list(type = "gcs", bucket = "bkt", key_id = "k", secret = "s", origin = "ui"),
+    list(type = "azure", account = "acct", container = "ctr", key = "k",
+         origin = "ui")
+  )) {
+    try(suppressWarnings(load_data("s3://x/y.parquet", params)), silent = TRUE)
+  }
+  expect_length(captured, 3L)
+  expect_match(captured[1], "SCOPE  's3://bkt'", fixed = TRUE)
+  expect_match(captured[2], "SCOPE  'gs://bkt'", fixed = TRUE)
+  expect_match(captured[3], "abfss://ctr@acct.dfs.core.windows.net", fixed = TRUE)
 })

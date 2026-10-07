@@ -501,18 +501,29 @@ collect_deterministic <- function(data, keys = NULL) {
 #' @param con         DBI connection.
 #' @param db_token    Character scalar - bearer token.
 #' @param params_hash Character scalar - key identifying this credential set.
+#' @param scope       URL prefix the secret applies to (CR-SEC-03); the bearer
+#'   token is never sent to other URLs.
 #' @noRd
-.register_db_secret <- function(con, db_token, params_hash) {
+.register_db_secret <- function(con, db_token, params_hash, scope) {
   secret_name <- paste0("db_http_", params_hash)
-  token_hash <- digest::digest(db_token)
+  token_hash <- digest::digest(list(db_token, scope))
   if (!identical(.duck$db_secrets[[params_hash]], token_hash)) {
     DBI::dbExecute(con, sprintf(
-      "CREATE OR REPLACE SECRET %s (TYPE http, BEARER_TOKEN %s);",
-      secret_name, .sql_literal(db_token)
+      "CREATE OR REPLACE SECRET %s (TYPE http, BEARER_TOKEN %s, SCOPE %s);",
+      secret_name, .sql_literal(db_token), .sql_literal(scope)
     ))
     .duck$db_secrets[[params_hash]] <- token_hash
   }
   invisible(NULL)
+}
+
+
+#' Secret name derived from the scope it applies to, so each bucket or
+#' container has its own secret and one source's credentials never replace
+#' another's (CR-SEC-03).
+#' @noRd
+.secret_name <- function(prefix, scope) {
+  paste0(prefix, "_", substr(digest::digest(scope), 1, 8))
 }
 
 
@@ -702,18 +713,23 @@ load_data <- function(
       secret = field("secret", "AWS_SECRET_ACCESS_KEY"),
       region = connection_params$region %||% "us-east-1"
     )
+    scope <- paste0("s3://", connection_params$bucket)
+    secret_name <- .secret_name("s3_secret", scope)
     .register_cached_secret(
-      con, "s3_secret", s3_creds,
+      con, secret_name, c(s3_creds, scope = scope),
       sprintf(
-        "CREATE OR REPLACE SECRET s3_secret (
+        "CREATE OR REPLACE SECRET %s (
            TYPE   S3,
            KEY_ID %s,
            SECRET %s,
-           REGION %s
+           REGION %s,
+           SCOPE  %s
          );",
+        secret_name,
         .sql_literal(s3_creds$key_id),
         .sql_literal(s3_creds$secret),
-        .sql_literal(s3_creds$region)
+        .sql_literal(s3_creds$region),
+        .sql_literal(scope)
       )
     )
   } else if (type == "gcs") {
@@ -722,16 +738,21 @@ load_data <- function(
       key_id = field("key_id", "GCS_ACCESS_KEY_ID"),
       secret = field("secret", "GCS_SECRET_ACCESS_KEY")
     )
+    scope <- paste0("gs://", connection_params$bucket)
+    secret_name <- .secret_name("gcs_secret", scope)
     .register_cached_secret(
-      con, "gcs_secret", gcs_creds,
+      con, secret_name, c(gcs_creds, scope = scope),
       sprintf(
-        "CREATE OR REPLACE SECRET gcs_secret (
+        "CREATE OR REPLACE SECRET %s (
            TYPE   GCS,
            KEY_ID %s,
-           SECRET %s
+           SECRET %s,
+           SCOPE  %s
          );",
+        secret_name,
         .sql_literal(gcs_creds$key_id),
-        .sql_literal(gcs_creds$secret)
+        .sql_literal(gcs_creds$secret),
+        .sql_literal(scope)
       )
     )
   } else if (type == "azure") {
@@ -742,6 +763,11 @@ load_data <- function(
     client_id <- field("client_id", "AZURE_CLIENT_ID")
     client_secret <- field("client_secret", "AZURE_CLIENT_SECRET")
     tenant_id <- field("tenant_id", "AZURE_TENANT_ID")
+    scope <- paste0(
+      "abfss://", connection_params$container, "@",
+      connection_params$account, ".dfs.core.windows.net"
+    )
+    secret_name <- .secret_name("azure_secret", scope)
 
     if (nzchar(key)) {
       az_creds <- list(
@@ -750,16 +776,19 @@ load_data <- function(
         key      = key
       )
       .register_cached_secret(
-        con, "azure_secret", az_creds,
+        con, secret_name, c(az_creds, scope = scope),
         sprintf(
-          "CREATE OR REPLACE SECRET azure_secret (
+          "CREATE OR REPLACE SECRET %s (
              TYPE              AZURE,
-             CONNECTION_STRING %s
+             CONNECTION_STRING %s,
+             SCOPE             %s
            );",
+          secret_name,
           .sql_literal(paste0(
             "AccountName=", az_creds$account,
             ";AccountKey=", az_creds$key
-          ))
+          )),
+          .sql_literal(scope)
         )
       )
     } else if (nzchar(client_id) && nzchar(client_secret) && nzchar(tenant_id)) {
@@ -770,16 +799,19 @@ load_data <- function(
         client_secret = client_secret
       )
       .register_cached_secret(
-        con, "azure_secret", az_creds,
+        con, secret_name, c(az_creds, scope = scope),
         sprintf(
-          "CREATE OR REPLACE SECRET azure_secret (
+          "CREATE OR REPLACE SECRET %s (
              TYPE          AZURE,
              PROVIDER      SERVICE_PRINCIPAL,
              TENANT_ID     %s,
              CLIENT_ID     %s,
-             CLIENT_SECRET %s
+             CLIENT_SECRET %s,
+             SCOPE         %s
            );",
-          .sql_literal(tenant_id), .sql_literal(client_id), .sql_literal(client_secret)
+          secret_name,
+          .sql_literal(tenant_id), .sql_literal(client_id),
+          .sql_literal(client_secret), .sql_literal(scope)
         )
       )
     } else if (identical(connection_params$origin, "ui")) {
@@ -793,11 +825,15 @@ load_data <- function(
       tryCatch(
         DBI::dbExecute(
           con,
-          "CREATE OR REPLACE SECRET azure_secret (
-             TYPE     AZURE,
-             PROVIDER CREDENTIAL_CHAIN,
-             CHAIN    'managed_identity;workload_identity'
-           );"
+          sprintf(
+            "CREATE OR REPLACE SECRET %s (
+               TYPE     AZURE,
+               PROVIDER CREDENTIAL_CHAIN,
+               CHAIN    'managed_identity;workload_identity',
+               SCOPE    %s
+             );",
+            secret_name, .sql_literal(scope)
+          )
         ),
         error = function(e) {
           stop(
@@ -842,7 +878,8 @@ load_data <- function(
     )
 
     .duck_load_ext("httpfs", db_token, ext_base_url)
-    .register_db_secret(con, db_token, params_hash)
+    .register_db_secret(con, db_token, params_hash,
+                        scope = paste0(host, "/api/2.0/fs/files"))
   }
 
   # 4. Normalise local paths ----
