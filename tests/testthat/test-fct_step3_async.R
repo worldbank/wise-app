@@ -334,3 +334,44 @@ test_that("cancelling a Step 3 job stops the running task and frees the daemon",
   later::run_now(0.5)
   expect_false(called)
 })
+
+test_that("policy fields identical to the baseline become links and are re-linked", {
+  big <- function() data.frame(a = seq_len(5000L), b = rnorm(5000L))
+  pipe <- function(y) list(y_point = y, weather_raw = baseline_weather, small = 1)
+  baseline_weather <- big()
+  hs <- list(
+    weather_raw = baseline_weather, svy = big(), so = list(name = "y"),
+    pipeline = pipe(rnorm(100L))
+  )
+  ss <- list(a = list(
+    weather_shared = big(), shared_context = "ctx",
+    pipelines = list(m1 = pipe(rnorm(100L)), m2 = pipe(rnorm(100L)))
+  ))
+  # The policy arm changes the predictions and nothing else.
+  pol_out <- list(
+    hist_sim = modifyList(hs, list(pipeline = modifyList(hs$pipeline, list(y_point = rnorm(100L))))),
+    saved_scenarios = list(a = modifyList(ss$a, list(
+      pipelines = lapply(ss$a$pipelines, function(p) modifyList(p, list(y_point = rnorm(100L))))
+    )))
+  )
+  deduped <- .step3_dedupe_vs_baseline(pol_out, hs, ss)
+  expect_true(.step3_is_link(deduped$hist_sim$weather_raw))
+  expect_true(.step3_is_link(deduped$hist_sim$svy))
+  expect_true(.step3_is_link(deduped$hist_sim$pipeline$weather_raw))
+  expect_true(.step3_is_link(deduped$saved_scenarios$a$weather_shared))
+  expect_true(.step3_is_link(deduped$saved_scenarios$a$pipelines$m1$weather_raw))
+  # Changed or small fields stay.
+  expect_false(.step3_is_link(deduped$hist_sim$pipeline$y_point))
+  expect_identical(deduped$saved_scenarios$a$pipelines$m1$small, 1)
+  expect_lt(
+    length(serialize(deduped, NULL)), length(serialize(pol_out, NULL)) / 2
+  )
+
+  relinked <- .step3_relink_baseline(deduped, hs, ss)
+  expect_identical(relinked, pol_out)
+
+  # A link without a baseline field is refused.
+  ss_missing <- ss
+  ss_missing$a$pipelines$m1$weather_raw <- NULL
+  expect_error(.step3_relink_baseline(deduped, hs, ss_missing), "baseline field")
+})

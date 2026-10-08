@@ -34,6 +34,72 @@
   computed
 }
 
+# The policy arm is the baseline arm with corrected predictions: almost every
+# field (weather_raw, weather_shared, svy, the household-constant vectors) is
+# identical to the baseline's. Writing those again doubles the artifact, and
+# reading them back doubles memory in the reader (about 300 MB of per-member
+# weather at BFA 2x2). The worker replaces each large field that is identical
+# to the baseline's with a link marker; the reader, which holds the baseline,
+# points the field back at the baseline's own object (a reference, no copy).
+.STEP3_LINK_MIN_BYTES <- 10000
+
+.step3_link_marker <- function() structure(list(), class = "wiseapp_baseline_link")
+.step3_is_link <- function(x) inherits(x, "wiseapp_baseline_link")
+
+# Apply `entry_fn(policy_entry, baseline_entry)` to the policy hist_sim, its
+# pipeline, each scenario and each member pipeline, paired with the baseline's.
+.step3_map_arms <- function(pol_out, hs, ss, entry_fn) {
+  if (is.list(pol_out$hist_sim) && is.list(hs)) {
+    h <- entry_fn(pol_out$hist_sim, hs)
+    if (is.list(h$pipeline) && is.list(hs$pipeline)) {
+      h$pipeline <- entry_fn(h$pipeline, hs$pipeline)
+    }
+    pol_out$hist_sim <- h
+  }
+  for (nm in names(pol_out$saved_scenarios)) {
+    p <- pol_out$saved_scenarios[[nm]]
+    b <- ss[[nm]]
+    if (!is.list(p) || !is.list(b)) next
+    p <- entry_fn(p, b)
+    for (m in names(p$pipelines)) {
+      if (is.list(b$pipelines[[m]])) {
+        p$pipelines[[m]] <- entry_fn(p$pipelines[[m]], b$pipelines[[m]])
+      }
+    }
+    pol_out$saved_scenarios[[nm]] <- p
+  }
+  pol_out
+}
+
+.step3_dedupe_vs_baseline <- function(pol_out, hs, ss) {
+  .step3_map_arms(pol_out, hs, ss, function(p, b) {
+    for (f in setdiff(names(p), c("pipeline", "pipelines"))) {
+      x <- p[[f]]
+      if (!is.null(b[[f]]) && !.step3_is_link(x) &&
+          as.numeric(utils::object.size(x)) > .STEP3_LINK_MIN_BYTES &&
+          identical(x, b[[f]])) {
+        p[[f]] <- .step3_link_marker()
+      }
+    }
+    p
+  })
+}
+
+.step3_relink_baseline <- function(pol_out, hs, ss) {
+  .step3_map_arms(pol_out, hs, ss, function(p, b) {
+    for (f in names(p)) {
+      if (.step3_is_link(p[[f]])) {
+        if (is.null(b[[f]])) {
+          stop("The Step 3 result links to a baseline field that is missing: ", f,
+            call. = FALSE)
+        }
+        p[[f]] <- b[[f]]
+      }
+    }
+    p
+  })
+}
+
 #' Check the run-owned invariants of a run read back from a worker.
 #'
 #' Serialisation keeps environment locks and shared references (one
@@ -331,6 +397,7 @@ step3_async_worker <- function(snapshot, artifact_dir) {
   # The baseline arm is the Step 2 result the caller already holds.
   computed$baseline_out <- NULL
   computed$baseline_scenarios_out <- NULL
+  computed$pol_out <- .step3_dedupe_vs_baseline(computed$pol_out, hs, ss)
   rm(hs, ss)
   lap("compute_s")
 
@@ -383,6 +450,7 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
   computed$artifact <- if (!is.null(kept)) {
     list(file = normalizePath(kept, winslash = "/"), id = basename(root))
   }
+  computed$pol_out <- .step3_relink_baseline(computed$pol_out, hs, ss)
   step3_validate_worker_run(computed)
   computed$timings <- c(manifest$timings, main_read_s = proc.time()[["elapsed"]] - read_started)
   computed$baseline_out <- step3_baseline_arm(hs, residuals)
@@ -545,6 +613,7 @@ step3_metric_worker <- function(snapshot, artifact_dir) {
     snapshot$policy_artifact$file,
     nthreads = .WISE_STEP2_QS2_THREADS, validate_checksum = TRUE
   ))
+  policy$pol_out <- .step3_relink_baseline(policy$pol_out, step2$hs, step2$ss)
   step3_validate_worker_run(policy)
   .policy_metric_decomposition(
     baseline_hist = step3_baseline_arm(step2$hs, snapshot$residuals),
