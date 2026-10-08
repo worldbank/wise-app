@@ -547,6 +547,12 @@
                failed_metrics$error), collapse = " | "), call. = FALSE)
     }
     rss_sample_fn(rss_state)
+
+    # Opt-in probe (CR-PERF-04 Phase 0): the script is sourced in this frame,
+    # so it sees baseline_result, hist_sim, saved_scenarios, policy_result,
+    # decomp_context, svy_baseline, svy_policy, model_fit, so and config.
+    probe <- Sys.getenv("WISEAPP_STEP3_PROBE_SCRIPT", "")
+    if (nzchar(probe)) source(probe, local = environment())
   }, error = function(e) {
     status <<- "error"
     error_text <<- conditionMessage(e)

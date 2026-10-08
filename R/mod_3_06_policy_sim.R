@@ -101,7 +101,15 @@ mod_3_06_policy_sim_server <- function(id,
     labor_scenario_rv <- reactiveVal(NULL)
     education_scenario_rv <- reactiveVal(NULL)
 
+    # A worker result that arrives after the session ended is dropped.
+    session_ended <- FALSE
+    # File of the retained policy result (CR-PERF-04); removed when the run is
+    # replaced and at session end.
+    policy_artifact_rv <- reactiveVal(NULL)
     cleanup_weather_stores <- function() {
+      session_ended <<- TRUE
+      unlink(shiny::isolate(policy_artifact_rv())$file, force = TRUE)
+      policy_artifact_rv(NULL)
       step2_weather_store_release(shiny::isolate(weather_store_lease_rv()))
       weather_store_lease_rv(NULL)
     }
@@ -168,13 +176,16 @@ mod_3_06_policy_sim_server <- function(id,
         return(invisible(NULL))
       }
       sim_running(TRUE)
-      on.exit(sim_running(FALSE), add = TRUE)
+      # TRUE once the run was handed to a worker; the callbacks then own
+      # sim_running and run_status.
+      deferred <- FALSE
+      on.exit(if (!deferred) sim_running(FALSE), add = TRUE)
       run_generation(run_generation() + 1L)
       run_status("running")
       completed <- FALSE
       on.exit(
         {
-          if (!completed) run_status("failure")
+          if (!completed && !deferred) run_status("failure")
         },
         add = TRUE
       )
@@ -240,43 +251,27 @@ mod_3_06_policy_sim_server <- function(id,
       }
 
       run_started <- proc.time()[["elapsed"]]
-      tryCatch(
+      fail <- function(e) {
+        .wise_log_stage("step3_run", "failed", run_id = paste0("step3-", isolate(sim_run_id()) + 1L),
+          elapsed = proc.time()[["elapsed"]] - run_started)
+        shiny::showNotification(
+          wise_user_error(e, "Policy simulation"),
+          type = "error", duration = 8
+        )
+      }
+      # Publishes a computed run (from step3_compute() in this process or from
+      # a worker). Errors are handled here so both paths report the same way.
+      publish <- function(computed, policy_sig) tryCatch(
         {
-          # INT-08: the signature is captured up front from the exact inputs
-          # this run consumes (scenario reactives are read again below); a
-          # signature built at publish time could record mid-run edits.
-          policy_sig <- .policy_sig_from_live(hs)
+          svy_mod <- computed$svy_mod
+          decomp_context <- computed$decomp_context
+          pol_out <- computed$pol_out
+          baseline_out <- computed$baseline_out
+          baseline_scenarios_out <- computed$baseline_scenarios_out
+          diagnostic_summary_out <- computed$diagnostic_summary
+          decomp_sc <- pol_out$decomp_scenarios
 
-          svy_mod <- apply_policy_to_svy(
-            svy,
-            infra         = infra_cfg,
-            sp            = sp_cfg,
-            digital       = digital_cfg,
-            labor         = labor_cfg,
-            education     = education_cfg,
-            model_vars    = model_vars,
-            analysis_unit = analysis_unit(),
-            seed          = wise_current_seed()
-          )
-
-          policy_candidates <- .policy_candidate_cols(
-            infra = infra_cfg,
-            digital = digital_cfg,
-            labor = labor_cfg,
-            education = education_cfg,
-            model_vars = model_vars
-          )
-
-          # A social-protection-only scenario changes nothing but the cash
-          # transfer column, which is deliberately excluded from the covariate
-          # deltas - so it is a perfectly valid run and must not be treated as
-          # "nothing configured". What is worth flagging is a scenario that is
-          # a literal no-op (every lever at its zero default): the run still
-          # goes ahead, but the policy arm will equal the baseline.
-          if (!.scenario_has_effect(
-            svy, svy_mod,
-            candidates = policy_candidates
-          )) {
+          if (isTRUE(computed$no_effect)) {
             shiny::showNotification(
               paste(
                 "No policy change is configured - every lever is at zero, so",
@@ -287,122 +282,6 @@ mod_3_06_policy_sim_server <- function(id,
               type = "warning", duration = 10
             )
           }
-
-          shiny::withProgress(
-            message = "Running policy simulation...",
-            value = 0.1,
-            {
-              shiny::setProgress(value = 0.2, detail = "Preparing baseline results...")
-              # Baseline = Step 2 output verbatim. The survey is unchanged in
-              # the baseline arm, so re-simulating would just reproduce the
-              # Step 2 results. Pass Step 2's hist_sim and saved_scenarios
-              # straight through so the Results pane reads exactly the same
-              # values Mod 2 shows. The Results pane and policy resimulation
-              # both consume the Mod 2 schema ($pipeline for hist_sim,
-              # $pipelines for each saved scenario), so no translation is
-              # required here. (Held in locals - INT-09 publishes all state
-              # atomically at the end of a fully successful run.)
-              res_choice <- hs$residuals %||% residuals() %||% "original"
-              # Preserve the residual treatment captured by the Step 2 run.
-              hs_for_baseline <- hs
-              hs_for_baseline$residuals <- res_choice
-              # Keep the source Step 2 signature available after this baseline
-              # is republished with the Step 3 policy signature.
-              hs_for_baseline$.step2_sig <- hs$.sig %||% NULL
-              baseline_out <- hs_for_baseline
-              baseline_scenarios_out <- ss %||% list()
-
-              shiny::setProgress(value = 0.6, detail = "Calculating policy scenario results...")
-              # Derive the policy arm from the baseline pipelines by adding
-              # the analytic per-household delta_total (the same number the
-              # Decomposition pane reports). This (a) eliminates the
-              # baseline/policy disagreement when residual draws have any
-              # stochastic component - both arms now share identical
-              # train_aug / id_vec / svy_row_id, so residuals line up
-              # household-for-household and a no-op policy yields a no-op
-              # visual effect; and (b) removes the per-CMIP6-member re-
-              # simulation, which was the dominant cost of every policy
-              # adjustment.
-              skip_coef_val <- isTRUE(skip_coef_draws())
-
-              # PERF-22: covariate deltas and the training-outcome ecdf are
-              # weather- and scenario-independent - every decompose_policy_
-              # effect() call below (historical + per scenario-year) would
-              # otherwise rebuild both. Compute once, pass through.
-              deltas_pre <- .compute_policy_deltas(
-                svy, svy_mod, hs$so$name, mf$weather_terms,
-                candidate_cols = policy_candidates
-              )
-              F_hat_pre <- if (identical(mf$engine, "rif") &&
-                !is.null(mf$train_data) &&
-                hs$so$name %in% names(mf$train_data)) {
-                stats::ecdf(mf$train_data[[hs$so$name]])
-              } else {
-                NULL
-              }
-
-              # W2-D: all decomposition calls in this published run share
-              # invariant survey/model state. Weather hazards remain supplied
-              # per panel so member-specific and year-specific weather cannot
-              # leak across bases.
-              decomp_context <- .build_decomposition_context(
-                svy_baseline = svy, svy_policy = svy_mod, model_fit = mf,
-                so = hs$so, deltas = deltas_pre,
-                skip_coef = skip_coef_val, F_hat = F_hat_pre,
-                run_identity = paste0("generation-", run_generation()),
-                weather_panels = Filter(Negate(is.null), list(
-                  step2_resolve_weather(hs$weather_raw, hs)
-                ))
-              )
-              if (is.null(decomp_context)) {
-                stop("Unable to prepare policy decomposition context.", call. = FALSE)
-              }
-
-              pol_out <- apply_policy_delta_to_baseline(
-                svy_baseline = svy,
-                svy_policy = svy_mod,
-                model_fit = mf,
-                so = hs$so,
-                hist_sim_baseline = baseline_out,
-                saved_scenarios_baseline = baseline_scenarios_out,
-                skip_coef = skip_coef_val,
-                deltas = deltas_pre,
-                F_hat = F_hat_pre,
-                decomp_context = decomp_context,
-                run_identity = decomp_context$run_identity,
-                sp = sp_cfg,
-                analysis_unit = analysis_unit()
-              )
-              if (is.null(pol_out)) {
-                stop("Policy simulation produced no results.", call. = FALSE)
-              }
-
-              # REACT-05: the production annual channels were computed above, so
-              # a failure there already fails the whole run instead of silently
-              # presenting the previous run as new.
-              shiny::setProgress(value = 0.85, detail = "Summarizing policy effects...")
-
-              # Production future summaries have already been reduced from the
-              # exact channel blocks used to correct every member's predictions.
-              shiny::setProgress(value = 0.90, detail = "Finalizing scenario summaries...")
-              decomp_sc <- pol_out$decomp_scenarios
-
-              diagnostic_summary_out <- .policy_diagnostics_snapshot(
-                svy_baseline = svy,
-                svy_policy = svy_mod,
-                outcome = hs$so$name,
-                analysis_unit = analysis_unit(),
-                candidates = unique(c(policy_candidates, hs$so$name)),
-                sp = sp_cfg,
-                shock = pol_out$shock
-              )
-              if (is.null(diagnostic_summary_out)) {
-                stop("Policy diagnostics produced no results.", call. = FALSE)
-              }
-
-              shiny::setProgress(value = 1, detail = "Results ready")
-            }
-          )
 
           # Atomic publish (INT-09) ----
           # Every reactive value is written only now that the complete run
@@ -416,6 +295,12 @@ mod_3_06_policy_sim_server <- function(id,
           final_bundle$annual_channels <- pol_out$annual_channels
           baseline_out$.sig <- policy_sig
           if (!is.null(pol_out$hist_sim)) pol_out$hist_sim$.sig <- policy_sig
+          # CR-PERF-04: the retained worker result (policy arm on disk) lets
+          # the metric-decomposition workers read it instead of receiving it.
+          if (!is.null(pol_out$hist_sim)) {
+            pol_out$hist_sim$.artifact <- computed$artifact
+          }
+          old_policy_artifact <- policy_artifact_rv()
           new_weather_lease <- step2_weather_store_acquire_scenarios(c(
             baseline_scenarios_out,
             pol_out$saved_scenarios %||% list()
@@ -436,6 +321,8 @@ mod_3_06_policy_sim_server <- function(id,
           policy_saved_scenarios_rv(pol_out$saved_scenarios)
           weather_store_lease_rv(new_weather_lease)
           step2_weather_store_release(old_weather_lease)
+          policy_artifact_rv(computed$artifact)
+          unlink(old_policy_artifact$file, force = TRUE)
           sp_scenario_rv(sp_cfg)
           infra_scenario_rv(infra_cfg)
           digital_scenario_rv(digital_cfg)
@@ -451,7 +338,7 @@ mod_3_06_policy_sim_server <- function(id,
           .wise_log_stage("step3_run", "succeeded", run_id = paste0("step3-", sim_run_id()),
             elapsed = proc.time()[["elapsed"]] - run_started)
           run_status("success")
-          completed <- TRUE
+          completed <<- TRUE
           shiny::showNotification(
             "Policy scenario results are ready.",
             type = "message", duration = 3
@@ -470,13 +357,107 @@ mod_3_06_policy_sim_server <- function(id,
           }
         },
         error = function(e) {
-          .wise_log_stage("step3_run", "failed", run_id = paste0("step3-", isolate(sim_run_id()) + 1L),
-            elapsed = proc.time()[["elapsed"]] - run_started)
-          shiny::showNotification(
-            wise_user_error(e, "Policy simulation"),
-            type = "error", duration = 8
-          )
+          # A result that was not published must not keep its retained file.
+          if (!identical(shiny::isolate(policy_artifact_rv())$file, computed$artifact$file)) {
+            unlink(computed$artifact$file, force = TRUE)
+          }
+          fail(e)
         }
+      )
+
+      tryCatch(
+        {
+          # INT-08: the signature is captured up front from the exact inputs
+          # this run consumes (scenario reactives are read again below); a
+          # signature built at publish time could record mid-run edits.
+          policy_sig <- .policy_sig_from_live(hs)
+          residuals_val <- residuals()
+          generation <- run_generation()
+          inputs <- list(
+            svy = svy, mf = mf,
+            sp_cfg = sp_cfg, infra_cfg = infra_cfg,
+            digital_cfg = digital_cfg, labor_cfg = labor_cfg,
+            education_cfg = education_cfg,
+            model_vars = model_vars,
+            analysis_unit = analysis_unit(),
+            skip_coef = skip_coef_draws(),
+            residuals = residuals_val,
+            run_generation = generation,
+            seed = wise_current_seed()
+          )
+
+          if (.wise_step3_async_available(hs, ss)) {
+            # CR-PERF-04: the worker reads the retained Step 2 artifact; only
+            # the small inputs travel. The button stays disabled (sim_running)
+            # until the result is published or the run fails.
+            deferred <- TRUE
+            progress <- shiny::Progress$new(session, min = 0, max = 1)
+            progress$set(value = 0.02, message = "Running policy simulation...",
+              detail = "Starting background worker...")
+            end_run <- function() {
+              progress$close()
+              sim_running(FALSE)
+            }
+            # The result is dropped when the session ended, another run took
+            # over, or the Step 2 result it was computed from was replaced.
+            is_current <- function() {
+              !session_ended && identical(run_generation(), generation) &&
+                identical(hist_sim()$.sig, hs$.sig)
+            }
+            in_session <- function(fn) function(...) {
+              args <- list(...)
+              shiny::withReactiveDomain(session, shiny::isolate({
+                if (session_ended) return(invisible(NULL))
+                do.call(fn, args)
+              }))
+            }
+            step3_async_submit(
+              snapshot = c(inputs, list(
+                artifact = hs$.artifact[c("file", "sig")],
+                hs_overlay = hs[intersect(
+                  c("hist_label", "sim_summary", ".sig"), names(hs)
+                )]
+              )),
+              hs = hs, ss = ss,
+              on_progress = in_session(function(value, detail) {
+                progress$set(value = value, detail = detail)
+              }),
+              is_current = function() {
+                shiny::withReactiveDomain(session, shiny::isolate(is_current()))
+              },
+              on_result = in_session(function(computed) {
+                on.exit(end_run(), add = TRUE)
+                if (!is_current()) {
+                  unlink(computed$artifact$file, force = TRUE)
+                  run_status("idle")
+                  return(invisible(NULL))
+                }
+                publish(computed, policy_sig)
+                if (!identical(run_status(), "success")) run_status("failure")
+              }),
+              on_error = in_session(function(e) {
+                on.exit(end_run(), add = TRUE)
+                run_status("failure")
+                fail(e)
+              })
+            )
+          } else {
+            # Held in locals - INT-09 publishes all state atomically at the end
+            # of a fully successful run.
+            computed <- shiny::withProgress(
+              message = "Running policy simulation...",
+              value = 0.1,
+              do.call(step3_compute, c(
+                list(hs = hs, ss = ss), inputs,
+                list(progress = function(value, detail = NULL) {
+                  shiny::setProgress(value = value, detail = detail)
+                })
+              ))
+            )
+            publish(computed, policy_sig)
+          }
+        },
+        error = fail
       )
       invisible(NULL)
     }

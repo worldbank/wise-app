@@ -1,0 +1,258 @@
+library(testthat)
+
+test_that("the decomposition owner marker is compared by value, not identity", {
+  copy <- unserialize(serialize(.decomposition_context_owner, NULL))
+  expect_false(identical(copy, .decomposition_context_owner))
+  expect_true(.is_decomposition_context_owner(copy))
+  expect_true(.is_decomposition_context_owner(.decomposition_context_owner))
+  expect_false(.is_decomposition_context_owner(new.env()))
+  expect_false(.is_decomposition_context_owner(NULL))
+})
+
+test_that("step3_baseline_arm keeps the Step 2 signature and residual treatment", {
+  hs <- list(.sig = list(a = 1), residuals = NULL, pipeline = "p")
+  out <- step3_baseline_arm(hs, "normal")
+  expect_identical(out$residuals, "normal")
+  expect_identical(out$.step2_sig, list(a = 1))
+  expect_identical(out$pipeline, "p")
+  expect_identical(step3_baseline_arm(list(residuals = "none"), "normal")$residuals, "none")
+})
+
+test_that("worker eligibility needs a matching on-disk Step 2 artifact", {
+  f <- withr::local_tempfile(fileext = ".qs2")
+  writeLines("x", f)
+  ss <- list(a = 1, b = 2)
+  hs <- list(.artifact = list(file = f, sig = "s", scenario_names = c("a", "b")))
+  expect_true(.wise_step3_async_artifact_ok(hs, ss))
+  expect_false(.wise_step3_async_artifact_ok(list(), ss))
+  expect_false(.wise_step3_async_artifact_ok(hs, list(a = 1)))
+  unlink(f)
+  expect_false(.wise_step3_async_artifact_ok(hs, ss))
+})
+
+test_that("an adopted Step 2 result file is moved out of the job directory", {
+  root <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_ASYNC_ARTIFACT_ROOT = root)
+  job_dir <- file.path(root, "job-1")
+  dir.create(job_dir)
+  writeLines("result", file.path(job_dir, "result.qs2"))
+  kept <- .wise_step2_async_retain_result(
+    list(id = "job-1", artifact_dir = job_dir), result_sig = "sig"
+  )
+  expect_true(file.exists(kept$file))
+  expect_false(file.exists(file.path(job_dir, "result.qs2")))
+  expect_identical(kept$sig, "sig")
+  expect_null(.wise_step2_async_retain_result(
+    list(id = "job-2", artifact_dir = job_dir), result_sig = "sig"
+  ))
+})
+
+test_that("worker run validation refuses unlocked or mismatched runs", {
+  ctx <- list2env(list(
+    context_version = 2L, context_owner = .decomposition_context_owner,
+    run_identity = "r1"
+  ), parent = emptyenv())
+  lockEnvironment(ctx, bindings = TRUE)
+  channels <- list2env(
+    list(status = "ok", context = ctx, run_identity = "r1"), parent = emptyenv()
+  )
+  expect_error(
+    step3_validate_worker_run(list(
+      pol_out = list(annual_channels = channels), decomp_context = ctx
+    )),
+    "no valid annual channels"
+  )
+  lockEnvironment(channels, bindings = TRUE)
+  expect_true(step3_validate_worker_run(list(
+    pol_out = list(annual_channels = channels), decomp_context = ctx
+  )))
+  other <- list2env(as.list(ctx), parent = emptyenv())
+  lockEnvironment(other, bindings = TRUE)
+  expect_error(
+    step3_validate_worker_run(list(
+      pol_out = list(annual_channels = channels), decomp_context = other
+    )),
+    "differ"
+  )
+})
+
+# dev/ is not part of the built package, so the fixture parity test only runs
+# in a source checkout.
+test_that("a worker run equals the in-process run on the smoke fixture", {
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+    "dev/ benchmark helpers not available")
+  skip_if_not_installed("qs2")
+  source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+
+  input <- .bench_small_step3_input(n = 60L)
+  baseline <- .bench_small_step2_result(input, "ols", "one_ssp_one_period")
+  fixture <- .bench_step3_policy_fixtures("targeted_sp")[[1L]]
+  mf <- input$models[["ols"]]
+  hs <- baseline$hist_sim_result
+  hs$.sig <- list(step = "step2-fixture")
+  ss <- baseline$new_scenarios %||% list()
+  args <- list(
+    svy = input$svy, hs = hs, ss = ss, mf = mf,
+    sp_cfg = fixture$sp, infra_cfg = fixture$infra,
+    model_vars = .bench_step3_model_terms(mf),
+    analysis_unit = "hh", skip_coef = TRUE, residuals = "original",
+    run_generation = 1L, seed = 123L
+  )
+  direct <- do.call(step3_compute, args)
+
+  # Write the Step 2 artifact the way the Step 2 worker does, then run the
+  # Step 3 worker body on it.
+  dir <- withr::local_tempdir()
+  art <- file.path(dir, "step2.qs2")
+  step2 <- list(
+    hist_sim_result = hs, new_scenarios = ss, .sig = "step2-result-sig"
+  )
+  qs2::qs_save(step2_share_constants(step2), art)
+  snapshot <- c(
+    args[setdiff(names(args), c("hs", "ss"))],
+    list(
+      artifact = list(file = art, sig = "step2-result-sig"),
+      hs_overlay = hs[intersect(c("hist_label", "sim_summary", ".sig"), names(hs))]
+    )
+  )
+  manifest <- step3_async_worker(snapshot, file.path(dir, "step3"))
+  worker <- step3_read_worker_result(
+    manifest, file.path(dir, "step3"), hs, ss, "original"
+  )
+
+  expect_identical(worker$pol_out$hist_sim, direct$pol_out$hist_sim)
+  expect_identical(worker$pol_out$saved_scenarios, direct$pol_out$saved_scenarios)
+  expect_identical(worker$pol_out$decomp_scenarios, direct$pol_out$decomp_scenarios)
+  expect_identical(worker$diagnostic_summary, direct$diagnostic_summary)
+  expect_identical(worker$svy_mod, direct$svy_mod)
+  expect_identical(worker$no_effect, direct$no_effect)
+  expect_identical(worker$baseline_out, direct$baseline_out)
+  expect_true(environmentIsLocked(worker$pol_out$annual_channels))
+
+  # The deserialised run still drives the metric decomposition.
+  decompose <- function(run) {
+    .policy_metric_decomposition(
+      baseline_hist = run$baseline_out, policy_hist = run$pol_out$hist_sim,
+      baseline_scenarios = run$baseline_scenarios_out,
+      policy_scenarios = run$pol_out$saved_scenarios %||% list(),
+      prepared = run$pol_out$annual_channels, method = "mean",
+      requested_residuals = "original", analysis_unit = "hh",
+      validation_cache = new.env(parent = emptyenv())
+    )
+  }
+  expect_identical(decompose(worker)$status, "ok")
+  expect_identical(decompose(worker)$summary, decompose(direct)$summary)
+})
+
+test_that("a stale Step 2 artifact is refused by the worker", {
+  skip_if_not_installed("qs2")
+  dir <- withr::local_tempdir()
+  art <- file.path(dir, "step2.qs2")
+  qs2::qs_save(step2_share_constants(list(
+    hist_sim_result = list(), new_scenarios = list(), .sig = "other"
+  )), art)
+  expect_error(
+    step3_async_worker(
+      list(artifact = list(file = art, sig = "expected"), hs_overlay = list()),
+      file.path(dir, "step3")
+    ),
+    "does not match"
+  )
+})
+
+test_that("a run submitted to the shared daemon is read back and equals the in-process run", {
+  skip_on_cran()
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+    "dev/ benchmark helpers not available")
+  skip_if_not_installed("qs2")
+  source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+
+  state <- .wise_step2_async_state
+  withr::local_envvar(WISEAPP_ASYNC_SYNC = "0")
+  try(mirai::daemons(0L), silent = TRUE)
+  state$started <- FALSE
+  withr::defer({
+    try(mirai::daemons(0L), silent = TRUE)
+    state$started <- FALSE
+  })
+  root <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_ASYNC_ARTIFACT_ROOT = root)
+
+  input <- .bench_small_step3_input(n = 60L)
+  baseline <- .bench_small_step2_result(input, "ols", "one_ssp_one_period")
+  fixture <- .bench_step3_policy_fixtures("targeted_sp")[[1L]]
+  mf <- input$models[["ols"]]
+  hs <- baseline$hist_sim_result
+  hs$.sig <- list(step = "step2-fixture")
+  ss <- baseline$new_scenarios %||% list()
+  args <- list(
+    svy = input$svy, mf = mf, sp_cfg = fixture$sp, infra_cfg = fixture$infra,
+    model_vars = .bench_step3_model_terms(mf), analysis_unit = "hh",
+    skip_coef = TRUE, residuals = "original", run_generation = 1L, seed = 123L
+  )
+  direct <- do.call(step3_compute, c(list(hs = hs, ss = ss), args))
+
+  art <- file.path(root, "step2.qs2")
+  qs2::qs_save(step2_share_constants(list(
+    hist_sim_result = hs, new_scenarios = ss, .sig = "sig"
+  )), art)
+  snapshot <- c(args, list(
+    artifact = list(file = art, sig = "sig"),
+    hs_overlay = hs[intersect(c("hist_label", "sim_summary", ".sig"), names(hs))]
+  ))
+
+  got <- NULL
+  err <- NULL
+  step3_async_submit(
+    snapshot, hs = hs, ss = ss,
+    on_result = function(x) got <<- x,
+    on_error = function(e) err <<- e
+  )
+  deadline <- Sys.time() + 120
+  while (is.null(got) && is.null(err) && Sys.time() < deadline) {
+    later::run_now(0.1)
+  }
+  expect_null(err)
+  expect_false(is.null(got))
+  expect_identical(got$pol_out$hist_sim, direct$pol_out$hist_sim)
+  expect_identical(got$diagnostic_summary, direct$diagnostic_summary)
+  # The job directory is removed once the result is adopted; the result file
+  # is kept for the metric workers.
+  expect_length(list.files(file.path(root, "step3")), 0L)
+  expect_true(file.exists(got$artifact$file))
+
+  # A metric job reads both retained artifacts and equals the in-process result.
+  metric <- NULL
+  metric_err <- NULL
+  step3_metric_submit(
+    list(
+      artifact = snapshot$artifact, hs_overlay = snapshot$hs_overlay,
+      policy_artifact = got$artifact["file"], residuals = "original",
+      method = "mean", pov_line = NULL, requested_residuals = "original",
+      endpoint_baseline = NULL, endpoint_policy = NULL, focus = NULL, unit = "hh"
+    ),
+    on_result = function(x) metric <<- x,
+    on_error = function(e) metric_err <<- e
+  )
+  deadline <- Sys.time() + 120
+  while (is.null(metric) && is.null(metric_err) && Sys.time() < deadline) {
+    later::run_now(0.1)
+  }
+  expect_null(metric_err)
+  expected <- .policy_metric_decomposition(
+    baseline_hist = direct$baseline_out, policy_hist = direct$pol_out$hist_sim,
+    baseline_scenarios = direct$baseline_scenarios_out,
+    policy_scenarios = direct$pol_out$saved_scenarios %||% list(),
+    prepared = direct$pol_out$annual_channels, method = "mean",
+    requested_residuals = "original", analysis_unit = "hh",
+    validation_cache = new.env(parent = emptyenv())
+  )
+  expect_identical(metric$status, "ok")
+  expect_identical(metric$summary, expected$summary)
+  expect_identical(metric$annual, expected$annual)
+  expect_true(.wise_step3_metric_async_available(
+    list(.artifact = list(file = art)), list(.artifact = got$artifact)
+  ))
+})

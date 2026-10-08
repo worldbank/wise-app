@@ -526,7 +526,16 @@
   ), algo = "xxhash64")
 }
 
-.decomposition_context_owner <- new.env(parent = emptyenv())
+# Marker for run-owned contexts. It is compared by its `id` field, not by
+# identity: a context that crossed a process boundary (CR-PERF-04) carries a
+# deserialised copy of this environment.
+.decomposition_context_owner <- list2env(
+  list(id = "wiseapp.decomposition_context.v2"), parent = emptyenv()
+)
+
+.is_decomposition_context_owner <- function(x) {
+  is.environment(x) && identical(x[["id"]], .decomposition_context_owner[["id"]])
+}
 
 .validate_decomposition_context <- function(context, svy_baseline, svy_policy,
                                             model_fit, so, run_identity = NULL,
@@ -874,7 +883,7 @@
 .validate_run_decomposition_context <- function(context, run_identity) {
   if (is.null(context) || !is.environment(context) ||
     !identical(context$context_version, 2L) ||
-    !identical(context$context_owner, .decomposition_context_owner) ||
+    !.is_decomposition_context_owner(context$context_owner) ||
     !environmentIsLocked(context)) {
     stop("Invalid run-owned decomposition context.", call. = FALSE)
   }

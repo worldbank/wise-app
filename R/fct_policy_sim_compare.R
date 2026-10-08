@@ -2625,11 +2625,16 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     cache <- new.env(parent = emptyenv())
     cache$entries <- list()
     cache$validated <- new.env(parent = emptyenv())
+    # CR-PERF-04: keys with a worker job in flight.
+    cache$pending <- new.env(parent = emptyenv())
     cache
   })
   metric_cache_limit <- 6L
+  # Bumped when a worker job stores its result, to re-run `metric_decomposition`.
+  metric_job_tick <- reactiveVal(0L)
 
   metric_decomposition <- reactive({
+    metric_job_tick()
     baseline_hist <- baseline_hist_sim()
     policy_hist <- policy_hist_sim()
     prepared <- annual_channels()
@@ -2692,6 +2697,48 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       endpoint_baseline, endpoint_policy, is.null(source)
     ), algo = "xxhash64")
     result <- cache$entries[[cache_key]]
+    # CR-PERF-04: the member x year work runs in a worker that reads the
+    # retained Step 2 and policy artifacts. The Results pane shows a status
+    # message until the job stores its result and `metric_job_tick` fires.
+    if (is.null(result) && !is.null(source) && !isTRUE(stale()) &&
+        .wise_step3_metric_async_available(baseline_hist, policy_hist)) {
+      if (!exists(cache_key, envir = cache$pending, inherits = FALSE)) {
+        assign(cache_key, TRUE, envir = cache$pending)
+        store <- function(value) {
+          if (exists(cache_key, envir = cache$pending, inherits = FALSE)) {
+            rm(list = cache_key, envir = cache$pending)
+          }
+          entries <- c(cache$entries, setNames(list(value), cache_key))
+          cache$entries <- utils::tail(entries, metric_cache_limit)
+          metric_job_tick(shiny::isolate(metric_job_tick()) + 1L)
+        }
+        in_session <- function(fn) function(...) {
+          args <- list(...)
+          shiny::withReactiveDomain(session, shiny::isolate(do.call(fn, args)))
+        }
+        step3_metric_submit(
+          snapshot = list(
+            artifact = baseline_hist$.artifact[c("file", "sig")],
+            hs_overlay = baseline_hist[intersect(
+              c("hist_label", "sim_summary"), names(baseline_hist)
+            )],
+            policy_artifact = policy_hist$.artifact["file"],
+            residuals = baseline_hist$residuals,
+            method = method, pov_line = pov_line,
+            requested_residuals = requested_residuals,
+            endpoint_baseline = endpoint_baseline,
+            endpoint_policy = endpoint_policy,
+            focus = focus, unit = unit
+          ),
+          is_current = function() !isTRUE(session$isClosed()),
+          on_result = in_session(store),
+          on_error = in_session(function(e) {
+            store(unavailable(fallback, wise_user_error(e, "Metric decomposition")))
+          })
+        )
+      }
+      return(unavailable(fallback, "Computing the decomposition in the background..."))
+    }
     if (is.null(result)) {
       failed <- FALSE
       result <- tryCatch(calculate(source), error = function(e) {

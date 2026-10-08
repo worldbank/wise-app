@@ -168,6 +168,27 @@
   invisible(NULL)
 }
 
+# CR-PERF-04: keep an adopted Step 2 result artifact on disk so a Step 3 worker
+# can read it itself instead of receiving up to 1-2 GB through the dispatcher.
+# The file is moved out of the job directory (which settle removes) into a
+# private `retained` directory under the artifact root. The caller owns the
+# returned file: it removes it when the result is replaced and at session end.
+# Returns list(file, sig, job_id), or NULL when the artifact cannot be kept.
+.wise_step2_async_retain_result <- function(job, result_sig) {
+  src <- file.path(job$artifact_dir, "result.qs2")
+  if (!file.exists(src)) return(NULL)
+  dir <- file.path(.wise_step2_async_artifact_root(), "retained")
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE, mode = "0700")
+  dest <- file.path(dir, paste0(job$id, ".qs2"))
+  moved <- suppressWarnings(file.rename(src, dest)) ||
+    isTRUE(suppressWarnings(file.copy(src, dest, overwrite = TRUE)))
+  if (!moved || !file.exists(dest)) return(NULL)
+  list(
+    file = normalizePath(dest, winslash = "/", mustWork = FALSE),
+    sig = result_sig, job_id = job$id
+  )
+}
+
 .wise_step2_async_cleanup_control <- function(job) {
   if (!is.null(job$control_dir) && dir.exists(job$control_dir)) {
     unlink(job$control_dir, recursive = TRUE, force = TRUE)
@@ -623,10 +644,11 @@
 # Per-task wall-clock limit on the shared daemon, in milliseconds. A task that
 # exceeds it is interrupted by mirai, so one stuck run cannot hold the single
 # daemon (and every later run in this process) forever. NULL disables it.
-.wise_step2_async_timeout_ms <- function(kind = c("step2", "metadata")) {
+.wise_step2_async_timeout_ms <- function(kind = c("step2", "metadata", "step3")) {
   kind <- match.arg(kind)
   spec <- switch(kind,
     step2 = list(env = "WISEAPP_ASYNC_TIMEOUT_MIN", default = "90", scale = 60 * 1000),
+    step3 = list(env = "WISEAPP_ASYNC_STEP3_TIMEOUT_MIN", default = "90", scale = 60 * 1000),
     metadata = list(env = "WISEAPP_ASYNC_METADATA_TIMEOUT_SEC", default = "300", scale = 1000)
   )
   value <- suppressWarnings(as.numeric(Sys.getenv(spec$env, spec$default)))

@@ -400,6 +400,9 @@ mod_2_01_weathersim_server <- function(id,
     run_status <- reactiveVal("idle")
     run_detail <- reactiveVal(NULL)
     weather_store_lease <- reactiveVal(NULL)
+    # File of the retained Step 2 result artifact (CR-PERF-04); removed when
+    # the result is replaced and at session end.
+    retained_artifact <- reactiveVal(NULL)
     # Streaming state of the current async run (see
     # review/step2_live_run_contract.md) and the partials of the last adopted
     # run. live_hist_at times the historical partial for the ETA.
@@ -424,6 +427,8 @@ mod_2_01_weathersim_server <- function(id,
       # session's reactive graph has been torn down.
       step2_weather_store_release(shiny::isolate(weather_store_lease()))
       weather_store_lease(NULL)
+      unlink(shiny::isolate(retained_artifact())$file, force = TRUE)
+      retained_artifact(NULL)
     }
     session$onSessionEnded(cleanup_weather_stores)
 
@@ -1157,8 +1162,16 @@ mod_2_01_weathersim_server <- function(id,
                new_lease <- step2_weather_store_acquire(result$weather_store %||% NULL)
                adopted <- FALSE
                on.exit(if (!adopted) step2_weather_store_release(new_lease), add = TRUE)
+               new_artifact <- .wise_step2_async_retain_result(job, result$.sig)
+               on.exit(if (!adopted) unlink(new_artifact$file, force = TRUE), add = TRUE)
+               old_artifact <- retained_artifact()
+               if (!is.null(new_artifact)) {
+                 new_artifact$scenario_names <- names(result$new_scenarios)
+               }
+               result$hist_sim_result$.artifact <- new_artifact
                sim_stale(FALSE)
                weather_store_lease(new_lease)
+               retained_artifact(new_artifact)
                hist_sim(result$hist_sim_result)
                saved_scenarios(result$new_scenarios)
                adopted_partials(list(
@@ -1169,6 +1182,7 @@ mod_2_01_weathersim_server <- function(id,
                live_run(NULL)
                adopted <- TRUE
                step2_weather_store_release(old_lease)
+               unlink(old_artifact$file, force = TRUE)
                TRUE
              })
              if (!isTRUE(committed)) {
