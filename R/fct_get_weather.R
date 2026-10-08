@@ -937,6 +937,145 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
   relabel_bin_levels(df, breaks)
 }
 
+# PERF-W1: lag-join roll for the future-weather query ----
+# The per-(SSP, period) rolled window (RANGE over a month index, partitioned by
+# model and location) is the dominant cost of a Step 2 run. When every
+# location series is a contiguous run of unique months, the window over
+# (base + delta) equals an explicit sum over lagged columns: base lags are built
+# once per get_weather() call, delta lags once per (SSP, period) from the 12
+# monthly deltas (cyclic LAG over three stacked copies), and the two are joined
+# on location and calendar month. Terms are summed farthest lag first, which
+# reproduces DuckDB's window result bit for bit. Median, gaps, duplicate
+# months and WISEAPP_WEATHER_ROLL=window keep the legacy window query.
+.WX_ROLL_FAST_AGGS <- c("Mean", "Sum", "Min", "Max")
+
+.wx_roll_fast_spec_ok <- function(selected_weather) {
+  if (identical(Sys.getenv("WISEAPP_WEATHER_ROLL"), "window")) return(FALSE)
+  if (!nrow(selected_weather)) return(FALSE)
+  s <- suppressWarnings(as.integer(selected_weather$ref_start))
+  e <- suppressWarnings(as.integer(selected_weather$ref_end))
+  !anyNA(c(s, e)) && all(s >= 0L & e >= s & e <= 12L) &&
+    all(selected_weather$temporalAgg %in% .WX_ROLL_FAST_AGGS)
+}
+
+# One entry per selected variable: lags ordered farthest first.
+.wx_roll_specs <- function(selected_weather) {
+  lapply(seq_len(nrow(selected_weather)), function(i) {
+    list(
+      i = i, v = selected_weather$name[i],
+      agg = selected_weather$temporalAgg[i],
+      lags = seq.int(
+        as.integer(selected_weather$ref_end[i]),
+        as.integer(selected_weather$ref_start[i])
+      )
+    )
+  })
+}
+
+# TRUE when every location series has unique, gap-free months.
+.wx_roll_base_contiguous <- function(con, loc_monthly_sql) {
+  n_bad <- DBI::dbGetQuery(con, sprintf(
+    "SELECT count(*) AS n FROM (SELECT 1 FROM (SELECT code, \"year\", survname, loc_id, YEAR(\"timestamp\") * 12 + MONTH(\"timestamp\") AS mi FROM (%s)) GROUP BY code, \"year\", survname, loc_id HAVING count(*) <> count(DISTINCT mi) OR count(*) <> max(mi) - min(mi) + 1)",
+    loc_monthly_sql
+  ))$n
+  isTRUE(as.numeric(n_bad) == 0)
+}
+
+# Creates the location id map (pid_name) and the base-lag table (bl_name).
+.wx_roll_build_base <- function(con, loc_monthly_sql, selected_weather,
+                                pid_name, bl_name) {
+  DBI::dbExecute(con, sprintf(
+    "CREATE TEMP TABLE %s AS SELECT code, \"year\", survname, loc_id, DENSE_RANK() OVER (ORDER BY code, \"year\", survname, loc_id)::INTEGER AS pid FROM (SELECT DISTINCT code, \"year\", survname, loc_id FROM (%s))",
+    pid_name, loc_monthly_sql
+  ))
+  lag_cols <- unlist(lapply(.wx_roll_specs(selected_weather), function(sp) {
+    qv <- DBI::dbQuoteIdentifier(con, sp$v)
+    vapply(sp$lags, function(k) {
+      sprintf(
+        "%s AS b%d_%d",
+        if (k == 0L) paste0("m.", qv) else sprintf("LAG(m.%s, %d) OVER w", qv, k),
+        sp$i, k
+      )
+    }, character(1L))
+  }))
+  DBI::dbExecute(con, sprintf(
+    "CREATE TEMP TABLE %s AS SELECT p.pid, m.code, m.\"year\", m.survname, m.loc_id, m.\"timestamp\", MONTH(m.\"timestamp\")::INTEGER AS \"month\", %s FROM (%s) m INNER JOIN %s p ON m.code = p.code AND m.\"year\" = p.\"year\" AND m.survname = p.survname AND m.loc_id = p.loc_id WINDOW w AS (PARTITION BY p.pid ORDER BY YEAR(m.\"timestamp\") * 12 + MONTH(m.\"timestamp\"))",
+    bl_name, paste(lag_cols, collapse = ", "), loc_monthly_sql, pid_name
+  ))
+  invisible(TRUE)
+}
+
+# Creates the delta-lag table (dl_name) from the per-model monthly deltas
+# (columns model, keys, month, delta_<v>). Returns FALSE (and leaves no tables
+# behind) unless every model x location carries exactly the 12 calendar months.
+.wx_roll_build_delta <- function(con, delta_sql, selected_weather,
+                                 pid_name, src_name, dl_name) {
+  specs <- .wx_roll_specs(selected_weather)
+  dcols <- vapply(specs, function(sp) {
+    DBI::dbQuoteIdentifier(con, paste0("delta_", sp$v))
+  }, character(1L))
+  DBI::dbExecute(con, sprintf(
+    "CREATE TEMP TABLE %s AS SELECT DENSE_RANK() OVER (ORDER BY d.model)::INTEGER AS mid, d.model, p.pid, d.\"month\"::INTEGER AS \"month\", %s FROM (%s) d INNER JOIN %s p ON d.code = p.code AND d.\"year\" = p.\"year\" AND d.survname = p.survname AND d.loc_id = p.loc_id",
+    src_name, paste0("d.", dcols, collapse = ", "), delta_sql, pid_name
+  ))
+  on.exit(try(DBI::dbRemoveTable(con, src_name), silent = TRUE), add = TRUE)
+  n_bad <- DBI::dbGetQuery(con, sprintf(
+    "SELECT count(*) AS n FROM (SELECT 1 FROM %s GROUP BY mid, pid HAVING count(*) <> 12 OR count(DISTINCT \"month\") <> 12)",
+    src_name
+  ))$n
+  if (!isTRUE(as.numeric(n_bad) == 0)) return(FALSE)
+  src_cols <- unlist(lapply(specs, function(sp) {
+    dq <- DBI::dbQuoteIdentifier(con, paste0("delta_", sp$v))
+    vapply(sp$lags, function(k) {
+      sprintf(
+        "%s AS d%d_%d",
+        if (k == 0L) dq else sprintf("LAG(%s, %d) OVER w", dq, k),
+        sp$i, k
+      )
+    }, character(1L))
+  }))
+  keep_cols <- unlist(lapply(specs, function(sp) sprintf("d%d_%d", sp$i, sp$lags)))
+  DBI::dbExecute(con, sprintf(
+    "CREATE TEMP TABLE %s AS SELECT model, pid, idx - 12 AS \"month\", %s FROM (SELECT model, pid, idx, %s FROM (SELECT s.*, s.\"month\" + 12 * j.j AS idx FROM %s s CROSS JOIN (VALUES (0), (1), (2)) AS j(j)) WINDOW w AS (PARTITION BY mid, pid ORDER BY idx)) WHERE idx BETWEEN 13 AND 24",
+    dl_name, paste(keep_cols, collapse = ", "), paste(src_cols, collapse = ", "),
+    src_name
+  ))
+  TRUE
+}
+
+# Rolled relation: model, keys, timestamp and one column per variable.
+.wx_roll_main_sql <- function(con, selected_weather, perturbation_method,
+                              dates, bl_name, dl_name) {
+  op <- function(v) {
+    if (identical(perturbation_method[[v]], "multiplicative")) "*" else "+"
+  }
+  specs <- .wx_roll_specs(selected_weather)
+  term_cols <- unlist(lapply(specs, function(sp) {
+    vapply(sp$lags, function(k) {
+      sprintf("(bl.b%d_%d %s dl.d%d_%d) AS x%d_%d", sp$i, k, op(sp$v), sp$i, k, sp$i, k)
+    }, character(1L))
+  }))
+  agg_cols <- vapply(specs, function(sp) {
+    terms <- sprintf("x%d_%d", sp$i, sp$lags)
+    n_ok <- paste(sprintf("(%s IS NOT NULL)::INTEGER", terms), collapse = " + ")
+    total <- paste(sprintf("COALESCE(%s, 0)", terms), collapse = " + ")
+    expr <- switch(sp$agg,
+      Mean = sprintf("(%s) / NULLIF(%s, 0)", total, n_ok),
+      Sum = sprintf("CASE WHEN %s = 0 THEN NULL ELSE %s END", n_ok, total),
+      Min = sprintf("LEAST(%s)", paste(terms, collapse = ", ")),
+      Max = sprintf("GREATEST(%s)", paste(terms, collapse = ", "))
+    )
+    paste(expr, "AS", DBI::dbQuoteIdentifier(con, sp$v))
+  }, character(1L))
+  dates <- unique(dates[!is.na(dates)])
+  sprintf(
+    "SELECT model, code, \"year\", survname, loc_id, \"timestamp\", %s FROM (SELECT dl.model, bl.code, bl.\"year\", bl.survname, bl.loc_id, bl.\"timestamp\", %s FROM %s bl INNER JOIN %s dl ON bl.pid = dl.pid AND bl.\"month\" = dl.\"month\" WHERE bl.\"timestamp\" IN (%s))",
+    paste(agg_cols, collapse = ", "), paste(term_cols, collapse = ", "),
+    bl_name, dl_name,
+    paste0("'", format(dates), "'::date", collapse = ", ")
+  )
+}
+
 # Main weather loading pipeline ----
 # get_weather() - loads ERA5 + CMIP6, applies rolling windows + perturbations  #
 # Note: DuckDB rolling window (0%/16% stall) occurs in loc_weather_base        #
@@ -1661,6 +1800,24 @@ get_weather <- function(
       )
     }
 
+    # PERF-W1: base-lag table for the lag-join roll, built once per call when
+    # the selection and the base series qualify (see .wx_roll_* above).
+    roll_fast <- FALSE
+    if (.wx_roll_fast_spec_ok(selected_weather)) {
+      loc_monthly_sql <- dbplyr::sql_render(loc_monthly)
+      roll_fast <- .profile_timed(
+        "roll_guard", .wx_roll_base_contiguous(con, loc_monthly_sql)
+      )
+      if (roll_fast) {
+        roll_pid_name <- basename(tempfile(pattern = "lw_roll_pid_"))
+        roll_bl_name <- basename(tempfile(pattern = "lw_roll_bl_"))
+        tmp_tables <- c(tmp_tables, roll_pid_name, roll_bl_name)
+        .profile_timed("roll_base_lags", .wx_roll_build_base(
+          con, loc_monthly_sql, selected_weather, roll_pid_name, roll_bl_name
+        ))
+      }
+    }
+
     period_specs <- lapply(seq_along(future_period), function(i) {
       fp <- future_period[[i]]
       list(
@@ -1901,8 +2058,32 @@ get_weather <- function(
         # Step 2: rolling window + transformations. The fast path keeps this
         # relation lazy and performs one direct collect; the bounded path
         # materialises it so model-specific slices can be collected safely.
-        rolled_lazy <- perturbed |>
-          dplyr::mutate(!!!roll_exprs_climate) |>
+        roll_dl_name <- NULL
+        if (roll_fast) {
+          roll_src_name <- basename(tempfile(pattern = "lw_roll_dlsrc_"))
+          roll_dl_name <- basename(tempfile(pattern = "lw_roll_dl_"))
+          tmp_tables <<- c(tmp_tables, roll_src_name, roll_dl_name)
+          roll_fast_period <- .profile_timed("roll_delta_lags", .wx_roll_build_delta(
+            con, dbplyr::sql_render(loc_deltas_by_model), selected_weather,
+            roll_pid_name, roll_src_name, roll_dl_name
+          ), detail = paste(ssp_i, fp_label))
+          tmp_tables <<- setdiff(tmp_tables, roll_src_name)
+          if (!roll_fast_period) {
+            tmp_tables <<- setdiff(tmp_tables, roll_dl_name)
+            roll_dl_name <- NULL
+          }
+        } else {
+          roll_fast_period <- FALSE
+        }
+        rolled_src <- if (roll_fast_period) {
+          dplyr::tbl(con, dbplyr::sql(.wx_roll_main_sql(
+            con, selected_weather, perturbation_method, dates,
+            roll_bl_name, roll_dl_name
+          )))
+        } else {
+          dplyr::mutate(perturbed, !!!roll_exprs_climate)
+        }
+        rolled_lazy <- rolled_src |>
           .apply_transformations(
             selected_weather, loc_weather_base,
             climate_ref = climate_ref
@@ -2025,7 +2206,7 @@ get_weather <- function(
         }
 
         # All returned frames are now detached from the query intermediates.
-        .drop_period_tables(tmp_roll_name)
+        .drop_period_tables(tmp_roll_name, roll_dl_name)
         rm(
           perturbed, rolled_lazy,
           rolled, period_out
