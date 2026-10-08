@@ -450,3 +450,18 @@ test_that("the effectiveness table formats money and percentages", {
   nl <- .sp_effectiveness_display(sp_effectiveness(base, pol, NULL))
   expect_equal(nl$Value[nl$Metric == "Coverage of the poor"], "Not available")
 })
+
+test_that("the payment summary always names the amount basis", {
+  svy <- data.frame(welfare = 1:4, weight = 1)
+  testServer(mod_3_01_sp_server, args = list(
+    id = "sp_basis", survey_weather = shiny::reactiveVal(svy),
+    variable_list = shiny::reactiveVal(data.frame()),
+    analysis_unit = shiny::reactiveVal("hh"), hist_sim = shiny::reactiveVal(NULL)
+  ), {
+    session$setInputs(budget_mode = "transfer_first", sp_type = "regular",
+      transfer_n_payments = 6, admin_cost_pct = 0)
+    expect_identical(output$payment_summary, "6 payments/year, per household")
+    session$setInputs(amount_basis = "per_capita")
+    expect_identical(output$payment_summary, "6 payments/year, per person")
+  })
+})

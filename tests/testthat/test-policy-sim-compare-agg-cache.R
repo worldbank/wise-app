@@ -983,3 +983,37 @@ test_that("scenario aggregation preserves scenario names across both arms", {
     }
   )
 })
+
+test_that("a second Step 3 run on the same Step 2 run is not served the first policy arm", {
+  baseline <- make_step3_hist_fixture()
+  baseline$.step2_sig <- list(run = "step2-run-A")
+  baseline$.sig <- list(run = "policy-A")
+  policy_a <- baseline
+  policy_a$pipeline$y_point <- policy_a$pipeline$y_point + 1
+  policy_b <- baseline
+  policy_b$.sig <- list(run = "policy-B")
+  policy_b$pipeline$y_point <- policy_b$pipeline$y_point + 5
+  ph <- shiny::reactiveVal(policy_a)
+  shared <- new_shared_aggregation_cache()
+
+  shiny::testServer(function(input, output, session) {
+    internals <<- .wire_results_pane(
+      input, output, session,
+      baseline_hist_sim = shiny::reactiveVal(baseline),
+      baseline_saved_scenarios = shiny::reactiveVal(list()),
+      policy_hist_sim = ph,
+      policy_saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist = shiny::reactiveVal(NULL),
+      residuals = shiny::reactiveVal("none"),
+      aggregation_cache = shared
+    )
+  }, {
+    session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none")
+    session$flushReact()
+    first <- internals$policy_agg_hist()$out$value
+    ph(policy_b)
+    session$flushReact()
+    second <- internals$policy_agg_hist()$out$value
+    expect_true(all(second > first))
+  })
+})

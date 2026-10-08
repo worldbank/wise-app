@@ -161,7 +161,9 @@ mod_3_scenario_server <- function(id,
       analysis_unit    = analysis_unit,
       # UI-32: the reach preview must estimate over the same survey the policy
       # run consumes (Step 2's baseline round), not the full multi-round frame.
-      hist_sim         = hist_sim
+      hist_sim         = hist_sim,
+      # P1-16: the trigger flyout shows the unit of a transformed variable.
+      selected_weather = selected_weather
     )
 
     # Infrastructure scenario ----

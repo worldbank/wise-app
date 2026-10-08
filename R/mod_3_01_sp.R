@@ -20,10 +20,11 @@ mod_3_01_sp_ui <- function(id) {
     uiOutput(ns("sp_type_ui")),
 
     # Collapsible configuration panel ----
+    # Order: trigger (shock only), amount with its payment settings, targeting
+    uiOutput(ns("sp_trigger_ui")),
     uiOutput(ns("sp_budget_amount_ui")),
-    uiOutput(ns("sp_targeting_ui")),
     uiOutput(ns("sp_timing_ui")),
-    uiOutput(ns("sp_trigger_ui"))
+    uiOutput(ns("sp_targeting_ui"))
   )
 }
 
@@ -65,7 +66,8 @@ mod_3_01_sp_server <- function(id,
                                survey_weather = reactive(NULL),
                                variable_list = reactive(NULL),
                                analysis_unit = reactive("hh"),
-                               hist_sim = reactive(NULL)) {
+                               hist_sim = reactive(NULL),
+                               selected_weather = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -181,6 +183,11 @@ mod_3_01_sp_server <- function(id,
       cands <- trigger_candidates()
       conditionalPanel(
         condition = paste0("input['", ns("sp_type"), "'] == 'shock'"),
+        tags$label(
+          class = "control-label",
+          tags$i(class = "fa fa-bolt me-1"),
+          "Trigger"
+        ),
         config_flyout_block(
           ns("trigger_toggle"),
           "Trigger settings",
@@ -226,6 +233,9 @@ mod_3_01_sp_server <- function(id,
                 ),
                 choices = cands, selected = cands[[1]]
               ),
+              textOutput(ns("trigger_unit"), container = function(...) {
+                tags$p(class = "text-muted small", ...)
+              }),
               pill_toggle(
                 inputId = ns("trigger_direction"),
                 label = "Pay when the value is",
@@ -379,7 +389,8 @@ mod_3_01_sp_server <- function(id,
               )
             )
           }
-        )
+        ),
+        tags$hr(style = "margin: 8px 0;")
       )
     })
 
@@ -412,6 +423,15 @@ mod_3_01_sp_server <- function(id,
         spec$trigger_variable, " ", side, " ", level, "; ",
         spec$payments_per_activation, " payment(s)"
       )
+    })
+
+    # Unit the thresholds are read in (the Step 2 transformation of the variable).
+    output$trigger_unit <- renderText({
+      unit <- .sp_trigger_unit(
+        input$trigger_variable,
+        tryCatch(selected_weather(), error = function(e) NULL)
+      )
+      if (nzchar(unit)) paste0("Thresholds are in: ", unit, ".") else ""
     })
 
     output$trigger_value_hint <- renderText({
@@ -565,8 +585,7 @@ mod_3_01_sp_server <- function(id,
               selected = "0"
             )
           )
-        ),
-        tags$hr(style = "margin: 8px 0;")
+        )
       )
     })
 
@@ -730,11 +749,7 @@ mod_3_01_sp_server <- function(id,
               class = "sp-inline-label",
               `for` = ns("transfer_amount_usd"),
               tags$i(class = "fa fa-dollar-sign me-1"),
-              paste0("Amount per transfer (", currency, ")"),
-              tags$span(
-                class = "text-muted small ms-1",
-                textOutput(ns("amount_unit_hint"), inline = TRUE)
-              )
+              paste0("Amount per transfer (", currency, ")")
             ),
             numericInput(
               inputId = ns("transfer_amount_usd"),
@@ -742,8 +757,7 @@ mod_3_01_sp_server <- function(id,
               value = 0, min = 0, step = 10
             )
           )
-        ),
-        tags$hr(style = "margin: 8px 0;")
+        )
       )
     })
 
@@ -756,7 +770,7 @@ mod_3_01_sp_server <- function(id,
     #   - show only number of payments
 
     output$sp_timing_ui <- renderUI({
-      config_flyout_block(
+      tagList(config_flyout_block(
         ns("payment_toggle"),
         "Payment settings",
         toggle_label = "Payment settings",
@@ -827,7 +841,7 @@ mod_3_01_sp_server <- function(id,
           ),
           value = 0, min = 0, max = 50, step = 1
         )
-      )
+      ), tags$hr(style = "margin: 8px 0;"))
     })
 
     # Amount basis (household analysis only) ----
@@ -886,16 +900,6 @@ mod_3_01_sp_server <- function(id,
 
     # Kept out of sp_budget_amount_ui so a basis change does not re-render
     # (and reset) the amount inputs.
-    output$amount_unit_hint <- renderText({
-      au <- tryCatch(analysis_unit(), error = function(e) "hh")
-      if (identical(au, "hh") &&
-        identical(input$amount_basis %||% "per_household", "per_capita")) {
-        "per person"
-      } else {
-        paste("per", unit_word(plural = FALSE, au = au))
-      }
-    })
-
     output$payment_summary <- renderText({
       admin <- suppressWarnings(as.numeric(input$admin_cost_pct %||% 0))
       basis <- input$amount_basis %||% "per_household"
@@ -904,9 +908,15 @@ mod_3_01_sp_server <- function(id,
           !identical(input$sp_type, "shock")) {
           paste0(input$transfer_n_payments %||% 6L, " payments/year")
         },
-        if (identical(basis, "per_capita") &&
-          identical(tryCatch(analysis_unit(), error = function(e) "hh"), "hh")) {
-          "per person"
+        # Basis of the amount: per household (default) or per person; other
+        # analysis units are paid per unit.
+        {
+          au <- tryCatch(analysis_unit(), error = function(e) "hh")
+          if (identical(au, "hh")) {
+            if (identical(basis, "per_capita")) "per person" else "per household"
+          } else {
+            paste("per", unit_word(plural = FALSE, au = au))
+          }
         },
         if (is.finite(admin) && admin > 0) paste0("admin ", admin, "%")
       )
@@ -925,8 +935,8 @@ mod_3_01_sp_server <- function(id,
       c(
         "sp_type_ui", "sp_budget_amount_ui", "sp_targeting_ui",
         "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui", "amount_basis_ui",
-        "targeting_summary", "payment_summary", "amount_unit_hint",
-        "sp_trigger_ui", "trigger_summary", "trigger_value_hint"
+        "targeting_summary", "payment_summary",
+        "sp_trigger_ui", "trigger_summary", "trigger_value_hint", "trigger_unit"
       ),
       function(out_id) {
         shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)

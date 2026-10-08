@@ -98,6 +98,42 @@ SP_PAYOUT_SCOPES <- c("local", "national_triggered", "national_all")
   cols[vapply(cols, function(v) is.numeric(exposure[[v]]), logical(1))]
 }
 
+#' Unit of a trigger variable as the model sees it
+#'
+#' The exposure table holds the value after the Step 2 transformation, so a
+#' threshold is read in that unit: the physical unit, a deviation from the
+#' reference mean (same unit) or a standardized anomaly (z-score).
+#'
+#' @param variable Weather variable name.
+#' @param selected_weather Data frame with `name`, and optionally `units` and
+#'   `transformation` (as `build_selected_weather()`).
+#' @return One string, or `""` when nothing is known about the variable.
+#' @keywords internal
+.sp_trigger_unit <- function(variable, selected_weather) {
+  if (!is.data.frame(selected_weather) || !length(variable) ||
+    !"name" %in% names(selected_weather)) {
+    return("")
+  }
+  row <- which(selected_weather$name == variable)[1L]
+  if (is.na(row)) {
+    return("")
+  }
+  one <- function(col) {
+    x <- if (col %in% names(selected_weather)) selected_weather[[col]][row] else NA
+    x <- as.character(x)
+    if (is.na(x) || !nzchar(x)) "" else x
+  }
+  units <- one("units")
+  tf <- one("transformation")
+  if (identical(tf, "Standardized anomaly")) {
+    "standardized anomaly (z-score)"
+  } else if (identical(tf, "Deviation from mean")) {
+    paste0("deviation from mean", if (nzchar(units)) paste0(", ", units) else "")
+  } else {
+    units
+  }
+}
+
 #' Trigger thresholds from the historical exposure
 #'
 #' `"weather"` returns the common value the user entered. `"return_period"`

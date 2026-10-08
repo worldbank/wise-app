@@ -2409,7 +2409,14 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     shared_key <- shared_aggregation_cache_key(
       if (share_step2) hs$.sig else list(
         arm = tag,
-        signature = hs$.step2_sig %||% hs$.sig %||% list(pipeline = "step2")
+        # The policy arm must key on the Step 3 run signature (it carries the
+        # scenario settings); Step 2's signature alone is the same for every
+        # policy run, so a second run would be served the first run's arm.
+        signature = if (identical(tag, "policy_hist")) {
+          list(step2 = hs$.step2_sig, policy = hs$.sig %||% list(pipeline = "policy"))
+        } else {
+          hs$.step2_sig %||% hs$.sig %||% list(pipeline = "step2")
+        }
       ),
       suite_pov, 0.05, TRUE, active_residuals(hs), baseline_skip_coef,
       isTRUE(hs$so$transform == "log"), group$methods

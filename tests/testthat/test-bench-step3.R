@@ -261,3 +261,21 @@ test_that("smoke fixture supports RIF and historical-only Step 3", {
   expect_equal(result$n_future_decomposition_rows, 2L)
   expect_gt(result$historical_decomposition_serialized_bytes, 0)
 })
+
+test_that("the shock fixture runs the Step 3 path and is deterministic (P1-15)", {
+  input <- .bench_small_step3_input(n = 60L)
+  baseline <- .bench_small_step2_result(input, "ols", "one_ssp_one_period")
+  fixture <- .bench_step3_policy_fixtures("shock_sp")[[1L]]
+  run <- function() .bench_run_step3(
+    baseline_result = baseline, input = input, model_label = "ols",
+    policy_label = "shock_sp", policy_fixture = fixture,
+    identity = .test_bench_identity("one_ssp_one_period"),
+    config = .test_bench_config(), size_fn = .test_bench_size,
+    rss_state_fn = .test_bench_rss_state, rss_sample_fn = .test_bench_rss_sample
+  )
+  first <- run()
+  second <- run()
+  expect_identical(first$status, "ok", info = first$error)
+  expect_identical(first$output_fingerprint_sha256, second$output_fingerprint_sha256)
+  expect_equal(first$annual_reference_sample_rows, 0L)
+})

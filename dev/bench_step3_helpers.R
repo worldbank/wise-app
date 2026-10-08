@@ -13,10 +13,21 @@
     inclusion_error_pct = 10,
     exclusion_error_pct = 10
   )
+  # Shock-responsive variant of the same program (P1-15): 1-in-5 return-period
+  # trigger on the first continuous exposure variable (filled in at run time,
+  # see .bench_step3_fill_shock_trigger()). Pair it with "targeted_sp" to
+  # compare the correction loop against the regular program.
+  sp_shock <- utils::modifyList(sp, list(
+    sp_type = "shock", payments_per_activation = 1L,
+    trigger_type = "return_period", trigger_variable = NA_character_,
+    trigger_direction = "above", trigger_return_period_years = 5,
+    payout_scope = "local", national_k_pct = 0
+  ))
   fixtures <- list(
     covariate = list(infra = infra),
     targeted_sp = list(sp = sp),
-    combined = list(infra = infra, sp = sp)
+    combined = list(infra = infra, sp = sp),
+    shock_sp = list(sp = sp_shock)
   )
   unknown <- setdiff(labels, names(fixtures))
   if (length(unknown)) {
@@ -24,6 +35,26 @@
          call. = FALSE)
   }
   fixtures[labels]
+}
+
+.bench_step3_is_shock <- function(policy_fixture) {
+  identical(policy_fixture$sp$sp_type, "shock")
+}
+
+# A shock fixture names no trigger variable; take the first continuous one in
+# the historical exposure so the fixture runs on any country.
+.bench_step3_fill_shock_trigger <- function(policy_fixture, hist_sim) {
+  if (!.bench_step3_is_shock(policy_fixture) ||
+      !is.na(policy_fixture$sp$trigger_variable %||% NA_character_)) {
+    return(policy_fixture)
+  }
+  exposure <- step2_exposure_resolve(hist_sim$pipeline, hist_sim)$table
+  vars <- .sp_trigger_variables(exposure)
+  if (!length(vars)) {
+    stop("The shock fixture needs a continuous weather variable.", call. = FALSE)
+  }
+  policy_fixture$sp$trigger_variable <- vars[[1L]]
+  policy_fixture
 }
 
 .bench_step3_model_terms <- function(model_fit) {
@@ -320,6 +351,8 @@
   metric_switches <- data.frame()
 
   tryCatch({
+    policy_fixture <- .bench_step3_fill_shock_trigger(policy_fixture, hist_sim)
+    is_shock <- .bench_step3_is_shock(policy_fixture)
     t0 <- proc.time()[["elapsed"]]
     svy_policy <- do.call(
       apply_policy_to_svy,
@@ -342,7 +375,12 @@
         "present in the fitted model.", call. = FALSE
       )
     }
-    if (!is.null(policy_fixture$sp)) {
+    if (is_shock) {
+      # The transfer is dynamic: the policy frame carries only eligibility.
+      if (!any(svy_policy[[SP_ELIGIBLE_COL]] %in% TRUE)) {
+        stop("The shock fixture produced no eligible rows.", call. = FALSE)
+      }
+    } else if (!is.null(policy_fixture$sp)) {
       transfer <- svy_policy[[SP_TRANSFER_COL]]
       if (is.null(transfer) || !any(is.finite(transfer) & transfer != 0)) {
         stop("The social-protection fixture produced no transfer.", call. = FALSE)
@@ -368,9 +406,20 @@
       ))
     )
 
+    # Build the shock plan before preparation, as apply_policy_delta_to_baseline()
+    # does; the preparation then carries the plan into the correction loop.
+    shock_plan <- if (is_shock) {
+      sp_shock_plan(
+        policy_fixture$sp,
+        step2_exposure_resolve(hist_sim$pipeline, hist_sim)$table,
+        svy_policy[[SP_ELIGIBLE_COL]], svy_policy, config$unit,
+        hist_pipeline = hist_sim$pipeline,
+        is_log = identical(so$transform %||% "", "log")
+      )
+    }
     t0 <- proc.time()[["elapsed"]]
     annual_prepared <- .prepare_policy_annual_channels(
-      decomp_context, run_identity
+      decomp_context, run_identity, shock = shock_plan
     )
     annual_preparation_seconds <- proc.time()[["elapsed"]] - t0
     if (!identical(annual_prepared$status, "ok")) {
@@ -378,8 +427,10 @@
            annual_prepared$reason %||% annual_prepared$status, call. = FALSE)
     }
 
-    max_reference_rows <- config$step3_reference_rows %||% 16L
-    pipeline_pairs <- .bench_step3_pipeline_pairs(hist_sim, saved_scenarios)
+    # The slow reference path is regular-only (P1-17): skip parity for shock.
+    max_reference_rows <- if (is_shock) 0L else config$step3_reference_rows %||% 16L
+    pipeline_pairs <- if (is_shock) list() else
+      .bench_step3_pipeline_pairs(hist_sim, saved_scenarios)
     for (pair in pipeline_pairs) {
       pipe <- pair$pipeline
       check <- tryCatch(.bench_step3_annual_check(
@@ -436,7 +487,9 @@
       F_hat = F_hat,
       decomp_context = decomp_context,
       run_identity = run_identity,
-      annual_channels = annual_prepared
+      annual_channels = annual_prepared,
+      sp = if (is_shock) policy_fixture$sp,
+      analysis_unit = config$unit
     )
     if (nzchar(profile)) utils::Rprof(NULL)
     analytic_delta_seconds <- proc.time()[["elapsed"]] - t0

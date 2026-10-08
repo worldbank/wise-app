@@ -444,6 +444,9 @@
 
 # Deliberately slow reference for tests/benchmarks only: evaluate the original
 # central kernels against each row's exact exposures, then select its household.
+# Regular-only: it reads the static `context$sp_transfer` and has no shock
+# argument, so it does not model the dynamic shock-responsive transfer
+# (`delta_sp_shock`). Shock parity is covered by test-sp-shock-correction.R.
 .policy_annual_channels_reference <- function(pipeline, context, run_identity,
                                               owner = NULL) {
   .validate_run_decomposition_context(context, run_identity)

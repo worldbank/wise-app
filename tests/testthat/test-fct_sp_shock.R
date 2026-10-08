@@ -871,3 +871,33 @@ test_that("changing only the loss-event share does not mark results stale", {
     expect_true(policy_stale())
   })
 })
+
+test_that("the trigger unit follows the Step 2 transformation (P1-16)", {
+  sw <- data.frame(
+    name = c("t", "p", "s", "x"), units = c("C", "mm", "mm", NA),
+    transformation = c("None", "Deviation from mean", "Standardized anomaly", "None"),
+    stringsAsFactors = FALSE
+  )
+  expect_identical(.sp_trigger_unit("t", sw), "C")
+  expect_identical(.sp_trigger_unit("p", sw), "deviation from mean, mm")
+  expect_identical(.sp_trigger_unit("s", sw), "standardized anomaly (z-score)")
+  expect_identical(.sp_trigger_unit("x", sw), "")
+  expect_identical(.sp_trigger_unit("zz", sw), "")
+  expect_identical(.sp_trigger_unit("t", NULL), "")
+  expect_identical(.sp_trigger_unit("t", data.frame(name = "t")), "")
+})
+
+test_that("the trigger flyout shows the unit of the chosen variable (P1-16)", {
+  svy <- data.frame(welfare = 1:4, weight = 1, p = c(1, 2, 3, 4))
+  hs <- list(svy = svy, pipeline = list(weather_exposure = list(weather_columns = "p")))
+  sw <- data.frame(name = "p", units = "mm", transformation = "Standardized anomaly")
+  testServer(mod_3_01_sp_server, args = list(
+    id = "sp_unit", survey_weather = shiny::reactiveVal(svy),
+    variable_list = shiny::reactiveVal(data.frame()),
+    analysis_unit = shiny::reactiveVal("hh"), hist_sim = shiny::reactiveVal(hs),
+    selected_weather = shiny::reactiveVal(sw)
+  ), {
+    session$setInputs(trigger_variable = "p")
+    expect_match(output$trigger_unit, "standardized anomaly \\(z-score\\)")
+  })
+})
