@@ -1335,23 +1335,29 @@ get_weather <- function(
     # Stop the stage clock before the profiling work below (serialize, RSS
     # sampling, table listing) so it is not billed to the stage.
     elapsed_seconds <- proc.time()[["elapsed"]] - started
-    tables <- tryCatch(DBI::dbListTables(con), error = function(e) character())
+    # WISEAPP_WEATHER_PROFILE_LIGHT=1 records only stage, time and rows. The
+    # full record serialises every frame and lists the process tree, which adds
+    # roughly 70% to the wall time of a 2x2 run and hides where time goes.
+    light <- .wx_env_flag("WISEAPP_WEATHER_PROFILE_LIGHT")
+    tables <- if (light) character() else {
+      tryCatch(DBI::dbListTables(con), error = function(e) character())
+    }
     is_frame <- is.data.frame(value)
     is_result_list <- is.list(value) && length(value) > 0L &&
       all(vapply(value, is.data.frame, logical(1L)))
     is_relation <- inherits(value, "tbl_lazy")
-    serialized_bytes <- if (is_frame || is_result_list) {
+    serialized_bytes <- if (!light && (is_frame || is_result_list)) {
       length(serialize(value, NULL, version = 3L))
     } else {
       NA_real_
     }
-    relation_sql_bytes <- if (is_relation) {
+    relation_sql_bytes <- if (!light && is_relation) {
       tryCatch(nchar(dbplyr::sql_render(value), type = "bytes"),
                error = function(e) NA_real_)
     } else {
       NA_real_
     }
-    rss <- .wx_process_tree_rss_bytes()
+    rss <- if (light) NA_real_ else .wx_process_tree_rss_bytes()
     previous_rss <- weather_profile$last_rss %||% NA_real_
     weather_profile$last_rss <- rss
     weather_profile$records[[length(weather_profile$records) + 1L]] <- data.frame(
