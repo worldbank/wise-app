@@ -4507,7 +4507,7 @@
       "checksum": "44be73bbe45ca39f0e4f310f24998709"
     },
     "NAMESPACE": {
-      "checksum": "b2dfe1b91d0ee74adfe5287122709b56"
+      "checksum": "0173c2479f14e60ddf4cb232817da405"
     },
     "R/_disable_autoload.R": {
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
@@ -4573,7 +4573,7 @@
       "checksum": "abf123e01ebe205a97032d5926cc525c"
     },
     "R/fct_policy_decompose.R": {
-      "checksum": "167cda9752865524d8e393d24f17ea97"
+      "checksum": "d415672856a779414d2e0986aaaf7de4"
     },
     "R/fct_policy_diagnostics.R": {
       "checksum": "f42551bed8181a456d5bf3112267120b"
@@ -4582,7 +4582,7 @@
       "checksum": "5f0fbb622b518d71aef717c1210e98ae"
     },
     "R/fct_policy_sim_compare.R": {
-      "checksum": "39a959513f28db1d8c32b3909a3f9072"
+      "checksum": "0525c3bf4cf70cb6e28ba3cb1768c958"
     },
     "R/fct_policy_sim.R": {
       "checksum": "65b0d3baddd7a593c80cf55ac8cce6f2"
@@ -4627,13 +4627,16 @@
       "checksum": "c34ddd4edc08f0142be921eff986fb86"
     },
     "R/fct_step2_async.R": {
-      "checksum": "9fe3bba1c0db7ca53089b984386da4dc"
+      "checksum": "83c4e43f2e48a9461fd62dd256693304"
     },
     "R/fct_step2_compute.R": {
       "checksum": "12c15e838f5a2413a61ae204429e2093"
     },
     "R/fct_step2_payload.R": {
       "checksum": "856f9c1679a475737e1a677cb92f302b"
+    },
+    "R/fct_step3_async.R": {
+      "checksum": "d984d9a52996582d045e294fa4cdfd7c"
     },
     "R/fct_surveystats.R": {
       "checksum": "1803d57eda1b89de105debd33215101f"
@@ -4684,7 +4687,7 @@
       "checksum": "38470f5047f98fcaee239887a2c8798a"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "324a742a3cd231ec712c967bfc5caf09"
+      "checksum": "a3c9118df43b0742eefc89ea76b0ef46"
     },
     "R/mod_2_02_results.R": {
       "checksum": "3b44b11a6a5e98bbe261e993d1ca61e6"
@@ -4711,7 +4714,7 @@
       "checksum": "ce6dac4360eef6248ccbe939f6017ab4"
     },
     "R/mod_3_06_policy_sim.R": {
-      "checksum": "67ec79ceb1202ea24755acaec4e2a2fb"
+      "checksum": "6d19d11e4224d04decd2ad7e8ec3f84f"
     },
     "R/mod_3_07_results.R": {
       "checksum": "1498b5a7fc65e6db1f3925310d89b883"
