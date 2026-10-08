@@ -14,11 +14,11 @@ All Critical and High findings are done in code, except where noted below. Done:
 | B2 | Security | 3 |
 | B3 | Headline numerics | 0 |
 | B4 | Step 3 levers | 0 (numbers owed, see Waiting on the user) |
-| B5 | Robustness, CI, tests | 6 |
+| B5 | Robustness, CI, tests | 5 |
 | B6 | Performance | 9 |
 | B7 | Medium/Low bugs | 0 |
 | B8 | Accessibility | 6 |
-| B9 | Code quality and docs | 5 |
+| B9 | Code quality and docs | 4 |
 
 Closed as won't fix or deferred (full rows in the archive addendum; reopen only on the stated trigger): R2-OPS-05 (stay on DuckDB 1.5.6), CR-SEC-02 (no further DuckDB lockdown), R2-SEC-07 (persistent prepared-weather cache off), CR-PERF-15 (keep `load_all()` in `app.R`), R2-PERF-10 / CR-PERF-02 (weather cache keys; reopen if remote slice reads dominate), CR-PERF-03 (prediction speedup), OPT-05 (aggregation remainders), R2-PERF-13 / R2-PERF-09 / CR-PERF-05, CR-PERF-07 (model_fit size; reopen if a large-country session shows high RSS), CR-CQ-07 (one integer `year` type; needs an engine parity gate).
 
@@ -38,7 +38,7 @@ Closed as won't fix or deferred (full rows in the archive addendum; reopen only 
 - **Browser spot-check of recent UI changes:** columnar chart tooltips, map without pointer cursor, tab empty state, data-check notice, Step 1 diagnostics, a11y changes not yet seen in a browser.
 - **Live Databricks check** of the scoped bearer-token secret on the first Connect load after the next deploy (CR-SEC-03).
 - **Connect memory limit** (CR-PERF-13): pick `WISEAPP_DUCKDB_MEMORY_LIMIT` for the shared host (try 4GB; check a 3x3 run first). Weather threads are decided: they stay at 1 in production (user, 2026-10-08).
-- **Manifest:** regenerate before deployment. `R/` changed since the last regeneration (`91f599c` predates comment-only changes to 13 files in `3666d97`, plus `fct_aggregation.R`, `fct_simulations.R` and `fct_get_weather.R`), and `R/fct_sp_shock.R` is missing from `manifest.json`, so `test-deploy-contract.R:76` fails until it is regenerated.
+- **Manifest:** regenerated 2026-10-08 (see Log); regenerate again after any later `R/` or dependency change, before deploying.
 
 ## Known gaps in finished items
 
@@ -71,7 +71,6 @@ Closed with a documented remainder; reopen only if the area is touched again.
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
 | CR-OPS-01 | M | M | ◐ | Decided 2026-10-08: add a `shinytest2`/axe smoke job to CI (shared with CR-A11Y-09). Scope: one app-boot smoke, one `conditionalPanel` check and one axe run on the first screens; start as a non-blocking job, make it required once it is stable. Investigate why the headless-Chrome PNG test skips on some CI runs. CI is otherwise green (Tests step about 340 s, 0 failed, 0 skipped; `error-on` is `"warning"`). |
-| R CMD check notes | L | S | ◐ | Unused Imports, `:::` and undefined globals are fixed (2026-10-08, `b22ed62`): `tidyselect` dropped from Imports, `Rcpp::sourceCpp` and `brand.yml::read_brand_yml` imported, workers use `utils::getFromNamespace()`, `stats`/`utils` imports and `globalVariables` added in `R/globals.R`, duplicate local `one_scenario` renamed in `mod_2_02_results.R`. The last `check(--no-tests)` before the rename showed only that NOTE plus the sandbox "future file timestamps" NOTE; re-run once to confirm. |
 | CR-PERF-13 / R2-PERF-08 | M | S | ◐ | Env-configurable limits exist (`WISEAPP_DUCKDB_MEMORY_LIMIT`, `_THREADS`, `_TEMP_DIR`, `WISEAPP_THREADS`). Threads decided 2026-10-08: weather stays at 1 (shared Connect host: 8 cores, 31 GiB, other content on it, `Max Processes` 4, 1 connection per process). Open: choose the memory limit for Connect. Optional later: trial `WISEAPP_WEATHER_THREADS_AUTO_ENABLE=1` on `wise-app-dev` only (2 threads gave -16% to -20% on top of PERF-W1), with the memory limit set and the server admin consulted before promoting. |
 | R2-OPS-09 | L | S | ◐ | Left: `set.seed` vs `local_seed` (116 calls in 48 files; convert only in files being touched); `tests/spelling.R` never fails (the `spelling` package is not installed here and there is no `inst/WORDLIST`; needs a WORDLIST pass first). The `localhost:1` tests are a refused connection with a 15-20 s deadline, so they finish at once; left as they are. |
 | RED-06 | M | M | ◐ | One parameterised batch driver over `step2_compute()`. Consolidating the five `04_run_sim` copies deferred by user decision 2026-10-07. |
@@ -83,7 +82,7 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 
 | Rank | ID | Eff | Status | Open task | Gate |
 |---:|---|---|---|---|---|
-| 3 | R2-PERF-01 | M | ◐ | Shrink the Step 2 result. Done: household-constant vectors shared once per artifact (BFA 3x3 shape: artifact 945 to 886 MB, main-thread read 0.93 to 0.49 s). Open: drop `hist_sim_result$svy` (4.5 MB), lazy per-scenario read off the main thread, slimmer `F_loading`. Real BFA artifact re-measured 2026-10-08 (see "Local measurements"): `weather_raw` per pipeline (5.0 MB) is the largest remaining part, then `y_point` (1.7 MB) and `F_loading` (3.4 MB, uncertainty on only); the main-thread read is already 1.2 s at 3x3, so the case for further work is memory (1.16 GB in the Shiny process), not read time. | Bit-identical |
+| 3 | R2-PERF-01 | M | ◐ | Shrink the Step 2 result. Done: household-constant vectors shared once per artifact (BFA 3x3 shape: artifact 945 to 886 MB, main-thread read 0.93 to 0.49 s). Open: drop `hist_sim_result$svy` (4.5 MB; checked 2026-10-08, not a quick win: it is read by Results aggregation `mod_2_02_results.R:688`, the SP lever `mod_3_01_sp.R:165,1053`, policy sim `mod_3_06_policy_sim.R:199` and `fct_sim_compare.R`, so each needs a fallback to `survey_weather()` and a parity check; do it with the Step 3 worker work), lazy per-scenario read off the main thread, slimmer `F_loading`. Real BFA artifact re-measured 2026-10-08 (see "Local measurements"): `weather_raw` per pipeline (5.0 MB) is the largest remaining part, then `y_point` (1.7 MB) and `F_loading` (3.4 MB, uncertainty on only); the main-thread read is already 1.2 s at 3x3, so the case for further work is memory (1.16 GB in the Shiny process), not read time. | Bit-identical |
 | 4 | R2-PERF-04 | S-M | ◐ | Table construction done (`ac62773`; 1x1 1.93 s to 0.94 s, 2x2 7.21 s to 3.39 s, line-dependent group; record in the archive addendum). Still open: the C++ kernel `welfare_stats_all` (25% of the line-dependent group at 2x2, 1.99 s of 9.3 s before the fix) and preparation (`.aggregation_prepare_pipeline`, hashing; 29% when the prep cache misses). Re-profile before more work. | Bit-identical |
 | 5 | CR-PERF-04 | M-L | ☐ | Decided 2026-10-08: scope is Step 3 only (run + decomposition); Step 2 is already fast and stays as is. Scheduled after the SP work lands. Design: option (b), a separate Step 3 runner reusing the artifact helpers, on the shared mirai pool (so the Connect memory cap still holds), with `input_task_button()`. Extract shared lifecycle helpers (task state, cancel, timeout, snapshot scrubbing) from the Step 2 coordinator only after Step 3 shows which parts it really shares; do not build a general framework first. Step 1 weather, LASSO/fit and exports are out of scope for now. Covers CR-SEC-07 and any post-delivery worker job for R2-PERF-13. The first visit of each Step 3 method still blocks the main thread (BFA 3x3 about 52 s). | Sync vs worker bit-identical |
 | 10 | R2-PERF-03 | S-M | ☐ | Identity-keyed prep cache storing row indices, bounded by bytes. Do not enlarge the entry count (2.3 GB). Measured 2026-10-08 (BFA, line-dependent group): the app cache holds 32 entries (`mod_2_02_results.R:995`); at 1x1 (17 pipelines) a warm cache cuts a slider change from 2.9 s to 2.1 s; at 2x2 (63 pipelines) the 32-entry cache thrashes and gives nothing (9.3 s cold or warm); with all 63 entries held the slider change falls to 7.0 s (-25%, about 2.3 s) but the cache is 540 MB (8.6 MB per entry) against 274 MB at 32. So the gain is real but modest and bound to payload size; a byte-bounded cache of row indices would be the way to get it without the memory. Lower priority than the C++ kernel in R2-PERF-04. | Bit-identical |
@@ -108,7 +107,6 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| CR-CQ-10 | L | S | ◐ | `AGENTS.md`: Testing section and counts are current. Not re-checked: deleted dev scripts, install one-liner. Stale refs in `fct_load_data.R:241` and `dev/00_make_manifest.R:16`. |
 | CR-CQ-03 | L-M | M | ☐ | One `cachem` helper; `bindCache()` on run-pure outputs. Overlaps R2-PERF-03/04. |
 | CR-CQ-04 | M | M | ☐ | Define outputs once at module level (58 are defined inside observers). |
 | CR-CQ-01 | M | L | ☐ | Move static builders out; split the three giant server functions. |
@@ -156,5 +154,6 @@ Local column measured 2026-10-08 on the developer laptop (8 cores, 16 GB, local 
 
 Newest entries only. Earlier entries (2026-10-06 to 2026-10-08) are in the archive record.
 
+- 2026-10-08 - Quick wins: `devtools::check(--no-tests)` now 0 errors, 0 warnings, 1 NOTE (sandbox "future file timestamps"); a non-ASCII `×` in `mod_3_01_sp.R` (UI string) became a `\u{00d7}` escape (`688374f`). CR-CQ-10 closed (already fixed in `ec8c3f4`). `manifest.json` regenerated (same package set, new checksums); `test-deploy-contract.R` passes. R2-PERF-01 `svy` item checked and left open (see its row). Rows R CMD check notes and CR-CQ-10 moved to the archive addendum.
 - 2026-10-08 - Tracker consolidated: finished rows (PERF-W1, PERF-W2, R2-OPS-08, the done part of R2-PERF-04), closed won't-fix rows and their measurement notes, and the older Log entries moved to the archive addendum. Open counts above are recomputed.
 - 2026-10-08 - PERF-W1 (`5bb1ffc`): lag-join roll in `get_weather()`, bit-identical, 1x1 -25% and 2x2 -34% at 1 thread. Decision (user): weather threads stay at 1 in production (shared Connect host). `manifest.json` needs regenerating before deployment (also for PERF-W2 and R2-PERF-04).

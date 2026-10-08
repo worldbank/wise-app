@@ -356,6 +356,12 @@ Thread-policy revisit before V4 (2026-10-08, BFA, OLS, forced weather DuckDB thr
 
 **R2-OPS-08**, done 2026-10-08: `.profile_record()` takes the stage clock before its own `serialize()`/RSS work.
 
+**R CMD check notes (L, S), done 2026-10-08 (`b22ed62`, `688374f`).** Unused Imports, `:::` and undefined globals fixed: `tidyselect` dropped from Imports, `Rcpp::sourceCpp` and `brand.yml::read_brand_yml` imported, workers use `utils::getFromNamespace()`, `stats`/`utils` imports and `globalVariables` added in `R/globals.R`, duplicate local `one_scenario` renamed in `mod_2_02_results.R`. Confirmation run 2026-10-08 (`devtools::check(args = c("--no-tests", "--no-manual"))`): it found a non-ASCII WARNING (a `×` in a UI string in `R/mod_3_01_sp.R`), fixed with a `\u{00d7}` escape (`688374f`); final result 0 errors, 0 warnings, 1 NOTE (sandbox "unable to verify current time"). `devtools::test(filter = "sp|a11y")` 665 expectations, 0 failures.
+
+**CR-CQ-10 (L, S), done (`ec8c3f4`, confirmed 2026-10-08).** `AGENTS.md` Testing section and counts current; stale script refs and the install one-liner fixed in `ec8c3f4`. The two refs the tracker named (`fct_load_data.R:241` constants comment, `dev/00_make_manifest.R` header) are accurate now.
+
+**Manifest regeneration, 2026-10-08.** `dev/00_make_manifest.R` from committed `HEAD` (157 resolved, 149 in the runtime closure; ggplot2, globals, gtable, hardhat, isoband, parsnip, S7 and sparsevctrs dropped as Suggests-only, unchanged from the previous manifest): package set unchanged, file checksums refreshed (covers the `R/` changes of `3666d97`, R2-PERF-04, PERF-W1, PERF-W2, the SP work including `R/fct_sp_shock.R`, and `688374f`). `test-deploy-contract.R` 11 expectations, 0 failures (it failed before on `R/fct_sp_shock.R`).
+
 ### Closed as won't fix or deferred (full rows)
 
 - **R2-OPS-05 (M, S), B1.** Decided 2026-10-08: stay on DuckDB 1.5.6 (no move to the 1.4.x LTS). `DESCRIPTION` pins `duckdb (== 1.5.6)` with bundled extensions checked by SHA-256 (`R/fct_load_data.R`; `AGENTS.md`). Azure/delta are not bundled (decision 2026-10-07: Connect uses Databricks only; local runs install them normally).

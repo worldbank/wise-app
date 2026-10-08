@@ -1299,36 +1299,6 @@
         "Archs": "tibble.so.dSYM"
       }
     },
-    "tidyselect": {
-      "Source": "CRAN",
-      "Repository": "https://cran.rstudio.com",
-      "description": {
-        "Package": "tidyselect",
-        "Title": "Select from a Set of Strings",
-        "Version": "1.2.1",
-        "Authors@R": "c(\n    person(\"Lionel\", \"Henry\", , \"lionel@posit.co\", role = c(\"aut\", \"cre\")),\n    person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = \"aut\"),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))\n  )",
-        "Description": "A backend for the selecting functions of the 'tidyverse'.  It\n    makes it easy to implement select-like functions in your own packages\n    in a way that is consistent with other 'tidyverse' interfaces for\n    selection.",
-        "License": "MIT + file LICENSE",
-        "URL": "https://tidyselect.r-lib.org, https://github.com/r-lib/tidyselect",
-        "BugReports": "https://github.com/r-lib/tidyselect/issues",
-        "Depends": "R (>= 3.4)",
-        "Imports": "cli (>= 3.3.0), glue (>= 1.3.0), lifecycle (>= 1.0.3), rlang\n(>= 1.0.4), vctrs (>= 0.5.2), withr",
-        "Suggests": "covr, crayon, dplyr, knitr, magrittr, rmarkdown, stringr,\ntestthat (>= 3.1.1), tibble (>= 2.1.3)",
-        "VignetteBuilder": "knitr",
-        "ByteCompile": "true",
-        "Config/testthat/edition": "3",
-        "Config/Needs/website": "tidyverse/tidytemplate",
-        "Encoding": "UTF-8",
-        "RoxygenNote": "7.3.0.9000",
-        "NeedsCompilation": "yes",
-        "Packaged": "2024-03-11 11:46:04 UTC; lionel",
-        "Author": "Lionel Henry [aut, cre],\n  Hadley Wickham [aut],\n  Posit Software, PBC [cph, fnd]",
-        "Maintainer": "Lionel Henry <lionel@posit.co>",
-        "Repository": "CRAN",
-        "Date/Publication": "2024-03-11 14:10:02 UTC",
-        "Built": "R 4.5.0; ; 2025-04-01 15:54:40 UTC; unix"
-      }
-    },
     "tidyr": {
       "Source": "CRAN",
       "Repository": "https://cran.rstudio.com",
@@ -1975,6 +1945,36 @@
         "Repository": "CRAN",
         "Date/Publication": "2025-02-15 00:50:02 UTC",
         "Built": "R 4.5.0; ; 2025-02-15 01:07:20 UTC; unix"
+      }
+    },
+    "tidyselect": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": {
+        "Package": "tidyselect",
+        "Title": "Select from a Set of Strings",
+        "Version": "1.2.1",
+        "Authors@R": "c(\n    person(\"Lionel\", \"Henry\", , \"lionel@posit.co\", role = c(\"aut\", \"cre\")),\n    person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = \"aut\"),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))\n  )",
+        "Description": "A backend for the selecting functions of the 'tidyverse'.  It\n    makes it easy to implement select-like functions in your own packages\n    in a way that is consistent with other 'tidyverse' interfaces for\n    selection.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://tidyselect.r-lib.org, https://github.com/r-lib/tidyselect",
+        "BugReports": "https://github.com/r-lib/tidyselect/issues",
+        "Depends": "R (>= 3.4)",
+        "Imports": "cli (>= 3.3.0), glue (>= 1.3.0), lifecycle (>= 1.0.3), rlang\n(>= 1.0.4), vctrs (>= 0.5.2), withr",
+        "Suggests": "covr, crayon, dplyr, knitr, magrittr, rmarkdown, stringr,\ntestthat (>= 3.1.1), tibble (>= 2.1.3)",
+        "VignetteBuilder": "knitr",
+        "ByteCompile": "true",
+        "Config/testthat/edition": "3",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.0.9000",
+        "NeedsCompilation": "yes",
+        "Packaged": "2024-03-11 11:46:04 UTC; lionel",
+        "Author": "Lionel Henry [aut, cre],\n  Hadley Wickham [aut],\n  Posit Software, PBC [cph, fnd]",
+        "Maintainer": "Lionel Henry <lionel@posit.co>",
+        "Repository": "CRAN",
+        "Date/Publication": "2024-03-11 14:10:02 UTC",
+        "Built": "R 4.5.0; ; 2025-04-01 15:54:40 UTC; unix"
       }
     },
     "vctrs": {
@@ -4453,7 +4453,7 @@
       "checksum": "b544c98e7d55c33a6c62b5c905878c65"
     },
     "DESCRIPTION": {
-      "checksum": "5f4128ee8024d1492051c978dccdcc4d"
+      "checksum": "492b0c169be8dcc99405e37156bbb196"
     },
     "inst/app/_brand.yml": {
       "checksum": "66580c59f1e8321f5a6ab4dc5565cd0a"
@@ -4474,7 +4474,7 @@
       "checksum": "00dd3b36de0c9fa61b9baa88d345e7fa"
     },
     "inst/app/vendor/hexmap.js": {
-      "checksum": "6afc0a20db5eb5e85e8f978b19c3f81b"
+      "checksum": "3fc38b96c3af29c67d1022c7360c82c1"
     },
     "inst/app/vendor/maplibre-gl.css": {
       "checksum": "9ec5b4801e005a61a8a2ebbfa352272f"
@@ -4483,10 +4483,10 @@
       "checksum": "417d85083d6b84b9b61e59d58a9a7774"
     },
     "inst/app/www/custom.css": {
-      "checksum": "b0c71dd28238578845c911ee7cecf1c7"
+      "checksum": "cb7c36426bcdffc75cb79fc0947205ea"
     },
     "inst/app/www/custom.js": {
-      "checksum": "78bb4e6717b0658e7f1610cadb9dab14"
+      "checksum": "3bc23c0f4cc1e232eded58733b523629"
     },
     "inst/app/www/favicon.png": {
       "checksum": "7375aa747c52ad9545b733a059fab9db"
@@ -4507,7 +4507,7 @@
       "checksum": "44be73bbe45ca39f0e4f310f24998709"
     },
     "NAMESPACE": {
-      "checksum": "e717c076540f08bd953b83858d648a79"
+      "checksum": "b2dfe1b91d0ee74adfe5287122709b56"
     },
     "R/_disable_autoload.R": {
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
@@ -4528,7 +4528,7 @@
       "checksum": "8ef9fcfca11ecd8b47bd67b317221b9b"
     },
     "R/fct_aggregation.R": {
-      "checksum": "e6ca01aeb5e6a960a97c37821e0f697e"
+      "checksum": "c3691a8609600490832cc9291be45bc3"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
@@ -4543,7 +4543,7 @@
       "checksum": "87b35cab30740239a53661fbb9377931"
     },
     "R/fct_get_weather.R": {
-      "checksum": "c224a221511302e2418014a140272a02"
+      "checksum": "ac204ab22c7a5e53bd51189b3822a752"
     },
     "R/fct_hexmap.R": {
       "checksum": "70cfbfbd01fac72dc0b0679bf4906381"
@@ -4570,22 +4570,22 @@
       "checksum": "43d3eb9d40972350641ef8ce97326b8b"
     },
     "R/fct_overview_metadata.R": {
-      "checksum": "0a3cc2e335a6c00859257c194b3ccd66"
+      "checksum": "abf123e01ebe205a97032d5926cc525c"
     },
     "R/fct_policy_decompose.R": {
       "checksum": "167cda9752865524d8e393d24f17ea97"
     },
     "R/fct_policy_diagnostics.R": {
-      "checksum": "cc43e99dba2223d4883bc11cfc100d7e"
+      "checksum": "f42551bed8181a456d5bf3112267120b"
     },
     "R/fct_policy_metric_decompose.R": {
-      "checksum": "544e597f2309f1095828192591303562"
+      "checksum": "985802f43dffb46e6c21d98373530b9e"
     },
     "R/fct_policy_sim_compare.R": {
       "checksum": "9058b9c94c323beed327deac72d746f7"
     },
     "R/fct_policy_sim.R": {
-      "checksum": "fd50780e77e9cc5577477b6a095eb959"
+      "checksum": "65b0d3baddd7a593c80cf55ac8cce6f2"
     },
     "R/fct_predict_outcomes.R": {
       "checksum": "111469956f2f7ae240ba96b7f3d3775a"
@@ -4615,16 +4615,19 @@
       "checksum": "4e827649609b3aff26339b4102d1a026"
     },
     "R/fct_simulations.R": {
-      "checksum": "2a1b1d39402140e3e8b536d4bc3e6537"
+      "checksum": "f9593ab4512aad5f9fec2a00b741ead9"
     },
     "R/fct_sp_effectiveness.R": {
       "checksum": "6f676ab0c9cabd5622d4d4fed4ab63d0"
+    },
+    "R/fct_sp_shock.R": {
+      "checksum": "62d03356f851675da88297ef1a29f2e6"
     },
     "R/fct_step1_headline.R": {
       "checksum": "c34ddd4edc08f0142be921eff986fb86"
     },
     "R/fct_step2_async.R": {
-      "checksum": "5eeb421020572678fbc400f19b0b18b9"
+      "checksum": "9fe3bba1c0db7ca53089b984386da4dc"
     },
     "R/fct_step2_compute.R": {
       "checksum": "12c15e838f5a2413a61ae204429e2093"
@@ -4645,10 +4648,10 @@
       "checksum": "1c5b1e8c5bbeb525756cde4ce4cda9ab"
     },
     "R/fct_weatherstats.R": {
-      "checksum": "11f1be64b14eb8cf9adc58a789f218c4"
+      "checksum": "e1be5164c088d619d466c6938cfc642e"
     },
     "R/globals.R": {
-      "checksum": "2b2d44992f3ea77c9156cef2dbe67536"
+      "checksum": "2f1ab12319978feedb54e2e4e6cbfb71"
     },
     "R/mod_0_overview.R": {
       "checksum": "2a050ff71774da1819c41d7c32a7eda9"
@@ -4684,7 +4687,7 @@
       "checksum": "324a742a3cd231ec712c967bfc5caf09"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "adb69de19f38555779f0665336e02c56"
+      "checksum": "3b44b11a6a5e98bbe261e993d1ca61e6"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "26088a2a12a431b845e4a2c7cc688e3d"
@@ -4693,7 +4696,7 @@
       "checksum": "1635bad43e613277099a7e78d0d79488"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "c2a68b9070d481ff2da50b6604f21650"
+      "checksum": "d09964a33942622194b633f7871d2d9f"
     },
     "R/mod_3_02_infra.R": {
       "checksum": "e04dbcb6082a3498ed2cfa7c4e17b5f2"
@@ -4708,19 +4711,19 @@
       "checksum": "ce6dac4360eef6248ccbe939f6017ab4"
     },
     "R/mod_3_06_policy_sim.R": {
-      "checksum": "442e9eecf14af525b30a94c90055a41e"
+      "checksum": "67ec79ceb1202ea24755acaec4e2a2fb"
     },
     "R/mod_3_07_results.R": {
       "checksum": "1498b5a7fc65e6db1f3925310d89b883"
     },
     "R/mod_3_08_diagnostics.R": {
-      "checksum": "066411ef686923737830c77cf00972c8"
+      "checksum": "4fd26656d248098fc1b0d6e973650503"
     },
     "R/mod_3_09_decomposition.R": {
       "checksum": "89465ecb0bfae87e0860ecbfd1f4eba7"
     },
     "R/mod_3_scenario.R": {
-      "checksum": "436842c6bd432da3294b4706edc03399"
+      "checksum": "5014c0989f24a3730c4065db14845ba0"
     },
     "R/RcppExports.R": {
       "checksum": "6729f575d994859c1ff72617f5ded89d"
@@ -4738,7 +4741,7 @@
       "checksum": "b6a273ade242c6d80b1835239be83667"
     },
     "R/utils_plot_theme.R": {
-      "checksum": "cb43cbd6c94d4daf359f4619b4b8a900"
+      "checksum": "e715b6a866363f28ad4d8af629e9bda0"
     },
     "R/utils_ui.R": {
       "checksum": "e2454110e8dd794233b4a9e679c2c04a"
