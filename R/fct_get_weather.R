@@ -1174,6 +1174,9 @@ get_weather <- function(
 
   .profile_record <- function(stage, started, value = NULL, detail = NULL) {
     if (is.null(weather_profile)) return(invisible(NULL))
+    # Stop the stage clock before the profiling work below (serialize, RSS
+    # sampling, table listing) so it is not billed to the stage.
+    elapsed_seconds <- proc.time()[["elapsed"]] - started
     tables <- tryCatch(DBI::dbListTables(con), error = function(e) character())
     is_frame <- is.data.frame(value)
     is_result_list <- is.list(value) && length(value) > 0L &&
@@ -1195,7 +1198,7 @@ get_weather <- function(
     weather_profile$last_rss <- rss
     weather_profile$records[[length(weather_profile$records) + 1L]] <- data.frame(
       stage = stage,
-      elapsed_seconds = proc.time()[["elapsed"]] - started,
+      elapsed_seconds = elapsed_seconds,
       rows = if (is_frame) nrow(value) else if (is_result_list) sum(vapply(value, nrow, integer(1L))) else NA_real_,
       frame_bytes = if (is_frame || is_result_list) as.numeric(utils::object.size(value)) else NA_real_,
       serialized_bytes = serialized_bytes,
