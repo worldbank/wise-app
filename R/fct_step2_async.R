@@ -224,7 +224,7 @@
       }
       options(wiseapp.async.worker_initialized = TRUE)
     }
-    wiseapp:::step2_async_worker(
+    utils::getFromNamespace("step2_async_worker", "wiseapp")(
       snapshot = snapshot,
       job_id = job_id,
       generation = generation,

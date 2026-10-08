@@ -1720,7 +1720,7 @@ mod_2_02_results_server <- function(id,
       req(derived_results_frame_rv())
       frame <- derived_results_frame_rv()
 
-      one_scenario <- function(entry) {
+      one_scenario_entry <- function(entry) {
         if (is.null(entry)) {
           return(NULL)
         }
@@ -1763,10 +1763,10 @@ mod_2_02_results_server <- function(id,
       }
 
       labels <- names(frame$.entries)
-      rows <- list(one_scenario(.results_frame_entry(frame, "Historical")))
+      rows <- list(one_scenario_entry(.results_frame_entry(frame, "Historical")))
       for (dk in setdiff(labels, "Historical")) {
         if (!dk %in% selected_scenario_names()) next
-        rows[[length(rows) + 1L]] <- one_scenario(
+        rows[[length(rows) + 1L]] <- one_scenario_entry(
           .results_frame_entry(frame, dk)
         )
       }

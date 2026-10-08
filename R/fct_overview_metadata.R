@@ -117,7 +117,9 @@ overview_metadata_cache_store <- function(connection_params, value) {
           }
           options(wiseapp.async.worker_initialized = TRUE)
         }
-        wiseapp:::load_overview_metadata(params, clear_credentials = clear_credentials)
+        utils::getFromNamespace("load_overview_metadata", "wiseapp")(
+          params, clear_credentials = clear_credentials
+        )
       }, package_path = package_path, development_package = development_package,
         params = params, clear_credentials = identical(params$origin, "ui"),
         .compute = "default",
