@@ -1307,6 +1307,25 @@ test_that("CR-PERF-10: future weather forces gc() only when the RSS guard trips"
   expect_identical(under$frames, over$frames)
 })
 
+test_that("the per-member RSS guard reuses a recent reading and can be unthrottled", {
+  calls <- 0L
+  local_mocked_bindings(.wx_collection_rss_guard = function(policy) {
+    calls <<- calls + 1L
+    list(rss = calls, exceeded = FALSE)
+  })
+  state <- new.env(parent = emptyenv())
+  withr::local_envvar(WISEAPP_STEP2_WEATHER_RSS_INTERVAL_SEC = "60")
+  first <- .wx_collection_rss_guard_throttled(list(), state)
+  second <- .wx_collection_rss_guard_throttled(list(), state)
+  expect_identical(calls, 1L)
+  expect_identical(second, first)
+
+  withr::local_envvar(WISEAPP_STEP2_WEATHER_RSS_INTERVAL_SEC = "0")
+  .wx_collection_rss_guard_throttled(list(), state)
+  .wx_collection_rss_guard_throttled(list(), state)
+  expect_identical(calls, 3L)
+})
+
 test_that("materialized multi-period future deltas preserve each period", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("bit64")

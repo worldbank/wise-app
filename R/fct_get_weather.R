@@ -241,6 +241,25 @@ WISEAPP_WX_ROUND_DIGITS <- 5L
   )
 }
 
+# The guard lists every process on the host (`ps -axo`), about 90 ms per call on
+# a laptop and more on a busy server, and the bounded path calls it once per
+# member (62 times at 2 SSPs x 2 periods, 5.6 s). The budget check does not need
+# that resolution, so reuse a reading younger than WISEAPP_STEP2_WEATHER_RSS_
+# INTERVAL_SEC (default 2; 0 measures every member).
+.wx_collection_rss_guard_throttled <- function(policy, state) {
+  interval <- suppressWarnings(as.numeric(Sys.getenv(
+    "WISEAPP_STEP2_WEATHER_RSS_INTERVAL_SEC", "2"
+  )))
+  if (!is.finite(interval) || interval < 0) interval <- 2
+  now <- proc.time()[["elapsed"]]
+  if (interval > 0 && !is.null(state$guard) && now - state$at < interval) {
+    return(state$guard)
+  }
+  state$guard <- .wx_collection_rss_guard(policy)
+  state$at <- proc.time()[["elapsed"]]
+  state$guard
+}
+
 .weather_cache_dir <- function() {
   base <- Sys.getenv("WISEAPP_WEATHER_CACHE_DIR")
   if (!nzchar(base)) {
@@ -1993,6 +2012,7 @@ get_weather <- function(
 
       # -- Loop over future periods ------------------------------------------
       out <- list()
+      rss_guard_state <- new.env(parent = emptyenv())
 
       # Once a period has been collected, its rolled temp table (bounded path
       # only) is no longer needed by the returned weather frames. Drop it
@@ -2099,7 +2119,11 @@ get_weather <- function(
         if (identical(weather_collect, "bounded")) {
           tmp_roll_name <- basename(tempfile(pattern = "lw_roll_"))
           tmp_tables <<- c(tmp_tables, tmp_roll_name)
-          rolled <- dplyr::compute(rolled_lazy, name = tmp_roll_name, temporary = TRUE)
+          rolled <- .profile_timed(
+            "future_roll_compute",
+            dplyr::compute(rolled_lazy, name = tmp_roll_name, temporary = TRUE),
+            detail = paste(ssp_i, fp_label)
+          )
         }
 
         period_out <- if (identical(weather_collect, "fast")) {
@@ -2128,14 +2152,14 @@ get_weather <- function(
           # Bounded-memory path: collect one model at a time. Keep this option
           # for deployments with a hard RSS ceiling; it is intentionally not
           # the production default because each model repeats the collect work.
-          model_names <- DBI::dbGetQuery(
+          model_names <- .profile_timed("future_model_names", DBI::dbGetQuery(
             con,
             paste0(
               "SELECT DISTINCT model FROM (",
               dbplyr::sql_render(rolled |> dplyr::select(model)),
               ") models ORDER BY model"
             )
-          )$model
+          ), detail = paste(ssp_i, fp_label))$model
           model_out <- if (is.function(weather_consumer)) NULL else list()
           for (model_i in seq_along(model_names)) {
              model_name <- model_names[[model_i]]
@@ -2149,14 +2173,21 @@ get_weather <- function(
               rm(model_df)
               next
             }
-            model_df <- .wx_round_weather_values(model_df, weather_vars)
-            if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
+            model_df <- .profile_timed("future_round_bin", {
+              model_df <- .wx_round_weather_values(model_df, weather_vars)
+              if (has_binning) model_df <- .apply_binning(model_df, stored_breaks)
+              model_df
+            }, detail = paste(ssp_i, fp_label, model_name))
             member_key <- paste0(ssp_i, "_", fp_label, "_", make.names(model_name))
             collection_policy$buffered_member_peak <- max(
               collection_policy$buffered_member_peak, 1L
             )
             if (is.function(weather_consumer)) {
-              guard <- .wx_collection_rss_guard(collection_policy)
+              guard <- .profile_timed(
+                "future_rss_guard",
+                .wx_collection_rss_guard_throttled(collection_policy, rss_guard_state),
+                detail = paste(ssp_i, fp_label, model_name)
+              )
               if (isTRUE(guard$exceeded)) {
                 collection_policy$rss_guard_activated <<- TRUE
                 collection_policy$effective <<- "bounded"
@@ -2164,7 +2195,10 @@ get_weather <- function(
                   "observed_process_tree_rss_exceeded_budget"
               }
               emitted_order <<- emitted_order + 1L
-              weather_consumer(
+              # The consumer runs the member's pipeline, so this stage includes
+              # pipeline time (it is the part of the weather call that is not
+              # weather work).
+              .profile_timed("future_consumer", weather_consumer(
                 member_key, model_df,
                 list(
                   order = emitted_order, is_historical = FALSE,
@@ -2177,7 +2211,7 @@ get_weather <- function(
                   budget_exceeded = guard$exceeded,
                   buffered_members = 1L
                 )
-              )
+              ), detail = paste(ssp_i, fp_label, model_name))
               rm(model_df)
               # CR-PERF-10: a forced collection per member was ~40% of the
               # warm weather stage; collect only once over the RSS budget.
