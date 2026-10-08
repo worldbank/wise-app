@@ -75,7 +75,7 @@ Closed with a documented remainder; reopen only if the area is touched again.
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
 | CR-OPS-01 | M | M | ◐ | `shinytest2`/axe smoke in CI (shared with CR-A11Y-09). Investigate why the headless-Chrome PNG test skips on some CI runs. CI is otherwise green (Tests step about 340 s, 0 failed, 0 skipped; `error-on` is `"warning"`). |
-| R CMD check notes | L | S | ◐ | Three NOTEs left; each needs an `R/` change: unused Imports (`Rcpp`, `brand.yml`, `tidyselect`); `:::` on own functions (`load_overview_metadata`, `step2_async_worker`); undefined globals (`year`, `x`, `tail`, `modifyList`, others). |
+| R CMD check notes | L | S | ◐ | Unused Imports, `:::` and undefined globals are fixed (2026-10-08, uncommitted): `tidyselect` dropped from Imports, `Rcpp::sourceCpp` and `brand.yml::read_brand_yml` imported, workers use `utils::getFromNamespace()`, `stats`/`utils` imports and `globalVariables` added in `R/globals.R`, duplicate local `one_scenario` renamed in `mod_2_02_results.R`. The last `check(--no-tests)` before the rename showed only that NOTE plus the sandbox "future file timestamps" NOTE; re-run once to confirm. |
 | CR-PERF-13 / R2-PERF-08 | M | S | ◐ | Env-configurable limits exist (`WISEAPP_DUCKDB_MEMORY_LIMIT`, `_THREADS`, `_TEMP_DIR`, `WISEAPP_THREADS`); choose values for Connect. |
 | R2-OPS-08 | M | S | ◐ | Benchmark harness: `.profile_record()` ordering in `fct_get_weather.R`. |
 | R2-OPS-09 | L | S | ◐ | Fragile tests: `localhost:1` polling, `set.seed` vs `local_seed`, `tests/spelling.R` never fails. |
@@ -116,8 +116,8 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 |---|---|---|---|---|
 | CR-A11Y-08 | M | M | ☐ | "View as table" alternative for the map; ECharts `aria`. |
 | CR-A11Y-09 | M | M | ☐ | axe-core via `shinytest2` in CI (same job as CR-OPS-01). |
-| CR-A11Y-05 | L-M | S | ☐ | Tooltip `role`, `aria-describedby`, Escape to dismiss; map tooltips dismissible. |
-| R2-A11Y-04 | L | S | ☐ | Darker Okabe-Ito variants or markers; darker label colour. |
+| CR-A11Y-05 | L-M | S | ◐ | Done in code 2026-10-08 (uncommitted): legend `.wx-tip` markers have a `role="tooltip"` child with `aria-describedby`, are hoverable, and Escape dismisses them (`custom.js`); the hexmap pointer tooltip hides on Escape. Contract test in `test-a11y-contract.R`. Not checked in a browser; the 12 px target is R2-A11Y-06. |
+| R2-A11Y-04 | L | S | ◐ | Done in code 2026-10-08 (uncommitted): orange, sky blue and yellow darkened in `.okabe_ito` (all series at least 3:1 on white) and `.wise_marker_alt` is `#A86400` (4.7:1, for the 10 px label); test in `test-a11y-contract.R`. Not seen in a browser. The wave-colour map palette (`fct_surveystats.R`) and `.coverage_ramp` keep canonical hexes. |
 | R2-A11Y-05 | L | S | ◐ | Info popovers without a title still have a generic name. Skip link, main landmark, heading levels and live region are done. |
 | R2-A11Y-06 | L | S | ◐ | Pan buttons or keyboard pan; at least 24 px targets for `.wise-info-icon` and `.wx-tip` (need a browser). The dead click input is removed. |
 

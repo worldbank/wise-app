@@ -21,8 +21,11 @@ This file provides guidance to coding agents (Kilo, Claude Code, Codex, etc.) wh
 ```r
 # Install dependencies from DESCRIPTION
 install.packages(read.dcf("DESCRIPTION")[1, "Imports"] |>
+  gsub("\\s*\\([^)]*\\)", "", x = _) |>
   strsplit(",\\s*") |>
-  unlist())
+  unlist() |>
+  trimws())
+# duckdb must be exactly the version pinned in DESCRIPTION (bundled extensions)
 
 # Run the app locally
 wiseapp::run_app()
@@ -46,7 +49,7 @@ testthat::test_dir("tests")
 devtools::test()
 ```
 
-Development workflow scripts are in `dev/01_start.R`, `dev/02_dev.R`, and `dev/03_deploy.R`.
+Development scripts are in `dev/`: `run_dev.R` (run the app), `00_make_manifest.R` (Connect manifest) and the `bench_*.R` benchmark harnesses.
 
 ## Architecture
 

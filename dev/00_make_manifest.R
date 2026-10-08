@@ -15,7 +15,7 @@
 # in-flight working-tree edits. Re-run after dependency changes and
 # commit the result.
 #
-# Usage: Rscript dev/make_manifest.R [--include-suggests]
+# Usage: Rscript dev/00_make_manifest.R [--include-suggests]
 #   --include-suggests  skip the closure filter and keep every package
 #                       writeManifest resolves (deployment-debugging aid)
 
