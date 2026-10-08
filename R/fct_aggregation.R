@@ -863,23 +863,45 @@ aggregate_pipeline_table <- function(pipelines,
       var_across <- combined$var_across %||% stats::var(values, na.rm = TRUE)
     }
 
-    row <- tibble::tibble(
-      sim_year     = year,
-      value        = mean(values, na.rm = TRUE),
-      model_id     = list(ids),
-      value_all    = list(values),
-      value_all_sd = list(sds),
-      F_agg_all    = list(F_mat),
-      var_within   = var_within,
-      var_across   = var_across,
-      agg_method   = method_label,
-      weighted     = weighted
+    list(
+      sim_year   = year,
+      value      = mean(values, na.rm = TRUE),
+      model_id   = ids,
+      value_all  = values,
+      value_all_sd = sds,
+      F_agg_all  = F_mat,
+      var_within = var_within,
+      var_across = var_across
     )
-    if (!is.null(scenario)) row$scenario <- scenario
-    row
   })
 
-  dplyr::bind_rows(Filter(Negate(is.null), rows))
+  .aggregation_assemble_rows(rows, method_label, weighted, scenario)
+}
+
+# Build the canonical per-year table from plain per-year lists in one tibble()
+# call. A tibble() call per year costs about a millisecond of name-spec work
+# each (R2-PERF-04); the columns and types are those of the row-wise
+# tibble()/bind_rows() construction this replaces.
+.aggregation_assemble_rows <- function(rows, method, weighted, scenario = NULL) {
+  rows <- Filter(Negate(is.null), rows)
+  if (!length(rows)) {
+    return(dplyr::bind_rows(rows))
+  }
+  col <- function(name) lapply(rows, `[[`, name)
+  out <- tibble::tibble(
+    sim_year     = unlist(col("sim_year")),
+    value        = unlist(col("value")),
+    model_id     = col("model_id"),
+    value_all    = col("value_all"),
+    value_all_sd = col("value_all_sd"),
+    F_agg_all    = col("F_agg_all"),
+    var_within   = unlist(col("var_within")),
+    var_across   = unlist(col("var_across")),
+    agg_method   = method,
+    weighted     = weighted
+  )
+  if (!is.null(scenario)) out$scenario <- scenario
+  out
 }
 
 .index_aggregation_results_by_year <- function(results) {
@@ -1000,22 +1022,18 @@ aggregate_pipeline_tables_multi <- function(pipelines,
         var_within <- combined$var_within %||% mean(sds^2, na.rm = TRUE)
         var_across <- combined$var_across %||% stats::var(values, na.rm = TRUE)
       }
-      row <- tibble::tibble(
+      list(
         sim_year = year,
         value = mean(values, na.rm = TRUE),
-        model_id = list(ids),
-        value_all = list(values),
-        value_all_sd = list(sds),
-        F_agg_all = list(F_mat),
+        model_id = ids,
+        value_all = values,
+        value_all_sd = sds,
+        F_agg_all = F_mat,
         var_within = var_within,
-        var_across = var_across,
-        agg_method = method,
-        weighted = weighted
+        var_across = var_across
       )
-      if (!is.null(scenario)) row$scenario <- scenario
-      row
     })
-    dplyr::bind_rows(Filter(Negate(is.null), rows))
+    .aggregation_assemble_rows(rows, method, weighted, scenario)
   }
   setNames(lapply(methods, build_table), methods)
 }
