@@ -665,9 +665,10 @@ mod_3_01_sp_server <- function(id,
     # One definition of the scenario, read by both the reach preview below and
     # the module's return API - the preview cannot drift from what is run.
     sp_scenario_spec <- reactive({
-      # Shock-responsive transfers are displayed in the selector but are not
-      # implemented yet. Keep the returned scenario on the regular path until
-      # trigger and timing logic is wired through the policy simulation.
+      # Shock-responsive transfers are displayed in the selector but the run
+      # path does not apply them yet (P1-6). Keep the returned scenario on the
+      # regular path until the dynamic transfer is wired through the policy
+      # simulation; the trigger fields below already travel with the spec.
       sp_type_val <- if (identical(input$sp_type, "shock")) {
         "regular"
       } else {
@@ -707,6 +708,22 @@ mod_3_01_sp_server <- function(id,
         },
         # Administration as a percentage of total cost
         admin_cost_pct = input$admin_cost_pct %||% 0,
+        # Shock-responsive trigger and payout (P1-1); inputs arrive with the
+        # Trigger settings flyout (P1-8), so these are defaults until then
+        trigger_type = input$trigger_type %||% "weather",
+        trigger_variable = input$trigger_variable %||% NA_character_,
+        trigger_direction = input$trigger_direction %||% "above",
+        trigger_value = suppressWarnings(
+          as.numeric(input$trigger_value %||% NA_real_)
+        ),
+        trigger_return_period_years = suppressWarnings(
+          as.numeric(input$trigger_return_period_years %||% NA_real_)
+        ),
+        payout_scope = input$payout_scope %||% "local",
+        national_k_pct = suppressWarnings(
+          as.numeric(input$national_k_pct %||% 0)
+        ),
+        payments_per_activation = input$payments_per_activation %||% 1L,
         # Timing - regular programs always have n payments
         transfer_frequency =
           if (is_regular) {

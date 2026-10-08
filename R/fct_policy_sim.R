@@ -216,6 +216,14 @@ has_sp_change <- function(sp) {
   if (!is.list(sp)) {
     return(FALSE)
   }
+  if (identical(sp$sp_type, "shock")) {
+    # Fixed amount per activation; the budget mode is not used (decision 12)
+    return(
+      .lever_moved(sp$transfer_amount_usd) &&
+        .lever_moved(sp$payments_per_activation %||% 1L) &&
+        is.null(.sp_shock_problem(sp))
+    )
+  }
   if (identical(sp$budget_mode %||% "transfer_first", "budget_first")) {
     .lever_moved(sp$budget_fixed)
   } else {
