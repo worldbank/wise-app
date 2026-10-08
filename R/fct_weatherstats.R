@@ -819,11 +819,23 @@ isTRUE_vec <- function(x) !is.na(x) & x
     if (side == "left") " wx-tip-l" else "",
     if (placement == "below") " wx-tip-b" else ""
   )
+  # The text lives in a real `role="tooltip"` child that the marker points to
+  # with aria-describedby, so screen readers announce it (a CSS ::after
+  # string is not reliably exposed). Escape dismisses it via custom.js.
+  .wx_tip_state$n <- .wx_tip_state$n + 1L
+  id <- paste0("wx-tip-", .wx_tip_state$n)
   paste0(
-    '<span class="', cls, '" tabindex="0" data-tip="', .html_escape(info),
-    '">i</span>'
+    '<span class="', cls, '" tabindex="0" role="button" aria-label="More information"',
+    ' aria-describedby="', id, '">i',
+    '<span class="wx-tip-text" role="tooltip" id="', id, '">',
+    .html_escape(info), "</span></span>"
   )
 }
+
+# Counter for unique tooltip ids within the session.
+#' @noRd
+.wx_tip_state <- new.env(parent = emptyenv())
+.wx_tip_state$n <- 0L
 
 # Styles for the marker above. Emitted inside the legend control; duplicated
 # blocks across maps are harmless and keep each map self-contained.
@@ -835,17 +847,20 @@ isTRUE_vec <- function(x) !is.na(x) & x
     "line-height:12px;text-align:center;border:1px solid #888;",
     "border-radius:50%;font-size:9px;font-weight:700;font-style:normal;",
     "color:#555;margin-left:3px;cursor:pointer;background:#fff;}",
-    ".wx-tip::after{content:attr(data-tip);position:absolute;bottom:150%;",
+    ".wx-tip .wx-tip-text{position:absolute;bottom:150%;",
     "right:-4px;width:210px;background:rgba(33,33,33,0.96);color:#fff;",
     "padding:6px 8px;border-radius:4px;font-size:11px;font-weight:400;",
     "line-height:1.35;white-space:normal;text-align:left;opacity:0;",
-    "visibility:hidden;pointer-events:none;z-index:1200;",
+    "visibility:hidden;z-index:1200;",
     "transition:opacity 0.06s linear;}",
-    ".wx-tip.wx-tip-l::after{right:auto;left:-4px;}",
+    ".wx-tip.wx-tip-l .wx-tip-text{right:auto;left:-4px;}",
     # placement == "below": legends sitting at the map's top-right corner
     # need the popup to open downward, or the card clips it.
-    ".wx-tip.wx-tip-b::after{bottom:auto;top:150%;}",
-    ".wx-tip:hover::after,.wx-tip:focus::after{opacity:1;visibility:visible;}",
+    ".wx-tip.wx-tip-b .wx-tip-text{bottom:auto;top:150%;}",
+    # Hoverable (the text is a child, so moving onto it keeps :hover) and
+    # dismissible with Escape (.wx-tip-dismissed, set in custom.js).
+    ".wx-tip:hover .wx-tip-text,.wx-tip:focus .wx-tip-text{opacity:1;visibility:visible;}",
+    ".wx-tip.wx-tip-dismissed .wx-tip-text{opacity:0;visibility:hidden;}",
     "</style>"
   )
 }

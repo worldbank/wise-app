@@ -241,3 +241,33 @@ test_that("R2-A11Y-05: info icons and CSV buttons have specific names", {
   btn <- as.character(wise_reactable_csv_button("t1", "step1_coef_table"))
   expect_match(btn, 'aria-label="Download CSV: step1 coef table"', fixed = TRUE)
 })
+
+test_that("CR-A11Y-05: map legend info markers expose a describing tooltip", {
+  html <- .wx_info_marker("Share of days <b>above</b> the threshold")
+  expect_match(html, 'role="tooltip"', fixed = TRUE)
+  id <- sub('.*aria-describedby="([^"]+)".*', "\\1", html)
+  expect_match(html, paste0('id="', id, '"'), fixed = TRUE)
+  expect_match(html, "&lt;b&gt;above", fixed = TRUE)
+  # Ids are unique across markers on one page
+  ids <- vapply(1:3, function(i) {
+    sub('.*aria-describedby="([^"]+)".*', "\\1", .wx_info_marker("x"))
+  }, "")
+  expect_equal(anyDuplicated(ids), 0L)
+  expect_match(.wx_tip_css(), ".wx-tip-dismissed", fixed = TRUE)
+  js <- paste(readLines(file.path("..", "..", "inst", "app", "www", "custom.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_match(js, "wx-tip-dismissed", fixed = TRUE)
+})
+
+test_that("R2-A11Y-04: categorical series colours reach 3:1 on white", {
+  lum <- function(h) {
+    v <- grDevices::col2rgb(h)[, 1] / 255
+    v <- ifelse(v <= 0.03928, v / 12.92, ((v + 0.055) / 1.055)^2.4)
+    sum(v * c(0.2126, 0.7152, 0.0722))
+  }
+  ratio <- function(h) 1.05 / (lum(h) + 0.05)
+  # Black and the brand blue pass trivially; check every series colour
+  expect_true(all(vapply(.okabe_ito, ratio, 0) >= 3))
+  # The marker colour is also used for 10 px text, which needs 4.5:1
+  expect_gte(ratio(.wise_marker_alt), 4.5)
+})

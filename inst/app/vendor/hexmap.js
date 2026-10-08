@@ -167,6 +167,7 @@
   }
 
   function showTip(state, e) {
+    if (state.tipDismissed) return;
     var f = e.features && e.features[0];
     if (!f) return;
     var p = f.properties || {};
@@ -284,8 +285,16 @@
     var state = {
       map: null, ready: false, pending: null, fitPending: false,
       lastBounds: null, ramp: null, label: "", unit: "",
-      tip: tip
+      tip: tip, tipDismissed: false
     };
+
+    // WCAG 1.4.13: hover content must be dismissible without moving the
+    // pointer. Escape hides the tooltip until the pointer leaves the hexes.
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape" || state.tip.style.display === "none") return;
+      state.tipDismissed = true;
+      hideTip(state);
+    });
 
     var map;
     try {
@@ -365,7 +374,10 @@
       // card's layout settles after boot (see applySet).
       map.triggerRepaint();
       map.on("mousemove", "hex-fill", function (e) { showTip(state, e); });
-      map.on("mouseleave", "hex-fill", function () { hideTip(state); });
+      map.on("mouseleave", "hex-fill", function () {
+        state.tipDismissed = false;
+        hideTip(state);
+      });
     });
 
     // Cards expand to full screen; keep the canvas measured. The one-shot

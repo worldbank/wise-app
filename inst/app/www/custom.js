@@ -189,6 +189,28 @@
   });
 })();
 
+// Map legend info markers (.wx-tip, wx_info_marker() in fct_weatherstats.R):
+// Escape dismisses the tooltip while it is hovered or focused (WCAG 1.4.13).
+// The dismissal lasts until the pointer leaves or focus moves away.
+(function () {
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.wx-tip').forEach(function (tip) {
+      if (tip.matches(':hover') || tip.matches(':focus')) {
+        tip.classList.add('wx-tip-dismissed');
+      }
+    });
+  });
+  function reset(e) {
+    var tip = e.target.closest && e.target.closest('.wx-tip');
+    if (tip && !tip.contains(e.relatedTarget)) {
+      tip.classList.remove('wx-tip-dismissed');
+    }
+  }
+  document.addEventListener('mouseout', reset);
+  document.addEventListener('focusout', reset);
+})();
+
 // Server-driven disabled state for pill_toggle() radios and plain inputs
 // (update_pill_toggle_disabled() / update_input_disabled() in utils_ui.R).
 // Inserted controls may not be in the DOM yet when the message arrives, so

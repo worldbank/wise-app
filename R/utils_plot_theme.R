@@ -16,7 +16,7 @@
 .wise_policy <- "#D55E00" # policy accent (bright, colourblind-safe)
 .wise_policy_dark <- "#7F2704" # darker companion for policy outlines/labels
 .wise_marker <- "#D55E00" # poverty lines, tau/quantile markers
-.wise_marker_alt <- "#E69F00" # secondary markers (quantile labels)
+.wise_marker_alt <- "#A86400" # secondary markers (quantile labels), 4.7:1 on white
 .wise_support <- "#243746" # ensemble / support points and outlines
 .wise_zero <- "#5B6B79" # zero / reference lines
 
@@ -25,15 +25,18 @@
 # blue-first so the lead colour echoes the brand blue. All categorical or
 # discrete scales must draw from here via the wrappers below instead of
 # ColorBrewer palettes or ad-hoc red/green choices.
+# Orange, sky blue and yellow are darkened from the canonical hexes
+# (#E69F00, #56B4E9, #F0E442: 2.25, 2.31 and 1.32:1 on white) so every series
+# reaches 3:1 for lines and points (WCAG 1.4.11); hues are unchanged.
 
 .okabe_ito <- c(
-  "#0072B2", # blue
-  "#D55E00", # vermillion
-  "#009E73", # bluish green
-  "#E69F00", # orange
-  "#56B4E9", # sky blue
-  "#CC79A7", # reddish purple
-  "#F0E442", # yellow
+  "#0072B2", # blue (5.2:1)
+  "#D55E00", # vermillion (3.9:1)
+  "#009E73", # bluish green (3.4:1)
+  "#A86400", # orange, darkened (4.7:1)
+  "#2F8FCB", # sky blue, darkened (3.6:1)
+  "#CC79A7", # reddish purple (3.1:1)
+  "#8C8200", # yellow, darkened to olive (4.0:1)
   "#000000" # black
 )
 .wise_cat <- .okabe_ito
