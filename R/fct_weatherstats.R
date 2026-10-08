@@ -847,6 +847,8 @@ isTRUE_vec <- function(x) !is.na(x) & x
     "line-height:12px;text-align:center;border:1px solid #888;",
     "border-radius:50%;font-size:9px;font-weight:700;font-style:normal;",
     "color:#555;margin-left:3px;cursor:pointer;background:#fff;}",
+    # 24 x 24 px hit area around the 12 px marker (WCAG 2.5.8).
+    ".wx-tip::before{content:'';position:absolute;inset:-6px;}",
     ".wx-tip .wx-tip-text{position:absolute;bottom:150%;",
     "right:-4px;width:210px;background:rgba(33,33,33,0.96);color:#fff;",
     "padding:6px 8px;border-radius:4px;font-size:11px;font-weight:400;",

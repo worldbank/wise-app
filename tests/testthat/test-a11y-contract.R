@@ -271,3 +271,14 @@ test_that("R2-A11Y-04: categorical series colours reach 3:1 on white", {
   # The marker colour is also used for 10 px text, which needs 4.5:1
   expect_gte(ratio(.wise_marker_alt), 4.5)
 })
+
+test_that("R2-A11Y-05/06: untitled info icons are named by JS and have 24 px hit areas", {
+  www <- file.path("..", "..", "inst", "app", "www")
+  js <- paste(readLines(file.path(www, "custom.js"), warn = FALSE), collapse = "\n")
+  expect_match(js, "More information", fixed = TRUE)
+  expect_match(js, "MutationObserver", fixed = TRUE)
+  css <- paste(readLines(file.path(www, "custom.css"), warn = FALSE), collapse = "\n")
+  expect_match(css, "\\.wise-info-icon::before\\s*\\{[^}]*inset:\\s*-8px", perl = TRUE)
+  expect_match(.wx_tip_css(), ".wx-tip::before{content:'';position:absolute;inset:-6px;}",
+               fixed = TRUE)
+})

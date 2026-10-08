@@ -1476,6 +1476,15 @@ button.wise-csv-btn .fa {
   cursor: pointer;
   opacity: 0.75;
   line-height: 1;
+  position: relative;
+}
+
+/* Hit area of at least 24 x 24 px around the small glyph (WCAG 2.5.8)
+   without changing the layout. */
+.wise-info-icon::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
 }
 
 .wise-info-icon:hover,

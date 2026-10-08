@@ -189,6 +189,42 @@
   });
 })();
 
+// Info popover icons without a title (info_popover() in utils_ui.R) get the
+// generic name "More information". Give each a specific name from the heading
+// or label it sits in, e.g. "More information: Poverty line" (WCAG 2.4.6).
+(function () {
+  var GENERIC = 'More information';
+  var HOST = 'h1,h2,h3,h4,h5,h6,label,legend,.headline-card-label,.card-header';
+  function nameOf(icon) {
+    var pop = icon.closest('bslib-popover') || icon;
+    var host = pop.closest(HOST) || pop.parentElement;
+    if (!host) return '';
+    var clone = host.cloneNode(true);
+    clone.querySelectorAll('.wise-info-icon,bslib-popover,script,style,template')
+      .forEach(function (n) { n.remove(); });
+    var text = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    return text.length > 60 ? text.slice(0, 57) + '...' : text;
+  }
+  function nameIcons() {
+    document.querySelectorAll('.wise-info-icon').forEach(function (icon) {
+      if (icon.getAttribute('aria-label') !== GENERIC) return;
+      var text = nameOf(icon);
+      if (text) icon.setAttribute('aria-label', GENERIC + ': ' + text);
+    });
+  }
+  var queued = false;
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; nameIcons(); });
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    nameIcons();
+    new MutationObserver(schedule)
+      .observe(document.body, { childList: true, subtree: true });
+  });
+})();
+
 // Map legend info markers (.wx-tip, wx_info_marker() in fct_weatherstats.R):
 // Escape dismisses the tooltip while it is hovered or focused (WCAG 1.4.13).
 // The dismissal lasts until the pointer leaves or focus moves away.
