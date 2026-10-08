@@ -372,3 +372,35 @@ test_that("a larger amount never reduces welfare", {
   }, numeric(1))
   expect_true(all(diff(gain) > 0))
 })
+
+# Scoring the finished run again (loss-event share) ----
+
+test_that("the loss-event share re-scores a finished run without a new run", {
+  fx <- shk_fixture("none", shk_spec(trigger_value = 20, loss_event_pct = 10))
+  out <- shk_run(fx)
+  shock <- out$shock
+  expect_true(is.data.frame(shock$cells))
+  expect_setequal(names(shock$cells), c("scenario", "member", "sim_year", "pop", "rel", "fired", "spend"))
+  # The same share reproduces the run
+  same <- sp_shock_rescore(shock, 10)
+  expect_equal(same$rows, shock$rows)
+  expect_equal(same$summary, shock$summary)
+  # A higher share has fewer loss events: false negatives cannot rise, spending
+  # in cells without an event cannot fall
+  strict <- sp_shock_rescore(shock, 40)
+  expect_lte(sum(strict$rows$pop_fn + strict$rows$pop_tp), sum(shock$rows$pop_fn + shock$rows$pop_tp))
+  expect_gte(sum(strict$rows$spend_no_event), sum(shock$rows$spend_no_event))
+  # Costs and activation are untouched; only the scoring columns move
+  expect_equal(strict$rows$total_cost, shock$rows$total_cost)
+  expect_identical(strict$rows$activated, shock$rows$activated)
+  # Equals a run made with that share
+  fx40 <- shk_fixture("none", shk_spec(trigger_value = 20, loss_event_pct = 40))
+  expect_equal(strict$rows, shk_run(fx40)$shock$rows)
+  expect_equal(strict$summary, shk_run(fx40)$shock$summary)
+  # Invalid shares and runs without cells are returned unchanged
+  expect_identical(sp_shock_rescore(shock, NA), shock)
+  expect_identical(sp_shock_rescore(shock, -3), shock)
+  no_cells <- shock
+  no_cells$cells <- NULL
+  expect_identical(sp_shock_rescore(no_cells, 20), no_cells)
+})

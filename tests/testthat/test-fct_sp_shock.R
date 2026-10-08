@@ -45,7 +45,7 @@ test_that("a complete shock spec is valid and has_sp_change is TRUE", {
 test_that("shock validation names what is missing", {
   expect_match(.sp_shock_problem(shock_sp(trigger_variable = NA_character_)), "variable")
   expect_match(.sp_shock_problem(shock_sp(trigger_value = NA_real_)), "threshold")
-  expect_match(.sp_shock_problem(shock_sp(trigger_direction = "left")), "above or below")
+  expect_match(.sp_shock_problem(shock_sp(trigger_direction = "left")), "above, below or at either")
   expect_match(
     .sp_shock_problem(shock_sp(trigger_type = "return_period")), "return period"
   )
@@ -755,4 +755,119 @@ test_that("diagnostics treat a shock program as paid in at least one historical 
     .policy_treatment_explanation(utils::modifyList(spec, list(sp_type = "regular"))),
     "paid in at least one historical"
   )
+})
+
+# Either extreme (trigger direction) ----
+
+test_that("either extreme needs a low and a high threshold, in order", {
+  base <- shock_sp(trigger_direction = "either", trigger_value = 30, trigger_value_low = 10)
+  expect_null(.sp_shock_problem(base))
+  expect_true(has_sp_change(base))
+  expect_match(.sp_shock_problem(utils::modifyList(base, list(trigger_value_low = NA_real_))),
+    "low and a high")
+  expect_match(.sp_shock_problem(utils::modifyList(base, list(trigger_value = NA_real_))),
+    "low and a high")
+  expect_match(.sp_shock_problem(utils::modifyList(base, list(trigger_value_low = 40))),
+    "must not exceed")
+  # A return period needs no thresholds
+  expect_null(.sp_shock_problem(shock_sp(
+    trigger_direction = "either", trigger_type = "return_period",
+    trigger_return_period_years = 10, trigger_value = NA_real_
+  )))
+  # The low threshold is not consulted for one-sided triggers
+  expect_null(.sp_shock_problem(shock_sp(trigger_direction = "above")))
+})
+
+test_that("a weather-level trigger at either extreme fires beyond both thresholds", {
+  ex <- data.frame(sim_year = 1:6, temp = c(5, 10, 15, 30, 31, NA))
+  spec <- shock_sp(trigger_direction = "either", trigger_value = 30, trigger_value_low = 10)
+  th <- sp_trigger_thresholds(ex[rep(1, 30), ], spec)
+  expect_identical(th$direction, "either")
+  expect_equal(c(th$value_low, th$value), c(10, 30))
+  st <- sp_trigger_state(ex, th, NULL, spec)
+  expect_identical(st$exceeds, c(TRUE, TRUE, FALSE, TRUE, TRUE, FALSE))
+})
+
+test_that("a return period at either extreme splits the chance over two tails", {
+  ex <- shock_exposure(40L)
+  ex$temp <- ex$sim_year # 1..40 in every cell
+  spec <- shock_sp(trigger_direction = "either", trigger_type = "return_period",
+    trigger_return_period_years = 10, trigger_value = NA_real_)
+  th <- sp_trigger_thresholds(ex, spec)
+  tbl <- th$table
+  expect_true(all(tbl$supported))
+  # 1 in 10 shared over two tails: the 95th and 5th percentiles
+  expect_equal(tbl$threshold[1], unname(stats::quantile(1:40, 0.95)))
+  expect_equal(tbl$threshold_low[1], unname(stats::quantile(1:40, 0.05)))
+  fires <- sp_trigger_state(ex, th, NULL, spec)$exceeds
+  # 38.05 and 2.95: years 39, 40 and 1, 2 fire, 4 of 40 = 1 in 10 in every cell
+  expect_true(all(tapply(fires, paste(ex$loc_id, ex$int_month), sum) == 4L))
+  # The one-sided triggers keep their own probability
+  one <- sp_trigger_thresholds(ex, shock_sp(trigger_type = "return_period",
+    trigger_return_period_years = 10, trigger_value = NA_real_))
+  expect_equal(one$table$threshold[1], unname(stats::quantile(1:40, 0.9)))
+  expect_false("threshold_low" %in% names(one$table))
+})
+
+test_that("either extreme needs 2N years because each tail is a 1-in-2N level", {
+  ex <- shock_exposure(15L)
+  spec <- shock_sp(trigger_direction = "either", trigger_type = "return_period",
+    trigger_return_period_years = 10, trigger_value = NA_real_)
+  expect_error(sp_trigger_thresholds(ex, spec),
+    "1-in-10 trigger at either extreme needs at least 20 historical years")
+  ok <- sp_trigger_thresholds(ex, utils::modifyList(spec, list(trigger_return_period_years = 7)))
+  expect_true(all(ok$table$supported)) # 14 years needed, 15 available
+})
+
+test_that("the module spec and flyout carry the either-extreme fields", {
+  svy <- data.frame(welfare = 1:4, weight = 1)
+  testServer(mod_3_01_sp_server, args = list(
+    id = "sp_either", survey_weather = shiny::reactiveVal(svy),
+    variable_list = shiny::reactiveVal(data.frame()),
+    analysis_unit = shiny::reactiveVal("hh"), hist_sim = shiny::reactiveVal(NULL)
+  ), {
+    expect_true(is.na(sp_scenario_spec()$trigger_value_low))
+    session$setInputs(sp_type = "shock", trigger_variable = "t",
+      trigger_direction = "either", trigger_value = 30, trigger_value_low = 10,
+      payments_per_activation = 2, transfer_amount_usd = 10)
+    spec <- sp_scenario_spec()
+    expect_identical(spec$trigger_direction, "either")
+    expect_equal(c(spec$trigger_value_low, spec$trigger_value), c(10, 30))
+    expect_null(.sp_shock_problem(spec))
+    expect_match(output$trigger_summary, "beyond 10 or 30")
+    session$setInputs(trigger_type = "return_period", trigger_return_period_years = 10)
+    expect_match(output$trigger_summary, "1-in-10-year level at either end")
+    expect_identical(output$trigger_value_hint, "(high threshold)")
+  })
+})
+
+test_that("the preview reports the historical basis risk", {
+  fx <- preview_fixture()
+  p <- sp_shock_preview(preview_spec(loss_event_pct = 10), fx$hist, fx$svy, "hh", seed = 5L)
+  expect_true(all(c("false_positive_rate", "false_negative_rate", "leakage_share") %in% names(p)))
+  # y_point is constant, so no cell has a loss event: every paid cell is a false positive
+  expect_gt(p$false_positive_rate, 0)
+  expect_true(is.na(p$false_negative_rate)) # no loss events at all
+  expect_equal(p$leakage_share, 1)
+})
+
+test_that("changing only the loss-event share does not mark results stale", {
+  sp <- shiny::reactiveVal(list(transfer_amount_usd = 5, loss_event_pct = 10))
+  ver <- shiny::reactiveVal(1L)
+  testServer(mod_3_06_policy_sim_server, args = list(
+    id = "ps_loss", survey_weather = shiny::reactiveVal(data.frame(welfare = runif(20))),
+    sp_scenario = sp, infra_scenario = reactive(NULL), digital_scenario = reactive(NULL),
+    labor_scenario = reactive(NULL), education_scenario = reactive(NULL),
+    hist_sim = shiny::reactiveVal(NULL), survey_version = ver
+  ), {
+    baseline_hist_sim_rv(list(.sig = .policy_sig_from_live()))
+    session$flushReact()
+    policy_stale(FALSE)
+    sp(list(transfer_amount_usd = 5, loss_event_pct = 25))
+    session$flushReact()
+    expect_false(policy_stale())
+    sp(list(transfer_amount_usd = 6, loss_event_pct = 25))
+    session$flushReact()
+    expect_true(policy_stale())
+  })
 })

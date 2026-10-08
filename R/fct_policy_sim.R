@@ -1700,6 +1700,7 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
   hist_sim_new$pipeline <- hist_result$pipeline
   parts <- list(hist_result$compact)
   shock_parts <- list(hist_result$shock)
+  shock_cell_parts <- list(hist_result$shock_cells)
   saved_scenarios_new <- lapply(seq_along(saved_scenarios_baseline), function(i) {
     s <- saved_scenarios_baseline[[i]]
     if (is.null(s) || is.null(s$pipelines)) {
@@ -1718,6 +1719,7 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
       )
       parts[[length(parts) + 1L]] <<- result$compact
       shock_parts[[length(shock_parts) + 1L]] <<- result$shock
+      shock_cell_parts[[length(shock_cell_parts) + 1L]] <<- result$shock_cells
       result$pipeline
     })
     names(pipes_new) <- names(s$pipelines)
@@ -1742,8 +1744,11 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     correction_version = annual_channels$correction_version,
     n_na_untreated = decomp_context$n_na_untreated %||% 0L)
   if (!is.null(shock_rows)) {
+    cells <- Filter(Negate(is.null), shock_cell_parts)
     out$shock <- list(
       rows = shock_rows, summary = sp_shock_summary(shock_rows),
+      # Per-cell loss data for re-scoring with another loss-event share
+      cells = if (length(cells)) do.call(rbind, c(cells, list(make.row.names = FALSE))),
       # Survey rows paid in at least one historical year
       paid_historical = hist_result$shock_paid,
       per_household = annual_channels$shock$per_household

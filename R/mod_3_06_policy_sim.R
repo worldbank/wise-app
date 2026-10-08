@@ -118,7 +118,9 @@ mod_3_06_policy_sim_server <- function(id,
         sim_sig = if (!is.null(hs)) hs$.sig %||% NULL else NULL,
         survey_version = survey_version(),
         scenarios = .sig_plain(list(
-          sp        = sp_scenario(),
+          # `loss_event_pct` only scores the trigger; Diagnostics re-scores the
+          # stored run, so changing it must not mark results stale.
+          sp        = sp_scenario()[setdiff(names(sp_scenario()), "loss_event_pct")],
           infra     = infra_scenario(),
           digital   = digital_scenario(),
           labor     = labor_scenario(),

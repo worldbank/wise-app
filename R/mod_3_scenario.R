@@ -295,6 +295,8 @@ mod_3_scenario_server <- function(id,
       selected_outcome = selected_outcome,
       variable_list = variable_list,
       sp_scenario = s6$sp_scenario,
+      # Live scoring share (not part of the run signature, see mod_3_06)
+      loss_event_pct = reactive(s1$sp_scenario()$loss_event_pct),
       poverty_line = s7$poverty_line,
       infra_scenario = s6$infra_scenario,
       digital_scenario = s6$digital_scenario,

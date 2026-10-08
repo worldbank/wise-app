@@ -425,9 +425,15 @@
   if (!is.null(shock$state)) {
     # Run outputs of the shock program (P1-7), from the baseline predictions
     rows <- sp_shock_pipeline_rows(prepared$shock, pipeline, exposure, shock$state, shock$stored)
-    result$shock <- cbind(
-      scenario = scenario %||% "Scenario", member = member %||% "Member", rows
-    )
+    scenario_name <- scenario %||% "Scenario"
+    member_name <- member %||% "Member"
+    cells <- attr(rows, "cells")
+    attr(rows, "cells") <- NULL
+    result$shock <- cbind(scenario = scenario_name, member = member_name, rows)
+    # Per-cell loss data, so the loss-event share can be changed without a re-run
+    if (!is.null(cells)) {
+      result$shock_cells <- cbind(scenario = scenario_name, member = member_name, cells)
+    }
     # Survey rows paid in at least one simulated year (diagnostics "treated")
     paid <- logical(length(prepared$shock$per_household))
     paid[as.integer(pipeline$svy_row_id)[shock$stored > 0]] <- TRUE

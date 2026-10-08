@@ -375,8 +375,10 @@
 #' @param policy_svy       Reactive survey-weather df after adjustment.
 #' @param diagnostic_summary Reactive immutable summary snapshot published by
 #'   the policy runner after a successful run.
-#' @param shock_summary Reactive list (`rows`, `summary`) published by the
-#'   policy runner for a shock-responsive program, or NULL.
+#' @param shock_summary Reactive list (`rows`, `cells`, `summary`) published by
+#'   the policy runner for a shock-responsive program, or NULL.
+#' @param loss_event_pct Reactive live loss-event share (percent). The stored
+#'   shock run is re-scored with it, so changing it needs no new run.
 #' @param selected_policies Reactive selected policy scenario keys.
 #' @param poverty_line Reactive Results poverty line (outcome currency), used by
 #'   the cost and targeting table. NULL or NA leaves line-based figures unavailable.
@@ -406,6 +408,7 @@ mod_3_08_diagnostics_server <- function(id,
                                         selected_outcome = reactive(NULL),
                                         variable_list = reactive(NULL),
                                         sp_scenario = reactive(NULL),
+                                        loss_event_pct = reactive(NULL),
                                         poverty_line = reactive(NULL),
                                         infra_scenario = reactive(NULL),
                                         digital_scenario = reactive(NULL),
@@ -568,13 +571,20 @@ mod_3_08_diagnostics_server <- function(id,
       sp$currency %||% "PPP"
     })
 
-    shock_display <- reactive({
+    # The published run, scored with the live loss-event share: it scores the
+    # trigger only, so changing it re-scores the stored cells without a new run.
+    shock_scored <- reactive({
       s <- shock_summary()
+      if (is.null(s)) NULL else sp_shock_rescore(s, loss_event_pct())
+    })
+
+    shock_display <- reactive({
+      s <- shock_scored()
       if (is.null(s)) NULL else .sp_shock_display(s$summary, shock_currency())
     })
 
     shock_cost_chart <- function() {
-      s <- shock_summary()
+      s <- shock_scored()
       echart_shock_cost_distribution(
         s$summary,
         y_label = paste0(
@@ -599,8 +609,16 @@ mod_3_08_diagnostics_server <- function(id,
               "set share of their own typical welfare. Paying where there is no",
               "loss event is a false positive; a loss event without payment is a",
               "false negative. Costs include administration."
+            ),
+            shiny::p(
+              "The share is set in Trigger settings. It only scores the trigger,",
+              "so changing it re-scores this run without running Step 3 again."
             )
           )
+        ),
+        shiny::tags$p(
+          class = "diagnostic-note",
+          shiny::textOutput(ns("shock_scoring_note"), inline = TRUE)
         ),
         shiny::div(
           class = "wise-reactable-controls",
@@ -611,6 +629,18 @@ mod_3_08_diagnostics_server <- function(id,
       )
     })
     outputOptions(output, "shock_section_ui", suspendWhenHidden = FALSE)
+
+    output$shock_scoring_note <- shiny::renderText({
+      pct <- suppressWarnings(as.numeric(loss_event_pct()))[1L]
+      if (is.null(shock_summary()) || !is.finite(pct) || pct <= 0) {
+        return("")
+      }
+      paste0(
+        "Loss event: a survey location whose households lose at least ", pct,
+        "% of their typical welfare."
+      )
+    })
+    outputOptions(output, "shock_scoring_note", suspendWhenHidden = FALSE)
 
     output$shock_summary_table <- reactable::renderReactable({
       .wise_diag_reactable(shock_display())
@@ -624,7 +654,7 @@ mod_3_08_diagnostics_server <- function(id,
       key = "policy_shock_summary",
       label = "Shock-responsive program summary",
       step = 3L,
-      fun = function() shock_summary()$summary,
+      fun = function() shock_scored()$summary,
       stale = stale,
       description = paste(
         "Activation frequency, annual cost distribution, basis risk and leakage",
@@ -635,7 +665,7 @@ mod_3_08_diagnostics_server <- function(id,
       key = "policy_shock_annual",
       label = "Shock-responsive program by member and year",
       step = 3L,
-      fun = function() shock_summary()$rows,
+      fun = function() shock_scored()$rows,
       stale = stale,
       description = paste(
         "Per climate member and simulation year: activation, exposed population",

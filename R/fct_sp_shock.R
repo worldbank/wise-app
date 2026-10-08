@@ -7,7 +7,7 @@
 # member, as Step 2 does for its return periods.
 
 SP_TRIGGER_TYPES <- c("weather", "return_period")
-SP_TRIGGER_DIRECTIONS <- c("above", "below")
+SP_TRIGGER_DIRECTIONS <- c("above", "below", "either")
 SP_PAYOUT_SCOPES <- c("local", "national_triggered", "national_all")
 
 # A trigger is evaluated per survey round, survey location and interview month.
@@ -42,11 +42,19 @@ SP_PAYOUT_SCOPES <- c("local", "national_triggered", "national_all")
   if (length(var) != 1L || is.na(var) || !nzchar(var)) {
     return("Choose a weather variable for the trigger.")
   }
-  if (!(sp$trigger_direction %||% "above") %in% SP_TRIGGER_DIRECTIONS) {
-    return("Choose whether the trigger fires above or below its threshold.")
+  direction <- sp$trigger_direction %||% "above"
+  if (!direction %in% SP_TRIGGER_DIRECTIONS) {
+    return("Choose whether the trigger fires above, below or at either extreme.")
   }
   if (identical(type, "weather")) {
-    if (!is.finite(num(sp$trigger_value))) {
+    if (identical(direction, "either")) {
+      if (!is.finite(num(sp$trigger_value)) || !is.finite(num(sp$trigger_value_low))) {
+        return("Enter a low and a high threshold value for the trigger.")
+      }
+      if (num(sp$trigger_value_low) > num(sp$trigger_value)) {
+        return("The low threshold must not exceed the high threshold.")
+      }
+    } else if (!is.finite(num(sp$trigger_value))) {
       return("Enter a threshold value for the trigger.")
     }
   } else {
@@ -128,16 +136,21 @@ sp_trigger_thresholds <- function(hist_exposure, spec) {
   if (identical(type, "weather")) {
     return(list(
       type = type, variable = var, direction = direction,
-      value = as.numeric(spec$trigger_value)
+      value = as.numeric(spec$trigger_value),
+      value_low = if (identical(direction, "either")) as.numeric(spec$trigger_value_low)
     ))
   }
 
   n_req <- as.numeric(spec$trigger_return_period_years)
+  # "Either extreme" splits the 1-in-N probability over two tails, so each tail
+  # is a 1-in-2N level and needs a record of 2N years (the Step 2 rule applied
+  # to the tail level).
+  either <- identical(direction, "either")
+  n_tail <- if (either) 2 * n_req else n_req
   keys <- intersect(.sp_trigger_key_cols, names(hist_exposure))
   if (!all(c("loc_id", "int_month") %in% keys)) {
     stop("The exposure table has no location or interview month.", call. = FALSE)
   }
-  prob <- if (identical(direction, "above")) 1 - 1 / n_req else 1 / n_req
   grp <- do.call(paste, c(unname(as.list(hist_exposure[keys])), sep = "\r"))
   first <- !duplicated(grp)
   vals <- split(as.numeric(hist_exposure[[var]]), factor(grp, levels = grp[first]))
@@ -145,16 +158,25 @@ sp_trigger_thresholds <- function(hist_exposure, spec) {
   tbl <- hist_exposure[first, keys, drop = FALSE]
   rownames(tbl) <- NULL
   tbl$n_years <- unname(n_years)
-  tbl$supported <- tbl$n_years >= ceiling(n_req)
+  tbl$supported <- tbl$n_years >= ceiling(n_tail)
   tbl$threshold <- NA_real_
+  if (either) tbl$threshold_low <- NA_real_
   ok <- which(tbl$supported)
-  tbl$threshold[ok] <- vapply(vals[ok], function(v) {
-    unname(stats::quantile(v[is.finite(v)], probs = prob, names = FALSE))
-  }, numeric(1))
+  quant <- function(v, p) unname(stats::quantile(v[is.finite(v)], probs = p, names = FALSE))
+  if (!identical(direction, "below")) {
+    tbl$threshold[ok] <- vapply(vals[ok], quant, numeric(1), p = 1 - 1 / n_tail)
+  }
+  if (identical(direction, "below")) {
+    tbl$threshold[ok] <- vapply(vals[ok], quant, numeric(1), p = 1 / n_tail)
+  }
+  if (either) {
+    tbl$threshold_low[ok] <- vapply(vals[ok], quant, numeric(1), p = 1 / n_tail)
+  }
   if (!any(tbl$supported)) {
     .sp_trigger_abort(paste0(
-      "A 1-in-", format(n_req), " trigger needs at least ", ceiling(n_req),
-      " historical years; the longest record has ", max(tbl$n_years, 0L), "."
+      "A 1-in-", format(n_req), if (either) " trigger at either extreme" else " trigger",
+      " needs at least ", ceiling(n_tail), " historical years; the longest record has ",
+      max(tbl$n_years, 0L), "."
     ))
   }
   list(
@@ -209,7 +231,10 @@ sp_trigger_state <- function(exposure, thresholds, weights = NULL, spec) {
     stop("The exposure needs `sim_year` and the trigger variable.", call. = FALSE)
   }
   value <- as.numeric(exposure[[thresholds$variable]])
+  either <- identical(thresholds$direction, "either")
+  low <- NULL
   limit <- if (identical(thresholds$type, "weather")) {
+    if (either) low <- rep(thresholds$value_low, n)
     rep(thresholds$value, n)
   } else {
     keys <- intersect(.sp_trigger_key_cols, names(thresholds$table))
@@ -223,9 +248,18 @@ sp_trigger_state <- function(exposure, thresholds, weights = NULL, spec) {
     }
     th <- chr(thresholds$table)
     th$threshold <- thresholds$table$threshold
-    dplyr::left_join(chr(exposure), th, by = keys)$threshold
+    if (either) th$threshold_low <- thresholds$table$threshold_low
+    joined <- dplyr::left_join(chr(exposure), th, by = keys)
+    if (either) low <- joined$threshold_low
+    joined$threshold
   }
-  exceeds <- if (identical(thresholds$direction, "above")) value >= limit else value <= limit
+  exceeds <- if (either) {
+    value >= limit | value <= low
+  } else if (identical(thresholds$direction, "above")) {
+    value >= limit
+  } else {
+    value <= limit
+  }
   exceeds[is.na(exceeds)] <- FALSE
   exceeds
 }
@@ -336,6 +370,7 @@ sp_shock_plan <- function(spec, hist_exposure, eligibility, svy, analysis_unit =
   list(
     spec = spec[intersect(names(spec), c(
       "trigger_type", "trigger_variable", "trigger_direction", "trigger_value",
+      "trigger_value_low",
       "trigger_return_period_years", "payout_scope", "national_k_pct"
     ))],
     thresholds = sp_trigger_thresholds(hist_exposure, spec),
@@ -452,26 +487,63 @@ sp_shock_pipeline_rows <- function(plan, pipeline, exposure, state, transfer) {
   ok <- is.finite(rel) & w > 0
   cell_w <- rowsum(w[ok], g[ok])
   cell <- as.integer(rownames(cell_w))
-  cell_rel <- rowsum((w * rel)[ok], g[ok])[, 1L] / cell_w[, 1L]
-  event <- cell_rel <= -plan$loss_event_pct / 100
   first <- match(cell, g)
-  fired <- state$exceeds[first]
-  year <- pipeline$sim_year[first]
   spend <- rowsum(ifelse(is.finite(transfer), transfer, 0) * w, g)
-  cell_spend <- spend[match(cell, as.integer(rownames(spend))), 1L]
-  pop <- cell_w[, 1L]
-  by_year <- function(x) {
-    out <- rowsum(x, year)[, 1L]
-    unname(out[match(annual$sim_year, as.integer(names(out)))])
-  }
-  fill <- function(x) ifelse(is.na(x), 0, x)
-  annual$pop_tp <- fill(by_year(pop * (fired & event)))
-  annual$pop_fp <- fill(by_year(pop * (fired & !event)))
-  annual$pop_fn <- fill(by_year(pop * (!fired & event)))
-  annual$pop_tn <- fill(by_year(pop * (!fired & !event)))
-  annual$spend_total <- fill(by_year(cell_spend))
-  annual$spend_no_event <- fill(by_year(cell_spend * !event))
+  cells <- data.frame(
+    sim_year = pipeline$sim_year[first], pop = cell_w[, 1L],
+    rel = rowsum((w * rel)[ok], g[ok])[, 1L] / cell_w[, 1L],
+    fired = state$exceeds[first],
+    spend = spend[match(cell, as.integer(rownames(spend))), 1L]
+  )
+  basis <- .sp_shock_basis(cells, plan$loss_event_pct, as.character(cells$sim_year))
+  annual[cols] <- basis[match(as.character(annual$sim_year), rownames(basis)), cols]
+  annual[cols] <- lapply(annual[cols], function(x) ifelse(is.na(x), 0, x))
+  attr(annual, "cells") <- cells
   annual
+}
+
+# Population weights of true and false positives and negatives, and spending,
+# summed by `key` (one value per cell). A cell has a loss event when its mean
+# modelled loss is at or below minus `loss_event_pct` percent.
+.sp_shock_basis <- function(cells, loss_event_pct, key) {
+  event <- cells$rel <= -loss_event_pct / 100
+  fired <- cells$fired
+  m <- cbind(
+    pop_tp = cells$pop * (fired & event), pop_fp = cells$pop * (fired & !event),
+    pop_fn = cells$pop * (!fired & event), pop_tn = cells$pop * (!fired & !event),
+    spend_total = cells$spend, spend_no_event = cells$spend * !event
+  )
+  rowsum(m, key)
+}
+
+#' Score a stored shock run again with another loss-event share
+#'
+#' The loss event only scores the trigger (basis risk and leakage); it changes
+#' no payment and no welfare result. The run therefore keeps its per-cell loss
+#' data (`cells`), and this recomputes the scoring columns and the summary for a
+#' new share without running Step 3 again.
+#'
+#' @param shock List with `rows`, `cells` and `summary` as published by the run.
+#' @param loss_event_pct Loss-event share in percent.
+#' @return `shock` with `rows` and `summary` recomputed (a run without cells,
+#'   or an invalid share, is returned unchanged).
+#' @keywords internal
+sp_shock_rescore <- function(shock, loss_event_pct) {
+  pct <- suppressWarnings(as.numeric(loss_event_pct))[1L]
+  if (is.null(shock$cells) || !is.finite(pct) || pct <= 0) {
+    return(shock)
+  }
+  cols <- c("pop_tp", "pop_fp", "pop_fn", "pop_tn", "spend_total", "spend_no_event")
+  key <- function(d) paste(d$scenario, d$member, d$sim_year, sep = "\r")
+  basis <- .sp_shock_basis(shock$cells, pct, key(shock$cells))
+  rows <- shock$rows
+  hit <- match(key(rows), rownames(basis))
+  rows[cols] <- lapply(cols, function(col) {
+    ifelse(is.na(hit), 0, basis[hit, col])
+  })
+  shock$rows <- rows
+  shock$summary <- sp_shock_summary(rows)
+  shock
 }
 
 #' Summary of a shock program across members and years, by scenario
@@ -566,7 +638,8 @@ sp_shock_annual <- function(transfer, pipeline, svy, state = NULL,
 #'   the caller has it already (the module caches it).
 #' @return A list. On success: `annual` (see `sp_shock_annual()`),
 #'   `activation_freq`, `mean_cost`, `cost_1_in_20` (`NA` below 20 years),
-#'   `mean_exposed_share`, `n_years`, `n_record_years` (finite historical
+#'   `false_positive_rate`, `false_negative_rate`, `leakage_share` (scored with
+#'   `spec$loss_event_pct`, historical arm), `mean_exposed_share`, `n_years`, `n_record_years` (finite historical
 #'   years of the trigger variable). Otherwise `problem`, a message to show.
 #' @keywords internal
 sp_shock_preview <- function(spec, hist_sim, svy, analysis_unit = "hh",
@@ -588,16 +661,23 @@ sp_shock_preview <- function(spec, hist_sim, svy, analysis_unit = "hh",
       eligible <- withr::with_seed(
         wise_seed(seed, "policy", "sp"), .determine_sp_eligibility(svy, spec)
       )
-      plan <- sp_shock_plan(spec, exposure$table, eligible, svy, analysis_unit)
+      plan <- sp_shock_plan(
+        spec, exposure$table, eligible, svy, analysis_unit,
+        hist_pipeline = pipeline,
+        is_log = identical(hist_sim$so$transform %||% "", "log")
+      )
       state <- sp_shock_pipeline_state(plan, pipeline, exposure)
       transfer <- plan$per_household[as.integer(pipeline$svy_row_id)] * state$in_scope
-      annual <- sp_shock_annual(
-        transfer, pipeline, svy, state, analysis_unit,
-        spec$currency %||% "PPP", .sp_admin_share(spec)
-      )
+      # The same rows the run reports for the historical arm
+      annual <- sp_shock_pipeline_rows(plan, pipeline, exposure, state, transfer)
+      attr(annual, "cells") <- NULL
+      basis <- sp_shock_summary(cbind(scenario = "Historical", member = "Historical", annual))
       n_years <- nrow(annual)
       list(
         annual = annual,
+        false_positive_rate = basis$false_positive_rate,
+        false_negative_rate = basis$false_negative_rate,
+        leakage_share = basis$leakage_share,
         activation_freq = mean(annual$activated),
         mean_cost = mean(annual$total_cost),
         cost_1_in_20 = if (n_years >= 20L) {

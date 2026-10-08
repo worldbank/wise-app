@@ -230,16 +230,42 @@ mod_3_01_sp_server <- function(id,
                 inputId = ns("trigger_direction"),
                 label = "Pay when the value is",
                 aria_label = "Trigger direction",
-                choices = c("At or above" = "above", "At or below" = "below"),
+                choices = c(
+                  "At or above" = "above", "At or below" = "below",
+                  "Either end" = "either"
+                ),
                 selected = "above"
               ),
               conditionalPanel(
                 condition = paste0("input['", ns("trigger_type"), "'] != 'return_period'"),
+                conditionalPanel(
+                  condition = paste0("input['", ns("trigger_direction"), "'] == 'either'"),
+                  numericInput(
+                    ns("trigger_value_low"),
+                    label = tags$span(
+                      tags$i(class = "fa fa-gauge me-1"),
+                      "Low threshold",
+                      info_popover(
+                        title = "Either extreme",
+                        tags$p(
+                          "Pays when the value is at or below the low threshold or at",
+                          "or above the high threshold, for variables that hurt at",
+                          "both ends (very dry and very wet)."
+                        )
+                      )
+                    ),
+                    value = NA
+                  )
+                ),
                 numericInput(
                   ns("trigger_value"),
                   label = tags$span(
                     tags$i(class = "fa fa-gauge-high me-1"),
                     "Threshold value",
+                    tags$span(
+                      class = "text-muted small ms-1",
+                      textOutput(ns("trigger_value_hint"), inline = TRUE)
+                    ),
                     info_popover(
                       title = "Threshold value",
                       tags$p(
@@ -265,7 +291,9 @@ mod_3_01_sp_server <- function(id,
                       tags$p(
                         "Each location uses its own 1-in-x level, taken from its",
                         "historical years and applied unchanged to every climate",
-                        "member. A 1-in-x trigger needs at least x historical years."
+                        "member. A 1-in-x trigger needs at least x historical years.",
+                        "At either extreme the chance is shared between both ends",
+                        "(1 in 2x each), which needs 2x years."
                       )
                     )
                   ),
@@ -337,7 +365,9 @@ mod_3_01_sp_server <- function(id,
                   info_popover(
                     title = "Loss event",
                     tags$p(
-                      "Used to score the trigger after the run. A location has a",
+                      "Scoring only: it changes no payment and no welfare result, so",
+                      "changing it does not mark results stale and Diagnostics",
+                      "re-scores the finished run. A location has a",
                       "loss event in a year when its households' modelled weather",
                       "loss is at least this share of their own typical welfare.",
                       "Paying without a loss event is a false positive; a loss",
@@ -360,9 +390,21 @@ mod_3_01_sp_server <- function(id,
       if (!is.null(problem)) {
         return(problem)
       }
-      side <- if (identical(spec$trigger_direction, "below")) "at or below" else "at or above"
+      either <- identical(spec$trigger_direction, "either")
+      side <- if (either) {
+        "beyond"
+      } else if (identical(spec$trigger_direction, "below")) {
+        "at or below"
+      } else {
+        "at or above"
+      }
       level <- if (identical(spec$trigger_type, "return_period")) {
-        paste0("its 1-in-", spec$trigger_return_period_years, "-year level")
+        paste0(
+          "its 1-in-", spec$trigger_return_period_years, "-year level",
+          if (either) " at either end" else ""
+        )
+      } else if (either) {
+        paste(spec$trigger_value_low, "or", spec$trigger_value)
       } else {
         paste(spec$trigger_value)
       }
@@ -370,6 +412,10 @@ mod_3_01_sp_server <- function(id,
         spec$trigger_variable, " ", side, " ", level, "; ",
         spec$payments_per_activation, " payment(s)"
       )
+    })
+
+    output$trigger_value_hint <- renderText({
+      if (identical(input$trigger_direction, "either")) "(high threshold)" else ""
     })
 
     # Record length behind a return-period trigger.
@@ -381,9 +427,12 @@ mod_3_01_sp_server <- function(id,
         return("")
       }
       years <- length(unique(tbl$sim_year[is.finite(as.numeric(tbl[[var]]))]))
+      either <- identical(input$trigger_direction, "either")
       paste0(
-        "Historical record: ", years, " years, so a trigger of up to 1 in ", years,
-        " years is supported. Annual probability: ",
+        "Historical record: ", years, " years, so a trigger of up to 1 in ",
+        if (either) years %/% 2L else years,
+        " years is supported", if (either) " at either extreme" else "",
+        ". Annual probability: ",
         format(round(100 / max(1, suppressWarnings(as.numeric(
           input$trigger_return_period_years %||% 10
         ))), 1), nsmall = 1), "%."
@@ -877,7 +926,7 @@ mod_3_01_sp_server <- function(id,
         "sp_type_ui", "sp_budget_amount_ui", "sp_targeting_ui",
         "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui", "amount_basis_ui",
         "targeting_summary", "payment_summary", "amount_unit_hint",
-        "sp_trigger_ui", "trigger_summary"
+        "sp_trigger_ui", "trigger_summary", "trigger_value_hint"
       ),
       function(out_id) {
         shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
@@ -945,6 +994,9 @@ mod_3_01_sp_server <- function(id,
         trigger_direction = input$trigger_direction %||% "above",
         trigger_value = suppressWarnings(
           as.numeric(input$trigger_value %||% NA_real_)
+        ),
+        trigger_value_low = suppressWarnings(
+          as.numeric(input$trigger_value_low %||% NA_real_)
         ),
         trigger_return_period_years = suppressWarnings(
           as.numeric(input$trigger_return_period_years %||% NA_real_)
@@ -1136,6 +1188,14 @@ mod_3_01_sp_server <- function(id,
             selection_card_row(
               name = "Population in triggered locations",
               pills = fmt_num(100 * s$mean_exposed_share, suffix = "%")
+            ),
+            selection_card_row(
+              name = "Paid, no loss event",
+              pills = fmt_num(100 * s$false_positive_rate, suffix = "%", na = "Not available")
+            ),
+            selection_card_row(
+              name = "Loss event, not paid",
+              pills = fmt_num(100 * s$false_negative_rate, suffix = "%", na = "Not available")
             )
           )
         }
@@ -1223,7 +1283,9 @@ mod_3_01_sp_server <- function(id,
               "Recipients and cost are for a year in which the program pays.",
               "Years with payments, expected cost and the 1-in-20 cost come from",
               "the historical weather years of Step 2, evaluated per survey",
-              "location; they are not a forecast."
+              "location; they are not a forecast. A loss event is a location whose",
+              "modelled welfare loss reaches the share set in Trigger settings;",
+              "paid without one, or a loss event without payment, is basis risk."
             )
           } else {
             ""
