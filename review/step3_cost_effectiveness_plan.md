@@ -1,6 +1,6 @@
 # Step 3 cost-effectiveness results: initial plan
 
-Status: first draft for discussion. No code has been changed. The summary-card version of cost-effectiveness is deferred (see `review/headline_cards_review.md`, section 11.4C); this note plans the fuller results that the cards would later point to.
+Status: decisions taken 8 October 2026 (section 10); work is task P2-2 in `review/sp_shock_responsive_tasks.md`. Static metrics (P0-5) are built; the tab, effect-per-cost metrics and shock-program support are not. Where this note says "Results section", read "dedicated Step 3 tab" (decision 4). The summary-card version of cost-effectiveness is deferred (see `review/headline_cards_review.md`, section 11.4C); this note plans the fuller results that the cards would later point to.
 
 Written for: the WISE-APP maintainers and the policy team deciding what Step 3 should say about value for money.
 
@@ -37,7 +37,7 @@ What does not exist:
 
 ## 3. Scope and non-goals
 
-In scope: social protection cost-effectiveness for regular programs now, designed so the shock-responsive cost distribution can plug in later.
+In scope: cost-effectiveness of cash transfers (social protection) only, for regular programs and, in Phase 2 of the SP plan, shock-responsive programs. Only the modelled quantities count: the net transfer, administration cost, and the modelled welfare and poverty effect. The tab states this scope, and that the other levers (infrastructure, digital, labour, education) have no cost-effectiveness figure because the app has no unit costs for them (decision 5, 8 October 2026).
 
 Out of scope for now:
 
@@ -101,10 +101,10 @@ Options:
 | Option | Description | For | Against |
 |---|---|---|---|
 | A. Diagnostics section only | A "Cost-effectiveness" section in the Diagnostics tab (the plan in P0-5) | Smallest; matches the existing parallel task | Hidden from users who look only at Results; no figure |
-| B. Results section plus Diagnostics detail (recommended) | A "Cost and value for money" section in the Results tab with a compact table (cost, people lifted, cost per person lifted, coverage, leakage) and one figure; assumptions and the full metric table in Diagnostics | Answers the question where users already look; keeps detail separate | More UI to build and test |
-| C. New tab | A dedicated "Cost-effectiveness" tab after Results | Room for comparison views and design sweeps | Another tab to maintain; duplicates Results context |
+| B. Results section plus Diagnostics detail (superseded by C, decision 4) | A "Cost and value for money" section in the Results tab with a compact table (cost, people lifted, cost per person lifted, coverage, leakage) and one figure; assumptions and the full metric table in Diagnostics | Answers the question where users already look; keeps detail separate | More UI to build and test |
+| C. New tab (chosen) | A dedicated "Cost-effectiveness" tab after Results | Room for comparison views and design sweeps | Another tab to maintain; duplicates Results context |
 
-Recommendation: B for the first release, with the Results section built as a self-contained module so it can move to a tab (C) if the design-comparison view grows. Summary cards stay deferred; when they return, they should show one figure from this section.
+Decision (8 October 2026): option C, a dedicated Step 3 tab built as a self-contained module; the existing Diagnostics effectiveness table stays or links to it. Summary cards stay deferred; when they return, they should show one figure from this section.
 
 Figures worth building (echarts, consistent with the rest of Step 3):
 
@@ -139,11 +139,13 @@ Build order: P0-2 (admin cost) and P0-5 (static metrics) first, then this plan's
 | 1 | `R/fct_sp_effectiveness.R`: cost block and targeting block; tests against hand calculations on a small survey (weights, household size, missing poverty line) | P0-2 (admin cost) | M |
 | 2 | Diagnostics section: metric table and assumptions, export registration | Phase 1 | S |
 | 3 | Effect-per-cost metrics with intervals (average and adverse year), "not applicable" and "not bounded" handling | Phase 1; `coef_sd`; decomposition tail effect | M |
-| 4 | Results section: compact table and the three figures; stale-state handling like the other Step 3 outputs | Phases 2 and 3 | M |
+| 4 | Dedicated tab: compact table and the three figures, scope statement; stale-state handling like the other Step 3 outputs | Phases 2 and 3 | M |
 | 5 | Summary card (one figure, popover points to the section) | Phase 4 | S |
 | 6 (optional) | Unit-cost inputs for the other levers, so their cost-effectiveness can be reported; needs a source for unit costs | policy team input | L |
 
-## 10. Decisions needed
+## 10. Decisions
+
+Taken 8 October 2026: (1) dedicated tab; (2) net change in the number of poor, labelled as such; (3) lead with cost per person lifted for poverty-rate metrics, welfare gain per $1 otherwise, "not applicable" for near-zero or wrong-signed effects; (5) other levers out of scope, cash transfers only; (6) one seeded targeting draw; (7) the Results poverty line input. Item 4 (admin share) stays at default 0 with the share printed beside every figure; presets are deferred (P0-9). The original questions follow for the record.
 
 1. Tab or section: the plan recommends a Results section plus Diagnostics detail (option B). Is that right, or do you want a dedicated tab now?
 2. People lifted: gross or net? The model gives the net change in the poverty rate for the whole population. Gross movements (some households leaving poverty while others enter) need household-level baseline and policy status in each year, which the annual aggregates do not keep. The plan assumes net and labels it "net change in the number of poor", which is standard but understates people helped if some move the other way.

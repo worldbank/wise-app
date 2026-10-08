@@ -551,9 +551,9 @@ mod_3_01_sp_server <- function(id,
                     "Proxy variables with only two values always use random errors."
                   ),
                   tags$p(
-                    "Error counts are shares of sampled rows, not of the weighted",
-                    "population, so weighted error rates can differ slightly from",
-                    "the sliders."
+                    "Error rates are shares of the weighted population when the",
+                    "survey has weights, and of sampled rows otherwise. The",
+                    "realised rate matches the slider to within one row's weight."
                   )
                 )
               ),

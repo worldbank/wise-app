@@ -164,20 +164,85 @@ test_that("the basis has no effect outside household analysis", {
 
 # Where targeting errors fall (P0-4) ----
 
-test_that("concentration 0 or absent reproduces the earlier draw exactly", {
-  svy <- dsgn_svy(1500)
+test_that("concentration 0 or absent reproduces the earlier draw exactly (no or constant weights)", {
   seed <- 20260101L
   sp <- dsgn_sp()
-  legacy <- dsgn_legacy_eligibility(svy, sp, seed)
-  for (spx in list(sp, utils::modifyList(sp, list(error_concentration = 0)))) {
-    now <- withr::with_seed(wise_seed(seed, "policy", "sp"),
-                            .determine_sp_eligibility(svy, spx))
-    expect_identical(now, legacy)
+  svy_none <- dsgn_svy(1500, weights = FALSE)
+  svy_const <- dsgn_svy(1500, weights = FALSE)
+  svy_const$weight <- 120
+  for (svy in list(svy_none, svy_const)) {
+    legacy <- dsgn_legacy_eligibility(svy, sp, seed)
+    for (spx in list(sp, utils::modifyList(sp, list(error_concentration = 0)))) {
+      now <- withr::with_seed(wise_seed(seed, "policy", "sp"),
+                              .determine_sp_eligibility(svy, spx))
+      expect_identical(now, legacy)
+    }
   }
 })
 
+# Weighted error counts (P0-8) ----
+
+test_that("errors hit the weighted share the sliders describe", {
+  svy <- dsgn_svy(3000)
+  svy$weight <- exp(rnorm(nrow(svy), 5, 1.2)) # widely varying weights
+  sp <- dsgn_sp(inclusion_error_pct = 20, exclusion_error_pct = 10)
+  ideal <- .determine_sp_eligibility(svy, sp, apply_errors = FALSE)
+  w <- svy$weight
+  for (conc in c(0, 20)) {
+    e <- withr::with_seed(3L, .determine_sp_eligibility(
+      svy, utils::modifyList(sp, list(error_concentration = conc))))
+    incl <- sum(w[e & !ideal]) / sum(w[!ideal])
+    excl <- sum(w[!e & ideal]) / sum(w[ideal])
+    # within one row's weight of the target
+    expect_lte(abs(incl - 0.20) * sum(w[!ideal]), max(w[!ideal]) / 2 + 1e-9)
+    expect_lte(abs(excl - 0.10) * sum(w[ideal]), max(w[ideal]) / 2 + 1e-9)
+  }
+})
+
+test_that("the weighted error draw is deterministic and independent of row order", {
+  svy <- dsgn_svy(1200)
+  svy$weight <- exp(rnorm(nrow(svy), 5, 1))
+  sp <- dsgn_sp(error_concentration = 5)
+  draw <- function(d) {
+    withr::with_seed(11L, .determine_sp_eligibility(d, sp))
+  }
+  expect_identical(draw(svy), draw(svy))
+  # Reordered rows draw a different random order but the same weighted rates.
+  perm <- rev(seq_len(nrow(svy)))
+  ideal <- .determine_sp_eligibility(svy, sp, apply_errors = FALSE)
+  rate <- function(d, e, ideal) {
+    c(sum(d$weight[e & !ideal]) / sum(d$weight[!ideal]),
+      sum(d$weight[!e & ideal]) / sum(d$weight[ideal]))
+  }
+  r1 <- rate(svy, draw(svy), ideal)
+  r2 <- rate(svy[perm, ], draw(svy[perm, ]), ideal[perm])
+  expect_equal(r1, r2, tolerance = 0.01)
+})
+
+test_that("weighted errors keep the preview equal to the run", {
+  svy <- dsgn_svy()
+  svy$weight <- exp(rnorm(nrow(svy), 5, 1))
+  sp <- dsgn_sp(error_concentration = 5)
+  r <- dsgn_run(svy, sp)
+  expect_equal(r$reach$transfer_total, r$totals$total_cost)
+  expect_equal(r$reach$n_pop, sum(svy$weight[r$policy[[SP_TRANSFER_COL]] > 0]))
+})
+
+test_that("zero or missing weights are ignored when sizing errors", {
+  svy <- dsgn_svy(800)
+  svy$weight[1:50] <- NA
+  svy$weight[51:100] <- 0
+  sp <- dsgn_sp()
+  e <- withr::with_seed(2L, .determine_sp_eligibility(svy, sp))
+  expect_length(e, nrow(svy))
+  expect_false(anyNA(e))
+  expect_null(.sp_error_weights(data.frame(a = 1)))
+  expect_null(.sp_error_weights(data.frame(weight = c(2, 2, 2))))
+  expect_equal(.sp_error_weights(data.frame(weight = c(1, NA, 3))), c(1, 0, 3))
+})
+
 test_that("concentration keeps the exact error counts and the seed stream", {
-  svy <- dsgn_svy(2000)
+  svy <- dsgn_svy(2000, weights = FALSE)
   sp <- dsgn_sp(inclusion_error_pct = 20, exclusion_error_pct = 10)
   ideal <- .determine_sp_eligibility(svy, sp, apply_errors = FALSE)
   n_incl <- round(sum(!ideal) * 0.20)

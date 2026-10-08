@@ -1061,6 +1061,21 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   NULL
 }
 
+# Survey weights used to size targeting errors (P0-8). NULL when the frame has
+# no usable weight column or the weights are constant, in which case the
+# error counts are row counts. Missing or negative weights count as 0.
+.sp_error_weights <- function(svy) {
+  if (!"weight" %in% names(svy)) {
+    return(NULL)
+  }
+  w <- suppressWarnings(as.numeric(svy[["weight"]]))
+  w[!is.finite(w) | w < 0] <- 0
+  if (sum(w) <= 0 || length(unique(w)) < 2L) {
+    return(NULL)
+  }
+  w
+}
+
 .determine_sp_eligibility <- function(svy, sp, apply_errors = TRUE) {
   n <- nrow(svy)
   targeting <- sp$targeting %||% "exante_poor"
@@ -1096,12 +1111,15 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   # Inclusion / exclusion errors (not applied for universal). Diagnostics can
   # request the ideal targeting rule by leaving these errors unapplied.
   #
-  # The counts are exact: n_flip is the slider share of the non-eligible
-  # (inclusion) or eligible (exclusion) rows, counted by rows, not survey
-  # weights (P0-8 tracks the weighted variant). Which rows flip is uniform
-  # unless `sp$error_concentration` > 0, which makes rows near the cutoff
-  # likelier to flip (see .sp_cutoff_distance()). At 0 the draw is the same
-  # sample.int() call as before, so existing results are unchanged.
+  # The error targets are shares of the weighted population: the slider share
+  # of the non-eligible (inclusion) or eligible (exclusion) survey weight, so
+  # the realised weighted rate matches the slider to within one row's weight
+  # (P0-8). Rows are drawn in a random order and flipped until the cumulative
+  # weight is closest to the target. Without usable weights, or with constant
+  # weights, this is the row count and the draw is the same sample.int() call
+  # as before the weighted variant, so those results are unchanged. Which rows
+  # flip is uniform unless `sp$error_concentration` > 0, which makes rows near
+  # the cutoff likelier to flip (see .sp_cutoff_distance()).
   if (isTRUE(apply_errors) && targeting != "universal") {
     incl_rate <- (sp$inclusion_error_pct %||% 0) / 100
     excl_rate <- (sp$exclusion_error_pct %||% 0) / 100
@@ -1109,20 +1127,32 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
     elig <- which(eligible)
     conc <- .sp_error_concentration(sp)
     cut_dist <- if (conc > 0) .sp_cutoff_distance(svy, sp, targeting) else NULL
-    pick <- function(idx, k) {
-      k <- min(k, length(idx))
+    err_w <- .sp_error_weights(svy)
+    prob_for <- function(idx) {
       if (is.null(cut_dist)) {
-        return(idx[sample.int(length(idx), k)])
+        return(NULL)
       }
       d <- cut_dist[idx]
       d[!is.finite(d)] <- 1
-      idx[sample.int(length(idx), k, prob = exp(-conc * d))]
+      exp(-conc * d)
+    }
+    pick <- function(idx, rate) {
+      if (is.null(err_w)) {
+        k <- min(round(length(idx) * rate), length(idx))
+        return(idx[sample.int(length(idx), k, prob = prob_for(idx))])
+      }
+      target <- sum(err_w[idx]) * rate
+      ord <- idx[sample.int(length(idx), prob = prob_for(idx))]
+      cum <- cumsum(err_w[ord])
+      j <- which.min(abs(cum - target))
+      k <- if (target <= abs(cum[j] - target)) 0L else j
+      ord[seq_len(k)]
     }
     if (length(non_elig) > 0 && incl_rate > 0) {
-      eligible[pick(non_elig, round(length(non_elig) * incl_rate))] <- TRUE
+      eligible[pick(non_elig, incl_rate)] <- TRUE
     }
     if (length(elig) > 0 && excl_rate > 0) {
-      eligible[pick(elig, round(length(elig) * excl_rate))] <- FALSE
+      eligible[pick(elig, excl_rate)] <- FALSE
     }
   }
 
