@@ -889,6 +889,13 @@
     active$on_result <- NULL
     active$on_error <- NULL
     .wise_step2_async_stop_poll(active)
+    # R2-PERF-07: interrupt the running task so the single daemon is free for
+    # the next job at once (the retire marker alone is only seen at the next
+    # checkpoint, and a long SQL stage would hold the queue slot). The task
+    # then settles as rejected; settle treats a retired job as cancelled.
+    if (!is.null(active$handle)) {
+      try(mirai::stop_mirai(active$handle), silent = TRUE)
+    }
     gate <- .wise_step2_async_gate(active, timeout = 0)
     if (is.null(gate)) {
       active$retire_pending <- TRUE

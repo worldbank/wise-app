@@ -173,3 +173,35 @@ test_that("Overview metadata refuses to send UI credentials to a remote daemon",
   expect_equal(submissions, 0L)
   expect_match(conditionMessage(failure), "not local")
 })
+
+test_that("cancelling the active Step 2 job interrupts the running task", {
+  skip_on_cran()
+  local_daemon()
+  state <- .wise_step2_async_state
+  root <- withr::local_tempdir()
+  control <- file.path(root, "control")
+  dir.create(control, recursive = TRUE)
+  task <- mirai::mirai(Sys.sleep(60), .compute = "default")
+  job <- list2env(list(
+    id = "cancel-live", session_id = "s", generation = 1L, status = "running",
+    control_dir = control, lock_file = file.path(control, "publication.lock"),
+    retired_file = file.path(control, "retired.rds"), retired = FALSE,
+    weather_store_root = file.path(root, "weather"),
+    artifact_dir = file.path(root, "artifact"), handle = task, on_status = NULL
+  ), parent = emptyenv())
+  assign(job$id, job, envir = state$jobs)
+  old_active <- state$active
+  state$active <- job$id
+  withr::defer({
+    state$active <- old_active
+    if (exists(job$id, envir = state$jobs, inherits = FALSE)) rm(list = job$id, envir = state$jobs)
+  })
+
+  started <- proc.time()[["elapsed"]]
+  expect_true(.wise_step2_async_cancel(job$id, "superseded"))
+  expect_true(file.exists(job$retired_file))
+  next_task <- mirai::mirai(1 + 1, .compute = "default")
+  expect_true(wait_for(function() !mirai::unresolved(next_task), timeout = 20))
+  expect_identical(next_task$data, 2)
+  expect_lt(proc.time()[["elapsed"]] - started, 20)
+})

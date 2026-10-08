@@ -106,7 +106,31 @@ mod_3_06_policy_sim_server <- function(id,
     # File of the retained policy result (CR-PERF-04); removed when the run is
     # replaced and at session end.
     policy_artifact_rv <- reactiveVal(NULL)
+    # The run handed to a worker (R2-PERF-07) and the function that releases
+    # the button and the progress bar; both NULL when nothing is in flight.
+    active_job <- NULL
+    active_end <- NULL
+    # Stop the in-flight worker run, if any, so the daemon is free at once.
+    cancel_active_run <- function() {
+      job <- active_job
+      end <- active_end
+      if (is.null(job)) {
+        return(invisible(FALSE))
+      }
+      active_job <<- NULL
+      active_end <<- NULL
+      job$cancel()
+      try(
+        {
+          run_status("idle")
+          if (is.function(end)) end()
+        },
+        silent = TRUE
+      )
+      invisible(TRUE)
+    }
     cleanup_weather_stores <- function() {
+      cancel_active_run()
       session_ended <<- TRUE
       unlink(shiny::isolate(policy_artifact_rv())$file, force = TRUE)
       policy_artifact_rv(NULL)
@@ -167,6 +191,19 @@ mod_3_06_policy_sim_server <- function(id,
       ignoreInit = TRUE
     )
     shiny::observeEvent(baseline_hist_sim_rv(), policy_stale(FALSE))
+    # R2-PERF-07: a new Step 2 result makes an in-flight run obsolete; stop it
+    # now instead of letting it hold the daemon until its result is dropped.
+    shiny::observeEvent(hist_sim(),
+      {
+        if (cancel_active_run()) {
+          shiny::showNotification(
+            "The policy run was stopped because the Step 2 results changed.",
+            type = "warning", duration = 6
+          )
+        }
+      },
+      ignoreInit = TRUE
+    )
 
     run <- function() {
       # REACT-02: one policy simulation at a time. The guard is owned by the
@@ -398,6 +435,7 @@ mod_3_06_policy_sim_server <- function(id,
               progress$close()
               sim_running(FALSE)
             }
+            active_end <<- end_run
             # The result is dropped when the session ended, another run took
             # over, or the Step 2 result it was computed from was replaced.
             is_current <- function() {
@@ -411,7 +449,7 @@ mod_3_06_policy_sim_server <- function(id,
                 do.call(fn, args)
               }))
             }
-            step3_async_submit(
+            active_job <<- step3_async_submit(
               snapshot = c(inputs, list(
                 artifact = hs$.artifact[c("file", "sig")],
                 hs_overlay = hs[intersect(
@@ -426,6 +464,8 @@ mod_3_06_policy_sim_server <- function(id,
                 shiny::withReactiveDomain(session, shiny::isolate(is_current()))
               },
               on_result = in_session(function(computed) {
+                active_job <<- NULL
+                active_end <<- NULL
                 on.exit(end_run(), add = TRUE)
                 if (!is_current()) {
                   unlink(computed$artifact$file, force = TRUE)
@@ -436,6 +476,8 @@ mod_3_06_policy_sim_server <- function(id,
                 if (!identical(run_status(), "success")) run_status("failure")
               }),
               on_error = in_session(function(e) {
+                active_job <<- NULL
+                active_end <<- NULL
                 on.exit(end_run(), add = TRUE)
                 run_status("failure")
                 fail(e)

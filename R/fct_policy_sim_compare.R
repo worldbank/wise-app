@@ -2618,11 +2618,29 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   # results are memoised per (method, poverty line, residuals, focus, unit,
   # selected series). The cache is a fresh environment whenever any run input
   # changes, so entries never outlive the run they were computed for.
+  # R2-PERF-07: worker jobs of a cache that no longer matches the run are
+  # stopped, so they do not hold the daemon for results nobody will read.
+  last_metric_cache <- NULL
+  cancel_metric_jobs <- function(cache) {
+    if (is.null(cache$jobs)) return(invisible(NULL))
+    for (key in ls(cache$jobs, all.names = TRUE)) {
+      job <- get(key, envir = cache$jobs, inherits = FALSE)
+      try(job$cancel(), silent = TRUE)
+    }
+    rm(list = ls(cache$jobs, all.names = TRUE), envir = cache$jobs)
+    invisible(NULL)
+  }
+  session$onSessionEnded(function() {
+    if (!is.null(last_metric_cache)) cancel_metric_jobs(last_metric_cache)
+  })
   metric_cache <- reactive({
     baseline_hist_sim(); policy_hist_sim(); annual_channels(); decomp_context()
     baseline_saved_scenarios(); policy_saved_scenarios(); stale()
     policy_endpoint_status()
+    if (!is.null(last_metric_cache)) cancel_metric_jobs(last_metric_cache)
     cache <- new.env(parent = emptyenv())
+    cache$jobs <- new.env(parent = emptyenv())
+    last_metric_cache <<- cache
     cache$entries <- list()
     cache$validated <- new.env(parent = emptyenv())
     # CR-PERF-04: keys with a worker job in flight.
@@ -2708,6 +2726,9 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           if (exists(cache_key, envir = cache$pending, inherits = FALSE)) {
             rm(list = cache_key, envir = cache$pending)
           }
+          if (exists(cache_key, envir = cache$jobs, inherits = FALSE)) {
+            rm(list = cache_key, envir = cache$jobs)
+          }
           entries <- c(cache$entries, setNames(list(value), cache_key))
           cache$entries <- utils::tail(entries, metric_cache_limit)
           metric_job_tick(shiny::isolate(metric_job_tick()) + 1L)
@@ -2716,7 +2737,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           args <- list(...)
           shiny::withReactiveDomain(session, shiny::isolate(do.call(fn, args)))
         }
-        step3_metric_submit(
+        job <- step3_metric_submit(
           snapshot = list(
             artifact = baseline_hist$.artifact[c("file", "sig")],
             hs_overlay = baseline_hist[intersect(
@@ -2736,6 +2757,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
             store(unavailable(fallback, wise_user_error(e, "Metric decomposition")))
           })
         )
+        if (is.environment(job)) assign(cache_key, job, envir = cache$jobs)
       }
       return(unavailable(fallback, "Computing the decomposition in the background..."))
     }

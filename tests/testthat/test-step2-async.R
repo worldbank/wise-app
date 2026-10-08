@@ -122,7 +122,7 @@ testthat::test_that("queued cancellation removes the job and its artifacts", {
   expect_identical(events[[1L]], "cancelled")
 })
 
-testthat::test_that("active cancellation retires without stopping or releasing FIFO", {
+testthat::test_that("active cancellation retires and keeps the FIFO slot until the job settles", {
   state <- .wise_step2_async_state
   old_queue <- state$queue
   old_active <- state$active

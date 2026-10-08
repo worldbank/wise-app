@@ -285,3 +285,52 @@ test_that("the policy arm shares household-constant vectors through a file round
   # Unsharing without a store is a no-op.
   expect_identical(.step3_unshare_constants(computed), computed)
 })
+
+test_that("cancelling a Step 3 job stops the running task and frees the daemon", {
+  skip_on_cran()
+  state <- .wise_step2_async_state
+  withr::local_envvar(WISEAPP_ASYNC_SYNC = "0")
+  try(mirai::daemons(0L), silent = TRUE)
+  state$started <- FALSE
+  withr::defer({
+    try(mirai::daemons(0L), silent = TRUE)
+    state$started <- FALSE
+  })
+  root <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_ASYNC_ARTIFACT_ROOT = root)
+
+  # A worker that would hold the daemon for a minute. It runs in the daemon, so
+  # its environment must not carry the test frame.
+  slow_worker <- function(snapshot, artifact_dir) {
+    dir.create(artifact_dir, recursive = TRUE, showWarnings = FALSE)
+    Sys.sleep(60)
+    "finished"
+  }
+  environment(slow_worker) <- globalenv()
+
+  called <- FALSE
+  job <- .wise_step3_async_task(
+    slow_worker, list(),
+    convert = function(value, artifact_dir) value,
+    on_result = function(x) called <<- TRUE,
+    on_error = function(e) called <<- TRUE
+  )
+  # Wait until the worker started (it creates the job directory).
+  deadline <- Sys.time() + 60
+  while (!dir.exists(job$artifact_dir) && Sys.time() < deadline) later::run_now(0.1)
+  expect_true(dir.exists(job$artifact_dir))
+
+  started <- proc.time()[["elapsed"]]
+  expect_true(job$cancel())
+  expect_false(job$cancel())
+  expect_false(dir.exists(job$artifact_dir))
+
+  # The single daemon runs the next task at once instead of after the sleep.
+  next_task <- mirai::mirai(1 + 1, .compute = "default")
+  deadline <- Sys.time() + 20
+  while (mirai::unresolved(next_task) && Sys.time() < deadline) later::run_now(0.1)
+  expect_identical(next_task$data, 2)
+  expect_lt(proc.time()[["elapsed"]] - started, 20)
+  later::run_now(0.5)
+  expect_false(called)
+})

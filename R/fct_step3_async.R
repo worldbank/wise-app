@@ -422,6 +422,17 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
     job$poll_active <- FALSE
     unlink(artifact_dir, recursive = TRUE, force = TRUE)
   }
+  # R2-PERF-07: stop the task, queued or running, so the single daemon is free
+  # at once (an interrupt reaches even a running SQL query). A cancelled job
+  # never calls back; `finish()` removes its directory.
+  job$cancelled <- FALSE
+  job$cancel <- function() {
+    if (isTRUE(job$cancelled)) return(invisible(FALSE))
+    job$cancelled <- TRUE
+    if (!is.null(job$handle)) try(mirai::stop_mirai(job$handle), silent = TRUE)
+    finish()
+    invisible(TRUE)
+  }
   poll <- function() {
     if (!isTRUE(job$poll_active)) return(invisible(NULL))
     if (is.function(on_progress) && isTRUE(is_current())) {
@@ -436,6 +447,7 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
   }
 
   submit <- function() {
+    if (isTRUE(job$cancelled)) return(invisible(NULL))
     if (!isTRUE(is_current())) {
       finish()
       return(invisible(NULL))
@@ -452,9 +464,10 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
           }
           options(wiseapp.async.worker_initialized = TRUE)
         }
-        utils::getFromNamespace(worker, "wiseapp")(
-          snapshot = snapshot, artifact_dir = artifact_dir
-        )
+        # `worker` is the name of a package function; a function is accepted
+        # for tests.
+        fn <- if (is.character(worker)) utils::getFromNamespace(worker, "wiseapp") else worker
+        fn(snapshot = snapshot, artifact_dir = artifact_dir)
       }, package_path = package_path, development_package = development_package,
         worker = worker, snapshot = snapshot, artifact_dir = artifact_dir,
         .compute = "default", .timeout = .wise_step2_async_timeout_ms("step3"))
@@ -471,12 +484,14 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
       promises::then(task,
         onFulfilled = function(value) {
           job$poll_active <- FALSE
+          if (isTRUE(job$cancelled)) return(invisible(NULL))
           if (!isTRUE(is_current())) return(finish())
           result <- tryCatch(convert(value, artifact_dir), error = function(e) e)
           finish()
           if (inherits(result, "error")) on_error(result) else on_result(result)
         },
         onRejected = function(e) {
+          if (isTRUE(job$cancelled)) return(invisible(NULL))
           finish()
           if (isTRUE(is_current())) on_error(.wise_step2_async_describe_error(e))
         }
