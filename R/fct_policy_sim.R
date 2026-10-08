@@ -13,6 +13,12 @@
 #' @export
 SP_TRANSFER_COL <- ".wiseapp_sp_transfer"
 
+# Shock-responsive mode (P1-4): `apply_policy_to_svy()` writes this logical
+# column (static targeting result, including errors) and no transfer. The
+# amount is paid per row, year and member only when the trigger fires, so a
+# static `SP_TRANSFER_COL` would count the transfer twice.
+SP_ELIGIBLE_COL <- ".wiseapp_sp_eligible"
+
 
 # Policy activity predicates ----
 
@@ -723,6 +729,12 @@ has_sp_change <- function(sp) {
     if (any(is.finite(sp) & abs(sp) > 1e-10)) {
       return(TRUE)
     }
+  }
+
+  # Shock-responsive program: eligible households are paid when triggered.
+  elig <- svy_policy[[SP_ELIGIBLE_COL]]
+  if (!is.null(elig) && any(elig, na.rm = TRUE)) {
+    return(TRUE)
   }
 
   # Covariate levers: only columns apply_policy_to_svy() can mutate. Survey
@@ -1512,12 +1524,21 @@ apply_policy_to_svy <- function(svy,
     # "ind" the SP transfer is already per-individual and applies to every
     # eligible (individual) row as-is.
     if (!is.null(sp) && "welfare" %in% cols) {
-      eligible <- withr::with_seed(
-        lever_seed("sp"), .determine_sp_eligibility(svy, sp)
-      )
-      transfer <- .sp_transfer_values(svy, sp, analysis_unit, eligible)
-      if (!is.null(transfer)) {
-        svy[[SP_TRANSFER_COL]] <- transfer
+      is_shock <- identical(sp$sp_type, "shock")
+      if (!is_shock || is.null(.sp_shock_problem(sp))) {
+        eligible <- withr::with_seed(
+          lever_seed("sp"), .determine_sp_eligibility(svy, sp)
+        )
+        if (is_shock) {
+          # Same eligibility and seeded stream as the regular program; the
+          # transfer itself is dynamic (see SP_ELIGIBLE_COL).
+          svy[[SP_ELIGIBLE_COL]] <- eligible
+        } else {
+          transfer <- .sp_transfer_values(svy, sp, analysis_unit, eligible)
+          if (!is.null(transfer)) {
+            svy[[SP_TRANSFER_COL]] <- transfer
+          }
+        }
       }
     }
 
