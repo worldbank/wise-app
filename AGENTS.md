@@ -170,7 +170,8 @@ Bundled DuckDB extensions (`inst/duckdb_extensions/`: `h3` and `httpfs`) are bui
 Optional resource limits (unset = package/DuckDB defaults). Every Connect process runs a main R process plus a mirai daemon, each with its own in-memory DuckDB, so cap them on shared hosts:
 - `WISEAPP_DUCKDB_MEMORY_LIMIT` (for example `4GB`) and `WISEAPP_DUCKDB_THREADS` (per DuckDB instance); `WISEAPP_DUCKDB_TEMP_DIR` (spill directory, default a per-process temp dir)
 - `WISEAPP_THREADS` (fixest and collapse threads)
-- `WISEAPP_ASYNC_TIMEOUT_MIN` (Step 2 run limit, default 90) and `WISEAPP_ASYNC_METADATA_TIMEOUT_SEC` (default 300); `0` disables
+- `WISEAPP_ASYNC_TIMEOUT_MIN` (Step 2 run limit, default 90), `WISEAPP_ASYNC_STEP3_TIMEOUT_MIN` (Step 3 run and metric jobs, default 90) and `WISEAPP_ASYNC_METADATA_TIMEOUT_SEC` (default 300); `0` disables
+- `WISEAPP_ASYNC_STEP3=0` runs the Step 3 policy run and metric decomposition in the main process. By default they run on the shared mirai daemon and read the adopted Step 2 result and the Step 3 policy result from retained qs2 files under `WISEAPP_ASYNC_ARTIFACT_ROOT` (default a per-process temp dir, `retained/`). Budget temp disk per session: about 0.4-0.6 GB at a 3x3 Step 2 payload (BFA 2x2: 178 MB plus 216 MB). The files are removed when the result is replaced and at session end.
 - `WISEAPP_STAGE_LOG=0` turns off the one-line-per-run stage log
 - Weather disk cache: `WISEAPP_WEATHER_CACHE_DIR` (location, created 0700), `WISEAPP_WEATHER_CACHE_MAX_MB` (LRU budget), `WISEAPP_WEATHER_CACHE_DISABLE=1` (off)
 - `WISEAPP_ASYNC_SYNC=1` runs Step 2 and metadata tasks in the main process (debugging only; this removes the async protection)

@@ -390,3 +390,15 @@ Thread-policy revisit before V4 (2026-10-08, BFA, OLS, forced weather DuckDB thr
 - 2026-10-07 - `optimization_tracking.md` archived (`review/archive/`); its open items are OPT-01, 02, 03, 05, 06 in B6. Weather #4/#5 are closed (`optimize_get_weather.md`: #4 partly adopted, #5 measured no change); phantom inputs closed by CR-BUG-11.
 - 2026-10-07 - Code hygiene prompt revised into standing guidelines (`review/code_hygiene.md`).
 - 2026-10-07 - Test-suite work closed and archived: CI green, 7920 expectations, Step 3 coverage targets done, `predict_outcome` residual fixes (2a1c498), Rd gaps fixed (3666d97). Open items are in B5.
+
+### CR-PERF-04 - Step 3 off the main thread (closed 2026-10-08)
+
+Plan, design decisions and measurements: `review/step3_async_plan.md`. Code: `R/fct_step3_async.R` (`step3_compute()`, `step3_async_worker()`, `step3_metric_worker()`, the generic task runner), wiring in `mod_3_06_policy_sim.R`, `mod_2_01_weathersim.R` (retained Step 2 artifact) and the `metric_decomposition` reactive in `fct_policy_sim_compare.R`. Behind `WISEAPP_ASYNC_STEP3` (default on; `0` restores the synchronous path, which is also the fallback when no retained artifact exists).
+
+Verification: worker output `identical()` to the in-process `step3_compute()` on the smoke fixture and on BFA 2x2 (policy histories, scenarios, decomposition scenarios, diagnostics, policy survey, metric `summary` and `annual`); `test-fct_step3_async.R` includes real-daemon runs; 3194 expectations over the related test files passed. In-app test by the user 2026-10-08: acceptable.
+
+Measured (BFA 2x2, laptop): policy run in process 13.3 s, through the daemon 21.7 s cold and 16.6-17.7 s warm (artifact I/O about 3 s; main thread blocked about 1 s for the read-back); metric job 16.5-17.5 s against 15.9 s in process. Decision (user): accept the I/O cost for a free main thread.
+
+Found on the way: qs2 keeps environment locks and shared references but not the identity of an environment token, so `.decomposition_context_owner` is now compared by value; mirai daemons use `L'Ecuyer-CMRG`, so the worker applies the submitter's RNG kind. Phase 3 (shared helpers) closed without a refactor: Step 3 calls the Step 2 helpers directly.
+
+Not measured, left as follow-ups: worker peak RSS next to the Shiny process in a real session (feeds CR-PERF-13), BFA 3x3 timings (the in-process warm-context saving of the second metric is lost in the worker), deployed-app cold start (`loadNamespace()`), a cancel path for a running job (R2-PERF-07), no end-to-end test of the `mod_3_06` async wiring. CR-SEC-07 is partly covered (Step 3 result size limit reuses the Step 2 limit; no queue cap by bytes).
