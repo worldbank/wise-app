@@ -332,6 +332,13 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
   if (!identical(manifest$status, "succeeded") || !startsWith(file, paste0(root, "/"))) {
     stop("Step 3 result manifest does not match the submitted job.", call. = FALSE)
   }
+  if (is.numeric(manifest$result_bytes) && is.finite(manifest$result_bytes) &&
+      manifest$result_bytes > .WISE_STEP2_RESULT_MAX_BYTES) {
+    stop(sprintf(
+      "The Step 3 result (%.1f GB) is larger than the %.0f GB limit.",
+      manifest$result_bytes / 1024^3, .WISE_STEP2_RESULT_MAX_BYTES / 1024^3
+    ), call. = FALSE)
+  }
   read_started <- proc.time()[["elapsed"]]
   # Keep the result file: the metric-decomposition workers read the policy arm
   # from it. The caller owns the file and removes it with the run.
