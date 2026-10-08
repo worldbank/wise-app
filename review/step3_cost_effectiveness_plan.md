@@ -127,7 +127,7 @@ Figures worth building (echarts, consistent with the rest of Step 3):
 
 1. Cost becomes a distribution across years and climate members. The right headline is expected cost and a bad-year cost (for example the 1-in-20 cost), not one number.
 2. Cost per person lifted becomes a ratio of two random quantities. Report it for the expected year and for adverse years using paired (member, year) values, not a ratio of means.
-3. New comparable outputs (activation frequency, basis risk, climate-adjusted cost) belong in the same section, following the table in section 5.5 of that plan.
+3. New comparable outputs (activation frequency, basis risk, climate-adjusted cost) belong in the same section, following the table in section 3.8 of that plan.
 
 Build order: P0-2 (admin cost) and P0-5 (static metrics) first, then this plan's Results section, then extend for shock-responsive cost when that engine exists.
 
