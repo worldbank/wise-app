@@ -1057,12 +1057,24 @@ build_perturbation_method <- function(selected_weather) {
 # The POSIXlt conversion dominates exposure-table rebuilds; members of one
 # scenario share timestamps, so callers may compute this once and reuse it.
 .sim_timestamp_parts <- function(timestamp) {
+  # PERF-W2: every pipeline converts the same timestamp vector twice (exposure
+  # table and join), and all members of a scenario share it. The result is a
+  # pure function of the vector, so the last conversion is reused when the
+  # vector is identical (values, class and time zone).
+  if (!is.null(timestamp) && identical(timestamp, .sim_timestamp_memo$timestamp)) {
+    return(.sim_timestamp_memo$parts)
+  }
   ts_lt <- as.POSIXlt(timestamp)
-  list(
+  parts <- list(
     int_month = as.integer(ts_lt$mon + 1L),
     sim_year  = as.integer(ts_lt$year + 1900L)
   )
+  .sim_timestamp_memo$timestamp <- timestamp
+  .sim_timestamp_memo$parts <- parts
+  parts
 }
+
+.sim_timestamp_memo <- new.env(parent = emptyenv())
 
 .weather_join_key <- function(df, by) {
   parts <- lapply(df[by], function(x) {
