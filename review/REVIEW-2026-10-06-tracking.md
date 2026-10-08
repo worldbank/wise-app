@@ -58,7 +58,7 @@ Closed with a documented remainder; reopen only if the area is touched again.
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| R2-OPS-05 | M | S | ◐ | Decide whether to move DuckDB to the 1.4.x LTS. `DESCRIPTION` currently pins `duckdb (== 1.5.6)` with bundled extensions checked by SHA-256 (`R/fct_load_data.R`; `AGENTS.md`). Azure/delta are not bundled (decision 2026-10-07: Connect uses Databricks only; local runs install them normally). |
+| R2-OPS-05 | M | S | ✗ | Decided 2026-10-08: stay on DuckDB 1.5.6 (no move to the 1.4.x LTS). `DESCRIPTION` pins `duckdb (== 1.5.6)` with bundled extensions checked by SHA-256 (`R/fct_load_data.R`; `AGENTS.md`). Azure/delta are not bundled (decision 2026-10-07: Connect uses Databricks only; local runs install them normally). |
 
 ## B2 - Security
 
@@ -66,7 +66,7 @@ Closed with a documented remainder; reopen only if the area is touched again.
 |---|---|---|---|---|
 | CR-SEC-03 | H | M | ◐ | Per-session secret names and a per-session connection. Two sessions in one process using different credentials for the same bucket still share one secret. Low priority: Connect uses one service principal and UI credentials are a local-use path. Confirm the scoped Databricks secret after the next deploy. |
 | CR-SEC-07 | M | L | ☐ | Per-run size limits from config; cap the Step 2 queue by bytes; small profile for metadata. Folds into CR-PERF-04. |
-| CR-SEC-09 (rest) | L | S | ☐ | Move inline JS/CSS to `custom.js`/`custom.css` (enables a CSP). Deferred by decision 2026-10-07: do last. |
+| CR-SEC-09 (rest) | L | S | ☐ | Move inline JS/CSS to `custom.js`/`custom.css` (enables a CSP). Deferred (decisions 2026-10-07 and 2026-10-08): do last, in two steps. (1) Move our inline code to files (low risk). (2) Run the CSP in report-only mode on a staging Connect instance to list violations from Shiny, htmlwidgets, echarts4r, reactable and bslib; enforce only if the list is short, with a script-only target (strict `script-src`, lenient `style-src`) as the realistic goal. Connect or a proxy has to set the header. Not needed before the next deploy. |
 | CR-SEC-02 | H | M | ✗ | Remaining DuckDB lockdown deliberately not done (see Known gaps). |
 | R2-SEC-07 | Info | S | ✗ | Won't fix (user decision 2026-10-07): prepared-weather persistent cache is off by default; reopen if it is ever enabled. |
 
@@ -74,13 +74,13 @@ Closed with a documented remainder; reopen only if the area is touched again.
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| CR-OPS-01 | M | M | ◐ | `shinytest2`/axe smoke in CI (shared with CR-A11Y-09). Investigate why the headless-Chrome PNG test skips on some CI runs. CI is otherwise green (Tests step about 340 s, 0 failed, 0 skipped; `error-on` is `"warning"`). |
+| CR-OPS-01 | M | M | ◐ | Decided 2026-10-08: add a `shinytest2`/axe smoke job to CI (shared with CR-A11Y-09). Scope: one app-boot smoke, one `conditionalPanel` check and one axe run on the first screens; start as a non-blocking job, make it required once it is stable. Investigate why the headless-Chrome PNG test skips on some CI runs. CI is otherwise green (Tests step about 340 s, 0 failed, 0 skipped; `error-on` is `"warning"`). |
 | R CMD check notes | L | S | ◐ | Unused Imports, `:::` and undefined globals are fixed (2026-10-08, uncommitted): `tidyselect` dropped from Imports, `Rcpp::sourceCpp` and `brand.yml::read_brand_yml` imported, workers use `utils::getFromNamespace()`, `stats`/`utils` imports and `globalVariables` added in `R/globals.R`, duplicate local `one_scenario` renamed in `mod_2_02_results.R`. The last `check(--no-tests)` before the rename showed only that NOTE plus the sandbox "future file timestamps" NOTE; re-run once to confirm. |
 | CR-PERF-13 / R2-PERF-08 | M | S | ◐ | Env-configurable limits exist (`WISEAPP_DUCKDB_MEMORY_LIMIT`, `_THREADS`, `_TEMP_DIR`, `WISEAPP_THREADS`); choose values for Connect. |
-| R2-OPS-08 | M | S | ◐ | Benchmark harness: `.profile_record()` ordering in `fct_get_weather.R`. |
-| R2-OPS-09 | L | S | ◐ | Fragile tests: `localhost:1` polling, `set.seed` vs `local_seed`, `tests/spelling.R` never fails. |
+| R2-OPS-08 | M | S | ☑ | Done 2026-10-08: `.profile_record()` takes the stage clock before its own `serialize()`/RSS work. Delete this row at the next tidy. |
+| R2-OPS-09 | L | S | ◐ | Left: `set.seed` vs `local_seed` (116 calls in 48 files; convert only in files being touched); `tests/spelling.R` never fails (the `spelling` package is not installed here and there is no `inst/WORDLIST`; needs a WORDLIST pass first). The `localhost:1` tests are a refused connection with a 15-20 s deadline, so they finish at once; left as they are. |
 | RED-06 | M | M | ◐ | One parameterised batch driver over `step2_compute()`. Consolidating the five `04_run_sim` copies deferred by user decision 2026-10-07. |
-| Test suite: remaining | L | S-M | ☐ | (1) rename history-named test files to `test-<R file>.R`; (2) shared `helper-fixtures-*.R` only when two or more files share a builder; (3) `wiseapp.verbose` option to silence progress messages (an `R/` change); (4) `shinytest2` boot smoke plus one `conditionalPanel` check; (5) hygiene in touched files only (`library()`, `wiseapp:::`, `set.seed`, `expect_true(identical())`); (6) coverage job and ratchet in CI. Coverage is 82.1% overall; `fct_predict_outcomes.R` 73%. Deliberately not done: bulk renames, test tiers, parallel test files. Background in `review/archive/test_suite_plan.md` and `test_suite_review.md`. |
+| Test suite: remaining | L | S-M | ☐ | (1) rename history-named test files to `test-<R file>.R`; (2) shared `helper-fixtures-*.R` only when two or more files share a builder; (3) `wiseapp.verbose` option to silence progress messages (an `R/` change); (4) `shinytest2` boot smoke plus one `conditionalPanel` check; (5) hygiene in touched files only (`library()`, `wiseapp:::`, `set.seed`, `expect_true(identical())`); (6) coverage job and ratchet in CI: dropped by user decision 2026-10-08. Coverage was 82.1% overall; `fct_predict_outcomes.R` 73%. Deliberately not done: bulk renames, test tiers, parallel test files. Background in `review/archive/test_suite_plan.md` and `test_suite_review.md`. |
 | CR-PERF-15 | M | S | ✗ | Deferred (user decision 2026-10-06): keep `load_all()` in `app.R` and git-backed deploys. Cheaper lever: Min Processes / idle timeout on Connect. |
 
 ## B6 - Performance (ranked by the report, section 5.6)
@@ -91,7 +91,7 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 |---:|---|---|---|---|---|
 | 3 | R2-PERF-01 | M | ◐ | Shrink the Step 2 result. Done: household-constant vectors shared once per artifact (BFA 3x3 shape: artifact 945 to 886 MB, main-thread read 0.93 to 0.49 s). Open: drop `hist_sim_result$svy` (4.5 MB), lazy per-scenario read off the main thread, slimmer `F_loading` (the remaining bulk). Real BFA artifact not re-measured. | Bit-identical |
 | 4 | R2-PERF-04 | S-M | ◐ | Poverty-line change recomputes only line-dependent metrics (done, 2.7 s to 1.1 s synthetic). Open: columnar threshold table / single support pass, contrast SD once, md5/serialise copies on reads. | Bit-identical |
-| 5 | CR-PERF-04 | M-L | ☐ | Step 1 weather, LASSO/fit, Step 3 and exports as tasks on the mirai singleton with `input_task_button()`. Deferred 2026-10-07: start with Step 3 run + decomposition; design options (a) generalise the Step 2 coordinator, (b) separate Step 3 runner reusing artifact helpers. Covers CR-SEC-07 and any post-delivery worker job for R2-PERF-13. The first visit of each Step 3 method still blocks the main thread (BFA 3x3 about 52 s). | Sync vs worker bit-identical |
+| 5 | CR-PERF-04 | M-L | ☐ | Decided 2026-10-08: scope is Step 3 only (run + decomposition); Step 2 is already fast and stays as is. Scheduled after the SP work lands. Design: option (b), a separate Step 3 runner reusing the artifact helpers, on the shared mirai pool (so the Connect memory cap still holds), with `input_task_button()`. Extract shared lifecycle helpers (task state, cancel, timeout, snapshot scrubbing) from the Step 2 coordinator only after Step 3 shows which parts it really shares; do not build a general framework first. Step 1 weather, LASSO/fit and exports are out of scope for now. Covers CR-SEC-07 and any post-delivery worker job for R2-PERF-13. The first visit of each Step 3 method still blocks the main thread (BFA 3x3 about 52 s). | Sync vs worker bit-identical |
 | 9 | R2-PERF-10 / CR-PERF-02 | S-M | ☐ | Normalise weather cache keys (Date vs character, year-aligned spans); reuse Step 1 weather for Step 2 historical. | Bit-identical |
 | 10 | R2-PERF-03 | S-M | ☐ | Identity-keyed prep cache storing row indices, bounded by bytes. Do not enlarge the entry count (2.3 GB). | Bit-identical |
 | 16 | CR-PERF-03 | L | ☐ | Factorised per-key predictor behind a flag. Agree tolerances first. | Pre-agreed tolerance |
@@ -118,8 +118,8 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 | CR-A11Y-09 | M | M | ☐ | axe-core via `shinytest2` in CI (same job as CR-OPS-01). |
 | CR-A11Y-05 | L-M | S | ◐ | Done in code 2026-10-08 (uncommitted): legend `.wx-tip` markers have a `role="tooltip"` child with `aria-describedby`, are hoverable, and Escape dismisses them (`custom.js`); the hexmap pointer tooltip hides on Escape. Contract test in `test-a11y-contract.R`. Not checked in a browser; the 12 px target is R2-A11Y-06. |
 | R2-A11Y-04 | L | S | ◐ | Done in code 2026-10-08 (uncommitted): orange, sky blue and yellow darkened in `.okabe_ito` (all series at least 3:1 on white) and `.wise_marker_alt` is `#A86400` (4.7:1, for the 10 px label); test in `test-a11y-contract.R`. Not seen in a browser. The wave-colour map palette (`fct_surveystats.R`) and `.coverage_ramp` keep canonical hexes. |
-| R2-A11Y-05 | L | S | ◐ | Info popovers without a title still have a generic name. Skip link, main landmark, heading levels and live region are done. |
-| R2-A11Y-06 | L | S | ◐ | Pan buttons or keyboard pan; at least 24 px targets for `.wise-info-icon` and `.wx-tip` (need a browser). The dead click input is removed. |
+| R2-A11Y-05 | L | S | ◐ | Done in code 2026-10-08 (uncommitted): `custom.js` names untitled `.wise-info-icon`s "More information: <heading or label text>", including content added later. Checked in headless Chrome on a mock page (static and dynamic icons), not in the real app. Skip link, main landmark, heading levels and live region were done earlier. |
+| R2-A11Y-06 | L | S | ◐ | Done in code 2026-10-08 (uncommitted): 24 px hit areas for `.wise-info-icon` (`custom.css`) and `.wx-tip` (`::before` overlay); a point 9 px from the icon hit it in headless Chrome. Left: pan buttons. MapLibre's default keyboard pan (arrow keys on the focused map) is not disabled in `hexmap.js` but was not tested in a browser; add pan buttons only if that fails. The dead click input is removed. |
 
 ## B9 - Code quality and docs
 
