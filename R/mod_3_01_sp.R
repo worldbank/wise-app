@@ -384,7 +384,6 @@ mod_3_01_sp_server <- function(id,
       # matching the "LCU (2021)" outcome option (see R2-BUG-04).
       is_lcu <- identical(.sp_currency(currency), "LCU")
       currency <- if (is_lcu) "2021 LCU" else currency
-      money_sign <- if (is_lcu) "LCU" else "$"
 
       tagList(
         # Amount and budget mode ----
@@ -395,10 +394,12 @@ mod_3_01_sp_server <- function(id,
           info_popover(
             title = "Amount and budget mode",
             tags$p(
-              tags$b(paste(money_sign, "per", unit_word(plural = FALSE))),
-              "sets the transfer paid to each recipient", unit_word(plural = FALSE),
-              "per payment. The annual cost then depends on the number of recipients",
-              "and payments per year."
+              tags$b("Per transfer"),
+              "sets the amount paid to each recipient", unit_word(plural = FALSE),
+              "per payment (or per activation in shock-responsive mode). Whether a",
+              "recipient is a household or a person is set in Payment settings.",
+              "The annual cost then depends on the number of recipients and",
+              "payments per year."
             ),
             tags$p(
               tags$b("Total budget"),
@@ -415,7 +416,7 @@ mod_3_01_sp_server <- function(id,
             aria_label = "Amount or budget mode",
             choices = stats::setNames(
               c("transfer_first", "budget_first"),
-              c(paste(money_sign, "per", unit_word(plural = FALSE)), "Total budget")
+              c("Per transfer", "Total budget")
             ),
             selected = "transfer_first"
           )
@@ -430,7 +431,7 @@ mod_3_01_sp_server <- function(id,
               class = "sp-inline-label",
               `for` = ns("budget_fixed"),
               tags$i(class = "fa fa-dollar-sign me-1"),
-              paste0("Amount (", currency, ")")
+              paste0("Total annual budget (", currency, ")")
             ),
             numericInput(
               inputId = ns("budget_fixed"),
@@ -449,7 +450,11 @@ mod_3_01_sp_server <- function(id,
               class = "sp-inline-label",
               `for` = ns("transfer_amount_usd"),
               tags$i(class = "fa fa-dollar-sign me-1"),
-              paste0("Amount (", currency, ")")
+              paste0("Amount per transfer (", currency, ")"),
+              tags$span(
+                class = "text-muted small ms-1",
+                textOutput(ns("amount_unit_hint"), inline = TRUE)
+              )
             ),
             numericInput(
               inputId = ns("transfer_amount_usd"),
@@ -597,6 +602,18 @@ mod_3_01_sp_server <- function(id,
       )
     })
 
+    # Kept out of sp_budget_amount_ui so a basis change does not re-render
+    # (and reset) the amount inputs.
+    output$amount_unit_hint <- renderText({
+      au <- tryCatch(analysis_unit(), error = function(e) "hh")
+      if (identical(au, "hh") &&
+        identical(input$amount_basis %||% "per_household", "per_capita")) {
+        "per person"
+      } else {
+        paste("per", unit_word(plural = FALSE, au = au))
+      }
+    })
+
     output$payment_summary <- renderText({
       admin <- suppressWarnings(as.numeric(input$admin_cost_pct %||% 0))
       basis <- input$amount_basis %||% "per_household"
@@ -625,7 +642,7 @@ mod_3_01_sp_server <- function(id,
       c(
         "sp_type_ui", "sp_budget_amount_ui", "sp_targeting_ui",
         "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui", "amount_basis_ui",
-        "targeting_summary", "payment_summary"
+        "targeting_summary", "payment_summary", "amount_unit_hint"
       ),
       function(out_id) {
         shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
