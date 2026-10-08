@@ -23,6 +23,12 @@
 .bench_execute_step2 <- function(args, evidence_class,
                                   run_fn = fct_run_simulation) {
   .bench_assert_runtime_contract(args, run_fn)
+  # Opt-in R-level profile of the Step 2 call (WISEAPP_STEP2_RPROF=<file>).
+  rprof_file <- Sys.getenv("WISEAPP_STEP2_RPROF", "")
+  if (nzchar(rprof_file)) {
+    utils::Rprof(rprof_file, interval = 0.02)
+    on.exit(utils::Rprof(NULL), add = TRUE)
+  }
   result <- do.call(run_fn, args)
   result <- .bench_attach_runtime_metadata(result, args, evidence_class)
   .bench_assert_runtime_options(result, args)

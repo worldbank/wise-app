@@ -393,7 +393,7 @@ Thread-policy revisit before V4 (2026-10-08, BFA, OLS, forced weather DuckDB thr
 
 ### CR-PERF-04 - Step 3 off the main thread (closed 2026-10-08)
 
-Plan, design decisions and measurements: `review/step3_async_plan.md`. Code: `R/fct_step3_async.R` (`step3_compute()`, `step3_async_worker()`, `step3_metric_worker()`, the generic task runner), wiring in `mod_3_06_policy_sim.R`, `mod_2_01_weathersim.R` (retained Step 2 artifact) and the `metric_decomposition` reactive in `fct_policy_sim_compare.R`. Behind `WISEAPP_ASYNC_STEP3` (default on; `0` restores the synchronous path, which is also the fallback when no retained artifact exists).
+Plan, design decisions and measurements: `review/archive/step3_async_plan.md`. Code: `R/fct_step3_async.R` (`step3_compute()`, `step3_async_worker()`, `step3_metric_worker()`, the generic task runner), wiring in `mod_3_06_policy_sim.R`, `mod_2_01_weathersim.R` (retained Step 2 artifact) and the `metric_decomposition` reactive in `fct_policy_sim_compare.R`. Behind `WISEAPP_ASYNC_STEP3` (default on; `0` restores the synchronous path, which is also the fallback when no retained artifact exists).
 
 Verification: worker output `identical()` to the in-process `step3_compute()` on the smoke fixture and on BFA 2x2 (policy histories, scenarios, decomposition scenarios, diagnostics, policy survey, metric `summary` and `annual`); `test-fct_step3_async.R` includes real-daemon runs; 3194 expectations over the related test files passed. In-app test by the user 2026-10-08: acceptable.
 

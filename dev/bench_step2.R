@@ -867,6 +867,12 @@ inputs_by_country <- setNames(
     t0 <- proc.time()[["elapsed"]]
     value <- do.call(get_weather, call_args)
     wall <- proc.time()[["elapsed"]] - t0
+    # Opt-in per-stage weather profile: WISEAPP_WEATHER_PROFILE=1 and
+    # WISEAPP_STEP2_WEATHER_PROFILE_OUT=<file.rds>.
+    wx_out <- Sys.getenv("WISEAPP_STEP2_WEATHER_PROFILE_OUT", "")
+    if (nzchar(wx_out) && !is.null(attr(value, "weather_profile"))) {
+      saveRDS(attr(value, "weather_profile"), wx_out)
+    }
     pipeline_inside <- sum(state$pipeline_elapsed, na.rm = TRUE) - pipeline_before
     state$weather_elapsed <- max(0, wall - pipeline_inside)
     state$expected_keys <- c("historical", setdiff(names(value), "historical"))
