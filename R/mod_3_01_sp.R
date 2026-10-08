@@ -351,7 +351,7 @@ mod_3_01_sp_server <- function(id,
                     title = "Payments per activation",
                     tags$p(
                       "Each payment is the amount per transfer set above. Annual",
-                      "support in an activated year = amount × payments."
+                      "support in an activated year = amount \u{00d7} payments."
                     )
                   )
                 ),
