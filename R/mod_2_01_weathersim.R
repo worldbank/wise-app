@@ -1169,6 +1169,11 @@ mod_2_01_weathersim_server <- function(id,
                  new_artifact$scenario_names <- names(result$new_scenarios)
                }
                result$hist_sim_result$.artifact <- new_artifact
+               # R2-PERF-01: the Step 3 workers read member weather from the
+               # retained artifact, so this process does not keep it.
+               if (.step3_release_allowed(new_artifact)) {
+                 result$new_scenarios <- .step3_release_member_weather(result$new_scenarios)
+               }
                sim_stale(FALSE)
                weather_store_lease(new_lease)
                retained_artifact(new_artifact)

@@ -375,3 +375,30 @@ test_that("policy fields identical to the baseline become links and are re-linke
   ss_missing$a$pipelines$m1$weather_raw <- NULL
   expect_error(.step3_relink_baseline(deduped, hs, ss_missing), "baseline field")
 })
+
+test_that("member weather is released only when a worker can read it back", {
+  ss <- list(
+    a = list(weather_raw = "rep", pipelines = list(
+      m1 = list(weather_raw = data.frame(x = 1), y_point = 1:3),
+      m2 = list(weather_raw = data.frame(x = 2), y_point = 4:6)
+    )),
+    b = list(weather_raw = "rep", pipelines = list(m1 = list(weather_raw = data.frame(x = 3))))
+  )
+  expect_false(.step3_members_released(ss))
+  released <- .step3_release_member_weather(ss)
+  expect_true(.step3_members_released(released))
+  expect_s3_class(released$a$pipelines$m2$weather_raw, "wiseapp_released_weather")
+  expect_s3_class(released$b$pipelines$m1$weather_raw, "wiseapp_released_weather")
+  # Everything else, including the scenario-level frame, is untouched.
+  expect_identical(released$a$weather_raw, "rep")
+  expect_identical(released$a$pipelines$m1$y_point, 1:3)
+  expect_identical(names(released), names(ss))
+  expect_false(.step3_members_released(NULL))
+  expect_identical(.step3_release_member_weather(NULL), list())
+
+  artifact <- list(file = "x", sig = "s")
+  expect_true(.step3_release_allowed(artifact))
+  expect_false(.step3_release_allowed(NULL))
+  withr::with_envvar(c(WISEAPP_ASYNC_STEP3 = "0"), expect_false(.step3_release_allowed(artifact)))
+  withr::with_envvar(c(WISEAPP_ASYNC_SYNC = "1"), expect_false(.step3_release_allowed(artifact)))
+})

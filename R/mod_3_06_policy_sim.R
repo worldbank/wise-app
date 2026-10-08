@@ -484,6 +484,12 @@ mod_3_06_policy_sim_server <- function(id,
               })
             )
           } else {
+            # R2-PERF-01: a result whose member weather was released can only
+            # be used by a worker (the retained artifact is gone or workers
+            # are off). Say so instead of computing from missing frames.
+            if (.step3_members_released(ss)) {
+              stop(.STEP3_RELEASED_MESSAGE, call. = FALSE)
+            }
             # Held in locals - INT-09 publishes all state atomically at the end
             # of a fully successful run.
             computed <- shiny::withProgress(

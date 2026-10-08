@@ -34,6 +34,42 @@
   computed
 }
 
+# R2-PERF-01: the per-member weather frames of a Step 2 result (about 4.7 MB per
+# member at BFA 2x2, 0.7 GB at 3x3) are read only by the Step 3 workers, which
+# take them from the retained Step 2 artifact. When that artifact exists and
+# Step 3 runs in workers, the Shiny process releases them at adoption. A
+# released member keeps a marker, so a code path that still needs the frame
+# fails visibly ("exposure unavailable") instead of computing from nothing;
+# the synchronous Step 3 paths refuse released results explicitly.
+.step3_release_marker <- function() structure(list(), class = "wiseapp_released_weather")
+
+.step3_release_member_weather <- function(new_scenarios) {
+  lapply(new_scenarios %||% list(), function(s) {
+    if (!is.list(s) || !is.list(s$pipelines)) return(s)
+    s$pipelines <- lapply(s$pipelines, function(p) {
+      if (is.list(p) && !is.null(p$weather_raw)) p$weather_raw <- .step3_release_marker()
+      p
+    })
+    s$members_released <- TRUE
+    s
+  })
+}
+
+.step3_members_released <- function(ss) {
+  any(vapply(ss %||% list(), function(s) isTRUE(s$members_released), logical(1)))
+}
+
+# TRUE when the Shiny process may release member weather for a new result.
+.step3_release_allowed <- function(artifact) {
+  is.list(artifact) && .wise_step3_async_enabled() && .wise_step2_async_enabled() &&
+    !.wise_step2_async_sync()
+}
+
+.STEP3_RELEASED_MESSAGE <- paste(
+  "The stored Step 2 result is no longer available to the background worker.",
+  "Re-run the Step 2 simulation."
+)
+
 # The policy arm is the baseline arm with corrected predictions: almost every
 # field (weather_raw, weather_shared, svy, the household-constant vectors) is
 # identical to the baseline's. Writing those again doubles the artifact, and

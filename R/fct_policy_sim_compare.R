@@ -2761,6 +2761,12 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       }
       return(unavailable(fallback, "Computing the decomposition in the background..."))
     }
+    # R2-PERF-01: without the worker (retained artifact gone) a result whose
+    # member weather was released cannot be decomposed in this process.
+    if (is.null(result) && !is.null(source) &&
+        .step3_members_released(baseline_saved_scenarios())) {
+      return(unavailable(fallback, .STEP3_RELEASED_MESSAGE))
+    }
     if (is.null(result)) {
       failed <- FALSE
       result <- tryCatch(calculate(source), error = function(e) {
