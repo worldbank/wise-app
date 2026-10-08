@@ -108,13 +108,13 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| CR-PERF-07 | M | M | ☐ | Slim the live `model_fit` in the main process (fit1-3, `wise_mm`, `train_data`, `.snap$survey_weather`). The worker copy is already slim (`step2_slim_model_fit()` in `fct_step2_compute.R`, the starting point). |
+| CR-PERF-07 | M | M | ✗ | Measured 2026-10-08 on BFA (OLS, default spec, 13,779 rows x 87 columns, `lobstr::obj_size`): the whole live `model_fit` plus `.snap$survey_weather` is 19.1 MB. Parts: `train_data` 8.6 MB, `.snap$survey_weather` 8.6 MB (16.2 MB together, so some columns are shared), fit1-3 about 11.5 MB but that is one shared captured environment, not three copies; `wise_mm` 0.2 MB (fit3 only); `formulas` 0.6 MB. `.snap$survey_weather` is the same object as the upstream `survey_weather()` reactive unless `relabel_bin_levels()` changes it, so the extra cost is between 0 and 8.6 MB per session. The worker copy is already slim (`step2_slim_model_fit()`, 10.2 MB). Not worth the risk: every Step 1 renderer reads these fields lazily, so a field dropped too early breaks a tab only when it is opened. Memory scales with rows, so reopen only if a large-country session (for example IRN) shows high RSS; measure with `dev/` scratch script pattern: build inputs via `bench_step2.R`, then `lobstr::obj_size()` per field. |
 
 ## B8 - Accessibility (WCAG 2.2 AA, section 9)
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| CR-A11Y-08 | M | M | ☐ | "View as table" alternative for the map; ECharts `aria`. |
+| CR-A11Y-08 | M | M | ◐ | Map "View as table" alternative: dropped by user decision 2026-10-08 (maps stay hover-only for values). ECharts `aria` in `wise_echart_theme()` (`utils_plot_theme.R`): deferred by user decision 2026-10-08 (generic generated descriptions judged not worth a screen-reader pass); reopen with hand-written descriptions on key charts if wanted. |
 | CR-A11Y-09 | M | M | ☐ | axe-core via `shinytest2` in CI (same job as CR-OPS-01). |
 | CR-A11Y-05 | L-M | S | ◐ | Done in code 2026-10-08 (uncommitted): legend `.wx-tip` markers have a `role="tooltip"` child with `aria-describedby`, are hoverable, and Escape dismisses them (`custom.js`); the hexmap pointer tooltip hides on Escape. Contract test in `test-a11y-contract.R`. Not checked in a browser; the 12 px target is R2-A11Y-06. |
 | R2-A11Y-04 | L | S | ◐ | Done in code 2026-10-08 (uncommitted): orange, sky blue and yellow darkened in `.okabe_ito` (all series at least 3:1 on white) and `.wise_marker_alt` is `#A86400` (4.7:1, for the 10 px label); test in `test-a11y-contract.R`. Not seen in a browser. The wave-colour map palette (`fct_surveystats.R`) and `.coverage_ramp` keep canonical hexes. |
