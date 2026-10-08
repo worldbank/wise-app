@@ -256,3 +256,32 @@ test_that("a run submitted to the shared daemon is read back and equals the in-p
     list(.artifact = list(file = art)), list(.artifact = got$artifact)
   ))
 })
+
+test_that("the policy arm shares household-constant vectors through a file round trip", {
+  skip_if_not_installed("qs2")
+  ids <- seq_len(2000L)
+  pipe <- function(y) list(
+    y_point = y, id_vec = ids, weight = rep(1, 2000L), svy_row_id = ids,
+    sim_year = rep(2020L, 2000L),
+    weather_exposure = list(schema = 2L, row_index = ids, prediction_row_id = ids)
+  )
+  computed <- list(
+    pol_out = list(
+      hist_sim = list(pipeline = pipe(rnorm(2000L))),
+      saved_scenarios = list(a = list(pipelines = list(m1 = pipe(rnorm(2000L)), m2 = pipe(rnorm(2000L)))))
+    ),
+    decomp_context = "ctx"
+  )
+  shared <- .step3_share_constants(computed)
+  expect_s3_class(shared$pol_out$saved_scenarios$a$pipelines$m1$id_vec, "wiseapp_shared_ref")
+  # Identical vectors (ids, row maps) are stored once: ids, weights, sim_year.
+  expect_length(shared$.shared_constants, 3L)
+
+  f <- withr::local_tempfile(fileext = ".qs2")
+  qs2::qs_save(shared, f)
+  back <- .step3_unshare_constants(qs2::qs_read(f))
+  expect_null(back$.shared_constants)
+  expect_identical(back, computed)
+  # Unsharing without a store is a no-op.
+  expect_identical(.step3_unshare_constants(computed), computed)
+})

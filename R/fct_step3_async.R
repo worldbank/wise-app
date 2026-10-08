@@ -5,6 +5,35 @@
 # worker later. It returns plain data; publishing the results (INT-09) stays
 # with the caller.
 
+# Household-constant vectors (ids, weights, row maps) repeat in every pipeline
+# of the policy arm. They are shared in memory in the worker, but
+# serialisation writes one copy per pipeline and the read materialises them
+# all again (about 400 MB extra at BFA 2x2). Reuse the Step 2 artifact
+# sharing on the policy arm; the result stays bit-identical.
+.step3_share_constants <- function(computed) {
+  shared <- step2_share_constants(list(
+    hist_sim_result = computed$pol_out$hist_sim,
+    new_scenarios = computed$pol_out$saved_scenarios
+  ))
+  computed$pol_out$hist_sim <- shared$hist_sim_result
+  computed$pol_out$saved_scenarios <- shared$new_scenarios
+  computed$.shared_constants <- shared$.shared_constants
+  computed
+}
+
+.step3_unshare_constants <- function(computed) {
+  if (is.null(computed$.shared_constants)) return(computed)
+  restored <- step2_unshare_constants(list(
+    hist_sim_result = computed$pol_out$hist_sim,
+    new_scenarios = computed$pol_out$saved_scenarios,
+    .shared_constants = computed$.shared_constants
+  ))
+  computed$pol_out$hist_sim <- restored$hist_sim_result
+  computed$pol_out$saved_scenarios <- restored$new_scenarios
+  computed$.shared_constants <- NULL
+  computed
+}
+
 #' Check the run-owned invariants of a run read back from a worker.
 #'
 #' Serialisation keeps environment locks and shared references (one
@@ -310,7 +339,7 @@ step3_async_worker <- function(snapshot, artifact_dir) {
   tmp <- paste0(result_file, ".tmp")
   # One call, so references shared between the context and the annual channels
   # survive the round trip.
-  qs2::qs_save(computed, tmp, nthreads = .WISE_STEP2_QS2_THREADS)
+  qs2::qs_save(.step3_share_constants(computed), tmp, nthreads = .WISE_STEP2_QS2_THREADS)
   if (!file.rename(tmp, result_file)) {
     unlink(tmp, force = TRUE)
     stop("Could not publish the Step 3 result artifact.", call. = FALSE)
@@ -348,7 +377,9 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
   if (suppressWarnings(file.rename(file, kept))) file <- kept else kept <- NULL
   ok <- FALSE
   on.exit(if (!ok && !is.null(kept)) unlink(kept, force = TRUE), add = TRUE)
-  computed <- qs2::qs_read(file, nthreads = .WISE_STEP2_QS2_THREADS, validate_checksum = TRUE)
+  computed <- .step3_unshare_constants(
+    qs2::qs_read(file, nthreads = .WISE_STEP2_QS2_THREADS, validate_checksum = TRUE)
+  )
   computed$artifact <- if (!is.null(kept)) {
     list(file = normalizePath(kept, winslash = "/"), id = basename(root))
   }
@@ -495,10 +526,10 @@ step3_metric_worker <- function(snapshot, artifact_dir) {
     snapshot$rng_kind %||% c("Mersenne-Twister", "Inversion", "Rejection")
   ))
   step2 <- .wise_step3_read_step2(snapshot)
-  policy <- qs2::qs_read(
+  policy <- .step3_unshare_constants(qs2::qs_read(
     snapshot$policy_artifact$file,
     nthreads = .WISE_STEP2_QS2_THREADS, validate_checksum = TRUE
-  )
+  ))
   step3_validate_worker_run(policy)
   .policy_metric_decomposition(
     baseline_hist = step3_baseline_arm(step2$hs, snapshot$residuals),
