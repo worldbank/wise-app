@@ -4543,7 +4543,7 @@
       "checksum": "87b35cab30740239a53661fbb9377931"
     },
     "R/fct_get_weather.R": {
-      "checksum": "ac204ab22c7a5e53bd51189b3822a752"
+      "checksum": "9bb261c62dcd4adea45161f8b37dbd97"
     },
     "R/fct_hexmap.R": {
       "checksum": "70cfbfbd01fac72dc0b0679bf4906381"
@@ -4636,7 +4636,7 @@
       "checksum": "856f9c1679a475737e1a677cb92f302b"
     },
     "R/fct_step3_async.R": {
-      "checksum": "d984d9a52996582d045e294fa4cdfd7c"
+      "checksum": "680a2d1f1eb015c427b069280886535e"
     },
     "R/fct_surveystats.R": {
       "checksum": "1803d57eda1b89de105debd33215101f"
