@@ -32,10 +32,13 @@
   list(status = "ok", reason = NULL)
 }
 
-.prepare_policy_annual_channels <- function(context, run_identity) {
+.prepare_policy_annual_channels <- function(context, run_identity, shock = NULL) {
   .validate_run_decomposition_context(context, run_identity)
   endpoint <- .policy_annual_channel_status(context)
   if (!identical(endpoint$status, "ok")) return(endpoint)
+  if (!is.null(shock) && length(shock$per_household) != context$n) {
+    stop("Shock plan does not match the run's survey rows.", call. = FALSE)
+  }
   vars <- context$weather_vars
   n <- context$n
   zero <- setNames(lapply(vars, function(v) {
@@ -77,6 +80,7 @@
     repositioning_modeled = identical(context$engine, "rif"),
     interaction_included = base$has_interactions,
     tau_i_pre = context$tau_i_pre, tau_i_post = context$tau_i_post,
+    shock = shock,
     correction_version = "row_aligned_annual_v1"
   ), parent = emptyenv())
   lockEnvironment(prepared, bindings = TRUE)
@@ -180,12 +184,37 @@
     any(rows < 1 | rows > length(pipeline$y_point)) || anyDuplicated(rows)) {
     stop("Invalid annual channel row selection.", call. = FALSE)
   }
-  .policy_annual_channel_block(pipeline, prepared, exposure, rows)
+  .policy_annual_channel_block(pipeline, prepared, exposure, rows,
+    sp_dynamic = .policy_sp_dynamic(pipeline, prepared, exposure))
+}
+
+# Shock-responsive transfer of one pipeline on the outcome's model scale, one
+# value per prediction row; NULL when the run has no shock program. Every
+# consumer of the correction computes it from the same pure function, once per
+# pipeline and before any chunk or year loop (P1-6).
+.policy_sp_dynamic <- function(pipeline, prepared, exposure) {
+  .policy_sp_shock_eval(pipeline, prepared, exposure)$model
+}
+
+# The trigger state, the stored-scale transfer and its model-scale conversion
+# for one pipeline (all NULL without a shock program).
+.policy_sp_shock_eval <- function(pipeline, prepared, exposure) {
+  plan <- prepared$shock
+  if (is.null(plan)) return(list(state = NULL, stored = NULL, model = NULL))
+  context <- prepared$context
+  state <- sp_shock_pipeline_state(plan, pipeline, exposure)
+  stored <- plan$per_household[as.integer(pipeline$svy_row_id)] * state$in_scope
+  list(state = state, stored = stored, model = outcome_level_scale(
+    stored, context$so, .outcome_ppp(context$svy_baseline)[pipeline$svy_row_id]
+  ))
 }
 
 # Internal hot loop: callers validate the immutable source and whole mapping
 # once before consuming bounded blocks. Public adapter calls remain strict.
-.policy_annual_channel_block <- function(pipeline, prepared, exposure, rows) {
+# `sp_dynamic` (per prediction row of the whole pipeline, model scale) adds a
+# shock-responsive transfer; NULL leaves the block exactly as before.
+.policy_annual_channel_block <- function(pipeline, prepared, exposure, rows,
+                                         sp_dynamic = NULL) {
   ids <- pipeline$svy_row_id[rows]
   idx <- exposure$row_index[rows]
   r1 <- r2 <- numeric(length(rows))
@@ -219,15 +248,37 @@
     delta_sp[ok] <- ifelse(transfer[ok] == 0, 0,
       log(pmax(exp(y_t[ok]) + transfer[ok], 1e-10)) - y_t[ok])
   }
+  if (!is.null(sp_dynamic)) {
+    # Own vector, added into delta_sp (and so delta_main and delta_total): the
+    # Phase 2 channel split is then presentational. RIF repositioning does not
+    # see this transfer (plan section 4.3). Rows with no finite prediction use
+    # the observed baseline level, as the static transfer does above.
+    transfer <- sp_dynamic[rows]
+    is_log <- identical(prepared$context$so$transform %||% "", "log")
+    delta_sp_shock <- sp_dynamic_effect(y_t, transfer, is_log)
+    missing <- is.na(delta_sp_shock)
+    if (any(missing)) {
+      fallback <- if (is_log) {
+        level_base <- as.numeric(prepared$context$y_level_baseline)[ids][missing]
+        sp_dynamic_effect(log(pmax(level_base, 1e-10)), transfer[missing], TRUE)
+      } else {
+        NA_real_
+      }
+      delta_sp_shock[missing] <- ifelse(is.finite(fallback), fallback, 0)
+    }
+    delta_sp <- delta_sp + delta_sp_shock
+  }
   covar <- prepared$delta_main_covar[ids]
   main <- delta_sp + covar
-  list(status = "ok", delta_sp = delta_sp,
+  out <- list(status = "ok", delta_sp = delta_sp,
     delta_main_covar = covar, delta_main = main,
     delta_res1 = r1, delta_res2 = r2, delta_total = main + r1 + r2,
     prediction_row_id = exposure$prediction_row_id[rows],
     repositioning_modeled = prepared$repositioning_modeled,
     interaction_included = prepared$interaction_included,
     correction_version = prepared$correction_version)
+  if (!is.null(sp_dynamic)) out$delta_sp_shock <- delta_sp_shock
+  out
 }
 
 .apply_policy_annual_pipeline <- function(pipeline, prepared, run_identity,
@@ -263,9 +314,11 @@
     current
   }
   out <- pipeline
+  shock <- .policy_sp_shock_eval(pipeline, prepared, exposure)
+  sp_dynamic <- shock$model
   for (start in seq.int(1L, n, by = chunk_size)) {
     rows <- seq.int(start, min(n, start + chunk_size - 1L))
-    ch <- .policy_annual_channel_block(pipeline, prepared, exposure, rows)
+    ch <- .policy_annual_channel_block(pipeline, prepared, exposure, rows, sp_dynamic)
     if (any(!is.finite(ch$delta_total))) {
       stop("Nonfinite annual policy correction.", call. = FALSE)
     }
@@ -368,7 +421,19 @@
     run_identity = run_identity, exposure_source = "step2_prediction_row_mapping",
     n_prediction_rows = n, n_exposure_anchors = nrow(exposure$table),
     scope = "production_prediction_rows", uncertainty = "baseline_X_gradient")
-  list(pipeline = out, compact = compact)
+  result <- list(pipeline = out, compact = compact)
+  if (!is.null(shock$state)) {
+    # Run outputs of the shock program (P1-7), from the baseline predictions
+    rows <- sp_shock_pipeline_rows(prepared$shock, pipeline, exposure, shock$state, shock$stored)
+    result$shock <- cbind(
+      scenario = scenario %||% "Scenario", member = member %||% "Member", rows
+    )
+    # Survey rows paid in at least one simulated year (diagnostics "treated")
+    paid <- logical(length(prepared$shock$per_household))
+    paid[as.integer(pipeline$svy_row_id)[shock$stored > 0]] <- TRUE
+    result$shock_paid <- paid
+  }
+  result
 }
 
 # Deliberately slow reference for tests/benchmarks only: evaluate the original
@@ -610,13 +675,14 @@
   is_log <- isTRUE(context$so$transform == "log")
   aggregate <- resolve_agg_fn(method)
   years <- sort(unique(baseline$sim_year))
+  sp_dynamic <- .policy_sp_dynamic(baseline, prepared, exposure)
   deciles <- prepared$context$baseline_deciles
   annual <- decile_annual <- mechanisms <- list()
   for (year in years) {
     all_rows <- which(baseline$sim_year == year)
     rows <- all_rows[!is.na(baseline$y_point[all_rows])]
     if (!length(rows)) next
-    ch <- .policy_annual_channel_block(baseline, prepared, exposure, rows)
+    ch <- .policy_annual_channel_block(baseline, prepared, exposure, rows, sp_dynamic)
     y <- baseline$y_point[rows]
     target <- policy$y_point[rows]
     reconstructed <- y + ch$delta_total

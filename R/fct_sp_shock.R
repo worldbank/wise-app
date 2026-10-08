@@ -13,6 +13,16 @@ SP_PAYOUT_SCOPES <- c("local", "national_triggered", "national_all")
 # A trigger is evaluated per survey round, survey location and interview month.
 .sp_trigger_key_cols <- c("code", "year", "survname", "loc_id", "int_month")
 
+# A trigger problem the user can act on (choose another variable or return
+# period). Classed so callers can show its message and treat other errors as
+# unexpected.
+.sp_trigger_abort <- function(message) {
+  stop(structure(
+    class = c("sp_trigger_problem", "error", "condition"),
+    list(message = message, call = NULL)
+  ))
+}
+
 #' Why a shock-responsive spec cannot run, or NULL when it can
 #'
 #' Checks the trigger and payout fields of a scenario list from
@@ -104,17 +114,16 @@ SP_PAYOUT_SCOPES <- c("local", "national_triggered", "national_all")
 sp_trigger_thresholds <- function(hist_exposure, spec) {
   problem <- .sp_shock_problem(spec)
   if (!is.null(problem)) {
-    stop(problem, call. = FALSE)
+    .sp_trigger_abort(problem)
   }
   type <- spec$trigger_type %||% "weather"
   var <- spec$trigger_variable
   direction <- spec$trigger_direction %||% "above"
   if (!var %in% .sp_trigger_variables(hist_exposure)) {
-    stop(
+    .sp_trigger_abort(paste0(
       "The trigger variable '", var, "' is not a continuous weather variable ",
-      "in the exposure table (binned variables cannot drive a trigger).",
-      call. = FALSE
-    )
+      "in the exposure table (binned variables cannot drive a trigger)."
+    ))
   }
   if (identical(type, "weather")) {
     return(list(
@@ -143,11 +152,10 @@ sp_trigger_thresholds <- function(hist_exposure, spec) {
     unname(stats::quantile(v[is.finite(v)], probs = prob, names = FALSE))
   }, numeric(1))
   if (!any(tbl$supported)) {
-    stop(
+    .sp_trigger_abort(paste0(
       "A 1-in-", format(n_req), " trigger needs at least ", ceiling(n_req),
-      " historical years; the longest record has ", max(tbl$n_years, 0L), ".",
-      call. = FALSE
-    )
+      " historical years; the longest record has ", max(tbl$n_years, 0L), "."
+    ))
   }
   list(
     type = type, variable = var, direction = direction,
@@ -184,12 +192,20 @@ sp_trigger_thresholds <- function(hist_exposure, spec) {
 #'   (logical by simulation year; always FALSE for `local`).
 #' @keywords internal
 sp_trigger_state <- function(exposure, thresholds, weights = NULL, spec) {
-  scope <- spec$payout_scope %||% "local"
-  if (!scope %in% SP_PAYOUT_SCOPES) {
-    stop("Unknown payout scope '", scope, "'.", call. = FALSE)
+  if (!"sim_year" %in% names(exposure)) {
+    stop("The exposure needs `sim_year` and the trigger variable.", call. = FALSE)
   }
+  .sp_trigger_scope(
+    .sp_trigger_exceeds(exposure, thresholds), exposure$sim_year, weights, spec
+  )
+}
+
+# Which exposure rows pass the trigger. Works on any frame that carries the
+# trigger variable (and the threshold keys), so a pipeline can evaluate its
+# small exposure table once and index the result by prediction row.
+.sp_trigger_exceeds <- function(exposure, thresholds) {
   n <- nrow(exposure)
-  if (!"sim_year" %in% names(exposure) || !thresholds$variable %in% names(exposure)) {
+  if (!thresholds$variable %in% names(exposure)) {
     stop("The exposure needs `sim_year` and the trigger variable.", call. = FALSE)
   }
   value <- as.numeric(exposure[[thresholds$variable]])
@@ -211,10 +227,17 @@ sp_trigger_state <- function(exposure, thresholds, weights = NULL, spec) {
   }
   exceeds <- if (identical(thresholds$direction, "above")) value >= limit else value <= limit
   exceeds[is.na(exceeds)] <- FALSE
+  exceeds
+}
 
-  w <- if (is.null(weights)) rep(1, n) else as.numeric(weights)
+# Exposed share, national gate and payout scope from per-row exceedance.
+.sp_trigger_scope <- function(exceeds, year, weights, spec) {
+  scope <- spec$payout_scope %||% "local"
+  if (!scope %in% SP_PAYOUT_SCOPES) {
+    stop("Unknown payout scope '", scope, "'.", call. = FALSE)
+  }
+  w <- if (is.null(weights)) rep(1, length(exceeds)) else as.numeric(weights)
   w[!is.finite(w) | w < 0] <- 0
-  year <- exposure$sim_year
   total <- rowsum(w, year, reorder = TRUE)[, 1L]
   hit <- rowsum(w * exceeds, year, reorder = TRUE)[, 1L]
   share <- ifelse(total > 0, hit / total, 0)
@@ -268,19 +291,329 @@ sp_dynamic_transfer <- function(state, eligibility, spec, svy, analysis_unit = "
     any(ids < 1L | ids > nrow(svy))) {
     stop("Prediction rows must map to survey rows.", call. = FALSE)
   }
-  eligible <- !is.na(eligibility) & eligibility
+  .sp_dynamic_per_household(eligibility, spec, svy, analysis_unit)[ids] * state$in_scope
+}
+
+# Daily transfer each survey row receives when the program pays it: the regular
+# program's transfer-first arithmetic with payments per activation. Zero for
+# rows that are not statically eligible.
+.sp_dynamic_per_household <- function(eligibility, spec, svy, analysis_unit) {
+  if (length(eligibility) != nrow(svy)) {
+    stop("Eligibility must have one value per survey row.", call. = FALSE)
+  }
   per_household <- .sp_transfer_values(
     svy,
     utils::modifyList(spec, list(
       budget_mode = "transfer_first",
       transfer_n_payments = spec$payments_per_activation %||% 1L
     )),
-    analysis_unit, eligible
+    analysis_unit, !is.na(eligibility) & eligibility
   )
   if (is.null(per_household)) {
     stop("The survey cannot support a transfer (no welfare column).", call. = FALSE)
   }
-  per_household[ids] * state$in_scope
+  per_household
+}
+
+#' Run-level plan for a shock-responsive program
+#'
+#' Everything a pipeline needs to evaluate the program, computed once per run:
+#' the trigger thresholds from the historical exposure and the per-survey-row
+#' daily transfer of eligible households. Plain data, so it can be captured by
+#' any process that runs the correction.
+#'
+#' @param spec Scenario list with `sp_type == "shock"`.
+#' @param hist_exposure Exposure table of the historical pipeline.
+#' @param eligibility Logical per survey row (`SP_ELIGIBLE_COL`).
+#' @param svy Survey frame of the run (see `sp_dynamic_transfer()`).
+#' @param analysis_unit `"hh"`, `"ind"` or `"firm"`.
+#' @return A list with `spec` (trigger and scope fields), `thresholds` and
+#'   `per_household`.
+#' @keywords internal
+sp_shock_plan <- function(spec, hist_exposure, eligibility, svy, analysis_unit = "hh",
+                          hist_pipeline = NULL, is_log = FALSE) {
+  loss_pct <- suppressWarnings(as.numeric(spec$loss_event_pct %||% 10))[1L]
+  list(
+    spec = spec[intersect(names(spec), c(
+      "trigger_type", "trigger_variable", "trigger_direction", "trigger_value",
+      "trigger_return_period_years", "payout_scope", "national_k_pct"
+    ))],
+    thresholds = sp_trigger_thresholds(hist_exposure, spec),
+    per_household = .sp_dynamic_per_household(eligibility, spec, svy, analysis_unit),
+    # Run outputs (P1-7): cost arithmetic and the modelled-loss reference
+    cost_frame = as.data.frame(svy)[intersect(c("weight", "hhsize", "ppp2021"), names(svy))],
+    analysis_unit = analysis_unit,
+    currency = spec$currency %||% "PPP",
+    admin_share = .sp_admin_share(spec),
+    loss_event_pct = if (is.finite(loss_pct) && loss_pct > 0) loss_pct else 10,
+    is_log = isTRUE(is_log),
+    reference = if (is.null(hist_pipeline)) NULL else {
+      sp_shock_reference(hist_pipeline, nrow(svy), is_log)
+    }
+  )
+}
+
+#' Each household's own historical mean outcome level
+#'
+#' The reference of the modelled weather loss (plan section 4.4): the mean over
+#' the historical years of the back-transformed central prediction. The level is
+#' averaged, not the log, since the loss is measured on levels.
+#'
+#' @param pipeline Historical Step 2 pipeline (`y_point`, `svy_row_id`).
+#' @param n_svy Number of survey rows.
+#' @param is_log Whether the outcome is log-transformed.
+#' @return Numeric vector of length `n_svy`; `NA` for households without a
+#'   finite prediction.
+#' @keywords internal
+sp_shock_reference <- function(pipeline, n_svy, is_log) {
+  level <- if (is_log) exp(as.numeric(pipeline$y_point)) else as.numeric(pipeline$y_point)
+  ok <- is.finite(level)
+  ids <- as.integer(pipeline$svy_row_id)
+  sums <- rowsum(level[ok], ids[ok])
+  n <- rowsum(rep(1, sum(ok)), ids[ok])
+  ref <- rep(NA_real_, n_svy)
+  ref[as.integer(rownames(sums))] <- sums[, 1L] / n[, 1L]
+  ref
+}
+
+#' Dynamic transfer of one pipeline, on the stored welfare scale
+#'
+#' Evaluates the trigger on the pipeline's own exposure table (one small join,
+#' then indexed by prediction row), applies the payout scope with the
+#' pipeline's weights, and multiplies by the per-household transfer. The same
+#' pure function backs every consumer of the correction, so they cannot differ.
+#'
+#' @param plan Result of `sp_shock_plan()`.
+#' @param pipeline Step 2 prediction pipeline (`svy_row_id`, `sim_year`,
+#'   `weight`).
+#' @param exposure Resolved exposure mapping of that pipeline (`table`,
+#'   `row_index`).
+#' @return Numeric vector, one value per prediction row.
+#' @keywords internal
+sp_shock_pipeline_transfer <- function(plan, pipeline, exposure) {
+  state <- sp_shock_pipeline_state(plan, pipeline, exposure)
+  plan$per_household[as.integer(pipeline$svy_row_id)] * state$in_scope
+}
+
+#' Trigger state of one pipeline (see `sp_trigger_state()`)
+#'
+#' Evaluates the trigger on the pipeline's exposure table, then indexes the
+#' result by prediction row.
+#'
+#' @inheritParams sp_shock_pipeline_transfer
+#' @return The list returned by `sp_trigger_state()`.
+#' @keywords internal
+sp_shock_pipeline_state <- function(plan, pipeline, exposure) {
+  exceeds <- .sp_trigger_exceeds(
+    as.data.frame(exposure$table), plan$thresholds
+  )[exposure$row_index]
+  c(list(exceeds = exceeds), .sp_trigger_scope(
+    exceeds, pipeline$sim_year, pipeline$weight, plan$spec
+  )[c("in_scope", "share", "gate")])
+}
+
+#' Run outputs of one pipeline, one row per simulation year
+#'
+#' Annual cost and activation (`sp_shock_annual()`) plus the population-weighted
+#' pieces of basis risk and leakage, so pipelines pool by plain sums. A cell is
+#' a (survey round, location, interview month, year) exposure row. A cell has a
+#' loss event when the mean modelled loss of its households, relative to each
+#' household's own historical mean level, is at or below `-loss_event_pct`
+#' percent (decision 6); the trigger "fires" in a cell when its weather exceeds
+#' the threshold. The `pop_*` columns hold the population weight of cells that
+#' are true or false positives and negatives; `spend_*` the spending reaching
+#' all cells and cells without a loss event. Basis-risk columns are `NA` when
+#' the plan has no historical reference.
+#'
+#' @param plan Result of `sp_shock_plan()`.
+#' @param pipeline Baseline prediction pipeline (central `y_point`).
+#' @param exposure Resolved exposure of that pipeline.
+#' @param state Result of `sp_shock_pipeline_state()`.
+#' @param transfer Result of `sp_shock_pipeline_transfer()` (stored scale).
+#' @return Data frame, see above.
+#' @keywords internal
+sp_shock_pipeline_rows <- function(plan, pipeline, exposure, state, transfer) {
+  annual <- sp_shock_annual(
+    transfer, pipeline, plan$cost_frame, state, plan$analysis_unit,
+    plan$currency, plan$admin_share
+  )
+  cols <- c("pop_tp", "pop_fp", "pop_fn", "pop_tn", "spend_total", "spend_no_event")
+  annual[cols] <- NA_real_
+  if (is.null(plan$reference)) {
+    return(annual)
+  }
+  g <- as.integer(exposure$row_index)
+  w <- if (is.null(pipeline$weight)) rep(1, length(g)) else as.numeric(pipeline$weight)
+  w[!is.finite(w) | w < 0] <- 0
+  y <- as.numeric(pipeline$y_point)
+  level <- if (plan$is_log) exp(y) else y
+  ref <- plan$reference[as.integer(pipeline$svy_row_id)]
+  rel <- level / ref - 1
+  ok <- is.finite(rel) & w > 0
+  cell_w <- rowsum(w[ok], g[ok])
+  cell <- as.integer(rownames(cell_w))
+  cell_rel <- rowsum((w * rel)[ok], g[ok])[, 1L] / cell_w[, 1L]
+  event <- cell_rel <= -plan$loss_event_pct / 100
+  first <- match(cell, g)
+  fired <- state$exceeds[first]
+  year <- pipeline$sim_year[first]
+  spend <- rowsum(ifelse(is.finite(transfer), transfer, 0) * w, g)
+  cell_spend <- spend[match(cell, as.integer(rownames(spend))), 1L]
+  pop <- cell_w[, 1L]
+  by_year <- function(x) {
+    out <- rowsum(x, year)[, 1L]
+    unname(out[match(annual$sim_year, as.integer(names(out)))])
+  }
+  fill <- function(x) ifelse(is.na(x), 0, x)
+  annual$pop_tp <- fill(by_year(pop * (fired & event)))
+  annual$pop_fp <- fill(by_year(pop * (fired & !event)))
+  annual$pop_fn <- fill(by_year(pop * (!fired & event)))
+  annual$pop_tn <- fill(by_year(pop * (!fired & !event)))
+  annual$spend_total <- fill(by_year(cell_spend))
+  annual$spend_no_event <- fill(by_year(cell_spend * !event))
+  annual
+}
+
+#' Summary of a shock program across members and years, by scenario
+#'
+#' Pools the rows of `sp_shock_pipeline_rows()` (columns `scenario`, `member`
+#' added by the caller). Every (member, year) pair counts once for activation
+#' and cost; basis risk and leakage pool population weights. Rates are `NA`
+#' when their denominator is empty.
+#'
+#' @param rows Data frame of pipeline rows with `scenario` and `member`.
+#' @return Data frame, one row per scenario: `n_member_years`,
+#'   `activation_freq`, `mean_total_cost`, `median_total_cost`, `cost_1_in_20`
+#'   (95th percentile, `NA` below 20 member-years), `mean_transfer_cost`,
+#'   `mean_admin_cost`, `false_positive_rate`, `false_negative_rate`,
+#'   `leakage_share`.
+#' @keywords internal
+sp_shock_summary <- function(rows) {
+  ratio <- function(num, den) if (is.finite(den) && den > 0) num / den else NA_real_
+  out <- lapply(split(rows, factor(rows$scenario, levels = unique(rows$scenario))), function(d) {
+    n <- nrow(d)
+    data.frame(
+      scenario = d$scenario[[1L]], n_member_years = n,
+      activation_freq = mean(d$activated),
+      mean_total_cost = mean(d$total_cost),
+      median_total_cost = stats::median(d$total_cost),
+      cost_1_in_20 = if (n >= 20L) {
+        unname(stats::quantile(d$total_cost, 0.95, names = FALSE))
+      } else {
+        NA_real_
+      },
+      mean_transfer_cost = mean(d$transfer_cost),
+      mean_admin_cost = mean(d$admin_cost),
+      false_positive_rate = ratio(sum(d$pop_fp), sum(d$pop_fp) + sum(d$pop_tn)),
+      false_negative_rate = ratio(sum(d$pop_fn), sum(d$pop_fn) + sum(d$pop_tp)),
+      leakage_share = ratio(sum(d$spend_no_event), sum(d$spend_total))
+    )
+  })
+  do.call(rbind, c(unname(out), list(make.row.names = FALSE)))
+}
+
+#' Annual cost and activation of one pipeline
+#'
+#' One row per simulation year. A year activates when any prediction row is
+#' paid. Costs use the diagnostics' arithmetic (`.sp_transfer_totals_values()`),
+#' in the entry currency and with administration on top of the net transfers.
+#'
+#' @param transfer Result of `sp_shock_pipeline_transfer()` (stored scale).
+#' @param pipeline Step 2 prediction pipeline.
+#' @param svy Survey frame the pipeline's `svy_row_id` refers to.
+#' @param state Optional result of `sp_shock_pipeline_state()`; adds
+#'   `exposed_share`.
+#' @param analysis_unit,currency,admin_share As for `.sp_transfer_totals()`.
+#' @return Data frame: `sim_year`, `activated`, `exposed_share`,
+#'   `transfer_cost`, `admin_cost`, `total_cost`.
+#' @keywords internal
+sp_shock_annual <- function(transfer, pipeline, svy, state = NULL,
+                            analysis_unit = "hh", currency = "PPP", admin_share = 0) {
+  ids <- as.integer(pipeline$svy_row_id)
+  year <- pipeline$sim_year
+  years <- sort(unique(year))
+  rows <- lapply(years, function(y) {
+    idx <- which(year == y)
+    v <- numeric(nrow(svy))
+    # A survey row can appear more than once in a year; its transfers add up
+    paid <- rowsum(transfer[idx], ids[idx])
+    v[as.integer(rownames(paid))] <- paid[, 1L]
+    totals <- .sp_transfer_totals_values(v, svy, analysis_unit, currency, admin_share)
+    data.frame(
+      sim_year = y, activated = any(transfer[idx] > 0, na.rm = TRUE),
+      exposed_share = if (is.null(state)) NA_real_ else unname(state$share[as.character(y)]),
+      transfer_cost = totals$total, admin_cost = totals$admin_cost,
+      total_cost = totals$total_cost
+    )
+  })
+  do.call(rbind, rows)
+}
+
+#' Expected activation and annual cost of a shock program, before it is run
+#'
+#' The Step 3 summary-card preview: the historical pipeline's own years give the
+#' share of years with payments, the mean annual cost and, when the record has
+#' at least 20 years, the 1-in-20 annual cost (the 95th percentile of annual
+#' cost). It uses the run's seeded eligibility, thresholds and arithmetic, so
+#' the figures are what the run will produce for the historical arm.
+#'
+#' @param spec Scenario list.
+#' @param hist_sim Step 2 `hist_sim` (`pipeline`, with its exposure).
+#' @param svy Survey frame the run will use (`hist_sim$svy`).
+#' @param analysis_unit `"hh"`, `"ind"` or `"firm"`.
+#' @param seed Base seed, as passed to `apply_policy_to_svy()`.
+#' @param exposure Optional resolved exposure of the historical pipeline, when
+#'   the caller has it already (the module caches it).
+#' @return A list. On success: `annual` (see `sp_shock_annual()`),
+#'   `activation_freq`, `mean_cost`, `cost_1_in_20` (`NA` below 20 years),
+#'   `mean_exposed_share`, `n_years`, `n_record_years` (finite historical
+#'   years of the trigger variable). Otherwise `problem`, a message to show.
+#' @keywords internal
+sp_shock_preview <- function(spec, hist_sim, svy, analysis_unit = "hh",
+                             seed = WISEAPP_DEFAULT_SEED, exposure = NULL) {
+  problem <- .sp_shock_problem(spec)
+  if (!is.null(problem)) {
+    return(list(problem = problem))
+  }
+  pipeline <- hist_sim$pipeline
+  exposure <- exposure %||% tryCatch(
+    step2_exposure_resolve(pipeline, hist_sim), error = function(e) NULL
+  )
+  if (is.null(svy) || is.null(exposure) || !identical(exposure$status, "ok") ||
+    !is.data.frame(exposure$table)) {
+    return(list(problem = "The historical weather exposure is not available yet."))
+  }
+  tryCatch(
+    {
+      eligible <- withr::with_seed(
+        wise_seed(seed, "policy", "sp"), .determine_sp_eligibility(svy, spec)
+      )
+      plan <- sp_shock_plan(spec, exposure$table, eligible, svy, analysis_unit)
+      state <- sp_shock_pipeline_state(plan, pipeline, exposure)
+      transfer <- plan$per_household[as.integer(pipeline$svy_row_id)] * state$in_scope
+      annual <- sp_shock_annual(
+        transfer, pipeline, svy, state, analysis_unit,
+        spec$currency %||% "PPP", .sp_admin_share(spec)
+      )
+      n_years <- nrow(annual)
+      list(
+        annual = annual,
+        activation_freq = mean(annual$activated),
+        mean_cost = mean(annual$total_cost),
+        cost_1_in_20 = if (n_years >= 20L) {
+          unname(stats::quantile(annual$total_cost, 0.95, names = FALSE))
+        } else {
+          NA_real_
+        },
+        mean_exposed_share = mean(annual$exposed_share),
+        n_years = n_years,
+        n_record_years = length(unique(exposure$table$sim_year[
+          is.finite(as.numeric(exposure$table[[spec$trigger_variable]]))
+        ]))
+      )
+    },
+    sp_trigger_problem = function(e) list(problem = conditionMessage(e))
+  )
 }
 
 #' Welfare effect of a transfer against the predicted level
@@ -307,4 +640,95 @@ sp_dynamic_effect <- function(y_t, transfer, is_log) {
   ok <- is.finite(y_t) & is.finite(transfer) & transfer != 0
   out[ok] <- log(pmax(exp(y_t[ok]) + transfer[ok], 1e-10)) - y_t[ok]
   out
+}
+
+# Display and chart of the shock run outputs ----
+
+#' Shock summary as a readable table: one row per measure, one column per scenario
+#'
+#' @param summary Result of `sp_shock_summary()`.
+#' @param currency `"PPP"` or `"LCU"`, for the money prefix.
+#' @return Data frame of strings; `Measure` plus one column per scenario.
+#' @keywords internal
+.sp_shock_display <- function(summary, currency = "PPP") {
+  if (is.null(summary) || !nrow(summary)) {
+    return(data.frame(Measure = character()))
+  }
+  prefix <- .sp_currency_prefix(currency)
+  money <- function(x) fmt_num(x, digits = 0, prefix = prefix, na = "Not available")
+  pct <- function(x) fmt_num(100 * x, digits = 1, suffix = "%", na = "Not available")
+  measures <- list(
+    "Years with payments" = function(s) pct(s$activation_freq),
+    "Mean annual cost" = function(s) money(s$mean_total_cost),
+    "Median annual cost" = function(s) money(s$median_total_cost),
+    "1-in-20 year cost" = function(s) money(s$cost_1_in_20),
+    "Of which transfers (mean)" = function(s) money(s$mean_transfer_cost),
+    "Of which administration (mean)" = function(s) money(s$mean_admin_cost),
+    "False positives (paid, no loss event)" = function(s) pct(s$false_positive_rate),
+    "False negatives (loss event, not paid)" = function(s) pct(s$false_negative_rate),
+    "Spending in locations without a loss event" = function(s) pct(s$leakage_share),
+    "Member-years" = function(s) fmt_count(s$n_member_years)
+  )
+  out <- data.frame(Measure = names(measures), stringsAsFactors = FALSE)
+  for (i in seq_len(nrow(summary))) {
+    out[[summary$scenario[[i]]]] <- vapply(
+      measures, function(f) f(summary[i, , drop = FALSE]), character(1)
+    )
+  }
+  out
+}
+
+#' Annual cost by scenario: mean, median and 1-in-20 year
+#'
+#' Draws the precomputed summary (guidelines section 7); a scenario with fewer
+#' than 20 member-years has no 1-in-20 bar.
+#'
+#' @param summary Result of `sp_shock_summary()`.
+#' @param y_label Axis title.
+#' @param height Widget height.
+#' @return An `echarts4r` widget.
+#' @keywords internal
+echart_shock_cost_distribution <- function(summary, y_label = "Annual cost", height = "360px") {
+  if (is.null(summary) || !nrow(summary)) {
+    return(echart_blank("No shock-responsive cost to show.", height = height))
+  }
+  stats <- list(
+    "Mean" = summary$mean_total_cost,
+    "Median" = summary$median_total_cost,
+    "1-in-20 year" = summary$cost_1_in_20
+  )
+  wide <- data.frame(scenario = as.character(summary$scenario), stringsAsFactors = FALSE)
+  for (nm in names(stats)) wide[[nm]] <- stats[[nm]]
+  e <- echarts4r::e_charts(wide, scenario, reorder = FALSE, height = height)
+  e$x$opts$series <- lapply(seq_along(stats), function(i) {
+    list(
+      name = names(stats)[[i]], type = "bar",
+      data = lapply(seq_len(nrow(wide)), function(r) {
+        list(
+          value = list(wide$scenario[[r]], wide[[names(stats)[[i]]]][[r]]),
+          itemStyle = list(
+            color = unname(.wise_cat[(i - 1L) %% length(.wise_cat) + 1L]),
+            borderColor = "rgba(0,0,0,0)"
+          )
+        )
+      }),
+      barGap = "10%", barMaxWidth = 42
+    )
+  })
+  e$x$opts$xAxis <- list(
+    type = "category", data = wide$scenario, axisLabel = wise_eaxis_label(),
+    axisLine = list(lineStyle = list(color = .wise_grid)),
+    axisTick = list(alignWithLabel = TRUE), splitLine = wise_esplit_line(show = FALSE)
+  )
+  e$x$opts$yAxis <- list(
+    type = "value", name = y_label, nameTextStyle = wise_eaxis_name(),
+    axisLabel = wise_eaxis_label(), splitLine = wise_esplit_line()
+  )
+  e$x$opts$legend <- modifyList(
+    list(bottom = 0, left = 0, orient = "horizontal"), wise_elegend_style()
+  )
+  e$x$opts$tooltip <- list(trigger = "axis", axisPointer = list(type = "shadow"))
+  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 14, top = 30, bottom = 46)
+  e$x$opts$color <- unname(.wise_cat)
+  wise_echart_theme(e)
 }

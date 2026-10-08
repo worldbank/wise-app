@@ -780,12 +780,18 @@ has_sp_change <- function(sp) {
                                          candidates = .policy_candidate_cols(
                                            outcome = outcome
                                          ),
-                                         sp = NULL) {
+                                         sp = NULL,
+                                         shock = NULL) {
   if (is.null(svy_baseline) || is.null(svy_policy)) {
     return(NULL)
   }
 
   policy_diag <- svy_policy
+  if (!is.null(shock)) {
+    # Shock-responsive program: "treated" is paid in at least one historical
+    # year, at the amount of one activation; costs below are annual means.
+    policy_diag[[SP_TRANSFER_COL]] <- shock$per_household * shock$paid_historical
+  }
   if (SP_TRANSFER_COL %in% names(policy_diag) &&
     outcome %in% names(policy_diag)) {
     policy_diag[[outcome]] <- policy_diag[[outcome]] +
@@ -797,6 +803,13 @@ has_sp_change <- function(sp) {
   totals <- .sp_transfer_totals(
     policy_diag, analysis_unit, sp_currency, admin_share
   )
+  # Expected annual cost over the historical years (first summary row)
+  shock_cost <- if (!is.null(shock)) as.list(shock$summary[1L, ])
+  if (!is.null(shock_cost)) {
+    totals$total <- shock_cost$mean_transfer_cost
+    totals$admin_cost <- shock_cost$mean_admin_cost
+    totals$total_cost <- shock_cost$mean_total_cost
+  }
   vars <- detect_manipulated_vars(
     svy_baseline, policy_diag,
     candidates = candidates
@@ -820,7 +833,7 @@ has_sp_change <- function(sp) {
     error = function(e) NULL
   )
 
-  list(
+  out <- list(
     status = if (length(vars) == 0L) "no_change" else NULL,
     manipulated_vars = vars,
     baseline_values = baseline_values,
@@ -846,9 +859,12 @@ has_sp_change <- function(sp) {
       analysis_unit = analysis_unit,
       candidates = unique(c(candidates, SP_TRANSFER_COL)),
       currency = sp_currency,
-      admin_share = admin_share
+      admin_share = admin_share,
+      sp_cost = shock_cost$mean_total_cost
     )
   )
+  if (!is.null(shock)) out$is_shock <- TRUE
+  out
 }
 
 
@@ -1605,6 +1621,11 @@ apply_policy_to_svy <- function(svy,
 #' @param run_identity Run identity required when a context is supplied.
 #' @param annual_channels Optional prepared annual source from that context.
 #' @param chunk_size Maximum prediction rows evaluated in each central block.
+#' @param sp Optional SP scenario list. A shock-responsive scenario
+#'   (`sp_type == "shock"`) is paid per prediction row when its trigger fires;
+#'   needs `SP_ELIGIBLE_COL` on `svy_policy`.
+#' @param analysis_unit `"hh"`, `"ind"` or `"firm"`; used for the shock
+#'   transfer arithmetic.
 #'
 #' @return Named list with \code{hist_sim} and \code{saved_scenarios} on the
 #'   Step 2 schema, prepared \code{annual_channels}, compact future
@@ -1624,7 +1645,9 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
                                            decomp_context = NULL,
                                            run_identity = NULL,
                                            annual_channels = NULL,
-                                           chunk_size = 100000L) {
+                                           chunk_size = 100000L,
+                                           sp = NULL,
+                                           analysis_unit = "hh") {
   if (is.null(svy_baseline) || is.null(svy_policy) ||
     is.null(model_fit) || is.null(so) ||
     is.null(hist_sim_baseline)) {
@@ -1647,7 +1670,20 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     skip_coef = TRUE, F_hat = F_hat, run_identity = run_identity
   )
   .validate_run_decomposition_context(decomp_context, run_identity)
-  annual_channels <- annual_channels %||% .prepare_policy_annual_channels(decomp_context, run_identity)
+  # Shock-responsive program (P1-6): thresholds from the historical exposure and
+  # the per-household transfer, once per run; the annual correction evaluates
+  # the trigger per pipeline from this plain-data plan.
+  shock_plan <- if (identical(sp$sp_type, "shock") && SP_ELIGIBLE_COL %in% names(svy_policy)) {
+    sp_shock_plan(
+      sp, step2_exposure_resolve(hist_sim_baseline$pipeline, hist_sim_baseline)$table,
+      svy_policy[[SP_ELIGIBLE_COL]], svy_policy, analysis_unit,
+      hist_pipeline = hist_sim_baseline$pipeline,
+      is_log = identical(so$transform %||% "", "log")
+    )
+  }
+  annual_channels <- annual_channels %||% .prepare_policy_annual_channels(
+    decomp_context, run_identity, shock = shock_plan
+  )
   if (!is.environment(annual_channels) || !environmentIsLocked(annual_channels) ||
     !identical(annual_channels$status, "ok")) {
     stop("Annual policy correction unavailable: ", annual_channels$reason %||% "invalid source", call. = FALSE)
@@ -1663,6 +1699,7 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
   hist_sim_new <- hist_sim_baseline
   hist_sim_new$pipeline <- hist_result$pipeline
   parts <- list(hist_result$compact)
+  shock_parts <- list(hist_result$shock)
   saved_scenarios_new <- lapply(seq_along(saved_scenarios_baseline), function(i) {
     s <- saved_scenarios_baseline[[i]]
     if (is.null(s) || is.null(s$pipelines)) {
@@ -1680,6 +1717,7 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
         chunk_size = chunk_size, owner = s, exposure_cache = exposure_cache
       )
       parts[[length(parts) + 1L]] <<- result$compact
+      shock_parts[[length(shock_parts) + 1L]] <<- result$shock
       result$pipeline
     })
     names(pipes_new) <- names(s$pipelines)
@@ -1690,10 +1728,26 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
   names(saved_scenarios_new) <- names(saved_scenarios_baseline)
   hist_sim_new$policy_correction_version <- annual_channels$correction_version
 
-  list(hist_sim = hist_sim_new, saved_scenarios = saved_scenarios_new,
+  # Shock program outputs: one row per (scenario, member, year) and their
+  # summary by scenario; NULL for a regular program.
+  shock_rows <- Filter(Negate(is.null), shock_parts)
+  shock_rows <- if (length(shock_rows)) {
+    do.call(rbind, c(shock_rows, list(make.row.names = FALSE)))
+  }
+
+  out <- list(hist_sim = hist_sim_new, saved_scenarios = saved_scenarios_new,
     annual_channels = annual_channels,
     decomp_scenarios = .bind_compact_future_decompositions(parts, model_fit$engine,
       identical(model_fit$engine, "rif")),
     correction_version = annual_channels$correction_version,
     n_na_untreated = decomp_context$n_na_untreated %||% 0L)
+  if (!is.null(shock_rows)) {
+    out$shock <- list(
+      rows = shock_rows, summary = sp_shock_summary(shock_rows),
+      # Survey rows paid in at least one historical year
+      paid_historical = hist_result$shock_paid,
+      per_household = annual_channels$shock$per_household
+    )
+  }
+  out
 }

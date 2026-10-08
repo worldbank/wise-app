@@ -104,7 +104,7 @@ policy_reach_mask <- function(baseline_svy, policy_svy, weight_col = "weight") {
 policy_component_matrix <- function(baseline_svy, policy_svy,
                                     weight_col = "weight", analysis_unit = "hh",
                                     candidates = NULL, currency = "PPP",
-                                    admin_share = 0) {
+                                    admin_share = 0, sp_cost = NULL) {
   if (is.null(baseline_svy) || is.null(policy_svy) ||
     nrow(baseline_svy) != nrow(policy_svy)) {
     return(data.frame())
@@ -148,7 +148,8 @@ policy_component_matrix <- function(baseline_svy, policy_svy,
   }
   add_row(
     "Social protection", sp_mask,
-    if (SP_TRANSFER_COL %in% names(policy_svy)) .sp_transfer_totals(policy_svy, analysis_unit, currency, admin_share)$total_cost else NA_real_
+    # A shock-responsive program reports its expected annual cost (`sp_cost`)
+    sp_cost %||% if (SP_TRANSFER_COL %in% names(policy_svy)) .sp_transfer_totals(policy_svy, analysis_unit, currency, admin_share)$total_cost else NA_real_
   )
   for (v in non_sp_vars) add_row(.policy_display_name(v), changed_mask(v))
   if (length(non_sp_vars) > 1L) add_row("Other policy levers (combined)", other_mask)

@@ -131,6 +131,18 @@
 }
 
 .policy_treatment_explanation <- function(sp) {
+  base <- .policy_treatment_explanation_base(sp)
+  if (is.list(sp) && identical(sp$sp_type, "shock")) {
+    return(paste(
+      "Shock-responsive program: treated means paid in at least one historical",
+      "weather year, so eligible households that no trigger ever reached count as",
+      "untreated here, besides targeting errors.", base
+    ))
+  }
+  base
+}
+
+.policy_treatment_explanation_base <- function(sp) {
   if (is.null(sp) || !is.list(sp)) {
     return(paste(
       "Eligibility follows the selected targeting rule; treatment is a positive transfer after assignment.",
@@ -332,6 +344,7 @@
         wise_reactable_csv_button(ns("sp_effectiveness_table"), "policy_sp_effectiveness")
       ),
       reactable::reactableOutput(ns("sp_effectiveness_table")),
+      shiny::uiOutput(ns("shock_section_ui")),
       shiny::h5("Eligibility versus realized social-protection treatment"),
       shiny::tags$p(
         class = "diagnostic-note",
@@ -362,6 +375,8 @@
 #' @param policy_svy       Reactive survey-weather df after adjustment.
 #' @param diagnostic_summary Reactive immutable summary snapshot published by
 #'   the policy runner after a successful run.
+#' @param shock_summary Reactive list (`rows`, `summary`) published by the
+#'   policy runner for a shock-responsive program, or NULL.
 #' @param selected_policies Reactive selected policy scenario keys.
 #' @param poverty_line Reactive Results poverty line (outcome currency), used by
 #'   the cost and targeting table. NULL or NA leaves line-based figures unavailable.
@@ -379,6 +394,7 @@ mod_3_08_diagnostics_server <- function(id,
                                         baseline_svy,
                                         policy_svy,
                                         diagnostic_summary = reactive(NULL),
+                                        shock_summary = reactive(NULL),
                                         sim_run_id = reactive(0L),
                                         tabset_id,
                                         tabset_session = NULL,
@@ -481,6 +497,11 @@ mod_3_08_diagnostics_server <- function(id,
         return(NULL)
       }
       sp <- sp_scenario()
+      # Annual-cost based metrics need a transfer paid every year; a shock
+      # program is reported in its own table below.
+      if (identical(sp$sp_type, "shock")) {
+        return(NULL)
+      }
       base <- baseline_svy()
       pol <- policy_svy()
       if (is.null(base) || is.null(pol)) {
@@ -509,9 +530,13 @@ mod_3_08_diagnostics_server <- function(id,
     output$sp_effectiveness_table <- reactable::renderReactable({
       df <- sp_effectiveness_display()
       if (is.null(df) || nrow(df) == 0L) {
-        return(.wise_diag_reactable(
-          data.frame(Note = "No social protection transfer to evaluate.")
-        ))
+        return(.wise_diag_reactable(data.frame(Note = if (identical(
+          tryCatch(sp_scenario()$sp_type, error = function(e) NULL), "shock"
+        )) {
+          "Not reported for a shock-responsive program; see the shock-responsive table below."
+        } else {
+          "No social protection transfer to evaluate."
+        })))
       }
       .wise_diag_reactable(df)
     })
@@ -531,6 +556,101 @@ mod_3_08_diagnostics_server <- function(id,
         "Cost per person, realised targeting errors, coverage of the poor,",
         "leakage and adequacy for the social protection transfer."
       )
+    )
+
+    # Shock-responsive program outputs (P1-7) ----
+    #
+    # Activation, annual cost distribution, basis risk and leakage by scenario,
+    # from the run's published summary (the same rows the correction used).
+
+    shock_currency <- reactive({
+      sp <- tryCatch(sp_scenario(), error = function(e) NULL)
+      sp$currency %||% "PPP"
+    })
+
+    shock_display <- reactive({
+      s <- shock_summary()
+      if (is.null(s)) NULL else .sp_shock_display(s$summary, shock_currency())
+    })
+
+    shock_cost_chart <- function() {
+      s <- shock_summary()
+      echart_shock_cost_distribution(
+        s$summary,
+        y_label = paste0(
+          "Annual cost (", if (identical(.sp_currency(shock_currency()), "LCU")) "2021 LCU" else "$", ")"
+        )
+      )
+    }
+
+    output$shock_section_ui <- shiny::renderUI({
+      if (is.null(shock_summary())) {
+        return(NULL)
+      }
+      shiny::tagList(
+        shiny::h5(
+          "Shock-responsive program",
+          info_popover(
+            title = "Shock-responsive program",
+            shiny::p(
+              "Each row pools the climate members and simulated years of the",
+              "scenario. A year activates when any household is paid. A loss",
+              "event is a survey location whose households lose at least the",
+              "set share of their own typical welfare. Paying where there is no",
+              "loss event is a false positive; a loss event without payment is a",
+              "false negative. Costs include administration."
+            )
+          )
+        ),
+        shiny::div(
+          class = "wise-reactable-controls",
+          wise_reactable_csv_button(ns("shock_summary_table"), "policy_shock_summary")
+        ),
+        reactable::reactableOutput(ns("shock_summary_table")),
+        echarts4r::echarts4rOutput(ns("shock_cost_plot"), height = "360px")
+      )
+    })
+    outputOptions(output, "shock_section_ui", suspendWhenHidden = FALSE)
+
+    output$shock_summary_table <- reactable::renderReactable({
+      .wise_diag_reactable(shock_display())
+    })
+    output$shock_cost_plot <- echarts4r::renderEcharts4r({
+      req(!is.null(shock_summary()))
+      shock_cost_chart()
+    })
+
+    wise_export_table(
+      key = "policy_shock_summary",
+      label = "Shock-responsive program summary",
+      step = 3L,
+      fun = function() shock_summary()$summary,
+      stale = stale,
+      description = paste(
+        "Activation frequency, annual cost distribution, basis risk and leakage",
+        "of the shock-responsive transfer, by scenario."
+      )
+    )
+    wise_export_table(
+      key = "policy_shock_annual",
+      label = "Shock-responsive program by member and year",
+      step = 3L,
+      fun = function() shock_summary()$rows,
+      stale = stale,
+      description = paste(
+        "Per climate member and simulation year: activation, exposed population",
+        "share, transfer and administration cost, and the population weights",
+        "behind basis risk and leakage."
+      )
+    )
+    wise_export_figure(
+      key = "policy_shock_cost",
+      label = "Shock-responsive annual cost",
+      step = 3L,
+      fun = function() if (is.null(shock_summary())) NULL else shock_cost_chart(),
+      description = "Mean, median and 1-in-20 year annual cost by scenario.",
+      width = 9, height = 5,
+      stale = stale
     )
 
     # Summary statistics table ----

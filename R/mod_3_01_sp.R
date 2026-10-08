@@ -22,7 +22,8 @@ mod_3_01_sp_ui <- function(id) {
     # Collapsible configuration panel ----
     uiOutput(ns("sp_budget_amount_ui")),
     uiOutput(ns("sp_targeting_ui")),
-    uiOutput(ns("sp_timing_ui"))
+    uiOutput(ns("sp_timing_ui")),
+    uiOutput(ns("sp_trigger_ui"))
   )
 }
 
@@ -148,25 +149,246 @@ mod_3_01_sp_server <- function(id,
           ),
           tags$span(class = "sp-program-suffix", "cash transfer")
         ),
-        conditionalPanel(
-          condition = paste0("input['", ns("sp_type"), "'] == 'shock'"),
-          tags$div(
-            class = "alert alert-warning py-1 px-2 mb-2",
-            tags$small(
-              tags$i(class = "fa fa-circle-info me-1"),
-              "Shock-responsive cash transfers are not yet implemented. This",
-              " selection is for display only and will not change the simulation."
-            )
-          )
-        ),
         tags$hr(style = "margin: 8px 0;")
       )
     })
 
     # 2. Trigger (shock-responsive only) ----
     #
-    # Shock-responsive trigger and timing UIs were prototyped but are not
-    # implemented; see the shock note in section 1. Commented stubs removed.
+    # Weather variables a trigger can use: continuous columns of the historical
+    # exposure (binned variables reach the model as categories, see
+    # `.sp_trigger_variables()`). Read from the baseline survey so no exposure
+    # table has to be rebuilt just to fill a dropdown.
+    trigger_candidates <- reactive({
+      hs <- tryCatch(hist_sim(), error = function(e) NULL)
+      cols <- hs$pipeline$weather_exposure$weather_columns
+      svy <- hs$svy
+      if (is.null(cols) || is.null(svy)) {
+        return(character(0))
+      }
+      cols <- cols[cols %in% names(svy) & vapply(
+        cols, function(v) is.numeric(svy[[v]]), logical(1)
+      )]
+      vl <- tryCatch(variable_list(), error = function(e) NULL)
+      labels <- vapply(cols, function(v) {
+        lbl <- if (is.data.frame(vl)) vl$label[vl$name == v] else character(0)
+        if (length(lbl) && !is.na(lbl[[1]]) && nzchar(lbl[[1]])) lbl[[1]] else v
+      }, character(1))
+      stats::setNames(cols, labels)
+    })
+
+    output$sp_trigger_ui <- renderUI({
+      cands <- trigger_candidates()
+      conditionalPanel(
+        condition = paste0("input['", ns("sp_type"), "'] == 'shock'"),
+        config_flyout_block(
+          ns("trigger_toggle"),
+          "Trigger settings",
+          toggle_label = "Trigger settings",
+          display_label = textOutput(ns("trigger_summary"), inline = TRUE),
+          if (length(cands) == 0) {
+            no_data_warning(
+              "No continuous weather variable is available. Run Step 2 first;",
+              "binned weather variables cannot drive a trigger."
+            )
+          } else {
+            tagList(
+              tags$p(
+                class = "text-muted small",
+                "Payments are made after the shock (ex post), in the survey",
+                "location where the weather is measured. A household is paid in",
+                "a year when its location and interview month pass the trigger;",
+                "households of one location interviewed in different months can",
+                "differ. Quantile-based welfare effects (RIF) do not respond to the",
+                "payment."
+              ),
+              pill_toggle(
+                inputId = ns("trigger_type"),
+                label = "Trigger on",
+                aria_label = "Trigger type",
+                choices = c("Weather level" = "weather", "Return period" = "return_period"),
+                selected = "weather"
+              ),
+              selectInput(
+                ns("trigger_variable"),
+                label = tags$span(
+                  tags$i(class = "fa fa-cloud-sun-rain me-1"),
+                  "Weather variable",
+                  info_popover(
+                    title = "Weather variable",
+                    tags$p(
+                      "Only continuous weather variables can trigger payments.",
+                      "The value is read in the unit the model uses for the",
+                      "variable: physical units, deviation from the reference",
+                      "mean, or a standardized anomaly."
+                    )
+                  )
+                ),
+                choices = cands, selected = cands[[1]]
+              ),
+              pill_toggle(
+                inputId = ns("trigger_direction"),
+                label = "Pay when the value is",
+                aria_label = "Trigger direction",
+                choices = c("At or above" = "above", "At or below" = "below"),
+                selected = "above"
+              ),
+              conditionalPanel(
+                condition = paste0("input['", ns("trigger_type"), "'] != 'return_period'"),
+                numericInput(
+                  ns("trigger_value"),
+                  label = tags$span(
+                    tags$i(class = "fa fa-gauge-high me-1"),
+                    "Threshold value",
+                    info_popover(
+                      title = "Threshold value",
+                      tags$p(
+                        "One value for every location. It fires more often where the",
+                        "variable is typically more extreme, so cost concentrates",
+                        "there. Use a return period for the same activation chance",
+                        "everywhere."
+                      )
+                    )
+                  ),
+                  value = NA
+                )
+              ),
+              conditionalPanel(
+                condition = paste0("input['", ns("trigger_type"), "'] == 'return_period'"),
+                numericInput(
+                  ns("trigger_return_period_years"),
+                  label = tags$span(
+                    tags$i(class = "fa fa-hourglass-half me-1"),
+                    "Return period (1 in x years)",
+                    info_popover(
+                      title = "Return period",
+                      tags$p(
+                        "Each location uses its own 1-in-x level, taken from its",
+                        "historical years and applied unchanged to every climate",
+                        "member. A 1-in-x trigger needs at least x historical years."
+                      )
+                    )
+                  ),
+                  value = 10, min = 1, step = 1
+                ),
+                textOutput(ns("trigger_support"), container = function(...) {
+                  tags$p(class = "text-muted small", ...)
+                })
+              ),
+              selectInput(
+                ns("payout_scope"),
+                label = tags$span(
+                  tags$i(class = "fa fa-map-location-dot me-1"),
+                  "Who is paid",
+                  info_popover(
+                    title = "Payout scope",
+                    tags$p(
+                      tags$b("Triggered locations only:"),
+                      "each location decides for itself."
+                    ),
+                    tags$p(
+                      tags$b("National gate, triggered locations:"),
+                      "payments start only in a year when enough of the population",
+                      "lives in locations that pass the trigger; then only those",
+                      "locations are paid."
+                    ),
+                    tags$p(
+                      tags$b("National gate, all targeted households:"),
+                      "once the gate opens, every targeted household is paid,",
+                      "wherever it lives. Bills are rarer and larger."
+                    )
+                  )
+                ),
+                choices = c(
+                  "Triggered locations only" = "local",
+                  "National gate, triggered locations" = "national_triggered",
+                  "National gate, all targeted households" = "national_all"
+                ),
+                selected = "local"
+              ),
+              conditionalPanel(
+                condition = paste0("input['", ns("payout_scope"), "'] != 'local'"),
+                sliderInput(
+                  ns("national_k_pct"),
+                  label = "Population in triggered locations needed (%)",
+                  min = 5, max = 100, value = 20, step = 5, post = "%"
+                )
+              ),
+              sliderInput(
+                ns("payments_per_activation"),
+                label = tags$span(
+                  tags$i(class = "fa fa-hashtag me-1"),
+                  "Payments per activation",
+                  info_popover(
+                    title = "Payments per activation",
+                    tags$p(
+                      "Each payment is the amount per transfer set above. Annual",
+                      "support in an activated year = amount × payments."
+                    )
+                  )
+                ),
+                min = 1, max = 12, value = 1, step = 1
+              ),
+              numericInput(
+                ns("loss_event_pct"),
+                label = tags$span(
+                  tags$i(class = "fa fa-chart-line me-1"),
+                  "Loss event (% of welfare)",
+                  info_popover(
+                    title = "Loss event",
+                    tags$p(
+                      "Used to score the trigger after the run. A location has a",
+                      "loss event in a year when its households' modelled weather",
+                      "loss is at least this share of their own typical welfare.",
+                      "Paying without a loss event is a false positive; a loss",
+                      "event without payment is a false negative."
+                    )
+                  )
+                ),
+                value = 10, min = 1, max = 50, step = 1
+              )
+            )
+          }
+        )
+      )
+    })
+
+    # The trigger's own validation message, or its summary beside the button.
+    output$trigger_summary <- renderText({
+      spec <- sp_scenario_spec()
+      problem <- .sp_shock_problem(spec)
+      if (!is.null(problem)) {
+        return(problem)
+      }
+      side <- if (identical(spec$trigger_direction, "below")) "at or below" else "at or above"
+      level <- if (identical(spec$trigger_type, "return_period")) {
+        paste0("its 1-in-", spec$trigger_return_period_years, "-year level")
+      } else {
+        paste(spec$trigger_value)
+      }
+      paste0(
+        spec$trigger_variable, " ", side, " ", level, "; ",
+        spec$payments_per_activation, " payment(s)"
+      )
+    })
+
+    # Record length behind a return-period trigger.
+    output$trigger_support <- renderText({
+      tbl <- hist_exposure()$table
+      var <- input$trigger_variable
+      if (is.null(tbl) || is.null(var) || !var %in% names(tbl) ||
+        !"sim_year" %in% names(tbl)) {
+        return("")
+      }
+      years <- length(unique(tbl$sim_year[is.finite(as.numeric(tbl[[var]]))]))
+      paste0(
+        "Historical record: ", years, " years, so a trigger of up to 1 in ", years,
+        " years is supported. Annual probability: ",
+        format(round(100 / max(1, suppressWarnings(as.numeric(
+          input$trigger_return_period_years %||% 10
+        ))), 1), nsmall = 1), "%."
+      )
+    })
 
     # 3. Targeting ----
 
@@ -408,23 +630,31 @@ mod_3_01_sp_server <- function(id,
             )
           )
         ),
-        tags$div(
-          class = "sp-budget-mode",
-          pill_toggle(
-            inputId = ns("budget_mode"),
-            label = NULL,
-            aria_label = "Amount or budget mode",
-            choices = stats::setNames(
-              c("transfer_first", "budget_first"),
-              c("Per transfer", "Total budget")
-            ),
-            selected = "transfer_first"
+        # A shock-responsive program pays a fixed amount per activation, so the
+        # total-budget mode is offered for regular programs only (decision 12).
+        conditionalPanel(
+          condition = paste0("input['", ns("sp_type"), "'] != 'shock'"),
+          tags$div(
+            class = "sp-budget-mode",
+            pill_toggle(
+              inputId = ns("budget_mode"),
+              label = NULL,
+              aria_label = "Amount or budget mode",
+              choices = stats::setNames(
+                c("transfer_first", "budget_first"),
+                c("Per transfer", "Total budget")
+              ),
+              selected = "transfer_first"
+            )
           )
         ),
 
         # Amount entry ----
         conditionalPanel(
-          condition = paste0("input['", ns("budget_mode"), "'] == 'budget_first'"),
+          condition = paste0(
+            "input['", ns("budget_mode"), "'] == 'budget_first' && input['",
+            ns("sp_type"), "'] != 'shock'"
+          ),
           tags$div(
             class = "sp-inline-control",
             tags$label(
@@ -442,7 +672,8 @@ mod_3_01_sp_server <- function(id,
         ),
         conditionalPanel(
           condition = paste0(
-            "input['", ns("budget_mode"), "'] == 'transfer_first'"
+            "input['", ns("budget_mode"), "'] == 'transfer_first' || input['",
+            ns("sp_type"), "'] == 'shock'"
           ),
           tags$div(
             class = "sp-inline-control",
@@ -482,10 +713,12 @@ mod_3_01_sp_server <- function(id,
         toggle_label = "Payment settings",
         display_label = textOutput(ns("payment_summary"), inline = TRUE),
 
-        # Number of payments - only when the amount is set per payment
+        # Number of payments - only for a regular program whose amount is set per
+        # payment (a shock program sets payments per activation in its trigger)
         conditionalPanel(
           condition = paste0(
-            "input['", ns("budget_mode"), "'] == 'transfer_first'"
+            "input['", ns("budget_mode"), "'] == 'transfer_first' && input['",
+            ns("sp_type"), "'] != 'shock'"
           ),
           tags$label(
             class = "control-label",
@@ -618,7 +851,8 @@ mod_3_01_sp_server <- function(id,
       admin <- suppressWarnings(as.numeric(input$admin_cost_pct %||% 0))
       basis <- input$amount_basis %||% "per_household"
       parts <- c(
-        if (identical(input$budget_mode %||% "transfer_first", "transfer_first")) {
+        if (identical(input$budget_mode %||% "transfer_first", "transfer_first") &&
+          !identical(input$sp_type, "shock")) {
           paste0(input$transfer_n_payments %||% 6L, " payments/year")
         },
         if (identical(basis, "per_capita") &&
@@ -642,7 +876,8 @@ mod_3_01_sp_server <- function(id,
       c(
         "sp_type_ui", "sp_budget_amount_ui", "sp_targeting_ui",
         "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui", "amount_basis_ui",
-        "targeting_summary", "payment_summary", "amount_unit_hint"
+        "targeting_summary", "payment_summary", "amount_unit_hint",
+        "sp_trigger_ui", "trigger_summary"
       ),
       function(out_id) {
         shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
@@ -665,21 +900,17 @@ mod_3_01_sp_server <- function(id,
     # One definition of the scenario, read by both the reach preview below and
     # the module's return API - the preview cannot drift from what is run.
     sp_scenario_spec <- reactive({
-      # Shock-responsive transfers are displayed in the selector but the run
-      # path does not apply them yet (P1-6). Keep the returned scenario on the
-      # regular path until the dynamic transfer is wired through the policy
-      # simulation; the trigger fields below already travel with the spec.
-      sp_type_val <- if (identical(input$sp_type, "shock")) {
-        "regular"
-      } else {
-        input$sp_type %||% "regular"
-      }
+      sp_type_val <- input$sp_type %||% "regular"
       is_regular <- TRUE
       list(
         # program type
         sp_type = sp_type_val,
-        # Budget mode
-        budget_mode = input$budget_mode %||% "transfer_first",
+        # Budget mode: a shock program pays a fixed amount per activation
+        budget_mode = if (identical(sp_type_val, "shock")) {
+          "transfer_first"
+        } else {
+          input$budget_mode %||% "transfer_first"
+        },
         # Default to 0 (not 1,000,000) so an un-touched budget can never
         # accidentally apply a million-USD transfer if budget-first mode is
         # selected before a budget is entered.
@@ -708,8 +939,7 @@ mod_3_01_sp_server <- function(id,
         },
         # Administration as a percentage of total cost
         admin_cost_pct = input$admin_cost_pct %||% 0,
-        # Shock-responsive trigger and payout (P1-1); inputs arrive with the
-        # Trigger settings flyout (P1-8), so these are defaults until then
+        # Shock-responsive trigger and payout (Trigger settings flyout)
         trigger_type = input$trigger_type %||% "weather",
         trigger_variable = input$trigger_variable %||% NA_character_,
         trigger_direction = input$trigger_direction %||% "above",
@@ -724,6 +954,7 @@ mod_3_01_sp_server <- function(id,
           as.numeric(input$national_k_pct %||% 0)
         ),
         payments_per_activation = input$payments_per_activation %||% 1L,
+        loss_event_pct = suppressWarnings(as.numeric(input$loss_event_pct %||% 10)),
         # Timing - regular programs always have n payments
         transfer_frequency =
           if (is_regular) {
@@ -732,7 +963,11 @@ mod_3_01_sp_server <- function(id,
             input$transfer_frequency %||% "oneoff"
           },
         transfer_n_payments =
-          if (is_regular) {
+          if (identical(sp_type_val, "shock")) {
+            # Payments in an activated year, so the reach card and the cost
+            # arithmetic read the same number as the dynamic transfer
+            input$payments_per_activation %||% 1L
+          } else if (is_regular) {
             input$transfer_n_payments %||% 6L
           } else {
             input$transfer_n_payments %||% 1L
@@ -774,6 +1009,31 @@ mod_3_01_sp_server <- function(id,
         display_type = input$sp_type %||% "regular"
       )
     }), 250)
+
+    # Exposure of the historical pipeline, rebuilt once per Step 2 run.
+    hist_exposure <- reactive({
+      hs <- tryCatch(hist_sim(), error = function(e) NULL)
+      if (is.null(hs$pipeline)) {
+        return(NULL)
+      }
+      tryCatch(step2_exposure_resolve(hs$pipeline, hs), error = function(e) NULL)
+    })
+
+    # Expected activation and cost of a shock program from the historical years
+    # (NULL for a regular program).
+    sp_shock_state <- reactive({
+      preview <- sp_preview_inputs()
+      if (!identical(preview$spec$sp_type, "shock")) {
+        return(NULL)
+      }
+      tryCatch(
+        sp_shock_preview(
+          preview$spec, preview$hs, preview$svy, preview$analysis_unit,
+          seed = wise_current_seed(), exposure = hist_exposure()
+        ),
+        error = function(e) list(problem = wise_user_error(e, "Shock preview"))
+      )
+    })
 
     sp_reach <- reactive({
       # The frame must be the one the policy run will use. Step 2 may have
@@ -846,7 +1106,40 @@ mod_3_01_sp_server <- function(id,
         )
       }
 
-      cost_label <- "Estimated annual cost"
+      is_shock <- identical(preview_spec$sp_type, "shock")
+      cost_label <- if (is_shock) "Annual cost in a year it pays" else "Estimated annual cost"
+      shock_rows <- if (is_shock) {
+        s <- sp_shock_state()
+        cur <- .sp_currency_prefix(preview_spec$currency)
+        if (is.null(s) || !is.null(s$problem)) {
+          list(selection_card_row(
+            name = "Trigger", pills = s$problem %||% "Not available"
+          ))
+        } else {
+          list(
+            selection_card_row(
+              name = "Years with payments",
+              pills = fmt_num(100 * s$activation_freq, suffix = "%")
+            ),
+            selection_card_row(
+              name = "Expected annual cost",
+              pills = fmt_num(s$mean_cost, digits = 0, prefix = cur)
+            ),
+            selection_card_row(
+              name = "1-in-20 year cost",
+              pills = if (is.finite(s$cost_1_in_20)) {
+                fmt_num(s$cost_1_in_20, digits = 0, prefix = cur)
+              } else {
+                "Needs 20 years"
+              }
+            ),
+            selection_card_row(
+              name = "Population in triggered locations",
+              pills = fmt_num(100 * s$mean_exposed_share, suffix = "%")
+            )
+          )
+        }
+      }
 
       targeting <- preview_spec$targeting
       targeting_info <- switch(targeting,
@@ -870,7 +1163,7 @@ mod_3_01_sp_server <- function(id,
 
       selection_summary_card(
         title = program_title,
-        rows = Filter(Negate(is.null), list(
+        rows = Filter(Negate(is.null), c(list(
           selection_card_row(
             name  = paste("Recipient", unit_pl),
             pills = fmt_count(r$n_recipient_units)
@@ -921,10 +1214,20 @@ mod_3_01_sp_server <- function(id,
               )
             )
           }
-        )),
+        ), shock_rows)),
         info = paste(
           count_hint,
           targeting_info,
+          if (is_shock) {
+            paste(
+              "Recipients and cost are for a year in which the program pays.",
+              "Years with payments, expected cost and the 1-in-20 cost come from",
+              "the historical weather years of Step 2, evaluated per survey",
+              "location; they are not a forecast."
+            )
+          } else {
+            ""
+          },
           if (isTRUE(r$transfer_total <= 0)) {
             "No transfer is configured yet, so welfare would remain unchanged."
           } else {

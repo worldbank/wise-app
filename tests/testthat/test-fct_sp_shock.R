@@ -88,9 +88,63 @@ test_that("the SP module spec carries the shock fields with safe defaults", {
     expect_identical(spec$payout_scope, "local")
     expect_equal(spec$national_k_pct, 0)
     expect_equal(spec$payments_per_activation, 1L)
-    # Until the run path applies shock transfers the program stays regular
-    session$setInputs(sp_type = "shock")
-    expect_identical(sp_scenario_spec()$sp_type, "regular")
+    # Shock mode: a fixed amount per activation, whatever the budget mode was
+    session$setInputs(
+      sp_type = "shock", budget_mode = "budget_first", transfer_n_payments = 12,
+      payments_per_activation = 3, trigger_type = "return_period",
+      trigger_variable = "t", trigger_direction = "below",
+      trigger_return_period_years = "10", payout_scope = "national_all",
+      national_k_pct = 40
+    )
+    spec <- sp_scenario_spec()
+    expect_identical(spec$sp_type, "shock")
+    expect_identical(spec$budget_mode, "transfer_first")
+    expect_equal(spec$transfer_n_payments, 3)
+    expect_equal(spec$payments_per_activation, 3)
+    expect_identical(spec$trigger_type, "return_period")
+    expect_identical(spec$trigger_direction, "below")
+    expect_equal(spec$trigger_return_period_years, 10)
+    expect_identical(spec$payout_scope, "national_all")
+    expect_equal(spec$national_k_pct, 40)
+    expect_null(.sp_shock_problem(spec))
+    # A regular program keeps its own budget mode and payments per year
+    session$setInputs(sp_type = "regular")
+    spec <- sp_scenario_spec()
+    expect_identical(spec$budget_mode, "budget_first")
+    expect_equal(spec$transfer_n_payments, 12)
+  })
+})
+
+test_that("the trigger flyout offers continuous weather variables only", {
+  svy <- data.frame(welfare = 1:4, weight = 1, t = c(1, 2, 3, 4),
+    rain = factor(c("a", "b", "a", "b")))
+  hs <- list(
+    svy = svy,
+    pipeline = list(weather_exposure = list(weather_columns = c("t", "rain", "gone")))
+  )
+  testServer(mod_3_01_sp_server, args = list(
+    id = "sp_trigger", survey_weather = shiny::reactiveVal(svy),
+    variable_list = shiny::reactiveVal(data.frame(
+      name = c("t", "rain"), label = c("Temperature", "Rainfall")
+    )),
+    analysis_unit = shiny::reactiveVal("hh"), hist_sim = shiny::reactiveVal(hs)
+  ), {
+    expect_identical(unname(trigger_candidates()), "t")
+    expect_identical(names(trigger_candidates()), "Temperature")
+    html <- as.character(output$sp_trigger_ui$html)
+    expect_match(html, "Trigger settings")
+    expect_match(html, "Weather variable")
+    expect_match(html, "Payments per activation")
+    expect_no_match(html, "Rainfall")
+  })
+  # No exposure yet: the flyout says so instead of offering nothing
+  testServer(mod_3_01_sp_server, args = list(
+    id = "sp_trigger_none", survey_weather = shiny::reactiveVal(svy),
+    variable_list = shiny::reactiveVal(data.frame()),
+    analysis_unit = shiny::reactiveVal("hh"), hist_sim = shiny::reactiveVal(NULL)
+  ), {
+    expect_length(trigger_candidates(), 0L)
+    expect_match(as.character(output$sp_trigger_ui$html), "No continuous weather variable")
   })
 })
 
@@ -459,5 +513,246 @@ test_that("shock transfers equal the regular program's welfare effect (identity 
   expect_equal(
     sp_dynamic_effect(svy$welfare, out, FALSE),
     sp_dynamic_effect(svy$welfare, ref$transfer, FALSE)
+  )
+})
+
+# Shock preview (P1-8) ----
+
+# Six one-person households in two locations (a: 1-3, b: 4-6), four years. a is
+# hot in years 2 and 4, b in years 3 and 4.
+preview_fixture <- function() {
+  svy <- data.frame(welfare = 1:6, hhsize = 1L, weight = 100)
+  table <- expand.grid(loc_id = c("a", "b"), sim_year = 2001:2004, stringsAsFactors = FALSE)
+  table$code <- "BFA"; table$year <- "2021"; table$survname <- "EHCVM"; table$int_month <- 1L
+  table$temp <- ifelse(
+    (table$loc_id == "a" & table$sim_year %in% c(2002L, 2004L)) |
+      (table$loc_id == "b" & table$sim_year %in% c(2003L, 2004L)), 30, 10
+  )
+  hh <- expand.grid(svy_row_id = 1:6, sim_year = 2001:2004)
+  loc <- ifelse(hh$svy_row_id <= 3, "a", "b")
+  row_index <- match(paste(loc, hh$sim_year), paste(table$loc_id, table$sim_year))
+  pipe <- list(y_point = rep(1, nrow(hh)), svy_row_id = hh$svy_row_id, sim_year = hh$sim_year,
+    weight = rep(100, nrow(hh)))
+  pipe$weather_exposure <- list(status = "ok", table = table, row_index = row_index,
+    prediction_row_id = seq_len(nrow(hh)))
+  list(svy = svy, hist = list(pipeline = pipe, svy = svy))
+}
+
+preview_spec <- function(...) {
+  utils::modifyList(
+    shock_sp(targeting = "universal", inclusion_error_pct = 0, exclusion_error_pct = 0,
+      transfer_amount_usd = 36.5, payments_per_activation = 10L, trigger_variable = "temp",
+      trigger_value = 20),
+    list(...)
+  )
+}
+
+test_that("the preview reproduces a hand calculation", {
+  fx <- preview_fixture()
+  p <- sp_shock_preview(preview_spec(), fx$hist, fx$svy, "hh", seed = 5L)
+  # One household is paid 36.5 * 10 = 365 a year; 3 households per location
+  per_location <- 3 * 365 * 100
+  expect_equal(p$annual$total_cost, c(0, per_location, per_location, 2 * per_location))
+  expect_identical(p$annual$activated, c(FALSE, TRUE, TRUE, TRUE))
+  expect_equal(p$annual$exposed_share, c(0, 0.5, 0.5, 1))
+  expect_equal(p$activation_freq, 0.75)
+  expect_equal(p$mean_cost, mean(p$annual$total_cost))
+  expect_true(is.na(p$cost_1_in_20)) # four years cannot support a 1-in-20 cost
+  expect_equal(p$mean_exposed_share, 0.5)
+  expect_equal(p$n_record_years, 4L)
+})
+
+test_that("the preview follows scope, direction and administration", {
+  fx <- preview_fixture()
+  all_hh <- sp_shock_preview(preview_spec(payout_scope = "national_all", national_k_pct = 60),
+    fx$hist, fx$svy, "hh", seed = 5L)
+  # Only year 4 reaches 60 percent; then everyone is paid
+  expect_equal(all_hh$annual$total_cost, c(0, 0, 0, 6 * 365 * 100))
+  expect_equal(all_hh$activation_freq, 0.25)
+  below <- sp_shock_preview(preview_spec(trigger_direction = "below"), fx$hist, fx$svy, "hh", seed = 5L)
+  expect_equal(below$annual$activated, c(TRUE, TRUE, TRUE, FALSE))
+  admin <- sp_shock_preview(preview_spec(admin_cost_pct = 20), fx$hist, fx$svy, "hh", seed = 5L)
+  base <- sp_shock_preview(preview_spec(), fx$hist, fx$svy, "hh", seed = 5L)
+  expect_equal(admin$annual$total_cost, base$annual$total_cost / 0.8)
+  expect_equal(admin$annual$admin_cost, base$annual$total_cost / 0.8 * 0.2)
+})
+
+test_that("an always-on trigger costs what the regular program costs", {
+  fx <- preview_fixture()
+  sp <- preview_spec(trigger_value = -1e9)
+  p <- sp_shock_preview(sp, fx$hist, fx$svy, "hh", seed = 5L)
+  regular <- apply_policy_to_svy(fx$svy, sp = utils::modifyList(sp, list(
+    sp_type = "regular", budget_mode = "transfer_first", transfer_n_payments = 10L)),
+    seed = 5L)
+  expect_equal(p$annual$total_cost, rep(.sp_transfer_totals(regular, "hh")$total_cost, 4L))
+  expect_equal(p$activation_freq, 1)
+})
+
+test_that("the preview reports problems instead of failing", {
+  fx <- preview_fixture()
+  expect_match(
+    sp_shock_preview(preview_spec(trigger_value = NA_real_), fx$hist, fx$svy)$problem,
+    "threshold"
+  )
+  expect_match(
+    sp_shock_preview(preview_spec(trigger_type = "return_period",
+      trigger_return_period_years = 10, trigger_value = NA_real_),
+      fx$hist, fx$svy, seed = 5L)$problem,
+    "needs at least 10 historical years; the longest record has 4"
+  )
+  expect_match(
+    sp_shock_preview(preview_spec(trigger_variable = "nope"), fx$hist, fx$svy, seed = 5L)$problem,
+    "not a continuous weather variable"
+  )
+  expect_match(
+    sp_shock_preview(preview_spec(), list(pipeline = list()), fx$svy)$problem, "not available"
+  )
+  # Other errors are not swallowed as user messages
+  bad <- fx$svy
+  bad$welfare <- NULL
+  expect_error(sp_shock_preview(preview_spec(), fx$hist, bad, seed = 5L))
+})
+
+test_that("a 1-in-20 cost needs twenty years and is the 95th percentile", {
+  fx <- preview_fixture()
+  years <- 2001:2024
+  table <- expand.grid(loc_id = c("a", "b"), sim_year = years, stringsAsFactors = FALSE)
+  table$code <- "BFA"; table$year <- "2021"; table$survname <- "EHCVM"; table$int_month <- 1L
+  table$temp <- ifelse(table$sim_year > 2019L, 30, 10) # 5 hot years of 24
+  hh <- expand.grid(svy_row_id = 1:6, sim_year = years)
+  loc <- ifelse(hh$svy_row_id <= 3, "a", "b")
+  pipe <- list(y_point = rep(1, nrow(hh)), svy_row_id = hh$svy_row_id, sim_year = hh$sim_year,
+    weight = rep(100, nrow(hh)))
+  pipe$weather_exposure <- list(status = "ok", table = table,
+    row_index = match(paste(loc, hh$sim_year), paste(table$loc_id, table$sim_year)),
+    prediction_row_id = seq_len(nrow(hh)))
+  p <- sp_shock_preview(preview_spec(), list(pipeline = pipe, svy = fx$svy), fx$svy, "hh", seed = 5L)
+  expect_equal(p$n_years, 24L)
+  expect_equal(p$cost_1_in_20, unname(stats::quantile(p$annual$total_cost, 0.95)))
+  expect_equal(p$cost_1_in_20, 6 * 365 * 100)
+})
+
+test_that("the summary card shows expected activation and cost for a shock program", {
+  fx <- preview_fixture()
+  fx$svy$temp <- 1
+  fx$hist$svy <- fx$svy
+  fx$hist$pipeline$weather_exposure$weather_columns <- "temp"
+  testServer(mod_3_01_sp_server, args = list(
+    id = "sp_card", survey_weather = shiny::reactiveVal(fx$svy),
+    variable_list = shiny::reactiveVal(data.frame()),
+    analysis_unit = shiny::reactiveVal("hh"), hist_sim = shiny::reactiveVal(fx$hist)
+  ), {
+    session$setInputs(
+      sp_type = "shock", targeting = "universal", transfer_amount_usd = 36.5,
+      payments_per_activation = 10, trigger_type = "weather", trigger_variable = "temp",
+      trigger_direction = "above", trigger_value = 20, payout_scope = "local"
+    )
+    session$elapse(500)
+    html <- as.character(output$sp_reach_ui$html)
+    expect_match(html, "Shock-responsive")
+    expect_match(html, "Years with payments")
+    expect_match(html, "75")
+    expect_match(html, "1-in-20 year cost")
+    expect_match(html, "Needs 20 years")
+    # An unfinished trigger says what is missing instead of showing numbers
+    session$setInputs(trigger_value = NA)
+    session$elapse(500)
+    expect_match(as.character(output$sp_reach_ui$html), "Enter a threshold value")
+  })
+})
+
+# Diagnostics display and export (P1-7) ----
+
+shock_summary_fixture <- function() {
+  list(
+    rows = data.frame(scenario = c("Historical", "SSP"), member = "m", sim_year = 1:2,
+      activated = c(TRUE, FALSE), exposed_share = c(0.5, 0), transfer_cost = c(90, 0),
+      admin_cost = c(10, 0), total_cost = c(100, 0), pop_tp = 1, pop_fp = 1, pop_fn = 1,
+      pop_tn = 1, spend_total = 5, spend_no_event = 1),
+    summary = data.frame(scenario = c("Historical", "SSP"), n_member_years = c(30, 176),
+      activation_freq = c(0.2, 0.5), mean_total_cost = c(100, 200),
+      median_total_cost = c(90, 180), cost_1_in_20 = c(300, NA), mean_transfer_cost = c(90, 180),
+      mean_admin_cost = c(10, 20), false_positive_rate = c(0.1, 0.2),
+      false_negative_rate = c(0.3, NA), leakage_share = c(0.05, 0.1))
+  )
+}
+
+test_that("the shock summary is shown as a table and a chart, with NA as not available", {
+  d <- .sp_shock_display(shock_summary_fixture()$summary)
+  expect_identical(names(d), c("Measure", "Historical", "SSP"))
+  expect_identical(d$SSP[d$Measure == "1-in-20 year cost"], "Not available")
+  expect_identical(d$Historical[d$Measure == "Years with payments"], "20.0%")
+  expect_s3_class(echart_shock_cost_distribution(shock_summary_fixture()$summary), "echarts4r")
+  expect_s3_class(echart_shock_cost_distribution(NULL), "echarts4r")
+  expect_equal(nrow(.sp_shock_display(NULL)), 0L)
+})
+
+test_that("the diagnostics tab renders the shock section only for a shock run", {
+  shock <- shiny::reactiveVal(NULL)
+  testServer(
+    mod_3_08_diagnostics_server,
+    args = list(
+      id = "diag_shock", baseline_svy = reactive(NULL), policy_svy = reactive(NULL),
+      shock_summary = shock, tabset_id = "tabs"
+    ),
+    {
+      expect_null(output$shock_section_ui$html)
+      shock(shock_summary_fixture())
+      session$flushReact()
+      expect_match(as.character(output$shock_section_ui$html), "Shock-responsive program")
+      expect_match(as.character(output$shock_section_ui$html), "shock_cost_plot")
+    }
+  )
+})
+
+# Run plumbing, diagnostics and export (P1-9) ----
+
+test_that("shock and loss-event inputs travel in the config and the flyout toggle does not", {
+  keep <- paste0("step3-sp-", c(
+    "trigger_type", "trigger_variable", "trigger_direction", "trigger_value",
+    "trigger_return_period_years", "payout_scope", "national_k_pct",
+    "payments_per_activation", "loss_event_pct"
+  ))
+  expect_true(all(.export_keep_input(keep)))
+  expect_false(.export_keep_input("step3-sp-trigger_toggle"))
+})
+
+test_that("the loss-event share enters the policy signature input", {
+  a <- rlang::hash(.sig_plain(list(sp = shock_sp(loss_event_pct = 10))))
+  b <- rlang::hash(.sig_plain(list(sp = shock_sp(loss_event_pct = 20))))
+  expect_false(identical(a, b))
+})
+
+test_that("diagnostics treat a shock program as paid in at least one historical year", {
+  svy <- shock_svy(n = 40)
+  spec <- shock_targeting()
+  policy <- apply_policy_to_svy(svy, sp = spec, seed = 5L)
+  per_household <- .sp_dynamic_per_household(policy[[SP_ELIGIBLE_COL]], spec, policy, "hh")
+  paid <- policy[[SP_ELIGIBLE_COL]] & seq_len(nrow(svy)) %% 2 == 0
+  summary <- data.frame(scenario = "Historical", n_member_years = 30, activation_freq = 0.3,
+    mean_total_cost = 1234, median_total_cost = 1000, cost_1_in_20 = NA_real_,
+    mean_transfer_cost = 1000, mean_admin_cost = 234, false_positive_rate = NA_real_,
+    false_negative_rate = NA_real_, leakage_share = NA_real_)
+  snap <- .policy_diagnostics_snapshot(svy, policy, "welfare", "hh", sp = spec,
+    shock = list(per_household = per_household, paid_historical = paid, summary = summary))
+  expect_true(snap$is_shock)
+  # Treated is paid at least once; the cost is the expected annual cost
+  treated <- snap$treatment_matrix
+  expect_equal(sum(treated$n[treated$treated_policy]), sum(paid))
+  expect_equal(snap$total_cost_sum, 1234)
+  expect_equal(snap$transfer_sum, 1000)
+  expect_equal(snap$admin_sum, 234)
+  expect_equal(snap$component_matrix$realized_cost[snap$component_matrix$component == "Social protection"], 1234)
+  # A regular run carries no shock marker
+  reg <- .policy_diagnostics_snapshot(
+    svy, apply_policy_to_svy(svy, sp = utils::modifyList(spec, list(
+      sp_type = "regular", budget_mode = "transfer_first", transfer_n_payments = 6L)), seed = 5L),
+    "welfare", "hh", sp = spec
+  )
+  expect_null(reg$is_shock)
+  expect_match(.policy_treatment_explanation(spec), "paid in at least one historical")
+  expect_no_match(
+    .policy_treatment_explanation(utils::modifyList(spec, list(sp_type = "regular"))),
+    "paid in at least one historical"
   )
 })

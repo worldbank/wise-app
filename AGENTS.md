@@ -70,7 +70,7 @@ R/
 ├── app_config.R               # Environment detection (dev/Posit Connect/Databricks)
 ├── run_app.R                  # Entry point
 ├── mod_*.R                    # 24 Shiny modules (each has a UI and server function)
-├── fct_*.R                    # 42 business logic files (no Shiny dependencies)
+├── fct_*.R                    # 43 business logic files (no Shiny dependencies)
 └── utils_*.R                  # 5 files: shared math, UI, plot-theme, logging, and Step 1 helpers
 src/welfare_stats.cpp          # Rcpp kernel: all aggregation statistics in one sort per group
 ```
@@ -85,6 +85,7 @@ src/welfare_stats.cpp          # Rcpp kernel: all aggregation statistics in one 
 - `fct_results.R` – output formatting, coefficient plots, tables
 - `fct_policy_sim.R` – policy scenario variable discovery and placeholder UI
 - `fct_sp_effectiveness.R` – social protection cost and targeting metrics (coverage, leakage, adequacy, realised errors) shown in the Step 3 diagnostics
+- `fct_sp_shock.R` – **shock-responsive social protection**: spec validation (`.sp_shock_problem()`), trigger thresholds from the historical exposure (`sp_trigger_thresholds()`: weather level or 1-in-N return period, N-year record rule), trigger state and payout scope (`sp_trigger_state()`), the run-level `sp_shock_plan()` (plain data), the dynamic per-row transfer, run outputs (`sp_shock_pipeline_rows()`, `sp_shock_summary()`: activation, annual cost distribution, basis risk, leakage) and the Step 3 summary-card preview (`sp_shock_preview()`)
 - `fct_policy_decompose.R` – **policy effect decomposition** (main effect + resilience: repositioning + interaction)
 - `fct_policy_metric_decompose.R` / `fct_decomposition_summary.R` – metric-aware Step 3 decomposition (per-metric channels) and its summaries
 - `fct_metric_registry.R` – metric metadata (labels, units, direction, change kind, supported engines and uncertainty sources)
@@ -146,7 +147,8 @@ See `fct_connection.R` and `fct_load_data.R` for implementation details.
 ### Policy Analysis
 - **Policy decomposition**: Total effect = Main effect + Resilience effect (Repositioning + Interaction) — see `fct_policy_decompose.R`.
 - **RIF (Recentered Influence Function)**: Unconditional quantile regression for distributional impact estimation (Firpo, Fortin & Lemieux 2009).
-- **SP cash transfer column**: `.wiseapp_sp_transfer` is the single source of truth for social protection transfers.
+- **SP cash transfer column**: `.wiseapp_sp_transfer` is the single source of truth for social protection transfers of a regular program.
+- **Shock-responsive SP** (`sp_type == "shock"`): ex post only; the trigger is evaluated per survey round, location and interview month on the historical thresholds (fixed under climate change); `apply_policy_to_svy()` writes the static eligibility `.wiseapp_sp_eligible` and no transfer. The transfer is paid per prediction row inside the annual correction: `apply_policy_delta_to_baseline(sp =, analysis_unit =)` builds the plan once, stores it on `prepared$shock`, and the one shared hook (`.policy_annual_channel_block(sp_dynamic =)`, fed by `.policy_sp_dynamic()` in all three consumers) adds it into `delta_sp`, `delta_main` and `delta_total` and returns it as `delta_sp_shock`. RIF repositioning does not respond to the dynamic transfer (approximation). Run outputs travel as `pol_out$shock` (`rows`, `summary`, `paid_historical`) and are published as `shock_summary`; the published `policy_svy` marks households paid in at least one historical year in `.wiseapp_sp_transfer` so reach and diagnostics keep one definition of "treated". Plan: `review/sp_shock_responsive_plan.md`; tasks: `review/sp_shock_responsive_tasks.md`.
 
 ### Simulation Pipeline
 - **`year` type contract**: `year` is a fixed-effect factor in the fitted models. Survey-weather frames carry it as a factor (`merge_survey_weather`), Step 2 projections and policy joins as character (`.step2_survey_projection`, `fct_simulations.R`), and period/sample helpers as numeric. fixest predicts identically from factor, character or integer `year`, but base-R and `model.matrix` engines (ranger, xgboost, lm-style fits) reject or mis-encode a type that differs from training, so do not unify the type without parity runs on every engine (CR-CQ-07).
@@ -190,7 +192,7 @@ Key environment variables for production:
 
 ## Testing
 
-Tests are in `tests/testthat/` (119 files, named after the `fct_`/`mod_` file or concept they cover, e.g. `test-fct_hexmap.R`, `test-active-mask.R`) plus `tests/spelling.R`. New tests go in `test-<R file>.R`. Areas with dedicated coverage: connection/data loading, model fitting + coefficient uncertainty decomposition, prediction, aggregation delta, RIF helpers, hexmap payload contract, policy decomposition uncertainty, metric-aware decomposition, Step 3 lever modules, `app_server` wiring (stubbed step modules), weather selection/stats, export bundles, determinism.
+Tests are in `tests/testthat/` (122 files, named after the `fct_`/`mod_` file or concept they cover, e.g. `test-fct_hexmap.R`, `test-active-mask.R`) plus `tests/spelling.R`. New tests go in `test-<R file>.R`. Areas with dedicated coverage: connection/data loading, model fitting + coefficient uncertainty decomposition, prediction, aggregation delta, RIF helpers, hexmap payload contract, policy decomposition uncertainty, metric-aware decomposition, Step 3 lever modules, `app_server` wiring (stubbed step modules), weather selection/stats, export bundles, determinism.
 
 - **Run from the source tree**, as CI does: `devtools::test()` or `testthat::test_local()` (about 4 to 6 minutes serial). `R CMD check` runs with `--no-tests`.
 - **Environment is pinned** by `tests/testthat/setup-env.R` (weather caches in a per-run temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R` (UTF-8). Do not rely on the developer's `.Renviron`.

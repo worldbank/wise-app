@@ -82,6 +82,8 @@ mod_3_06_policy_sim_server <- function(id,
     annual_channels_rv <- reactive(decomp_bundle_rv()$annual_channels)
     decomp_scenarios_rv <- reactiveVal(list())
     diagnostic_summary_rv <- reactiveVal(NULL)
+    # Shock-responsive run outputs (rows and summary); NULL for a regular program
+    shock_summary_rv <- reactiveVal(NULL)
     # INT-08: TRUE while the stored policy results' run signature no longer
     # matches the current Step 2 output / scenario inputs.
     policy_stale <- reactiveVal(FALSE)
@@ -365,7 +367,9 @@ mod_3_06_policy_sim_server <- function(id,
                 deltas = deltas_pre,
                 F_hat = F_hat_pre,
                 decomp_context = decomp_context,
-                run_identity = decomp_context$run_identity
+                run_identity = decomp_context$run_identity,
+                sp = sp_cfg,
+                analysis_unit = analysis_unit()
               )
               if (is.null(pol_out)) {
                 stop("Policy simulation produced no results.", call. = FALSE)
@@ -387,7 +391,8 @@ mod_3_06_policy_sim_server <- function(id,
                 outcome = hs$so$name,
                 analysis_unit = analysis_unit(),
                 candidates = unique(c(policy_candidates, hs$so$name)),
-                sp = sp_cfg
+                sp = sp_cfg,
+                shock = pol_out$shock
               )
               if (is.null(diagnostic_summary_out)) {
                 stop("Policy diagnostics produced no results.", call. = FALSE)
@@ -415,7 +420,14 @@ mod_3_06_policy_sim_server <- function(id,
           ))
           old_weather_lease <- weather_store_lease_rv()
           baseline_svy_rv(svy)
-          policy_svy_rv(svy_mod)
+          # A shock program has no static transfer; for reach and diagnostics the
+          # published frame marks households paid in at least one historical year.
+          policy_svy_rv(if (is.null(pol_out$shock)) svy_mod else {
+            published <- svy_mod
+            published[[SP_TRANSFER_COL]] <- pol_out$shock$per_household *
+              pol_out$shock$paid_historical
+            published
+          })
           baseline_hist_sim_rv(baseline_out)
           baseline_saved_scenarios_rv(baseline_scenarios_out)
           policy_hist_sim_rv(pol_out$hist_sim)
@@ -430,6 +442,7 @@ mod_3_06_policy_sim_server <- function(id,
           decomp_bundle_rv(final_bundle)
           decomp_scenarios_rv(decomp_sc)
           diagnostic_summary_rv(diagnostic_summary_out)
+          shock_summary_rv(pol_out$shock)
           policy_stale(FALSE)
 
           sim_run_id(isolate(sim_run_id()) + 1L)
@@ -492,6 +505,7 @@ mod_3_06_policy_sim_server <- function(id,
       annual_channels = annual_channels_rv,
       decomp_scenarios = decomp_scenarios_rv,
       diagnostic_summary = diagnostic_summary_rv,
+      shock_summary = shock_summary_rv,
       baseline_hist_sim = baseline_hist_sim_rv,
       baseline_saved_scenarios = baseline_saved_scenarios_rv,
       policy_hist_sim = policy_hist_sim_rv,
