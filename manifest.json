@@ -4528,7 +4528,7 @@
       "checksum": "8ef9fcfca11ecd8b47bd67b317221b9b"
     },
     "R/fct_aggregation.R": {
-      "checksum": "c3691a8609600490832cc9291be45bc3"
+      "checksum": "4a2a9763d4f844b579c3c13bcfb7511f"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
@@ -4636,7 +4636,7 @@
       "checksum": "856f9c1679a475737e1a677cb92f302b"
     },
     "R/fct_step3_async.R": {
-      "checksum": "12097c641eb4806f87d96507ea085fba"
+      "checksum": "bf7cc2bab1817ff00b717aa867c1f00e"
     },
     "R/fct_surveystats.R": {
       "checksum": "1803d57eda1b89de105debd33215101f"
@@ -4714,7 +4714,7 @@
       "checksum": "ce6dac4360eef6248ccbe939f6017ab4"
     },
     "R/mod_3_06_policy_sim.R": {
-      "checksum": "7d777f7e57c197bf01f507d88f0c61a2"
+      "checksum": "464adb9e05f4b4315d1c56956705ab0a"
     },
     "R/mod_3_07_results.R": {
       "checksum": "1498b5a7fc65e6db1f3925310d89b883"
