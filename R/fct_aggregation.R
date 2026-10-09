@@ -379,7 +379,7 @@ hist_aggregate_choices <- function(outcome_type, outcome_name = NULL) {
       "Poverty severity"         = "fgt2",
       "Gini"                     = "gini",
       "Prosperity gap"           = "prosperity_gap",
-      "Average poverty (days/$)" = "avg_poverty"
+      "Average poverty"          = "avg_poverty"
     )
   } else {
     # All other numeric outcomes (wage, hours, employment, etc.)
