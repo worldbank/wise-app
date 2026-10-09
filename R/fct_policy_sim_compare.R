@@ -2740,9 +2740,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         job <- step3_metric_submit(
           snapshot = list(
             artifact = baseline_hist$.artifact[c("file", "sig")],
-            hs_overlay = baseline_hist[intersect(
-              c("hist_label", "sim_summary"), names(baseline_hist)
-            )],
+            hs_overlay = .step3_metric_overlay(baseline_hist),
             policy_artifact = policy_hist$.artifact["file"],
             residuals = baseline_hist$residuals,
             method = method, pov_line = pov_line,

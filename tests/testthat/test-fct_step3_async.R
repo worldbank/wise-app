@@ -416,3 +416,38 @@ test_that("a snapshot over the queue cap is refused instead of retried", {
   expect_match(conditionMessage(err), "too large")
   expect_match(conditionMessage(err), "WISEAPP_ASYNC_QUEUE_MEMORY_MB")
 })
+
+test_that("a metric job sees the same baseline as the policy run that wrote the result", {
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+    "dev/ benchmark helpers not available")
+  skip_if_not_installed("qs2")
+  source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+
+  # The published baseline: `.sig` is the policy signature, the Step 2 one is
+  # `.step2_sig` (what mod_3_06 does), so a metric overlay built from `.sig`
+  # would differ from the policy run's.
+  overlay <- .step3_metric_overlay(list(
+    hist_label = "Hist", sim_summary = list(a = 1),
+    .sig = list(step = "policy"), .step2_sig = list(step = "step2")
+  ))
+  expect_identical(overlay$.sig, list(step = "step2"))
+  expect_identical(overlay$hist_label, "Hist")
+  expect_null(.step3_metric_overlay(list(hist_label = "Hist"))$.sig)
+
+  # Round trip with a field linked only because it is large: the metric worker
+  # must resolve the link with the overlay built above.
+  sig <- list(step = "step2", payload = runif(5000L))
+  hs <- list(.sig = sig, hist_label = "Hist", so = list(name = "y"))
+  pol_out <- list(hist_sim = hs, saved_scenarios = list())
+  linked <- .step3_dedupe_vs_baseline(pol_out, hs, list())
+  expect_true(.step3_is_link(linked$hist_sim$.sig))
+  worker_hs <- c(hs[setdiff(names(hs), ".sig")], overlay)
+  expect_error(.step3_relink_baseline(linked, worker_hs[setdiff(names(worker_hs), ".sig")], list()), "\\.sig")
+  published <- c(hs[setdiff(names(hs), ".sig")], list(.sig = list(step = "policy"), .step2_sig = sig))
+  from_overlay <- c(
+    hs[setdiff(names(hs), ".sig")],
+    .step3_metric_overlay(published)
+  )
+  expect_identical(.step3_relink_baseline(linked, from_overlay, list())$hist_sim$.sig, sig)
+})

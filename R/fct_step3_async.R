@@ -700,6 +700,17 @@ step3_metric_worker <- function(snapshot, artifact_dir) {
   )
 }
 
+# The fields the main process set on `hist_sim` after the Step 2 artifact was
+# written, for a metric job. They must equal what the policy-run worker used
+# (hist_label, sim_summary and the Step 2 signature), because the policy result
+# links its fields to that baseline. In the published baseline `.sig` is the
+# policy signature; the Step 2 one is kept as `.step2_sig`.
+.step3_metric_overlay <- function(baseline_hist) {
+  out <- baseline_hist[intersect(c("hist_label", "sim_summary"), names(baseline_hist))]
+  if (!is.null(baseline_hist$.step2_sig)) out$.sig <- baseline_hist$.step2_sig
+  out
+}
+
 # Whether metric jobs can run: both retained artifacts exist.
 .wise_step3_metric_async_available <- function(baseline_hist, policy_hist) {
   .wise_step3_async_enabled() && .wise_step2_async_enabled() &&
