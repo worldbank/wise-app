@@ -4582,7 +4582,7 @@
       "checksum": "5f0fbb622b518d71aef717c1210e98ae"
     },
     "R/fct_policy_sim_compare.R": {
-      "checksum": "e500b425aac0d9946ff467da8b3d6aca"
+      "checksum": "7ef201c179a13870a3cd224fc3fc4f03"
     },
     "R/fct_policy_sim.R": {
       "checksum": "65b0d3baddd7a593c80cf55ac8cce6f2"
@@ -4636,7 +4636,7 @@
       "checksum": "856f9c1679a475737e1a677cb92f302b"
     },
     "R/fct_step3_async.R": {
-      "checksum": "bf7cc2bab1817ff00b717aa867c1f00e"
+      "checksum": "f1f672ae6cce16dac088ed8507716c1f"
     },
     "R/fct_surveystats.R": {
       "checksum": "1803d57eda1b89de105debd33215101f"
