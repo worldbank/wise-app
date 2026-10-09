@@ -450,7 +450,11 @@ mod_3_06_policy_sim_server <- function(id,
               }))
             }
             active_job <<- step3_async_submit(
-              snapshot = c(inputs, list(
+              # The worker gets the slim model fit (no fitting environments,
+              # which would drag the Shiny session into the snapshot), as in
+              # Step 2.
+              snapshot = c(inputs[setdiff(names(inputs), "mf")], list(
+                mf = step2_slim_model_fit(mf),
                 artifact = hs$.artifact[c("file", "sig")],
                 hs_overlay = hs[intersect(
                   c("hist_label", "sim_summary", ".sig"), names(hs)

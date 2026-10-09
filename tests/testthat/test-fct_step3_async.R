@@ -402,3 +402,17 @@ test_that("member weather is released only when a worker can read it back", {
   withr::with_envvar(c(WISEAPP_ASYNC_STEP3 = "0"), expect_false(.step3_release_allowed(artifact)))
   withr::with_envvar(c(WISEAPP_ASYNC_SYNC = "1"), expect_false(.step3_release_allowed(artifact)))
 })
+
+test_that("a snapshot over the queue cap is refused instead of retried", {
+  withr::local_envvar(WISEAPP_ASYNC_QUEUE_MEMORY_MB = "1", WISEAPP_ASYNC_SYNC = "0")
+  err <- NULL
+  job <- .wise_step3_async_task(
+    "step3_async_worker", list(big = runif(400000L)),
+    convert = function(value, artifact_dir) value,
+    on_result = function(x) stop("must not run"),
+    on_error = function(e) err <<- e
+  )
+  expect_null(job)
+  expect_match(conditionMessage(err), "too large")
+  expect_match(conditionMessage(err), "WISEAPP_ASYNC_QUEUE_MEMORY_MB")
+})

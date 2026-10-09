@@ -498,6 +498,9 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
 
 # Main-process side ----
 
+# Longest a job may wait for the dispatcher to accept it (queue memory cap).
+.WISE_STEP3_SUBMIT_WAIT_SEC <- 120
+
 # Run one Step 3 worker function (`worker`, a name exported by the package) on
 # the shared local daemon. Callbacks run on the Shiny event loop; `is_current()`
 # lets the caller drop a result whose session or run is gone.
@@ -516,10 +519,29 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
   package_path <- getNamespaceInfo(asNamespace("wiseapp"), "path")
   development_package <- .wise_step2_async_is_dev_package()
   snapshot$rng_kind <- RNGkind()
+  # A snapshot over the dispatcher's queue cap is never accepted, and
+  # try_mirai() would serialise it again on every retry below. Refuse it up
+  # front with a message instead of retrying (and growing memory) forever.
+  cap_mb <- .wise_step2_async_queue_memory()
+  snapshot_bytes <- length(serialize(snapshot, NULL, version = 3L))
+  .wise_log_stage(
+    "step3_snapshot", "built",
+    run_id = if (is.character(worker)) worker else "custom",
+    cache = paste0(round(snapshot_bytes / 1024^2), "MB")
+  )
+  if (!is.null(cap_mb) && snapshot_bytes > cap_mb * 1024^2) {
+    on_error(simpleError(sprintf(
+      paste("The inputs for the background worker are too large (%.0f MB,",
+        "limit %.0f MB; WISEAPP_ASYNC_QUEUE_MEMORY_MB)."),
+      snapshot_bytes / 1024^2, cap_mb
+    )))
+    return(invisible(NULL))
+  }
   job <- new.env(parent = emptyenv())
   job$id <- sub("^step2-", "step3-", .wise_step2_async_id())
   job$artifact_dir <- file.path(.wise_step2_async_artifact_root(), "step3", job$id)
   job$poll_active <- TRUE
+  job$submit_started <- proc.time()[["elapsed"]]
   artifact_dir <- job$artifact_dir
 
   finish <- function() {
@@ -580,8 +602,18 @@ step3_read_worker_result <- function(manifest, artifact_dir, hs, ss, residuals) 
       finish()
       on_error(task)
     } else if (is.null(task)) {
-      # Dispatcher memory cap: backpressure, not a failure.
-      later::later(submit, delay = 0.5)
+      # Dispatcher memory cap: backpressure (another job's inputs are queued),
+      # not a failure, but not forever either.
+      waited <- proc.time()[["elapsed"]] - job$submit_started
+      if (waited > .WISE_STEP3_SUBMIT_WAIT_SEC) {
+        finish()
+        on_error(simpleError(paste(
+          "The background worker did not accept the job in time.",
+          "Try again when the running job has finished."
+        )))
+      } else {
+        later::later(submit, delay = 0.5)
+      }
     } else {
       job$handle <- task
       later::later(poll, delay = 0.5)
