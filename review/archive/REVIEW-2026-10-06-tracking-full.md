@@ -391,6 +391,16 @@ Thread-policy revisit before V4 (2026-10-08, BFA, OLS, forced weather DuckDB thr
 - 2026-10-07 - Code hygiene prompt revised into standing guidelines (`review/code_hygiene.md`).
 - 2026-10-07 - Test-suite work closed and archived: CI green, 7920 expectations, Step 3 coverage targets done, `predict_outcome` residual fixes (2a1c498), Rd gaps fixed (3666d97). Open items are in B5.
 
+### CR-SEC-07 - Step 2 snapshot and queue size caps (closed 2026-10-19)
+
+Code: `38ee61d` (`.wise_step2_async_submit()` in `R/fct_step2_async.R`: a snapshot over `WISEAPP_ASYNC_QUEUE_MEMORY_MB` is refused at submit, and a new job is refused when queued snapshots would exceed twice the cap). Test: "submit refuses an oversize snapshot and a full queue by bytes (CR-SEC-07)" in `tests/testthat/test-step2-async.R`. Verified 2026-10-19 with `devtools::test(filter = 'step2-async')`: no failures. Not checked: that the test fails on the commit before the fix.
+
+Remainder withdrawn (2026-10-19): "use a separate small profile for metadata" (review CR-SEC-07). The Overview metadata task submits through `mirai::try_mirai()` on the shared daemon (`.overview_metadata_load()` in `R/fct_overview_metadata.R`), and its snapshot is the connection params list only, so there is little to bound. A separate profile (a second mirai pool, or a `.compute` profile) is what `review/optimization_guidelines.md` section 0 forbids ("never create a second pool"). Reopen if metadata payloads grow or a second pool is wanted for another reason.
+
+### CR-PERF-13 / R2-PERF-08 - Connect memory limit (closed 2026-10-19)
+
+Decision (user, 2026-10-19): `WISEAPP_DUCKDB_MEMORY_LIMIT=4GB` for the shared Connect host. The value is set in the Connect environment, not in the repo. Earlier decisions stand: weather threads stay at 1 (2026-10-08), and the Step 3 worker peak is accepted with `Max Processes` unchanged (2026-10-08). Not measured: a 3x3 run under the 4GB cap, which the row had asked to check first; the user chose the value without that run. Optional trial, not started: `WISEAPP_WEATHER_THREADS_AUTO_ENABLE=1` on `wise-app-dev` only (2 threads gave -16% to -20% on top of PERF-W1), with the memory limit set and the server admin consulted before promoting.
+
 ### CR-PERF-04 - Step 3 off the main thread (closed 2026-10-08)
 
 Plan, design decisions and measurements: `review/archive/step3_async_plan.md`. Code: `R/fct_step3_async.R` (`step3_compute()`, `step3_async_worker()`, `step3_metric_worker()`, the generic task runner), wiring in `mod_3_06_policy_sim.R`, `mod_2_01_weathersim.R` (retained Step 2 artifact) and the `metric_decomposition` reactive in `fct_policy_sim_compare.R`. Behind `WISEAPP_ASYNC_STEP3` (default on; `0` restores the synchronous path, which is also the fallback when no retained artifact exists).
