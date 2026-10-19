@@ -347,14 +347,7 @@ mod_3_06_policy_sim_server <- function(id,
           baseline_svy_rv(svy)
           # A shock program has no static transfer; for reach and diagnostics the
           # published frame marks households paid in at least one historical year.
-          policy_svy_rv(if (is.null(pol_out$shock)) {
-            svy_mod
-          } else {
-            published <- svy_mod
-            published[[SP_TRANSFER_COL]] <- pol_out$shock$per_household *
-              pol_out$shock$paid_historical
-            published
-          })
+          policy_svy_rv(step3_published_policy_svy(svy_mod, pol_out$shock))
           baseline_hist_sim_rv(baseline_out)
           baseline_saved_scenarios_rv(baseline_scenarios_out)
           policy_hist_sim_rv(pol_out$hist_sim)
@@ -414,7 +407,7 @@ mod_3_06_policy_sim_server <- function(id,
           policy_sig <- .policy_sig_from_live(hs)
           residuals_val <- residuals()
           generation <- run_generation()
-          inputs <- list(
+          inputs <- wise_step3_input(
             svy = svy, mf = mf,
             sp_cfg = sp_cfg, infra_cfg = infra_cfg,
             digital_cfg = digital_cfg, labor_cfg = labor_cfg,

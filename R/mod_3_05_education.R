@@ -160,26 +160,7 @@ mod_3_05_education_server <- function(id,
 
     list(
       education_scenario = reactive({
-        list(
-          primary_universal = isTRUE(input$primary_universal),
-          primary_access_change_pct = if (isTRUE(input$primary_universal)) {
-            100L
-          } else {
-            input$primary_pct %||% 0L
-          },
-          secondary_universal = isTRUE(input$secondary_universal),
-          secondary_access_change_pct = if (isTRUE(input$secondary_universal)) {
-            100L
-          } else {
-            input$secondary_pct %||% 0L
-          },
-          postsec_universal = isTRUE(input$postsec_universal),
-          postsec_access_change_pct = if (isTRUE(input$postsec_universal)) {
-            100L
-          } else {
-            input$postsec_pct %||% 0L
-          }
-        )
+        wise_education_config(step3_read_inputs(STEP3_EDUCATION_IDS, function(id) input[[id]]))
       })
     )
   })

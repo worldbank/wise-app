@@ -259,60 +259,7 @@ mod_3_02_infra_server <- function(id,
 
     list(
       infra_scenario = reactive({
-        list(
-          # Electricity: TRUE = set all to 1, FALSE = increase by pct
-          elec_universal = isTRUE(input$elec_universal),
-          elec_access_change_pct = if (isTRUE(input$elec_universal)) {
-            100L
-          } else {
-            input$elec_pct %||% 0L
-          },
-
-          # Water
-          water_universal = isTRUE(input$water_universal),
-          water_access_change_pct = if (isTRUE(input$water_universal)) {
-            100L
-          } else {
-            input$water_pct %||% 0L
-          },
-
-          # Sanitation
-          sanitation_universal = isTRUE(input$sanitation_universal),
-          sanitation_access_change_pct = if (isTRUE(input$sanitation_universal)) {
-            100L
-          } else {
-            input$sanitation_pct %||% 0L
-          },
-
-          # Piped water
-          piped_universal = isTRUE(input$piped_universal),
-          piped_access_change_pct = if (isTRUE(input$piped_universal)) {
-            100L
-          } else {
-            input$piped_pct %||% 0L
-          },
-
-          # Piped to premises water
-          piped_to_prem_universal = isTRUE(input$piped_to_prem_universal),
-          piped_to_prem_access_change_pct = if (isTRUE(input$piped_to_prem_universal)) {
-            100L
-          } else {
-            input$piped_to_prem_pct %||% 0L
-          },
-
-          # Improved water and sanitation
-          imp_wat_san_universal = isTRUE(input$imp_wat_san_universal),
-          imp_wat_san_access_change_pct = if (isTRUE(input$imp_wat_san_universal)) {
-            100L
-          } else {
-            input$imp_wat_san_pct %||% 0L
-          },
-
-          # Health facility travel time
-          health_mode = input$health_mode %||% "pct",
-          health_travel_pct = input$health_travel_pct %||% 0L,
-          health_travel_max = input$health_travel_max %||% 60L
-        )
+        wise_infra_config(step3_read_inputs(STEP3_INFRA_IDS, function(id) input[[id]]))
       })
     )
   })

@@ -99,54 +99,14 @@ mod_3_10_cost_effectiveness_server <- function(id,
       if (isTRUE(stale())) {
         return(list(status = "stale"))
       }
-      sp <- sp_scenario()
-      if (!has_sp_change(sp)) {
-        return(list(status = "no_sp"))
-      }
-      mc <- metric_context()
-      eff <- effect_summary()
-      if (is.null(mc) || !is.data.frame(eff) || !nrow(eff)) {
-        return(list(status = "no_effect"))
-      }
-      if (!identical(mc$availability %||% "ok", "ok")) {
-        return(list(status = "no_effect", reason = mc$reason))
-      }
-      au <- analysis_unit() %||% "hh"
-      currency <- .sp_currency(sp$currency)
-      admin <- .sp_admin_share(sp)
-      shock <- identical(sp$sp_type, "shock")
-      decomp <- metric_decomposition()
-      effects <- sp_effect_by_scenario(eff, decomp$return_period)
-
-      costs <- if (shock) {
-        s <- shock_summary()
-        ae <- annual_effects()
-        matched <- if (is.data.frame(ae)) ae[is.finite(ae$value), , drop = FALSE]
-        sp_shock_cost_by_scenario(
-          s$rows, matched = matched, supports = decomp$adverse_support,
-          historical = hist_label(), probability = 0.05
-        )
-      } else {
-        total <- .sp_transfer_totals(policy_svy(), au, currency, admin)$total_cost
-        data.frame(
-          scenario = effects$scenario, cost_avg = total, cost_tail = total,
-          stringsAsFactors = FALSE
-        )
-      }
-      other_levers <- has_infra_change(infra_scenario()) ||
-        has_digital_change(digital_scenario()) ||
-        has_labor_change(labor_scenario()) ||
-        has_education_change(education_scenario())
-      line <- poverty_line()
-      res <- sp_cost_effectiveness(
-        effects, costs, mc$method,
-        pop = .sp_ce_population(baseline_svy(), au),
-        poverty_line = line, level_unit = mc$level_unit, sp_only = !other_levers
-      )
-      list(
-        status = "ok", res = res, currency = currency, admin = admin, shock = shock,
-        method = mc$method, label = mc$label, line = line,
-        uses_line = mc$method %in% c("headcount_ratio", "gap")
+      step3_cost_effectiveness(
+        sp = sp_scenario(), infra = infra_scenario(), digital = digital_scenario(),
+        labor = labor_scenario(), education = education_scenario(),
+        metric_context = metric_context(), effect_summary = effect_summary(),
+        decomp = metric_decomposition(), shock_summary = shock_summary(),
+        annual_effects = annual_effects(), policy_svy = policy_svy(),
+        baseline_svy = baseline_svy(), hist_label = hist_label(),
+        analysis_unit = analysis_unit(), poverty_line = poverty_line()
       )
     })
 

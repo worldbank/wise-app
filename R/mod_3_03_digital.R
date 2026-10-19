@@ -146,20 +146,7 @@ mod_3_03_digital_server <- function(id,
 
     list(
       digital_scenario = reactive({
-        list(
-          internet_universal = isTRUE(input$internet_universal),
-          internet_access_change_pct = if (isTRUE(input$internet_universal)) {
-            100L
-          } else {
-            input$internet_pct %||% 0L
-          },
-          mobile_universal = isTRUE(input$mobile_universal),
-          mobile_access_change_pct = if (isTRUE(input$mobile_universal)) {
-            100L
-          } else {
-            input$mobile_pct %||% 0L
-          }
-        )
+        wise_digital_config(step3_read_inputs(STEP3_DIGITAL_IDS, function(id) input[[id]]))
       })
     )
   })

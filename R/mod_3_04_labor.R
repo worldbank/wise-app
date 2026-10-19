@@ -134,14 +134,7 @@ mod_3_04_labor_server <- function(id,
 
     # R2-BUG-05: sliders start at the observed shares, so an untouched slider
     # is "no change" rather than a 0% target.
-    sector_defaults <- reactive({
-      shares <- .labor_sector_shares(survey_data())
-      if (is.null(shares)) {
-        c(industry = 0, services = 0)
-      } else {
-        round(shares[c("industry", "services")])
-      }
-    })
+    sector_defaults <- reactive(step3_sector_defaults(survey_data()))
 
     output$labor_sector_ui <- renderUI({
       req(show_sector())
@@ -234,23 +227,11 @@ mod_3_04_labor_server <- function(id,
     })
 
     # Return API ----
-    # A sector target is NULL ("unchanged") until its slider moves away from
-    # the observed share; apply_policy_to_svy() reallocates only then.
-    sector_target <- function(value, default) {
-      if (is.null(value) || isTRUE(value == default)) NULL else value
-    }
     list(
       labor_scenario = reactive({
-        defaults <- sector_defaults()
-        list(
-          employment_change_pp  = input$labor_emp %||% 0,
-          sector_manufacturing  = sector_target(
-            input$sector_manufacturing, defaults[["industry"]]
-          ),
-          sector_services       = sector_target(
-            input$sector_services, defaults[["services"]]
-          ),
-          sector_agriculture    = sector_agri()
+        wise_labor_config(
+          step3_read_inputs(STEP3_LABOR_IDS, function(id) input[[id]]),
+          sector_defaults()
         )
       })
     )

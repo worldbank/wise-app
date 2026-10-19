@@ -543,46 +543,14 @@ mod_3_08_diagnostics_server <- function(id,
     # Cost and targeting effectiveness (P0-5) ----
 
     sp_effectiveness_res <- reactive({
-      d <- diag_data()
-      if (is.null(d) || (is.list(d) && !is.null(d$status))) {
-        return(NULL)
-      }
-      sp <- sp_scenario()
-      shock <- identical(sp$sp_type, "shock")
-      base <- baseline_svy()
-      pol <- policy_svy()
-      if (is.null(base) || is.null(pol)) {
-        return(NULL)
-      }
-      # A shock program pays no transfer every year. Its design figures use the
-      # per-household amount paid in an activated year; realised annual cost is
-      # in the shock-responsive table below and the cost-effectiveness tab.
-      if (shock) {
-        amount <- shock_summary()$per_household
-        if (length(amount) != nrow(pol)) {
-          return(NULL)
-        }
-        pol[[SP_TRANSFER_COL]] <- .sp_shock_design_transfer(
-          amount, pol[[SP_ELIGIBLE_COL]], pol[["weight"]]
-        )
-      }
-      ideal <- tryCatch(
-        if (!is.null(sp)) .determine_sp_eligibility(base, sp, apply_errors = FALSE),
-        error = function(e) NULL
-      )
-      sp_effectiveness(
-        base, pol,
+      step3_sp_effectiveness(
+        diag_data(), sp_scenario(), baseline_svy(), policy_svy(), shock_summary(),
         # The Results line is NULL when a non-poverty metric is selected, so
         # fall back to the line Step 1 stored with the baseline run.
         poverty_line = tryCatch(
           poverty_line() %||% baseline_hist_sim()$pov_line,
           error = function(e) NULL
-        ),
-        analysis_unit = d$analysis_unit %||% "hh",
-        currency = d$transfer_currency %||% "PPP",
-        admin_share = d$admin_share %||% 0,
-        eligibility = ideal,
-        shock = shock
+        )
       )
     })
 
@@ -1034,17 +1002,12 @@ mod_3_08_diagnostics_server <- function(id,
         ))
       }
 
-      df <- d$input_summary
-      if (is.null(df) || nrow(df) == 0) {
+      df <- step3_input_summary_frame(d)
+      if (is.null(df)) {
         return(.wise_diag_reactable(
           data.frame(Note = "No numeric variables to summarize.")
         ))
       }
-
-      counts <- d$changed_counts
-      count_label <- if (identical(d$analysis_unit, "hh")) "Sample households changed" else "Sample observations changed"
-      df[[count_label]] <- unname(counts[df$variable])
-      df <- df[, c("variable", count_label, setdiff(names(df), c("variable", count_label))), drop = FALSE]
       # Raw values in the data; display rounding lives in colFormat.
       .wise_diag_reactable(.policy_input_table_raw(df))
     })
@@ -1080,19 +1043,8 @@ mod_3_08_diagnostics_server <- function(id,
       label = "Policy input diagnostics",
       step = 3L,
       fun = function() {
-        d <- diag_data()
-        if (is.null(d) || !is.null(d$status)) {
-          return(NULL)
-        }
-        df <- d$input_summary
-        if (is.null(df) || nrow(df) == 0) {
-          return(NULL)
-        }
-        counts <- d$changed_counts
-        count_label <- if (identical(d$analysis_unit, "hh")) "Sample households changed" else "Sample observations changed"
-        df[[count_label]] <- unname(counts[df$variable])
-        df <- df[, c("variable", count_label, setdiff(names(df), c("variable", count_label))), drop = FALSE]
-        .format_policy_input_table(df)
+        df <- step3_input_summary_frame(diag_data())
+        if (is.null(df)) NULL else .format_policy_input_table(df)
       },
       stale = stale,
       description = paste(
