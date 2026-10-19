@@ -710,3 +710,68 @@ test_that("compact level channels convert log effects per household before avera
     stats::weighted.mean(b[year], w[year])
   expect_false(isTRUE(all.equal(expected, naive, tolerance = 1e-12)))
 })
+
+test_that("exposure validation reuses the structure of a validated member and still fails closed", {
+  fx <- annual_channel_fixture(binned = TRUE)
+  ctx <- fx$context
+  validate <- function(pipe, cache) .validate_policy_annual_exposure(pipe, ctx, NULL, cache)
+  cache <- new.env(parent = emptyenv())
+  first <- validate(fx$pipeline, cache)
+  expect_identical(first, validate(fx$pipeline, NULL))
+  expect_false(is.null(cache$validated_structure))
+
+  # A sibling member differs only in its weather values: same result as an
+  # uncached validation, and the structure stays cached.
+  sibling <- fx$pipeline
+  sibling$weather_exposure$table$rain <- sibling$weather_exposure$table$rain + 1
+  expect_identical(validate(sibling, cache), validate(sibling, NULL))
+  expect_false(is.null(cache$validated_structure))
+
+  # Every structural or weather defect is still caught with a primed cache.
+  cases <- list(
+    list(function(p) { p$weather_exposure$table$temp <- as.character(p$weather_exposure$table$temp); p }, "invalid weather category"),
+    list(function(p) { p$weather_exposure$table$rain[1] <- NA; p }, "Missing exact weather"),
+    list(function(p) { p$weather_exposure$table$rain[1] <- Inf; p }, "Nonfinite"),
+    list(function(p) { p$weather_exposure$table$rain <- NULL; p }, "Missing exact weather"),
+    list(function(p) { p$weather_exposure$table$survname[1] <- "wrong-wave"; p }, "survey identity mismatch"),
+    list(function(p) { p$weather_exposure$table$timestamp[1] <- as.Date("2000-01-01"); p }, "anchor does not match"),
+    list(function(p) { p$weather_exposure$prediction_row_id[2] <- 1L; p }, "Invalid prediction-row"),
+    list(function(p) { p$weight <- p$weight + 1; p$weather_exposure$weight <- p$weight; p }, "weight mismatch")
+  )
+  for (case in cases) {
+    expect_error(validate(case[[1]](fx$pipeline), cache), case[[2]])
+    # A failed member must not poison the cache for the next good one.
+    expect_identical(validate(fx$pipeline, cache), first)
+  }
+
+  # A different run context never reuses another context's validation.
+  other <- fx$context
+  other_ctx <- annual_channel_fixture(binned = TRUE)$context
+  expect_false(identical(other, other_ctx))
+  expect_error(
+    .validate_policy_annual_exposure(
+      within(fx$pipeline, svy_row_id[1] <- 999L), other_ctx, NULL, cache),
+    "Invalid prediction-row|ordering mismatch")
+})
+
+test_that("a primed exposure cache leaves the annual policy run and metric decomposition unchanged", {
+  fx <- metric_channel_fixture("fixest")
+  fx$hist$residuals <- "none"
+  fx$policy_hist$residuals <- "none"
+  member <- fx$hist$pipeline
+  sibling <- member
+  sibling$weather_exposure$table$rain <- sibling$weather_exposure$table$rain * 1.5
+  scenarios <- list(future = list(pipelines = list(a = member, b = sibling),
+    shared_context = fx$hist$shared_context))
+  out <- apply_policy_delta_to_baseline(fx$fx$base, fx$fx$policy, fx$fx$model,
+    fx$fx$context$so, fx$hist, scenarios, decomp_context = fx$fx$context,
+    run_identity = "annual-run")
+  # Reference: each member through its own, never shared, validation.
+  for (name in c("a", "b")) {
+    pipe <- scenarios$future$pipelines[[name]]
+    ref <- .apply_policy_annual_pipeline(pipe, fx$prepared, "annual-run",
+      scenario = "future", member = name, owner = scenarios$future)
+    expect_identical(out$saved_scenarios$future$pipelines[[name]]$y_point,
+      ref$pipeline$y_point)
+  }
+})

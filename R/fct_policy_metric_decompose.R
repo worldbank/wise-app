@@ -106,41 +106,68 @@
   ids <- pipeline$svy_row_id
   idx <- exposure$row_index
   ordinal <- exposure$prediction_row_id
-  valid_index <- function(x, upper) is.numeric(x) && length(x) == n &&
-    !anyNA(x) && all(x == as.integer(x) & x >= 1 & x <= upper)
-  if (!valid_index(ids, context$n) || length(pipeline$sim_year) != n ||
-    anyNA(pipeline$sim_year) || !is.data.frame(exposure$table) ||
-    !valid_index(idx, nrow(exposure$table)) || !valid_index(ordinal, Inf) ||
-    anyDuplicated(ordinal)) {
-    stop("Invalid prediction-row exposure identifiers.", call. = FALSE)
+  key_cols <- c("code", "year", "survname", "loc_id", "int_month", "timestamp")
+  # Everything below except the weather values depends only on the row
+  # structure (ids, years, weights, anchor index and the anchor key columns).
+  # Members of one scenario share it, so a member whose structure is identical
+  # to one that already passed skips the per-row scans (identical() on the same
+  # vectors is a memory compare). The weather values are checked per member.
+  structure <- if (all(key_cols %in% names(exposure$table))) {
+    list(context = context, n = n, ids = ids, sim_year = pipeline$sim_year,
+      weight = pipeline$weight, idx = idx, ordinal = ordinal,
+      keys = exposure$table[key_cols])
   }
-  required <- c("code", "year", "survname", "loc_id", "int_month", "timestamp",
-    context$weather_vars)
-  absent <- setdiff(required, names(exposure$table))
-  missing <- if (!length(absent)) required[vapply(required,
-    function(key) anyNA(exposure$table[[key]][idx]), logical(1))] else absent
-  if (length(missing)) {
-    stop("Missing exact weather exposure or anchor identity: ",
-      paste(missing, collapse = ", "), call. = FALSE)
-  }
-  join_keys <- c("code", "year", "survname", "loc_id", "int_month")
-  if (!all(join_keys %in% names(context$svy_baseline))) {
-    stop("Survey join identity unavailable in run context.", call. = FALSE)
-  }
-  for (key in join_keys) {
-    if (!identical(as.character(exposure$table[[key]][idx]),
-      as.character(context$svy_baseline[[key]][ids]))) {
-      stop("Weather exposure/survey identity mismatch: ", key, call. = FALSE)
+  validated <- is.environment(cache) && !is.null(structure) &&
+    identical(cache$validated_structure, structure)
+  if (validated) {
+    absent <- setdiff(context$weather_vars, names(exposure$table))
+    missing <- if (length(absent)) absent else context$weather_vars[vapply(
+      context$weather_vars, function(key) anyNA(exposure$table[[key]][idx]),
+      logical(1))]
+    if (length(missing)) {
+      stop("Missing exact weather exposure or anchor identity: ",
+        paste(missing, collapse = ", "), call. = FALSE)
     }
-  }
-  if (!is.null(pipeline$weight) && "weight" %in% names(context$svy_baseline) &&
-    !identical(pipeline$weight, context$svy_baseline$weight[ids])) {
-    stop("Prediction/survey weight mismatch.", call. = FALSE)
-  }
-  ts <- as.POSIXlt(exposure$table$timestamp[idx])
-  if (!all(as.integer(ts$year + 1900L) == pipeline$sim_year) ||
-    !all(as.integer(ts$mon + 1L) == exposure$table$int_month[idx])) {
-    stop("Weather anchor does not match simulation year/month.", call. = FALSE)
+  } else {
+    valid_index <- function(x, upper) is.numeric(x) && length(x) == n &&
+      !anyNA(x) && all(x == as.integer(x) & x >= 1 & x <= upper)
+    if (!valid_index(ids, context$n) || length(pipeline$sim_year) != n ||
+      anyNA(pipeline$sim_year) || !is.data.frame(exposure$table) ||
+      !valid_index(idx, nrow(exposure$table)) || !valid_index(ordinal, Inf) ||
+      anyDuplicated(ordinal)) {
+      stop("Invalid prediction-row exposure identifiers.", call. = FALSE)
+    }
+    required <- c(key_cols, context$weather_vars)
+    absent <- setdiff(required, names(exposure$table))
+    missing <- if (!length(absent)) required[vapply(required,
+      function(key) anyNA(exposure$table[[key]][idx]), logical(1))] else absent
+    if (length(missing)) {
+      stop("Missing exact weather exposure or anchor identity: ",
+        paste(missing, collapse = ", "), call. = FALSE)
+    }
+    join_keys <- c("code", "year", "survname", "loc_id", "int_month")
+    if (!all(join_keys %in% names(context$svy_baseline))) {
+      stop("Survey join identity unavailable in run context.", call. = FALSE)
+    }
+    for (key in join_keys) {
+      if (!identical(as.character(exposure$table[[key]][idx]),
+        as.character(context$svy_baseline[[key]][ids]))) {
+        stop("Weather exposure/survey identity mismatch: ", key, call. = FALSE)
+      }
+    }
+    if (!is.null(pipeline$weight) && "weight" %in% names(context$svy_baseline) &&
+      !identical(pipeline$weight, context$svy_baseline$weight[ids])) {
+      stop("Prediction/survey weight mismatch.", call. = FALSE)
+    }
+    ts <- as.POSIXlt(exposure$table$timestamp[idx])
+    if (!all(as.integer(ts$year + 1900L) == pipeline$sim_year) ||
+      !all(as.integer(ts$mon + 1L) == exposure$table$int_month[idx])) {
+      stop("Weather anchor does not match simulation year/month.", call. = FALSE)
+    }
+    # Remember the structure only after every structural check has passed.
+    if (is.environment(cache) && !is.null(structure)) {
+      cache$validated_structure <- structure
+    }
   }
   for (v in context$weather_vars) {
     x <- exposure$table[[v]][idx]
