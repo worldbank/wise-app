@@ -193,6 +193,15 @@ mod_3_01_sp_server <- function(id,
       svy <- tryCatch(hist_sim()$svy, error = function(e) NULL)
       choices <- .sp_impact_level_choices(svy)
       current <- shiny::isolate(input$trigger_level)
+      if (!is.null(current) && !current %in% choices) {
+        shiny::showNotification(
+          sprintf(
+            "Impact level '%s' is not available for this survey. Using National.",
+            current
+          ),
+          type = "warning", duration = 8
+        )
+      }
       updateSelectInput(
         session, "trigger_level", choices = choices,
         selected = if (!is.null(current) && current %in% choices) current else "national"
