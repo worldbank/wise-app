@@ -1,8 +1,8 @@
-# Archived static ggplot renderers from batch/R/batch_utils.R.
+# Archived static ggplot renderers from batch/legacy/R/batch_utils.R.
 #
 # Retained for development/reference use only; this file is not sourced by the
 # batch scripts or included in the package runtime. `build_h3_geojson()` remains
-# active in batch/R/batch_utils.R because it produces data, not a static plot.
+# active in batch/legacy/R/batch_utils.R because it produces data, not a static plot.
 
 # -----------------------------------------------------------------------------
 # .ne_cache: session-level cache for Natural Earth vector layers

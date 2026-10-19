@@ -1,4 +1,9 @@
-# Batch Pipeline — WISE-APP
+# Batch Pipeline — WISE-APP (legacy)
+
+> **Legacy.** These scripts now live in `batch/legacy/` and are kept for
+> reference only. They are not maintained and are not a parity target. The
+> replacement is planned in `review/batch_pipeline_plan.md`. Paths below still
+> read `batch/` as originally written.
 
 Scripts in `batch/` run the full WISE-APP pipeline headlessly (no Shiny UI).
 All are sourced directly: `source("batch/XX_name.R")`.

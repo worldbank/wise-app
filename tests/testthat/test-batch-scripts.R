@@ -1,8 +1,8 @@
-# Batch scripts are not run by the suite (they need real data and long runs),
-# but they must at least parse, and calls to shared batch helpers must match
-# the helper signatures.
+# Legacy batch scripts (batch/legacy/) are not run by the suite (they need
+# real data and long runs), but they must at least parse, and calls to shared
+# batch helpers must match the helper signatures.
 
-batch_dir <- function() testthat::test_path("..", "..", "batch")
+batch_dir <- function() testthat::test_path("..", "..", "batch", "legacy")
 
 batch_files <- function() {
   list.files(batch_dir(), pattern = "\\.R$", full.names = TRUE, recursive = TRUE)
