@@ -708,7 +708,7 @@ mod_3_08_diagnostics_server <- function(id,
           shiny::h6("What does it cost in a year?", style = .diag_subheading_style),
           wise_chart_output(
             ns("shock_cost_plot"),
-            "Mean, median and 1-in-20 year annual cost, by scenario",
+            "Mean, median and 95th percentile annual cost, by scenario",
             height = "360px"
           ),
           shiny::tags$details(
@@ -781,7 +781,7 @@ mod_3_08_diagnostics_server <- function(id,
       label = "Shock-responsive annual cost",
       step = 3L,
       fun = function() if (is.null(shock_summary())) NULL else shock_cost_chart(),
-      description = "Mean, median and 1-in-20 year annual cost by scenario.",
+      description = "Mean, median and 95th percentile annual cost by scenario.",
       width = 9, height = 5,
       stale = stale
     )
@@ -1188,7 +1188,7 @@ mod_3_08_diagnostics_server <- function(id,
       ignoreInit = TRUE
     )
 
-    # Append Diagnostics tab on first successful run ----
+    # Append the policy profile tab (internal value "diag_tab") on first successful run ----
 
     observeEvent(sim_run_id(),
       {
@@ -1198,7 +1198,7 @@ mod_3_08_diagnostics_server <- function(id,
           shiny::appendTab(
             inputId = tabset_id,
             shiny::tabPanel(
-              title = "Diagnostics",
+              title = "Policy profile",
               value = "diag_tab",
               shiny::div(id = ns("diagnostics_section"))
             ),

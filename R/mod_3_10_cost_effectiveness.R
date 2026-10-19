@@ -20,10 +20,14 @@ mod_3_10_cost_effectiveness_ui <- function(id) {
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      shiny::uiOutput(ns("scope_ui")),
       shiny::uiOutput(ns("context_ui")),
       shiny::uiOutput(ns("ce_body_ui")),
-      shiny::uiOutput(ns("ce_note_ui"))
+      shiny::tags$details(
+        class = "decomposition-data-details",
+        shiny::tags$summary("What is and is not counted"),
+        shiny::uiOutput(ns("scope_ui")),
+        shiny::uiOutput(ns("ce_note_ui"))
+      )
     ),
     shiny::uiOutput(ns("climate_ui")),
     shiny::uiOutput(ns("reach_ui"))
@@ -203,15 +207,90 @@ mod_3_10_cost_effectiveness_server <- function(id,
           shiny::tags$p(empty_message(x))
         ))
       }
+      n_rows <- nrow(.sp_ce_plot_rows(x$res, x$currency))
+      per_person <- identical(x$method, "headcount_ratio")
       shiny::tagList(
-        shiny::div(
-          class = "wise-reactable-controls",
-          wise_reactable_csv_button(ns("ce_table"), "policy_cost_effectiveness")
+        shiny::uiOutput(ns("ce_cards_ui")),
+        shiny::h6(
+          if (per_person) "What does it buy? Cost per person lifted (lower is better)" else
+            "What does it buy? Return per $1 of cost (higher is better)",
+          style = .diag_subheading_style
         ),
-        reactable::reactableOutput(ns("ce_table"))
+        wise_chart_output(
+          ns("ce_ratio_plot"),
+          "Cost-effectiveness ratio by scenario and weather year, with 95% intervals for the average year",
+          height = paste0(max(160, 100 + 40 * n_rows), "px")
+        ),
+        shiny::uiOutput(ns("ce_ratio_note_ui")),
+        shiny::h6("What does it cost?", style = .diag_subheading_style),
+        wise_chart_output(
+          ns("ce_cost_plot"), "Annual cost of the cash transfer by scenario",
+          height = "320px"
+        ),
+        shiny::tags$details(
+          class = "decomposition-data-details",
+          shiny::tags$summary("View cost-effectiveness data"),
+          shiny::div(
+            class = "wise-reactable-controls",
+            wise_reactable_csv_button(ns("ce_table"), "policy_cost_effectiveness")
+          ),
+          reactable::reactableOutput(ns("ce_table"))
+        )
       )
     })
     outputOptions(output, "ce_body_ui", suspendWhenHidden = FALSE)
+
+    # The Results focus scenario drives the cards; without one, the first.
+    focus_scenario <- reactive({
+      f <- tryCatch(metric_decomposition()$metadata$focus_scenario, error = function(e) NULL)
+      .sp_ce_focus(ce()$res, f)
+    })
+
+    output$ce_cards_ui <- shiny::renderUI({
+      x <- ce()
+      req(identical(x$status, "ok"))
+      sc <- focus_scenario()
+      shiny::tagList(
+        if (length(unique(x$res$scenario)) > 1L) {
+          shiny::tags$p(class = "diagnostic-note", style = "margin: 0 0 6px;", paste("Scenario:", sc))
+        },
+        headline_cards_ui(.sp_ce_cards(x$res, x$currency, sc))
+      )
+    })
+
+    output$ce_ratio_note_ui <- shiny::renderUI({
+      x <- ce()
+      req(identical(x$status, "ok"))
+      skipped <- .sp_ce_unshown(x$res)
+      shiny::tags$p(
+        class = "diagnostic-note",
+        "Dots are the ratio; lines are the 95% interval from the weather-coefficient",
+        "uncertainty (average year only).",
+        if (identical(x$method, "headcount_ratio")) {
+          "A hollow dot means the interval reaches zero effect, so the cost per person is not bounded."
+        },
+        if (length(skipped)) paste("Not shown:", paste(skipped, collapse = "; "))
+      )
+    })
+
+    ce_ratio_chart <- function() {
+      x <- ce()
+      if (!identical(x$status, "ok")) NULL else echart_sp_ce_ratio(x$res, x$currency)
+    }
+    ce_cost_chart <- function() {
+      x <- ce()
+      if (!identical(x$status, "ok")) NULL else echart_sp_ce_cost(x$res, x$currency)
+    }
+    output$ce_ratio_plot <- echarts4r::renderEcharts4r({
+      ch <- ce_ratio_chart()
+      req(!is.null(ch))
+      ch
+    })
+    output$ce_cost_plot <- echarts4r::renderEcharts4r({
+      ch <- ce_cost_chart()
+      req(!is.null(ch))
+      ch
+    })
 
     output$ce_table <- reactable::renderReactable({
       df <- ce_display()
@@ -234,8 +313,8 @@ mod_3_10_cost_effectiveness_server <- function(id,
           )
         },
         shiny::tags$li(
-          "Average year: the equal-model mean over the simulated years. 1-in-20",
-          "year: the baseline-anchored adverse year used in Results",
+          "Average year: the equal-model mean over the simulated years. Adverse",
+          "1-in-20 year: the baseline-anchored adverse weather year used in Results",
           if (x$shock) {
             ", with the program's cost in the same member-years."
           } else {
@@ -277,21 +356,41 @@ mod_3_10_cost_effectiveness_server <- function(id,
           class = "results-section-card diagnostic-section-card",
           shiny::tags$p(
             class = "diagnostic-note",
+            style = "margin-top: 0;",
             "The trigger is fixed on the historical record, so under climate",
             "change it fires more or less often and the bill moves with it. Costs",
-            "include administration. The 1-in-20 cost here is the 95th percentile of",
-            "annual cost over all simulated years; the 1-in-20 year above is the",
-            "adverse weather year used in Results, so the two can differ."
+            "include administration. The 95th percentile is taken over all",
+            "simulated years; it is not the cost in the adverse 1-in-20 weather",
+            "year used above."
           ),
-          shiny::div(
-            class = "wise-reactable-controls",
-            wise_reactable_csv_button(ns("climate_table"), "policy_shock_climate_cost")
+          wise_chart_output(
+            ns("climate_plot"),
+            "Mean and 95th percentile annual cost of the shock-responsive program by scenario",
+            height = "380px"
           ),
-          reactable::reactableOutput(ns("climate_table"))
+          shiny::tags$details(
+            class = "decomposition-data-details",
+            shiny::tags$summary("View climate-adjusted cost data"),
+            shiny::div(
+              class = "wise-reactable-controls",
+              wise_reactable_csv_button(ns("climate_table"), "policy_shock_climate_cost")
+            ),
+            reactable::reactableOutput(ns("climate_table"))
+          )
         )
       )
     })
     outputOptions(output, "climate_ui", suspendWhenHidden = FALSE)
+
+    climate_chart <- function() {
+      d <- climate()
+      if (is.null(d)) NULL else echart_shock_climate_cost(d, ce()$currency)
+    }
+    output$climate_plot <- echarts4r::renderEcharts4r({
+      ch <- climate_chart()
+      req(!is.null(ch))
+      ch
+    })
 
     output$climate_table <- reactable::renderReactable({
       d <- climate()
@@ -330,6 +429,7 @@ mod_3_10_cost_effectiveness_server <- function(id,
           class = "results-section-card diagnostic-section-card",
           shiny::tags$p(
             class = "diagnostic-note",
+            style = "margin-top: 0;",
             paste0(
               "Household-years in which a household that was poor at baseline lost ",
               "at least ", fmt_num(r$event_pct, 0), "% of its own typical welfare "
@@ -337,7 +437,7 @@ mod_3_10_cost_effectiveness_server <- function(id,
             "(the loss-event share of the run). Coverage is the share of those",
             "household-years in which the household was paid. Adequacy is the",
             "payment as a share of the modelled loss. This table keeps the share the",
-            "run used: changing the loss-event share in Diagnostics re-scores basis",
+            "run used: changing the loss-event share in Policy profile re-scores basis",
             "risk there live, but needs a new Step 3 run to change the figures here.",
             if (line_ok) {
               paste0(" Poverty line: ", prefix, fmt_num(r$line, 2), " per day (Results).")
@@ -345,11 +445,20 @@ mod_3_10_cost_effectiveness_server <- function(id,
           ),
           if (nrow(r$res)) {
             shiny::tagList(
-              shiny::div(
-                class = "wise-reactable-controls",
-                wise_reactable_csv_button(ns("reach_table"), "policy_shock_affected_poor")
+              wise_chart_output(
+                ns("reach_plot"),
+                "Coverage and adequacy of the shock-affected poor by scenario",
+                height = "300px"
               ),
-              reactable::reactableOutput(ns("reach_table"))
+              shiny::tags$details(
+                class = "decomposition-data-details",
+                shiny::tags$summary("View shock-affected poor data"),
+                shiny::div(
+                  class = "wise-reactable-controls",
+                  wise_reactable_csv_button(ns("reach_table"), "policy_shock_affected_poor")
+                ),
+                reactable::reactableOutput(ns("reach_table"))
+              )
             )
           } else {
             shiny::tags$p(class = "text-muted small", "Needs a positive poverty line.")
@@ -375,6 +484,16 @@ mod_3_10_cost_effectiveness_server <- function(id,
         check.names = FALSE, stringsAsFactors = FALSE
       )
     })
+    reach_chart <- function() {
+      r <- reach()
+      if (is.null(r) || !nrow(r$res)) NULL else echart_shock_affected_poor(r$res)
+    }
+    output$reach_plot <- echarts4r::renderEcharts4r({
+      ch <- reach_chart()
+      req(!is.null(ch))
+      ch
+    })
+
     output$reach_table <- reactable::renderReactable({
       df <- reach_display()
       req(!is.null(df))
@@ -383,6 +502,42 @@ mod_3_10_cost_effectiveness_server <- function(id,
 
     # Exports ----
 
+    wise_export_figure(
+      key = "policy_ce_ratio",
+      label = "Cost-effectiveness ratio by scenario",
+      step = 3L,
+      fun = ce_ratio_chart,
+      description = "Cost per person lifted or return per $1 of cost, with 95% intervals for the average year.",
+      width = 9, height = 5,
+      stale = stale
+    )
+    wise_export_figure(
+      key = "policy_ce_cost",
+      label = "Annual cost of the cash transfer",
+      step = 3L,
+      fun = ce_cost_chart,
+      description = "Annual cost by scenario, in the average and the adverse 1-in-20 year.",
+      width = 9, height = 5,
+      stale = stale
+    )
+    wise_export_figure(
+      key = "policy_shock_climate_cost_chart",
+      label = "Shock-responsive climate-adjusted cost",
+      step = 3L,
+      fun = climate_chart,
+      description = "Mean and 95th percentile annual cost per scenario, with payment frequency and cost change against history.",
+      width = 9, height = 5,
+      stale = stale
+    )
+    wise_export_figure(
+      key = "policy_shock_affected_poor_chart",
+      label = "Shock-responsive coverage and adequacy of the affected poor",
+      step = 3L,
+      fun = reach_chart,
+      description = "Coverage and adequacy of the affected poor by scenario.",
+      width = 9, height = 5,
+      stale = stale
+    )
     wise_export_table(
       key = "policy_cost_effectiveness",
       label = "Cost-effectiveness of the cash transfer",

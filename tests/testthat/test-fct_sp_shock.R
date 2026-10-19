@@ -652,7 +652,7 @@ test_that("the summary card shows expected activation and cost for a shock progr
     expect_match(html, "Shock-responsive")
     expect_match(html, "Years with payments")
     expect_match(html, "75")
-    expect_match(html, "1-in-20 year cost")
+    expect_match(html, "95th percentile annual cost")
     expect_match(html, "Needs 20 years")
     # An unfinished trigger says what is missing instead of showing numbers
     session$setInputs(trigger_value = NA)
@@ -680,7 +680,7 @@ shock_summary_fixture <- function() {
 test_that("the shock summary is shown as a table and a chart, with NA as not available", {
   d <- .sp_shock_display(shock_summary_fixture()$summary)
   expect_identical(names(d), c("Measure", "Historical", "SSP"))
-  expect_identical(d$SSP[d$Measure == "1-in-20 year cost"], "Not available")
+  expect_identical(d$SSP[d$Measure == "95th percentile annual cost"], "Not available")
   expect_identical(d$Historical[d$Measure == "Years with payments"], "20.0%")
   expect_s3_class(echart_shock_cost_distribution(shock_summary_fixture()$summary), "echarts4r")
   expect_s3_class(echart_shock_cost_distribution(NULL), "echarts4r")

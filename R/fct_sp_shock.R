@@ -1719,7 +1719,7 @@ sp_shock_climate_cost <- function(summary, reference = NULL) {
     `Mean annual cost` = money(d$mean_total_cost),
     `Cost change vs historical` = ifelse(d$is_reference, "Reference",
       signed(d$cost_change, 100, "%")),
-    `1-in-20 year cost (95th percentile)` = money(d$cost_1_in_20),
+    `95th percentile annual cost` = money(d$cost_1_in_20),
     check.names = FALSE, stringsAsFactors = FALSE
   )
   out
@@ -2026,7 +2026,7 @@ sp_dynamic_effect <- function(y_t, transfer, is_log) {
     "Years with payments" = function(s) pct(s$activation_freq),
     "Mean annual cost" = function(s) money(s$mean_total_cost),
     "Median annual cost" = function(s) money(s$median_total_cost),
-    "1-in-20 year cost" = function(s) money(s$cost_1_in_20),
+    "95th percentile annual cost" = function(s) money(s$cost_1_in_20),
     "Of which transfers (mean)" = function(s) money(s$mean_transfer_cost),
     "Of which administration (mean)" = function(s) money(s$mean_admin_cost),
     "False positives (paid, no loss event)" = function(s) pct(s$false_positive_rate),
@@ -2062,10 +2062,10 @@ sp_dynamic_effect <- function(y_t, transfer, is_log) {
   out
 }
 
-#' Annual cost by scenario: mean, median and 1-in-20 year
+#' Annual cost by scenario: mean, median and 95th percentile
 #'
 #' Draws the precomputed summary (guidelines section 7); a scenario with fewer
-#' than 20 member-years has no 1-in-20 bar.
+#' than 20 member-years has no 95th percentile bar.
 #'
 #' @param summary Result of `sp_shock_summary()`.
 #' @param y_label Axis title.
@@ -2079,7 +2079,7 @@ echart_shock_cost_distribution <- function(summary, y_label = "Annual cost", hei
   stats <- list(
     "Mean" = summary$mean_total_cost,
     "Median" = summary$median_total_cost,
-    "1-in-20 year" = summary$cost_1_in_20
+    "95th percentile" = summary$cost_1_in_20
   )
   wide <- data.frame(scenario = as.character(summary$scenario), stringsAsFactors = FALSE)
   for (nm in names(stats)) wide[[nm]] <- stats[[nm]]

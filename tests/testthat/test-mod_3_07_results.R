@@ -90,6 +90,16 @@ test_that("resilience and adverse headline cards use metric-aware shared results
   expect_identical(adverse_cards[[2]]$status$kind, "adverse")
   expect_identical(adverse_cards[[2]]$status$text, "Increases weather sensitivity")
 
+  # A shock transfer adds a line to the resilience popover; it must stay one
+  # string so the card still renders (regression: length-2 info broke renderUI).
+  shock <- metric
+  shock$return_period$sp_shock <- -.01
+  shock_cards <- step3_headline_cards(summary, method = "headcount_ratio",
+    metric_decomposition = shock)
+  expect_length(shock_cards[[2]]$info, 1L)
+  expect_match(shock_cards[[2]]$info, "Shock-responsive transfer: -1.00 pp", fixed = TRUE)
+  expect_no_error(headline_cards_ui(shock_cards))
+
   metric$metadata$repositioning_modeled <- FALSE
   metric$metadata$interaction_included <- FALSE
   metric$return_period$resilience <- NA_real_

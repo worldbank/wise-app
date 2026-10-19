@@ -1437,7 +1437,7 @@ step3_headline_cards <- function(paired_summary,
       metric_context_note(spec),
       "Total adverse-year effect:", fmt_change(eff_20),
       "Main effect:", main_text,
-      if (!is.null(shock_text)) c("Shock-responsive transfer:", shock_text),
+      if (!is.null(shock_text)) paste("Shock-responsive transfer:", shock_text),
       "Repositioning:", repositioning_text,
       "Interaction:", interaction_text
     )
@@ -1509,7 +1509,7 @@ step3_headline_cards <- function(paired_summary,
       "Population covered or affected is the weighted number of people represented",
       "by units touched by any implemented policy: social protection recipients plus",
       "units whose covariates another policy lever changed. It matches the coverage",
-      "table on the Diagnostics tab. For household analysis, Diagnostics also reports",
+      "table on the Policy profile tab. For household analysis, Policy profile also reports",
       "represented household equivalents separately."
     )
   )

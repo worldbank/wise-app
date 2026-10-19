@@ -477,7 +477,7 @@ sp_cost_effectiveness <- function(effects, costs, method, pop, poverty_line = NU
     money(res$amount)
   }
   out <- data.frame(
-    Scenario = res$scenario, `Weather year` = res$basis,
+    Scenario = res$scenario, `Weather year` = .sp_ce_basis_label(res$basis),
     `Annual cost` = money(res$cost), Change = change, Result = result,
     `95% interval` = interval, Note = res$note,
     check.names = FALSE, stringsAsFactors = FALSE

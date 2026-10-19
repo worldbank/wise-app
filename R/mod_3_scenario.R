@@ -396,15 +396,23 @@ mod_3_scenario_server <- function(id,
       {
         req(s6$sim_run_id() > 0, s6$decomp_scenarios())
         if (!decomp_tab_added()) {
-          shiny::appendTab(
-            inputId = "step3_output_tabs",
-            shiny::tabPanel(
-              title = "Decomposition",
-              value = "decomposition_tab",
-              shiny::div(id = ns("decomposition_section"))
-            ),
-            session = session
+          # Tab order: Overview, Results, Policy profile, Decomposition, Cost-effectiveness
+          decomp_panel <- shiny::tabPanel(
+            title = "Decomposition",
+            value = "decomposition_tab",
+            shiny::div(id = ns("decomposition_section"))
           )
+          if (ce_tab_added()) {
+            shiny::insertTab(
+              inputId = "step3_output_tabs", decomp_panel,
+              target = "cost_effectiveness_tab", position = "before",
+              session = session
+            )
+          } else {
+            shiny::appendTab(
+              inputId = "step3_output_tabs", decomp_panel, session = session
+            )
+          }
           shiny::insertUI(
             selector = paste0("#", ns("decomposition_section")),
             where = "afterBegin",

@@ -203,3 +203,22 @@ test_that("the tab registers its exports", {
     expect_equal(tbl$poverty_line[[1L]], 3)
   })
 })
+
+test_that("the tab leads with cards and charts and keeps the table behind a toggle", {
+  testServer(mod_3_10_cost_effectiveness_server, args = ce_args(), {
+    body <- as.character(output$ce_body_ui$html)
+    expect_match(body, "ce_cards_ui")
+    expect_match(body, "ce_ratio_plot")
+    expect_match(body, "ce_cost_plot")
+    expect_match(body, "View cost-effectiveness data")
+    cards <- as.character(output$ce_cards_ui$html)
+    expect_match(cards, "Cost per person lifted, average year")
+    expect_match(cards, "Cost per person lifted, adverse 1-in-20 year")
+    expect_s3_class(ce_ratio_chart(), "echarts4r")
+    expect_s3_class(ce_cost_chart(), "echarts4r")
+    # The table names the adverse year as Results does
+    expect_true("Adverse 1-in-20 year" %in% ce_display()[["Weather year"]])
+    keys <- vapply(wise_export_items(session), `[[`, character(1), "key")
+    expect_true(all(c("policy_ce_ratio", "policy_ce_cost") %in% keys))
+  })
+})

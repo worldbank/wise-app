@@ -619,7 +619,7 @@ mod_3_01_sp_server <- function(id,
                         "occurs (not its cost). It is an assumption: the model predicts",
                         "annual welfare and cannot show the mechanism (avoided asset",
                         "sales, scarring), so leave it at 1 unless you have evidence.",
-                        "Diagnostics shows the m at which the forecast design matches the",
+                        "Policy profile shows the m at which the forecast design matches the",
                         "welfare effect of the ex-post design, in total and per dollar."
                       )
                     )
@@ -675,7 +675,7 @@ mod_3_01_sp_server <- function(id,
                     title = "Loss event",
                     tags$p(
                       "Scoring only: it changes no payment and no welfare result, so",
-                      "changing it does not mark results stale and Diagnostics",
+                      "changing it does not mark results stale and Policy profile",
                       "re-scores the finished run. A location has a",
                       "loss event in a year when its households' modelled weather",
                       "loss is at least this share of their own typical welfare.",
@@ -1708,20 +1708,12 @@ mod_3_01_sp_server <- function(id,
               pills = fmt_num(s$mean_cost, digits = 0, prefix = cur)
             ),
             selection_card_row(
-              name = "1-in-20 year cost",
+              name = "95th percentile annual cost",
               pills = if (is.finite(s$cost_1_in_20)) {
                 fmt_num(s$cost_1_in_20, digits = 0, prefix = cur)
               } else {
                 "Needs 20 years"
               }
-            ),
-            selection_card_row(
-              name = "Variability of annual cost (CV)",
-              pills = fmt_num(s$cost_cv, digits = 2, na = "Not available")
-            ),
-            selection_card_row(
-              name = "Modelled loss offset",
-              pills = fmt_num(100 * s$loss_offset_share, suffix = "%", na = "Not available")
             ),
             if (is.finite(suppressWarnings(as.numeric(preview_spec$annual_cap %||% NA)))) {
               selection_card_row(
@@ -1746,19 +1738,7 @@ mod_3_01_sp_server <- function(id,
                 name = "m needed to match ex post, per dollar",
                 pills = fmt_num(s$breakeven_m_cost, digits = 2, na = "Not available")
               )
-            },
-            selection_card_row(
-              name = "Population in triggered locations",
-              pills = fmt_num(100 * s$mean_exposed_share, suffix = "%")
-            ),
-            selection_card_row(
-              name = "Paid, no loss event",
-              pills = fmt_num(100 * s$false_positive_rate, suffix = "%", na = "Not available")
-            ),
-            selection_card_row(
-              name = "Loss event, not paid",
-              pills = fmt_num(100 * s$false_negative_rate, suffix = "%", na = "Not available")
-            )
+            }
           )
         }
       }

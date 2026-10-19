@@ -205,7 +205,9 @@ echart_sp_targeting_metrics <- function(metrics) {
     axisTick = list(alignWithLabel = TRUE), splitLine = wise_esplit_line(show = FALSE)
   )
   e$x$opts$yAxis <- list(
-    type = "value", min = 0, max = 100,
+    type = "value", min = 0,
+    # Shares are at most 100%, but a ratio such as adequacy can exceed it
+    max = max(100, ceiling(100 * max(unlist(measures), 0, na.rm = TRUE) / 10) * 10),
     axisLabel = wise_eaxis_label(formatter = "{value}%"), splitLine = wise_esplit_line()
   )
   e$x$opts$legend <- modifyList(
