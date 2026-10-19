@@ -127,6 +127,52 @@ wise_default_fixed_effects <- function(fe_names) intersect(c("year", "gaul1_code
 #' @noRd
 wise_default_model_type <- function(outcome_type) model_type_choices(outcome_type)$choices[1]
 
+#' Climate scenarios of the Step 2 control, in the order the app runs them
+#' @noRd
+WISEAPP_SSP_CODES <- c("ssp2_4_5", "ssp3_7_0", "ssp5_8_5")
+
+# Bounds of the Step 2 historical-period slider (the projection periods run
+# from `.STEP2_SSP_START_YEAR` to `.STEP2_SSP_END_YEAR`, fct_step2_input.R).
+WISEAPP_SIM_HIST_RANGE <- c(1950L, 2024L)
+
+#' Default simulation section
+#'
+#' What `sim: {}` stands for: the initial state of the Step 2 sidebar. A run
+#' spec without a `sim` section runs no simulation. `baseline_survey` follows a
+#' rule on the survey waves (see `wise_default_baseline()`) and stays absent
+#' until the spec is resolved.
+#'
+#' @return A named list: `hist_years`, `future_periods` (a list of
+#'   start/end year pairs, at most three), `ssps`, `residuals`,
+#'   `coef_uncertainty`, `propagate_all_covariate_uncertainty`.
+#' @noRd
+wise_default_sim <- function() {
+  list(
+    hist_years = c(1991L, 2020L),
+    future_periods = list(c(2025L, 2035L)),
+    ssps = "ssp3_7_0",
+    residuals = "original",
+    coef_uncertainty = TRUE,
+    propagate_all_covariate_uncertainty = FALSE
+  )
+}
+
+#' Default baseline survey: the latest year of each economy
+#' @param values Survey waves as `"code|year"` strings.
+#' @return The subset of `values` that is the latest wave of its economy, in
+#'   the order given.
+#' @noRd
+wise_default_baseline <- function(values) {
+  values <- as.character(values)
+  if (!length(values)) {
+    return(character(0))
+  }
+  code <- sub("^(.*?)\\|.*$", "\\1", values)
+  year <- as.integer(sub("^.*\\|", "", values))
+  latest <- tapply(year, code, max)
+  values[year == latest[code]]
+}
+
 #' Default Lasso settings (the Model tab's advanced controls)
 #' @return A named list: `alpha`, `lambda`, `nfolds`, `standardize`, `use_mice`,
 #'   `mi_m`, `mi_maxit`, `stability_threshold`.

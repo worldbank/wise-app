@@ -733,15 +733,10 @@ mod_2_02_results_server <- function(id,
     baseline_check_rv <- reactive({
       req(hist_agg_rv())
       if (.is_provisional()) return(NULL)
-      hs <- hist_sim()
-      method <- .selected_method()
       wk <- weight_key()
-      sim_vals <- hist_agg_rv()[[wk]][[method]]$value
-      step2_baseline_check(
-        hs$svy, hs$so, method, pov_line_val(),
-        use_weights = identical(wk, "weighted"),
-        simulated = mean(sim_vals, na.rm = TRUE),
-        metadata = metric_metadata(method, hs$so %||% NULL)
+      method <- .selected_method()
+      step2_baseline_check_view(
+        hist_sim(), hist_agg_rv()[[wk]][[method]], method, pov_line_val(), wk
       )
     })
 
@@ -757,7 +752,10 @@ mod_2_02_results_server <- function(id,
       wk <- weight_key()
       method <- .selected_method()
       entry <- scenario_agg_rv()[[fut$scenario[[1L]]]]
-      step2_delta_ci(hist_agg_rv()[[wk]][[method]], entry[[wk]][[method]])
+      step2_delta_ci_view(
+        bands, hist_agg_rv()[[wk]][[method]],
+        stats::setNames(list(entry[[wk]][[method]]), fut$scenario[[1L]])
+      )
     })
 
     # Weather-support summary of the first future scenario on the cards
@@ -765,18 +763,10 @@ mod_2_02_results_server <- function(id,
     weather_support_rv <- reactive({
       req(hist_agg_rv())
       if (.is_provisional()) return(NULL)
-      bands <- headline_bands_rv()
-      fut <- bands[!bands$is_historical, , drop = FALSE]
-      if (!nrow(fut)) return(NULL)
-      ws <- tryCatch(saved_scenarios()[[fut$scenario[[1L]]]]$weather_support,
-        error = function(e) NULL)
-      if (!is.data.frame(ws) || !nrow(ws)) return(NULL)
-      sw <- if (!is.null(selected_weather)) selected_weather() else NULL
-      if (!is.null(sw) && all(c("name", "label") %in% names(sw))) {
-        lab <- stats::setNames(as.character(sw$label), as.character(sw$name))
-        ws$weather_label <- unname(lab[ws$weather_variable])
-      }
-      ws
+      step2_weather_support_view(
+        headline_bands_rv(), saved_scenarios(),
+        if (!is.null(selected_weather)) selected_weather() else NULL
+      )
     })
 
     headline_cards_data_rv <- reactive({
@@ -799,18 +789,10 @@ mod_2_02_results_server <- function(id,
         baseline_check = tryCatch(baseline_check_rv(), error = function(e) NULL),
         delta_ci = tryCatch(delta_ci_rv(), error = function(e) NULL),
         weather_support = tryCatch(weather_support_rv(), error = function(e) NULL),
-        metadata = {
-          hs <- tryCatch(.display_hist_sim(), error = function(e) NULL)
-          selected <- .selected_method()
-          metric_metadata(
-            selected,
-            hs$so %||% NULL,
-            pov_line = if (identical(selected, "prosperity_gap")) NULL else pov_line_val(),
-            analysis_unit = hs$analysis_unit %||%
-              .metric_context_value(hs$so, "level"),
-            weighted = identical(weight_key(), "weighted")
-          )
-        }
+        metadata = step2_card_metadata(
+          tryCatch(.display_hist_sim(), error = function(e) NULL),
+          .selected_method(), pov_line_val(), weight_key()
+        )
       )
     })
 
@@ -1414,62 +1396,20 @@ mod_2_02_results_server <- function(id,
     # Shared deviation reference - used by all_series_tbl and exceedance_ribbon
     hist_ref_val <- reactive({
       req(hist_agg_rv())
-      method <- .selected_method()
-      wk <- weight_key()
-      deviation <- input$cmp_deviation %||% "none"
-      if (identical(deviation, "none")) {
-        return(0)
-      }
-      raw_vals <- hist_agg_rv()[[wk]][[method]]$value
-      if (identical(deviation, "mean")) {
-        mean(raw_vals, na.rm = TRUE)
-      } else {
-        stats::median(raw_vals, na.rm = TRUE)
-      }
+      step2_hist_ref(
+        hist_agg_rv()[[weight_key()]][[.selected_method()]],
+        input$cmp_deviation %||% "none"
+      )
     })
 
-    # Per-coefficient gradient of the historical reference being subtracted.
-    # When deviation = mean: average of per-year F_agg across historical years.
-    # When deviation = median: F_agg at the historical year closest to the median.
-    # Used by .apply_contrast_sd() below to switch coefficient SE from
-    # level-CI (||F_s||) to contrast-CI (||F_s - F_ref||), the correct SE for
-    # paired counterfactual analysis on the same population.
+    # Per-coefficient gradient of the historical reference being subtracted
+    # (step2_hist_f_ref()), used by .apply_contrast_sd() below.
     hist_F_agg_ref <- reactive({
       req(hist_agg_rv())
-      method <- .selected_method()
-      wk <- weight_key()
-      deviation <- input$cmp_deviation %||% "none"
-      if (identical(deviation, "none")) {
-        return(NULL)
-      }
-      ht <- hist_agg_rv()[[wk]][[method]]
-      if (is.null(ht) || nrow(ht) == 0L || !"F_agg_all" %in% names(ht)) {
-        return(NULL)
-      }
-      # Historical has one "model" so each F_agg_all row is a 1 x K matrix.
-      F_list <- lapply(ht$F_agg_all, function(m) {
-        if (is.null(m) || !is.matrix(m) || nrow(m) == 0L) {
-          NULL
-        } else {
-          as.numeric(m[1L, ])
-        }
-      })
-      F_list <- Filter(Negate(is.null), F_list)
-      if (length(F_list) == 0L) {
-        return(NULL)
-      }
-      if (identical(deviation, "mean")) {
-        Reduce(`+`, F_list) / length(F_list)
-      } else {
-        vals <- ht$value
-        med_v <- stats::median(vals, na.rm = TRUE)
-        med_idx <- which.min(abs(vals - med_v))
-        if (length(med_idx) == 0L) {
-          Reduce(`+`, F_list) / length(F_list)
-        } else {
-          F_list[[med_idx]]
-        }
-      }
+      step2_hist_f_ref(
+        hist_agg_rv()[[weight_key()]][[.selected_method()]],
+        input$cmp_deviation %||% "none"
+      )
     })
 
     # Replace per-(model, year) coefficient SDs with paired-contrast SDs
@@ -1477,30 +1417,26 @@ mod_2_02_results_server <- function(id,
     # here, every downstream consumer (pointrange_bands_rv,
     # threshold_table_rv, exceedance_curves_rv) automatically uses the
     # tightened contrast variance.
-    .apply_contrast_sd <- function(tbl, F_ref) {
-      if (is.null(F_ref) || is.null(tbl) || nrow(tbl) == 0L) {
-        return(tbl)
-      }
-      if (!"F_agg_all" %in% names(tbl) || !"value_all_sd" %in% names(tbl)) {
-        return(tbl)
-      }
-      for (k in seq_len(nrow(tbl))) {
-        F_mat <- tbl$F_agg_all[[k]]
-        if (is.null(F_mat) || !is.matrix(F_mat) || ncol(F_mat) != length(F_ref)) {
-          next
+    .apply_contrast_sd <- step2_contrast_sd
+
+    # The aggregation tables of the selected metric as one series: the
+    # historical run, then the scenarios (the landed ones unless
+    # `selected_only` is FALSE), with the contrast SDs applied.
+    .contrast_series <- function(selected_only = TRUE) {
+      wk <- weight_key()
+      method <- .selected_method()
+      F_ref <- hist_F_agg_ref()
+      series <- list(
+        Historical = .apply_contrast_sd(hist_agg_rv()[[wk]][[method]], F_ref)
+      )
+      sa <- scenario_agg_rv()
+      if (!is.null(sa) && length(sa) > 0L) {
+        for (dk in names(sa)) {
+          if (isTRUE(selected_only) && !dk %in% selected_scenario_names()) next
+          series[dk] <- list(.apply_contrast_sd(sa[[dk]][[wk]][[method]], F_ref))
         }
-        F_diff <- sweep(F_mat, 2L, F_ref, "-")
-        # value_all_sd is sqrt(var_coef + var_resid). The contrast replaces
-        # only the coefficient part; residual variance of the scenario stays.
-        sd_level <- as.numeric(tbl$value_all_sd[[k]])
-        var_resid <- if (length(sd_level) == nrow(F_mat)) {
-          pmax(sd_level^2 - rowSums(F_mat * F_mat), 0)
-        } else {
-          0
-        }
-        tbl$value_all_sd[[k]] <- sqrt(rowSums(F_diff * F_diff) + var_resid)
       }
-      tbl
+      series
     }
 
     # One immutable derived frame per published run/control state. Every
@@ -1611,96 +1547,11 @@ mod_2_02_results_server <- function(id,
     # pointrange_bands_rv: one row per scenario, three nested bands ----
     pointrange_bands_rv <- reactive({
       req(hist_agg_rv())
-      bq_ens <- if (identical(input$ensemble_band %||% "none", "none")) {
-        c(lo = 0.5, hi = 0.5)
-      } else {
-        resolve_band_q(input$ensemble_band %||% "none")
-      }
-      hist_ref <- hist_ref_val()
-      wk <- weight_key()
-      method <- .selected_method()
-
-      one_scenario <- function(tbl, scenario_label, is_hist) {
-        if (is.null(tbl) || nrow(tbl) == 0L) {
-          return(NULL)
-        }
-        mm <- .by_model_matrix(tbl)
-        if (is.null(mm)) {
-          return(NULL)
-        }
-        vals <- mm$vals
-
-        # Inter-model spread: per-model mean across years, then quantile across models.
-        model_means <- rowMeans(vals, na.rm = TRUE)
-        intermod <- if (is_hist || length(model_means) <= 1L) {
-          mean_v <- mean(model_means, na.rm = TRUE)
-          c(lo = mean_v, hi = mean_v)
-        } else {
-          c(
-            lo = unname(stats::quantile(model_means, bq_ens[["lo"]], na.rm = TRUE)),
-            hi = unname(stats::quantile(model_means, bq_ens[["hi"]], na.rm = TRUE))
-          )
-        }
-
-        # Inter-annual variability: for each model take the band_q quantile
-        # across years, then average across models.
-        if (is_hist) {
-          v_flat <- as.numeric(vals)
-          interann <- c(
-            lo = unname(stats::quantile(v_flat, bq_ens[["lo"]], na.rm = TRUE)),
-            hi = unname(stats::quantile(v_flat, bq_ens[["hi"]], na.rm = TRUE))
-          )
-        } else {
-          per_mod_lo <- apply(vals, 1L, stats::quantile,
-            probs = bq_ens[["lo"]], na.rm = TRUE
-          )
-          per_mod_hi <- apply(vals, 1L, stats::quantile,
-            probs = bq_ens[["hi"]], na.rm = TRUE
-          )
-          interann <- c(
-            lo = mean(per_mod_lo, na.rm = TRUE),
-            hi = mean(per_mod_hi, na.rm = TRUE)
-          )
-        }
-
-        # Retained chart center: summarise each model across its weather years,
-        # then take the equal-weight mean across models (the headline centre).
-        ens_mean <- if (is_hist) {
-          mean(as.numeric(vals), na.rm = TRUE)
-        } else {
-          mean(model_means, na.rm = TRUE)
-        }
-
-        tibble::tibble(
-          scenario = scenario_label,
-          value = ens_mean - hist_ref,
-          interann_lo = unname(interann[["lo"]]) - hist_ref,
-          interann_hi = unname(interann[["hi"]]) - hist_ref,
-          intermod_lo = unname(intermod[["lo"]]) - hist_ref,
-          intermod_hi = unname(intermod[["hi"]]) - hist_ref,
-          is_historical = is_hist,
-          n_models = length(mm$model_ids)
-        )
-      }
-
-      rows <- list(one_scenario(
-        .apply_contrast_sd(hist_agg_rv()[[wk]][[method]], hist_F_agg_ref()),
-        "Historical", TRUE
-      ))
-      sa <- scenario_agg_rv()
-      if (!is.null(sa) && length(sa) > 0L) {
-        for (dk in names(sa)) {
-          if (!dk %in% selected_scenario_names()) next
-          rows[[length(rows) + 1L]] <- one_scenario(
-            .apply_contrast_sd(sa[[dk]][[wk]][[method]], hist_F_agg_ref()),
-            dk, FALSE
-          )
-        }
-      }
-      support_tables <- lapply(Filter(Negate(is.null), rows), attr, which = "adverse_support")
-      out <- dplyr::bind_rows(Filter(Negate(is.null), rows))
-      attr(out, "adverse_support") <- dplyr::bind_rows(Filter(Negate(is.null), support_tables))
-      out
+      step2_pointrange_bands(
+        .contrast_series(TRUE),
+        step2_ensemble_band_q(input$ensemble_band),
+        hist_ref_val(), .by_model_matrix
+      )
     })
 
     wise_export_table(
@@ -1721,60 +1572,15 @@ mod_2_02_results_server <- function(id,
     # reactives retain their median ensemble convention and deviation behavior.
     headline_bands_rv <- reactive({
       bands <- pointrange_bands_rv()
-      frame <- derived_results_frame_rv()
-      for (i in seq_len(nrow(bands))) {
-        entry <- .results_frame_entry(frame, bands$scenario[[i]])
-        vals <- entry$matrix$vals
-        vals[!is.finite(vals)] <- NA_real_
-        bands$value[[i]] <- mean(rowMeans(vals, na.rm = TRUE), na.rm = TRUE) - hist_ref_val()
-      }
-      bands$center_method <- "equal_model_mean"
-      bands
+      step2_headline_bands(bands, .contrast_series(FALSE), hist_ref_val(), .by_model_matrix)
     })
 
     # timeseries_curves_rv: per (scenario, model, sim_year) values ----
     build_timeseries_curves <- function(selected_only = TRUE) {
       req(hist_agg_rv())
-      hist_ref <- hist_ref_val()
-      wk <- weight_key()
-      method <- .selected_method()
-
-      one_scenario <- function(tbl, scenario_label, is_hist) {
-        if (is.null(tbl) || nrow(tbl) == 0L) {
-          return(NULL)
-        }
-        mm <- .by_model_matrix(tbl)
-        if (is.null(mm)) {
-          return(NULL)
-        }
-        vals <- mm$vals
-        rows <- lapply(seq_len(nrow(vals)), function(i) {
-          tibble::tibble(
-            scenario      = scenario_label,
-            model_id      = mm$model_ids[[i]],
-            sim_year      = as.integer(mm$sim_years),
-            value         = vals[i, ] - hist_ref,
-            is_historical = is_hist
-          )
-        })
-        dplyr::bind_rows(rows)
-      }
-
-      rows <- list(one_scenario(
-        .apply_contrast_sd(hist_agg_rv()[[wk]][[method]], hist_F_agg_ref()),
-        "Historical", TRUE
-      ))
-      sa <- scenario_agg_rv()
-      if (!is.null(sa) && length(sa) > 0L) {
-        for (dk in names(sa)) {
-          if (isTRUE(selected_only) && !dk %in% selected_scenario_names()) next
-          rows[[length(rows) + 1L]] <- one_scenario(
-            .apply_contrast_sd(sa[[dk]][[wk]][[method]], hist_F_agg_ref()),
-            dk, FALSE
-          )
-        }
-      }
-      dplyr::bind_rows(Filter(Negate(is.null), rows))
+      step2_timeseries_curves(
+        .contrast_series(selected_only), hist_ref_val(), .by_model_matrix
+      )
     }
 
     timeseries_curves_rv <- reactive(build_timeseries_curves(TRUE))
@@ -1785,59 +1591,7 @@ mod_2_02_results_server <- function(id,
     # and re-computes var_coef from the per-(model, year) SD list-column.
     variance_breakdown_rv <- reactive({
       req(derived_results_frame_rv())
-      frame <- derived_results_frame_rv()
-
-      one_scenario_entry <- function(entry) {
-        if (is.null(entry)) {
-          return(NULL)
-        }
-        tbl <- entry$table
-        scenario_label <- entry$scenario
-        is_hist <- entry$is_historical
-        sds_flat <- as.numeric(unlist(tbl$value_all_sd))
-        var_coef <- if (length(sds_flat)) {
-          mean(sds_flat^2, na.rm = TRUE)
-        } else {
-          0
-        }
-        # Use value-matrix-derived var_within / var_across so the metric
-        # matches what the inter-annual / inter-model bands visualise and
-        # avoids double-counting var_coef. (Unlike the pointrange total
-        # band, this decomposition panel intentionally includes
-        # var_within - its purpose is to show the share of every source,
-        # including year-to-year spread.)
-        mm <- .results_frame_matrix(frame, entry$key)
-        vals <- if (is.null(mm)) NULL else mm$vals
-        var_within <- if (!is.null(vals) && ncol(vals) > 1L) {
-          v <- mean(apply(vals, 1L, stats::var, na.rm = TRUE), na.rm = TRUE)
-          if (is.finite(v)) v else 0
-        } else {
-          0
-        }
-        var_across <- if (!is_hist && !is.null(vals) && nrow(vals) > 1L) {
-          v <- stats::var(rowMeans(vals, na.rm = TRUE), na.rm = TRUE)
-          if (is.finite(v)) v else 0
-        } else {
-          0
-        }
-        tibble::tibble(
-          scenario      = scenario_label,
-          var_coef      = var_coef,
-          var_within    = var_within,
-          var_across    = var_across,
-          is_historical = is_hist
-        )
-      }
-
-      labels <- names(frame$.entries)
-      rows <- list(one_scenario_entry(.results_frame_entry(frame, "Historical")))
-      for (dk in setdiff(labels, "Historical")) {
-        if (!dk %in% selected_scenario_names()) next
-        rows[[length(rows) + 1L]] <- one_scenario_entry(
-          .results_frame_entry(frame, dk)
-        )
-      }
-      dplyr::bind_rows(Filter(Negate(is.null), rows))
+      step2_variance_breakdown(.contrast_series(TRUE), .by_model_matrix)
     })
 
     # exceedance_curves_rv: per (scenario, model) ECDF rows ----
@@ -1938,191 +1692,15 @@ mod_2_02_results_server <- function(id,
     # they would duplicate the Coef rows.
     threshold_table_rv <- reactive({
       req(hist_agg_rv())
-      bq_coef <- resolve_band_q("p10_p90")
-      bq_ens <- if (identical(input$ensemble_band %||% "none", "none")) {
-        c(lo = 0.5, hi = 0.5)
-      } else {
-        resolve_band_q(input$ensemble_band %||% "none")
-      }
-      z_coef_lo <- stats::qnorm(bq_coef[["lo"]])
-      z_coef_hi <- stats::qnorm(bq_coef[["hi"]])
-      hist_ref <- hist_ref_val()
-      wk <- weight_key()
-      method <- .selected_method()
-      so_obj <- tryCatch(results_source()$so, error = function(e) NULL)
-      adverse_tail <- metric_metadata(method, so_obj)$adverse_tail
-
-      RPs <- c(RP_LOW, c("1:1" = 0.5), RP_HIGH)
-
-      one_scenario <- function(tbl, scenario_label, is_hist) {
-        if (is.null(tbl) || nrow(tbl) == 0L) {
-          return(NULL)
-        }
-        mm <- .by_model_matrix(tbl)
-        if (is.null(mm)) {
-          return(NULL)
-        }
-        vals <- mm$vals
-        sds <- mm$sds
-        n_yrs <- ncol(vals)
-        n_pts <- if (is_hist) sum(is.finite(as.numeric(vals))) else n_yrs
-
-        # Each model must independently support each rank; a longer member
-        # cannot manufacture support for a shorter one.
-        rp_ok <- vapply(RPs, function(p) {
-          all(vapply(seq_len(nrow(vals)), function(i) {
-            support <- adverse_year_support(vals[i, ], suppressWarnings(as.numeric(mm$sim_years)),
-              p, adverse_tail)
-            identical(support$status, "ok")
-          }, logical(1)))
-        }, logical(1))
-        RPs_keep <- RPs[rp_ok]
-        if (length(RPs_keep) == 0L) {
-          return(NULL)
-        }
-
-        # Per-model rank-interp at each kept RP (matrix: model * RP) - shape
-        # guaranteed by the helper (see by_model_rp_matrix()).
-        per_model_rp <- matrix(NA_real_, nrow = nrow(vals), ncol = length(RPs_keep),
-          dimnames = list(mm$model_ids, names(RPs_keep)))
-        per_model_sd_at_rp <- matrix(NA_real_, nrow = nrow(vals), ncol = length(RPs_keep),
-          dimnames = list(mm$model_ids, names(RPs_keep)))
-        sd_years <- suppressWarnings(as.numeric(colnames(sds)))
-        if (length(sd_years) != ncol(sds) || any(!is.finite(sd_years))) {
-          sd_years <- suppressWarnings(as.numeric(mm$sim_years))
-        }
-        support_records <- vector("list", nrow(vals) * length(RPs_keep))
-        for (i in seq_len(nrow(vals))) for (j in seq_along(RPs_keep)) {
-          support <- adverse_year_support(vals[i, ], suppressWarnings(as.numeric(mm$sim_years)),
-            RPs_keep[[j]], adverse_tail)
-          support_records[[(i - 1L) * length(RPs_keep) + j]] <- data.frame(
-            scenario = scenario_label, model_id = mm$model_ids[[i]],
-            probability = RPs_keep[[j]], as.list(support), stringsAsFactors = FALSE)
-          if (identical(support$status, "ok")) {
-            applied <- apply_adverse_year_support(vals[i, ], suppressWarnings(as.numeric(mm$sim_years)), support)
-            per_model_rp[i, j] <- applied$value
-            sd_value <- if (identical(support$year_lo, support$year_hi) && support$weight_hi == 0) {
-              if (is.finite(sds[i, match(support$year_lo, sd_years)])) {
-                sds[i, match(support$year_lo, sd_years)]
-              } else {
-                NA_real_
-              }
-            } else {
-              lo <- match(support$year_lo, sd_years)
-              hi <- match(support$year_hi, sd_years)
-              if (anyNA(c(lo, hi)) || any(!is.finite(sds[i, c(lo, hi)]))) NA_real_ else
-                support$weight_lo * sds[i, lo] + support$weight_hi * sds[i, hi]
-            }
-            per_model_sd_at_rp[i, j] <- sd_value
-          }
-        }
-
-        # Aggregate across models for each RP
-        central_vec <- vapply(seq_len(ncol(per_model_rp)), function(j) {
-          column <- per_model_rp[, j]
-          if (!all(is.finite(column))) NA_real_ else mean(column)
-        }, numeric(1))
-        coef_sd_vec <- if (is_hist) {
-          per_model_sd_at_rp[1L, ]
-        } else {
-          apply(per_model_sd_at_rp, 2L, stats::median, na.rm = TRUE)
-        }
-        coef_lo_vec <- central_vec + z_coef_lo * coef_sd_vec
-        coef_hi_vec <- central_vec + z_coef_hi * coef_sd_vec
-
-        intermod_lo_vec <- if (is_hist) {
-          rep(NA_real_, length(RPs_keep))
-        } else {
-          apply(per_model_rp, 2L, stats::quantile,
-            probs = bq_ens[["lo"]], na.rm = TRUE
-          )
-        }
-        intermod_hi_vec <- if (is_hist) {
-          rep(NA_real_, length(RPs_keep))
-        } else {
-          apply(per_model_rp, 2L, stats::quantile,
-            probs = bq_ens[["hi"]], na.rm = TRUE
-          )
-        }
-
-        # Total band combines coefficient and inter-model variance at each RP,
-        # assuming independence. Inter-annual variability is already baked
-        # into the per-rank value so it isn't added a second time here.
-        var_across_at_rp <- if (is_hist) {
-          rep(0, length(RPs_keep))
-        } else {
-          apply(per_model_rp, 2L, stats::var, na.rm = TRUE)
-        }
-        var_across_at_rp[is.na(var_across_at_rp)] <- 0
-        sd_total_vec <- sqrt(pmax(coef_sd_vec^2 + var_across_at_rp, 0,
-          na.rm = FALSE
-        ))
-        total_lo_vec <- central_vec + z_coef_lo * sd_total_vec
-        total_hi_vec <- central_vec + z_coef_hi * sd_total_vec
-
-        make_row <- function(estimate, vec) {
-          tibble::tibble(
-            scenario = scenario_label,
-            Estimate = estimate,
-            rp_name = names(RPs_keep),
-            rp_label = names(RPs_keep),
-            value = vec - hist_ref,
-            absolute_value = vec,
-            n_obs = n_pts,
-            is_historical = is_hist
-          )
-        }
-        coef_lo_lbl <- paste0("Coef ", .pct_label(bq_coef[["lo"]]))
-        coef_hi_lbl <- paste0("Coef ", .pct_label(bq_coef[["hi"]]))
-        ens_lo_lbl <- paste0("Ensemble ", .pct_label(bq_ens[["lo"]],
-          use_minmax = TRUE
-        ))
-        ens_hi_lbl <- paste0("Ensemble ", .pct_label(bq_ens[["hi"]],
-          use_minmax = TRUE
-        ))
-        pooled_lo_lbl <- paste0("Pooled ", .pct_label(bq_coef[["lo"]]))
-        pooled_hi_lbl <- paste0("Pooled ", .pct_label(bq_coef[["hi"]]))
-
-        rows <- list(
-          make_row(if (is_hist) "Single historical estimate" else "Equal-model mean", central_vec),
-          make_row(coef_lo_lbl, coef_lo_vec),
-          make_row(coef_hi_lbl, coef_hi_vec)
-        )
-        if (!is_hist) {
-          ensemble_rows <- if (identical(ens_lo_lbl, ens_hi_lbl)) {
-            list(make_row(ens_lo_lbl, central_vec))
-          } else {
-            list(
-              make_row(ens_lo_lbl, intermod_lo_vec),
-              make_row(ens_hi_lbl, intermod_hi_vec)
-            )
-          }
-          rows <- c(rows, ensemble_rows, list(
-            make_row(pooled_lo_lbl, total_lo_vec),
-            make_row(pooled_hi_lbl, total_hi_vec)
-          ))
-        }
-        out <- dplyr::bind_rows(rows)
-        supports <- dplyr::bind_rows(support_records)
-        attr(out, "adverse_support") <- supports
-        out
-      }
-
-      rows <- list(one_scenario(
-        .apply_contrast_sd(hist_agg_rv()[[wk]][[method]], hist_F_agg_ref()),
-        "Historical", TRUE
-      ))
-      sa <- scenario_agg_rv()
-      if (!is.null(sa) && length(sa) > 0L) {
-        for (dk in names(sa)) {
-          if (!dk %in% selected_scenario_names()) next
-          rows[[length(rows) + 1L]] <- one_scenario(
-            .apply_contrast_sd(sa[[dk]][[wk]][[method]], hist_F_agg_ref()),
-            dk, FALSE
-          )
-        }
-      }
-      dplyr::bind_rows(Filter(Negate(is.null), rows))
+      step2_threshold_table(
+        .contrast_series(TRUE),
+        bq_coef = resolve_band_q("p10_p90"),
+        bq_ens = step2_ensemble_band_q(input$ensemble_band),
+        hist_ref = hist_ref_val(),
+        method = .selected_method(),
+        so = tryCatch(results_source()$so, error = function(e) NULL),
+        mm_fn = .by_model_matrix
+      )
     })
 
     # UI-48: register Step 2's result figures for the export bundle.
@@ -2222,22 +1800,7 @@ mod_2_02_results_server <- function(id,
     incidence_data_rv <- reactive({
       # Committed only: needs full pipelines and the survey.
       req(!.is_provisional(), hist_sim(), saved_scenarios(), shiny::isolate(input$cmp_agg_method))
-      sc <- selected_scenario_names()
-      if (!length(sc)) {
-        return(tibble::tibble())
-      }
-      is_log <- identical(hist_sim()$so$transform, "log")
-      svy <- hist_sim()$svy %||% hist_sim()$survey
-      if (is.null(svy)) {
-        return(tibble::tibble())
-      }
-      dplyr::bind_rows(lapply(sc, function(nm) {
-        entry <- saved_scenarios()[[nm]]
-        pipes <- entry$pipelines %||% list(entry$pipeline %||% entry)
-        step2_incidence_by_decile(
-          svy, hist_sim()$so$name, hist_sim()$pipeline, pipes, is_log, nm
-        )
-      }))
+      step2_incidence_all(hist_sim(), saved_scenarios(), selected_scenario_names())
     })
 
     # Distributional incidence table: raw values; the CSV button for it
@@ -2297,24 +1860,10 @@ mod_2_02_results_server <- function(id,
       if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
         return(NULL)
       }
-      so_obj <- tryCatch(results_source()$so, error = function(e) NULL)
-      n_h_yrs <- tryCatch(
-        {
-          run_info <- results_source()$sim_summary %||% list()
-          hy <- run_info$historical_years %||% integer(0)
-          if (length(hy) >= 2L) as.integer(hy[2] - hy[1] + 1L) else max(tbl$n_obs, na.rm = TRUE)
-        },
-        error = function(e) max(tbl$n_obs, na.rm = TRUE)
-      )
-
-      build_threshold_table_df(
-        threshold_tbl = tbl,
-        group_order   = "scenario_x_year",
-        show_coef     = TRUE,
-        adverse_only  = TRUE,
-        method        = .selected_method(),
-        so            = so_obj,
-        n_hist_years  = n_h_yrs
+      step2_threshold_df(
+        tbl, .selected_method(),
+        tryCatch(results_source()$so, error = function(e) NULL),
+        tryCatch(results_source()$sim_summary, error = function(e) NULL)
       )
     }
 
@@ -2350,32 +1899,10 @@ mod_2_02_results_server <- function(id,
 
     adverse_dot_data_rv <- reactive({
       req(threshold_table_rv())
-      table <- threshold_table_rv()
-      historical_rows <- table$scenario == "Historical" &
-        table$Estimate %in% c("Single historical estimate", "Equal-model mean", "Central (P50)")
-      historical_year_count <- if ("n_obs" %in% names(table) && any(historical_rows)) {
-        max(as.numeric(table$n_obs[historical_rows]), na.rm = TRUE)
-      } else {
-        NA_real_
-      }
-      rp_map <- metric_decision_return_periods(.selected_method(), results_source()$so)
-      if (is.finite(historical_year_count)) {
-        rp_map <- rp_map[names(rp_map) == "Expected" |
-          vapply(names(rp_map), function(label) {
-            if (identical(label, "Expected")) return(TRUE)
-            historical_year_count >= as.integer(sub("^Adverse 1-in-", "", label))
-          }, logical(1))]
-      }
-      dot <- step2_adverse_dot_data(
-        table[table$rp_name %in% unname(rp_map), , drop = FALSE],
-        method = .selected_method(),
-        so = results_source()$so
+      step2_adverse_dot_view(
+        threshold_table_rv(), .selected_method(), results_source()$so,
+        ensemble_none = identical(input$ensemble_band %||% "none", "none")
       )
-      if (identical(input$ensemble_band %||% "none", "none") && nrow(dot)) {
-        dot$intermod_lo <- NA_real_
-        dot$intermod_hi <- NA_real_
-      }
-      dot
     })
     adverse_dot_chart <- function() {
       req(adverse_dot_data_rv())

@@ -28,6 +28,7 @@
 #' @importFrom shiny NS tagList
 mod_2_01_weathersim_ui <- function(id) {
   ns <- NS(id)
+  d <- wise_default_sim()
   step2_with_grid_num <- function(slider_tag, n) {
     for (i in seq_along(slider_tag$children)) {
       ch <- slider_tag$children[[i]]
@@ -76,7 +77,7 @@ mod_2_01_weathersim_ui <- function(id) {
           "SSP3" = "ssp3_7_0",
           "SSP5" = "ssp5_8_5"
         ),
-        selected = "ssp3_7_0",
+        selected = d$ssps,
         inline = TRUE
       ),
       shiny::tags$hr(style = "margin: 6px 0;"),
@@ -92,7 +93,8 @@ mod_2_01_weathersim_ui <- function(id) {
           shiny::sliderInput(
             ns("fut_period_1"),
             label = shiny::tags$span(class = "visually-hidden", "Projection period 1"),
-            min = .STEP2_SSP_START_YEAR, max = 2100, value = c(2025, 2035), step = 1, sep = ""
+            min = .STEP2_SSP_START_YEAR, max = .STEP2_SSP_END_YEAR, value = d$future_periods[[1L]],
+            step = 1, sep = ""
           ),
           9
         )
@@ -118,9 +120,9 @@ mod_2_01_weathersim_ui <- function(id) {
           class = "visually-hidden",
           "Historical weather distribution period"
         ),
-        min = 1950,
-        max = 2024,
-        value = c(1991, 2020),
+        min = WISEAPP_SIM_HIST_RANGE[[1L]],
+        max = WISEAPP_SIM_HIST_RANGE[[2L]],
+        value = d$hist_years,
         sep = ""
       ),
       shiny::uiOutput(ns("hist_years_warning")),
@@ -190,7 +192,7 @@ mod_2_01_weathersim_ui <- function(id) {
           "Simulation residuals"
         ),
         choices = residual_choices(),
-        selected = "original"
+        selected = d$residuals
       ),
       shiny::tags$hr(style = "margin: 6px 0;"),
 
@@ -229,14 +231,14 @@ mod_2_01_weathersim_ui <- function(id) {
       shiny::checkboxInput(
         inputId = ns("include_coef_uncertainty"),
         label   = "Include coefficient uncertainty",
-        value   = TRUE
+        value   = d$coef_uncertainty
       ),
       shiny::conditionalPanel(
         condition = sprintf("input['%s'] == true", ns("include_coef_uncertainty")),
         shiny::checkboxInput(
           inputId = ns("propagate_all_covariate_uncertainty"),
           label   = "Include uncertainty on all covariates",
-          value   = FALSE
+          value   = d$propagate_all_covariate_uncertainty
         )
       )
     ),
@@ -245,37 +247,6 @@ mod_2_01_weathersim_ui <- function(id) {
     # Run simulation button (hidden for RIF engine) ----
     shiny::uiOutput(ns("run_sim_ui"))
   )
-}
-
-.step2_filter_baseline_surveys <- function(selected_surveys,
-                                           baseline_selection) {
-  if (is.null(selected_surveys) || length(baseline_selection) == 0L) {
-    return(selected_surveys)
-  }
-  required <- c("code", "year")
-  if (!all(required %in% names(selected_surveys))) {
-    return(selected_surveys)
-  }
-  wave_key <- paste0(
-    selected_surveys$code, "|",
-    as.character(selected_surveys$year)
-  )
-  selected_surveys[wave_key %in% baseline_selection, , drop = FALSE]
-}
-
-# First year of the CMIP6 SSP projections. A future period that starts earlier
-# would silently average only its SSP years (R2-BUG-23), so it is excluded.
-.STEP2_SSP_START_YEAR <- 2015L
-
-# A future period slider value as an integer (start, end) pair, or NULL when
-# it is incomplete, empty (end <= start) or starts before the SSP projections.
-.step2_valid_future_period <- function(period) {
-  if (length(period) >= 2 && all(is.finite(period)) && period[2] > period[1] &&
-      period[1] >= .STEP2_SSP_START_YEAR) {
-    as.integer(period[1:2])
-  } else {
-    NULL
-  }
 }
 
 # Expected scenario labels of a run, in run order: SSP outer, period inner
@@ -448,47 +419,14 @@ mod_2_01_weathersim_server <- function(id,
 
     baseline_survey_choices <- reactive({
       req(survey_weather())
-      svy <- survey_weather()
-      if (!all(c("code", "survname", "year") %in% names(svy))) {
-        return(character(0))
-      }
-      combos <- unique(svy[, c("code", "survname", "year")])
-      combos <- combos[order(combos$code, combos$year), ]
-
-      # Join economy (country) name from selected_surveys via code column.
-      # NOTE: code (e.g. TGO, GNB) is unique per country; survname (e.g. EHCVM)
-      # is shared across countries in the same survey programme and must NOT
-      # be used as the join key -- this was the bug causing Togo to disappear.
-
-      ss <- tryCatch(selected_surveys(), error = function(e) NULL)
-      if (!is.null(ss) && all(c("code", "economy") %in% names(ss))) {
-        lbl_map <- unique(ss[, c("code", "economy")])
-        combos <- merge(combos, lbl_map, by = "code", all.x = TRUE)
-        combos$economy[is.na(combos$economy)] <- combos$code[is.na(combos$economy)]
-      } else {
-        combos$economy <- combos$code
-      }
-      vals <- paste0(combos$code, "|", combos$year)
-      lbls <- paste0(combos$economy, " ", combos$year)
-      setNames(vals, lbls)
+      step2_baseline_choices(
+        survey_weather(), tryCatch(selected_surveys(), error = function(e) NULL)
+      )
     })
 
     # Default selection: latest year per unique economy (code), not survname.
     baseline_default <- reactive({
-      ch <- baseline_survey_choices()
-      if (length(ch) == 0) {
-        return(character(0))
-      }
-      df <- data.frame(
-        val = ch,
-        code = sub("^(.*?)\\|.*$", "\\1", ch),
-        year = as.integer(sub("^.*\\|", "", ch)),
-        stringsAsFactors = FALSE
-      )
-
-      latest <- tapply(df$year, df$code, max)
-      keep <- mapply(function(c, y) latest[c] == y, df$code, df$year)
-      unname(ch[keep])
+      wise_default_baseline(unname(baseline_survey_choices()))
     })
 
 
@@ -669,13 +607,7 @@ mod_2_01_weathersim_server <- function(id,
     # survey_weather filtered to the selected baseline rows.
     # Used in place of survey_weather() inside observeEvent(run_sim).
     baseline_svy <- reactive({
-      sel <- input$baseline_survey %||% baseline_default()
-      if (length(sel) == 0) {
-        return(survey_weather())
-      }
-      svy <- survey_weather()
-      vals <- paste0(svy$code, "|", as.character(svy$year))
-      svy[vals %in% sel, , drop = FALSE]
+      step2_baseline_svy(survey_weather(), input$baseline_survey %||% baseline_default())
     })
 
     # Keep weather retrieval on the same code/year waves as the baseline
@@ -694,10 +626,7 @@ mod_2_01_weathersim_server <- function(id,
         type = "historical",
         year_range = I(list(input$hist_years)),
         residuals = input$residuals %||% "original",
-        scenario_name = paste0(
-          "Historical / ",
-          input$hist_years[1], "-", input$hist_years[2]
-        ),
+        scenario_name = step2_hist_label(input$hist_years),
         stringsAsFactors = FALSE
       )
     })
@@ -1011,43 +940,26 @@ mod_2_01_weathersim_server <- function(id,
       req(ss)
       mf <- model_fit()
       cp <- connection_params()
-      sim_dates <- build_hist_sim_dates(svy, unlist(sh$year_range))
       fut_periods <- future_periods()
       sf <- selected_fut()
-      has_future <- !is.null(sf) && length(fut_periods) > 0
-      ssps <- if (has_future) unique(sf$ssp) else character(0)
-      perturbation_method <- if (has_future) build_perturbation_method(sw) else NULL
-      fp_list <- if (has_future) {
-        lapply(fut_periods, function(yr) {
-          c(paste0(yr[1], "-01-01"), paste0(yr[2], "-12-31"))
-        })
-      } else {
-        list()
-      }
-      engine <- mf$engine %||% "fixest"
-      is_rif <- identical(engine, "rif")
-      sh_residuals <- if (is_rif) "none" else sh$residuals
+      # R2-PERF-02: the worker gets a slim copy of the model fit (no fit1/fit2,
+      # no captured fitting environments); the live fit stays untouched.
+      step2_input <- wise_step2_input(
+        sw, so, svy, ss, mf, .wise_step2_async_connection_params(cp),
+        hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
+        residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
+        propagate_all = input$propagate_all_covariate_uncertainty,
+        stored_breaks = stored_breaks(), slim = TRUE
+      )
+      ssps <- step2_input$ssps
+      fp_list <- step2_input$fp_list
       generation <- run_generation() + 1L
       run_generation(generation)
       dependency_signature <- .sim_sig_from_live(mf$.sig %||% NULL)
-      baseline_labels <- names(baseline_survey_choices())[
-        baseline_survey_choices() %in% (input$baseline_survey %||% baseline_default())
-      ]
-      captured_baseline <- if (length(baseline_labels)) {
-        paste(baseline_labels, collapse = ", ")
-      } else {
-        "Selected baseline survey"
-      }
-      # R2-PERF-02: the worker gets a slim copy of the model fit (no fit1/fit2,
-      # no captured fitting environments); the live fit stays untouched.
-      mf_worker <- step2_slim_model_fit(mf)
-      snapshot <- list(input = list(
-        sw = sw, so = so, svy = svy, ss = ss, mf = mf_worker,
-        cp = .wise_step2_async_connection_params(cp),
-        fp_list = fp_list, ssps = ssps, residuals = sh_residuals,
-        skip_coef_draws = !isTRUE(input$include_coef_uncertainty),
-        sim_dates = sim_dates, perturbation_method = perturbation_method,
-        stored_breaks = stored_breaks(),
+      captured_baseline <- step2_baseline_label(
+        baseline_survey_choices(), input$baseline_survey %||% baseline_default()
+      )
+      snapshot <- list(input = c(step2_input, list(
         weather_storage = match.arg(
           Sys.getenv("WISEAPP_STEP2_WEATHER_STORAGE", "memory"),
           c("memory", "reference")
@@ -1060,13 +972,8 @@ mod_2_01_weathersim_server <- function(id,
           Sys.getenv("WISEAPP_STEP2_WEATHER_THREADS", "auto"),
           c("auto", "1", "2")
         ),
-        propagate_all_covariate_uncertainty =
-          isTRUE(input$propagate_all_covariate_uncertainty),
-        fit_multi = if (is_rif) mf_worker$fit3 else NULL,
-        taus = if (is_rif) mf$taus else NULL,
-        weather_cols = if (is_rif) mf$weather_terms else NULL,
         display = isolate(display_settings())
-      ))
+      )))
       live_hist_at <<- NULL
       adopted_partials(NULL)
       started_at <- Sys.time()
@@ -1164,13 +1071,9 @@ mod_2_01_weathersim_server <- function(id,
               sim_guard$end()
               return(invisible(FALSE))
             }
-            result <- .wise_step2_async_read_manifest(manifest, job)
-             result$hist_sim_result$hist_label <- sh$scenario_name
-            result$hist_sim_result$sim_summary <- list(
-              weather = sw,
-              historical_years = unlist(sh$year_range[[1]], use.names = FALSE),
-              baseline_survey = captured_baseline,
-              total_runs = result$total_runs
+            result <- wise_step2_annotate(
+              .wise_step2_async_read_manifest(manifest, job),
+              sw, unlist(sh$year_range), captured_baseline
             )
              result$hist_sim_result$.sig <- job$dependency_signature
              committed <- .wise_step2_async_commit(job, function() {
@@ -1324,54 +1227,23 @@ mod_2_01_weathersim_server <- function(id,
         req(ss)
         mf <- model_fit()
         cp <- connection_params()
-
-        sim_dates <- build_hist_sim_dates(svy, unlist(sh$year_range))
         fut_periods <- future_periods()
         sf <- selected_fut()
-        has_future <- !is.null(sf) && length(fut_periods) > 0
-        ssps <- if (has_future) unique(sf$ssp) else character(0)
-        perturbation_method <- if (has_future) build_perturbation_method(sw) else NULL
-        fp_list <- if (has_future) {
-          lapply(fut_periods, function(yr) {
-            c(paste0(yr[1], "-01-01"), paste0(yr[2], "-12-31"))
-          })
-        } else {
-          list()
-        }
 
-        # RIF-specific params ----
-        engine <- mf$engine %||% "fixest"
-        is_rif <- identical(engine, "rif")
-        fit_multi <- if (is_rif) mf$fit3 else NULL
-        rif_taus <- if (is_rif) mf$taus else NULL
-        rif_weather <- if (is_rif) mf$weather_terms else NULL
-
-        # Force residuals = "none" for RIF (delta method, no residual draw)
-        sh_residuals <- if (is_rif) "none" else sh$residuals
-
+        # Residuals are forced to "none" for RIF (delta method, no residual
+        # draw) and the RIF quantile fits travel with the input.
+        step2_input <- wise_step2_input(
+          sw, so, svy, ss, mf, cp,
+          hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
+          residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
+          propagate_all = input$propagate_all_covariate_uncertainty,
+          stored_breaks = stored_breaks(), slim = FALSE
+        )
 
         shiny::withProgress(message = "Running climate simulation...", value = 0, {
           # Run simulation ----
           result <- tryCatch(
-            fct_run_simulation(
-              sw = sw,
-              so = so,
-              svy = svy,
-              ss = ss,
-              mf = mf,
-              cp = cp,
-              fp_list = fp_list,
-              ssps = ssps,
-              residuals = sh_residuals, # sh$residuals,
-              skip_coef_draws = !isTRUE(input$include_coef_uncertainty),
-              propagate_all_covariate_uncertainty =
-                isTRUE(input$propagate_all_covariate_uncertainty),
-              sim_dates = sim_dates,
-              perturbation_method = perturbation_method,
-              stored_breaks = stored_breaks(),
-              fit_multi = fit_multi,
-              taus = rif_taus,
-              weather_cols = rif_weather,
+            do.call(fct_run_simulation, c(step2_input, list(
               weather_storage = match.arg(
                 Sys.getenv("WISEAPP_STEP2_WEATHER_STORAGE", "memory"),
                 c("memory", "reference")
@@ -1393,7 +1265,7 @@ mod_2_01_weathersim_server <- function(id,
                   detail = detail
                 )
               }
-            ),
+            ))),
             error = function(e) {
               shiny::showNotification(
                 wise_user_error(e, "Simulation"),
@@ -1409,17 +1281,11 @@ mod_2_01_weathersim_server <- function(id,
           # delta method - no pre-aggregation step here.
           # INT-05: bind the historical scenario label into the result so the
           # Step 3 pane describes the simulated run, not the live selection.
-          result$hist_sim_result$hist_label <- sh$scenario_name
-          result$hist_sim_result$sim_summary <- list(
-            weather = sw,
-            historical_years = unlist(sh$year_range[[1]], use.names = FALSE),
-            baseline_survey = {
-              ch <- baseline_survey_choices()
-              sel <- input$baseline_survey %||% baseline_default()
-              nms <- names(ch)[ch %in% sel]
-              if (length(nms)) paste(nms, collapse = ", ") else "Selected baseline survey"
-            },
-            total_runs = result$total_runs
+          result <- wise_step2_annotate(
+            result, sw, unlist(sh$year_range),
+            step2_baseline_label(
+              baseline_survey_choices(), input$baseline_survey %||% baseline_default()
+            )
           )
           # INT-08: the immutable run signature travels with the result so
           # Step 3 can detect that it is consuming a superseded simulation.
