@@ -617,7 +617,12 @@
           list(
             tau = tau, value = mv$value, label = mv$label,
             estimate = sum(wt * gt$estimate[m[keep]]),
-            se = sqrt(sum((wt * gt$std.error[m[keep]])^2))
+            # sqrt(w' V w) from the tau sub-fit, so polynomial and interaction
+            # terms keep their covariance (as the effect charts do).
+            se = .rif_combined_se(
+              .rif_subfit(mf$fit3, mf$taus, tau),
+              tt[ok][keep], wt, gt$std.error[m[keep]]
+            )
           )
         })
       })

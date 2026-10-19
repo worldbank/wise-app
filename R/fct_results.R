@@ -1933,7 +1933,9 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
         main_rows <- plot_data[!is_int_row, , drop = FALSE]
         int_rows <- plot_data[is_int_row, , drop = FALSE]
 
-        combined <- do.call(rbind, lapply(modx_vals, function(v) {
+        # Effect b + v * g at moderator value v; its SE keeps Cov(b, g) from
+        # the tau sub-fit's VCV (independent-terms formula only as fallback).
+        effect_rows <- function(v) {
           do.call(rbind, lapply(seq_len(nrow(main_rows)), function(j) {
             mr <- main_rows[j, , drop = FALSE]
             ir <- int_rows[int_rows$.bin_id == mr$.bin_id &
@@ -1941,7 +1943,14 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
             ie <- if (nrow(ir) > 0) ir$estimate[1] else 0
             ise <- if (nrow(ir) > 0) ir$std.error[1] else 0
             effect <- mr$estimate + v * ie
-            se <- sqrt(mr$std.error^2 + v^2 * ise^2)
+            se <- if (nrow(ir) > 0) {
+              .rif_combined_se(
+                .rif_subfit(fit, taus, mr$tau),
+                c(mr$term, ir$term[1]), c(1, v), c(mr$std.error, ise)
+              )
+            } else {
+              mr$std.error
+            }
             data.frame(
               tau = mr$tau,
               bin_id = mr$.bin_id,
@@ -1954,7 +1963,8 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
               stringsAsFactors = FALSE
             )
           }))
-        }))
+        }
+        combined <- do.call(rbind, lapply(modx_vals, effect_rows))
 
         modx_lab_print <- modx_lab %||% (modx_var %||% "moderator")
         combined$modx_label <- vapply(
@@ -1968,16 +1978,10 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
         )
 
         if (identical(mode, "main")) {
-          combined <- combined |>
-            dplyr::group_by(.data$tau, .data$bin_id, .data$bin_label) |>
-            dplyr::summarise(
-              estimate = mean(.data$estimate, na.rm = TRUE),
-              std.error = sqrt(mean(.data$std.error^2, na.rm = TRUE)),
-              conf.low = mean(.data$conf.low, na.rm = TRUE),
-              conf.high = mean(.data$conf.high, na.rm = TRUE),
-              .groups = "drop"
-            ) |>
-            dplyr::mutate(modx_label = "Average across moderator levels")
+          # The average over moderator levels is itself b + mean(v) * g, so
+          # it gets its own delta-method SE rather than averaged bounds.
+          combined <- effect_rows(mean(modx_vals))
+          combined$modx_label <- "Average across moderator levels"
         }
 
         bin_ids_raw <- unique(main_rows$.bin_id)
@@ -2304,7 +2308,16 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
 
                 do.call(rbind, lapply(modx_vals, function(mv) {
                   b <- b0 + if (has_int) int_est[[iterm]] * mv else 0
-                  s <- sqrt(v0 + if (has_int) (mv^2) * int_se[[iterm]]^2 else 0)
+                  # SE of b + mv * g with Cov(b, g) from the fit's VCV, as in
+                  # the headline "who is affected" contrasts.
+                  s <- if (has_int) {
+                    .rif_combined_se(
+                      fit, c(bin_term, iterm), c(1, mv),
+                      c(sqrt(v0), int_se[[iterm]])
+                    )
+                  } else {
+                    sqrt(v0)
+                  }
                   data.frame(
                     bin_index = bins_df$bin_index[i],
                     bin_label = bins_df$bin_label[i],

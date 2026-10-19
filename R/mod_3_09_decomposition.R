@@ -755,7 +755,8 @@ mod_3_09_decomposition_server <- function(id,
           mf$weather_terms[idx],
           interaction_terms = mf$interaction_terms %||% character(0),
           label_fun = get_label,
-          height = "400px"
+          height = "400px",
+          fit = mf$fit3
         )
         req(!is.null(ch))
         ch
@@ -782,7 +783,8 @@ mod_3_09_decomposition_server <- function(id,
               mf$rif_grid, mf$weather_terms[i],
               interaction_terms = mf$interaction_terms %||% character(0),
               label_fun = get_label,
-              height = "400px"
+              height = "400px",
+              fit = mf$fit3
             )
           },
           description = paste0(

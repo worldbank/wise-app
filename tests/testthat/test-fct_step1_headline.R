@@ -81,3 +81,15 @@ test_that("the who-is-affected card shows the cap note", {
   )
   expect_match(card$info, "CAP NOTE", fixed = TRUE)
 })
+
+
+test_that("RIF headline scenarios keep the main-interaction covariance", {
+  fx <- test_rif_moderated_fixture()
+  sc <- step1_scenarios(fx$mf, fx$mf$.snap, "temp")
+  yes <- Filter(function(s) identical(s$value, 1), sc$scenarios)[[1]]
+  # The card contrast is +1 SD of temp, at urban = 1.
+  e1 <- fx$combo(1, scale = stats::sd(fx$mf$train_data$temp))
+  expect_equal(yes$estimate, e1$est)
+  expect_equal(yes$se, e1$se)
+  expect_gt(abs(e1$se_indep - e1$se) / e1$se, 0.05)
+})

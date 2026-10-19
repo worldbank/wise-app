@@ -509,3 +509,90 @@ test_that("echart resid weather orders negative bins by signed lower bound (R2-B
   expected <- unname(vapply(levels(d$anom_bin), .cut_bin_label, character(1)))
   expect_identical(ch$x$opts$xAxis[[1]]$data, expected)
 })
+
+# Moderated effect CIs keep Cov(main, interaction), like the headline cards --
+
+ec_line_points <- function(ch, name) {
+  s <- Filter(function(s) identical(s$name, name) && identical(s$type, "line") &&
+    length(s$data), ch$x$opts$series)[[1]]
+  data.frame(
+    est = vapply(s$data, function(p) p$value[[2]], numeric(1)),
+    lo = vapply(s$data, function(p) p$confLow, numeric(1)),
+    hi = vapply(s$data, function(p) p$confHigh, numeric(1))
+  )
+}
+
+test_that("fixest binned moderated CI uses the full VCV", {
+  set.seed(7)
+  n <- 600
+  d <- data.frame(tx = runif(n, 20, 40), urban = rbinom(n, 1, 0.5))
+  d$tx_bin <- cut(d$tx, 4)
+  d$welfare <- 5 - 0.5 * (d$tx > 30) - 0.4 * (d$tx > 30) * d$urban + rnorm(n)
+  fit <- fixest::feols(welfare ~ tx_bin + tx_bin:urban + urban, data = d)
+  ch <- echart_weather_effect_plot(
+    fit, "tx_bin", "tx_bin:urban", TRUE, function(x) x, "fixest",
+    weather_df = d, mode = "moderated"
+  )
+  pts <- ec_line_points(ch, "urban: yes")
+
+  b <- stats::coef(fit)
+  V <- .fixest_vcov(fit)
+  mains <- grep("^tx_bin[^:]*$", names(b), value = TRUE)
+  ints <- paste0(mains, ":urban")
+  se <- vapply(seq_along(mains), function(i) {
+    t <- c(mains[i], ints[i])
+    sqrt(sum(V[t, t]))
+  }, numeric(1))
+  se_old <- sqrt(diag(V)[mains] + diag(V)[ints])
+  est <- unname(b[mains] + b[ints])
+  expect_equal(pts$est, est)
+  expect_equal(pts$lo, est - 1.96 * se)
+  expect_equal(pts$hi, est + 1.96 * se)
+  # The covariance matters here, so the old independent-terms CI is distinct.
+  expect_true(all(abs(se_old - se) / se > 0.05))
+})
+
+test_that("RIF moderated and averaged CIs use the tau sub-fit VCV", {
+  fx <- test_rif_moderated_fixture()
+  at_median <- function(pts) pts[which(sort(unique(fx$mf$taus)) == 0.5), ]
+
+  ch <- echart_weather_effect_plot(
+    fx$mf$fit3, "temp", fx$mf$interaction_terms, FALSE, function(x) x, "rif",
+    rif_grid = fx$mf$rif_grid, weather_df = fx$df, mode = "moderated"
+  )
+  yes <- at_median(ec_line_points(ch, "urban: yes"))
+  e1 <- fx$combo(1)
+  expect_equal(yes$est, e1$est)
+  expect_equal(yes$lo, e1$est - 1.96 * e1$se)
+  expect_equal(yes$hi, e1$est + 1.96 * e1$se)
+  expect_gt(abs(e1$se_indep - e1$se) / e1$se, 0.05)
+
+  # The averaged curve is b1 + mean(v) * b2 with its own delta-method SE.
+  ch_main <- echart_weather_effect_plot(
+    fx$mf$fit3, "temp", fx$mf$interaction_terms, FALSE, function(x) x, "rif",
+    rif_grid = fx$mf$rif_grid, weather_df = fx$df, mode = "main"
+  )
+  avg <- at_median(ec_line_points(ch_main, "Average across moderator levels"))
+  ea <- fx$combo(0.5)
+  expect_equal(avg$est, ea$est)
+  expect_equal(avg$lo, ea$est - 1.96 * ea$se)
+})
+
+test_that("Step 3 RIF weather curve CI uses the sub-fit VCV when given the fit", {
+  fx <- test_rif_moderated_fixture()
+  e1 <- fx$combo(1)
+  ci_at_median <- function(ch) {
+    s <- Filter(function(s) identical(s$name, "urban: yes CI"), ch$x$opts$series)[[1]]
+    xy <- matrix(unlist(s$data), ncol = 2)
+    sort(xy[abs(xy[, 1] - 0.5) < 1e-9, 2])
+  }
+  with_fit <- ci_at_median(echart_rif_weather_curve(
+    fx$mf$rif_grid, "temp", fx$mf$interaction_terms, fit = fx$mf$fit3
+  ))
+  expect_equal(with_fit, e1$est + c(-1.96, 1.96) * e1$se)
+  # Without the fit it keeps the independent-terms fallback.
+  without_fit <- ci_at_median(echart_rif_weather_curve(
+    fx$mf$rif_grid, "temp", fx$mf$interaction_terms
+  ))
+  expect_equal(without_fit, e1$est + c(-1.96, 1.96) * e1$se_indep)
+})

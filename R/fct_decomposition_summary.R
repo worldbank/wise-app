@@ -470,6 +470,8 @@ decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
 #' @param interaction_terms Interaction terms of the model specification.
 #' @param label_fun         Variable-label function (as in Step 1 modules).
 #' @param height            Widget height.
+#' @param fit               Optional RIF `fit3` (`fixest_multi`). When given,
+#'   moderated CIs keep the main-interaction covariance from each tau sub-fit.
 #'
 #' @return An `echarts4r` widget (never `NULL`; empty inputs render the same
 #'   user-facing messages as the static builder).
@@ -478,7 +480,8 @@ decomposition_channels_by_decile <- function(decomp_df, svy = NULL,
 echart_rif_weather_curve <- function(rif_grid, pred_var,
                                      interaction_terms = character(0),
                                      label_fun = identity,
-                                     height = "400px") {
+                                     height = "400px",
+                                     fit = NULL) {
   tryCatch(
     {
       blank <- function(msg) echart_blank(msg, height = height)
@@ -565,7 +568,14 @@ echart_rif_weather_curve <- function(rif_grid, pred_var,
             ie <- if (nrow(ir) > 0) ir$estimate[1] else 0
             ise <- if (nrow(ir) > 0) ir$std.error[1] else 0
             effect <- mr$estimate + v * ie
-            se <- sqrt(mr$std.error^2 + v^2 * ise^2)
+            se <- if (nrow(ir) > 0) {
+              .rif_combined_se(
+                .rif_subfit(fit, taus, mr$tau),
+                c(mr$term, ir$term[1]), c(1, v), c(mr$std.error, ise)
+              )
+            } else {
+              mr$std.error
+            }
             data.frame(
               tau = mr$tau,
               .bin_id = mr$.bin_id,

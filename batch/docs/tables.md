@@ -96,8 +96,8 @@ of these inputs:
 |---|---|---|
 | Binned weather effects | bin coefficients and their CIs | `model_terms` |
 | Continuous marginal effect | weather coefficients (incl. polynomial and interaction terms), their covariance, the x range of the model sample (min, max), moderator values | `model_terms`, `model_vcov`, `model_fit` (section `effect_inputs`) |
-| Who is affected (moderated) | main and interaction coefficients and SEs, moderator values (0/1, or mean and +/- 1 SD in the model sample) | `model_terms`, `model_fit` |
-| RIF effect by tau | coefficients by tau | `model_terms` |
+| Who is affected (moderated) | main and interaction coefficients and their covariance, moderator values (0/1, or mean and +/- 1 SD in the model sample) | `model_terms`, `model_vcov`, `model_fit` |
+| RIF effect by tau | coefficients by tau; for moderated or polynomial curves, the per-tau covariance of those terms | `model_terms`, `model_vcov` (one block per tau for RIF) |
 | Logistic pp effects | coefficients and the median-risk profile linear predictor (`profile_eta`) | `model_terms`, `model_fit` |
 
 Phase 2 task: split the data step out of `echart_weather_effect_plot()`
