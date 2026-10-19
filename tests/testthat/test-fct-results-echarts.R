@@ -147,6 +147,20 @@ test_that("RIF single-term branch draws one beta(tau) panel", {
   expect_match(ch$x$opts$xAxis[[1]]$name, "Welfare quantile")
 })
 
+test_that("RIF polynomial curve is the marginal effect at the sample mean (R2-BUG-19)", {
+  # Constant linear and I(I(tx^2)) effects: the curve is b1 + 2 * b2 * mean(tx).
+  grid <- rbind(
+    transform(ec_mk_grid("tx", ec_taus), estimate = 0.1),
+    transform(ec_mk_grid("I(I(tx^2))", ec_taus), estimate = 0.01)
+  )
+  ch <- echart_weather_effect_plot(
+    ec_fit_cont, "tx", character(0), FALSE, ec_lf, "rif",
+    rif_grid = grid, weather_df = ec_dat
+  )
+  curve <- vapply(ch$x$opts$series[[3]]$data, function(p) p$value[[2]], numeric(1))
+  expect_equal(curve, rep(0.1 + 2 * 0.01 * mean(ec_dat$tx), length(ec_taus)), tolerance = 1e-6)
+})
+
 test_that("RIF moderated branch draws one curve per moderator level", {
   grid <- rbind(
     ec_mk_grid("tx", ec_taus),

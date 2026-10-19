@@ -1816,7 +1816,10 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
           # Polynomial RIF terms describe one continuous weather effect. Plot
           # their mean marginal effect as a single quantile curve rather than
           # treating each polynomial coefficient as a separate bin panel.
-          mm <- mm_of(fit)
+          # The RIF fit is a fixest_multi with no model matrix of its own, so
+          # centre on the median model's sample (R2-BUG-19).
+          median_fit <- if (inherits(fit, "fixest_multi")) fit[[min(5L, length(fit))]] else fit
+          mm <- mm_of(median_fit)
           x_mean <- if (!is.null(mm) && pred_var %in% names(mm)) {
             mean(as.numeric(mm[[pred_var]]), na.rm = TRUE)
           } else {
@@ -1824,9 +1827,10 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
           }
           term_weight <- function(term) {
             if (identical(term, pred_var)) return(1)
+            # Polynomial terms appear as I(x^p) or, in RIF grids, I(I(x^p)).
             power <- suppressWarnings(as.numeric(sub(
-              paste0("^I\\(", pred_esc, "\\^([0-9]+)\\)$"),
-              "\\1", term
+              paste0("^(I\\()*", pred_esc, "\\^([0-9]+)\\)+$"),
+              "\\2", term
             )))
             if (is.finite(power) && power > 1) return(power * x_mean^(power - 1))
             0
