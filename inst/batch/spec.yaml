@@ -16,6 +16,18 @@ outcome:
 # commented profiles below).
 model: {}
 
+# Step 2 simulation (needs a model). Leave `sim` out to stop at the model
+# tables; `sim: {}` runs the app's defaults: the 1991-2020 historical weather,
+# SSP3-7.0 for 2025-2035 and the latest survey wave of each economy. The
+# climate projections must be in the data folder.
+# sim:
+#   hist_years: [1991, 2020]
+#   future_periods: [[2025, 2035], [2040, 2050]]   # up to three; [] for historical only
+#   ssps: [ssp2_4_5, ssp3_7_0]                     # ssp2_4_5, ssp3_7_0, ssp5_8_5
+#   residuals: original                            # original or resample (RIF: none)
+#   coef_uncertainty: true
+#   baseline_survey: [BFA|2021]                    # CODE|YEAR; default: latest wave
+
 # Named settings that an axis can switch between. A weather profile lists the
 # weather variables (the names of the variable list, at most two).
 profiles:
@@ -30,6 +42,9 @@ profiles:
   # model:
   #   linear: {type: linear}          # linear, logistic, rif
   #   rif: {type: rif}
+  # sim:
+  #   ssp3: {ssps: [ssp3_7_0], future_periods: [[2025, 2035]]}
+  #   ssp2_5: {ssps: [ssp2_4_5, ssp5_8_5], future_periods: [[2025, 2035]]}
 
 # Every combination of the axes is one run. Axes that share work (the same
 # country or weather variable) reuse it.
@@ -38,6 +53,7 @@ axes:
   weather: [tx_3m, tx_12m]
   # covariates: [basic, lasso]
   # model: [linear, rif]
+  # sim: [ssp3, ssp2_5]
 
 # exclude:
 #   - {country: MWI, weather: tx_12m}

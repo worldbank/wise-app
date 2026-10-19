@@ -91,7 +91,7 @@ test_that("validation lists every problem and follows the app's limits", {
   expect_match(msg, "weather.tx.n_bins")
   expect_match(msg, "at most two variables")
   expect_match(msg, "hist_years")
-  expect_error(wise_spec(sim = list(engine = "fixest")), "Unknown spec section")
+  expect_error(wise_spec(policy = list(engine = "fixest")), "Unknown spec section")
   expect_error(wise_spec(weather = list(tx = list(form = "Binned", binning_method = "Custom"))), "custom_breaks")
   expect_error(
     wise_spec(stats = list(indicators = list(bad = list(variable = "x", operator = "=", threshold = 1)))),
@@ -240,7 +240,7 @@ test_that("a YAML grid expands by crossing, zipping and excluding", {
   expect_identical(pooled$country, c("BFA+MWI", "BFA"))
   expect_identical(pooled$spec[[1]]$sample$countries, c("BFA", "MWI"))
 
-  expect_error(wise_spec_expand(list(axes = list(sim = c("a", "b")))), "later phase")
+  expect_error(wise_spec_expand(list(axes = list(policy = c("a", "b")))), "later phase")
   expect_error(wise_spec_expand(list(policy = list())), "later phase")
   expect_error(wise_spec_expand(list(axes = list(country = "BFA", bogus = 1))), "Unknown axis")
   expect_error(
@@ -363,12 +363,26 @@ test_that("the configuration input ids still exist in the module controls", {
   }
   expect_match(s6, 'paste0("force_in_", role)', fixed = TRUE)
   expect_match(s6, 'paste0("force_out_", role)', fixed = TRUE)
-  prefixes <- c("step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-")
+  s21 <- src("mod_2_01_weathersim.R")
+  for (id in c(
+    "hist_years", "climate", "baseline_survey", "residuals", "include_coef_uncertainty",
+    "propagate_all_covariate_uncertainty"
+  )) {
+    expect_match(s21, paste0('ns("', id, '")'), fixed = TRUE)
+  }
+  expect_match(s21, 'ns("fut_period_1")', fixed = TRUE)
+  expect_match(s21, 'ns("fut_period_2")', fixed = TRUE)
+  expect_match(s21, 'ns("fut_period_3")', fixed = TRUE)
+  prefixes <- c(
+    "step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-", "step2-weathersim-"
+  )
   expect_identical(unname(.CONFIG_PREFIX), prefixes)
   app <- src("app_server.R")
   expect_match(app, 'mod_1_modelling_server\\(\\s+id = "step1"')
+  expect_match(app, 'mod_2_simulation_server\\(\\s+id\\s+= "step2"')
   mod <- src("mod_1_modelling.R")
   for (m in c("sample", "outcome", "weather", "model")) expect_match(mod, paste0('"', m, '",'), fixed = TRUE)
+  expect_match(src("mod_2_simulation.R"), 'mod_2_01_weathersim_server\\(\\s+"weathersim"')
 })
 
 # Model section ----
@@ -564,4 +578,227 @@ test_that("a model spec survives the JSON round trip", {
   f <- withr::local_tempfile(fileext = ".json")
   wise_spec_write(s, f)
   expect_identical(wise_spec_read(f), s)
+})
+
+# Simulation section ----
+
+sim_spec <- function(sim = list(), ..., model = list()) wise_spec(model = model, sim = sim, ...)
+
+test_that("the sim section: absent means no simulation, empty means the app defaults", {
+  expect_null(wise_spec()$sim)
+  expect_true(is.na(wise_spec_ids(wise_spec(model = list()))$sim_id))
+  s <- sim_spec()$sim
+  d <- wise_default_sim()
+  for (f in names(d)) expect_identical(s[[f]], d[[f]], info = f)
+  # The baseline waits for the sample (the latest wave of each economy).
+  expect_null(s$baseline_survey)
+  expect_identical(names(s), sort(names(s)))
+  expect_error(wise_spec(sim = list()), "needs a model section")
+  # The defaults are the initial state of the Step 2 sidebar.
+  expect_identical(d$hist_years, c(1991L, 2020L))
+  expect_identical(d$future_periods, list(c(2025L, 2035L)))
+  expect_identical(d$ssps, "ssp3_7_0")
+  expect_identical(d$residuals, "original")
+  expect_true(d$coef_uncertainty)
+  expect_false(d$propagate_all_covariate_uncertainty)
+  # The sidebar starts from the same state (mod_2_01 reads wise_default_sim()).
+  html <- as.character(mod_2_01_weathersim_ui("sim"))
+  expect_match(html, 'id="sim-hist_years"[^>]*data-from="1991"[^>]*data-to="2020"')
+  expect_match(html, 'id="sim-fut_period_1"[^>]*data-from="2025"[^>]*data-to="2035"')
+})
+
+test_that("sim settings are normalised so equal specs hash equal", {
+  a <- sim_spec(list(
+    ssps = c("SSP5_8_5", "ssp2_4_5", "ssp5_8_5"), future_periods = list(c(2025, 2035)),
+    baseline_survey = c("MWI|2019", "BFA|2021"), residuals = "Original"
+  ))$sim
+  expect_identical(a$ssps, c("ssp2_4_5", "ssp5_8_5"))
+  expect_identical(a$baseline_survey, c("BFA|2021", "MWI|2019"))
+  expect_identical(a$residuals, "original")
+  # One flat pair is one period; periods keep the order given (it sets the
+  # random stream of the residual draws).
+  expect_identical(sim_spec(list(future_periods = c(2025, 2035)))$sim$future_periods, list(c(2025L, 2035L)))
+  p <- sim_spec(list(future_periods = list(c(2040, 2050), c(2025, 2035))))$sim$future_periods
+  expect_identical(p, list(c(2040L, 2050L), c(2025L, 2035L)))
+  # An empty list is a setting: no projection periods, no scenarios.
+  none <- sim_spec(list(future_periods = list()))$sim
+  expect_identical(none$future_periods, list())
+  expect_identical(sim_spec(list(ssps = list(), future_periods = list()))$sim$ssps, character(0))
+  ids <- function(...) wise_spec_ids(sim_spec(list(...)))$sim_id
+  expect_identical(
+    ids(future_periods = list(), ssps = "ssp2_4_5"), ids(future_periods = list(), ssps = list())
+  )
+  expect_false(identical(ids(future_periods = list(c(2025, 2035))), ids(future_periods = list())))
+})
+
+test_that("sim validation lists the problems", {
+  err <- function(...) conditionMessage(tryCatch(sim_spec(list(...)), error = identity))
+  expect_match(err(hist_years = c(2020, 1991)), "sim.hist_years must be two years")
+  expect_match(err(hist_years = c(1940, 2000)), "between 1950 and 2024")
+  expect_match(err(hist_years = 2000), "sim.hist_years")
+  expect_match(err(future_periods = list(c(2010, 2030))), "starts|between 2015")
+  expect_match(err(future_periods = list(c(2030, 2030))), "the end after the start")
+  expect_match(err(future_periods = list(c(2030, 2120))), "2100")
+  expect_match(err(future_periods = list(c(2020, 2030), c(2020, 2030))), "listed twice")
+  four <- list(c(2020, 2025), c(2026, 2030), c(2031, 2035), c(2036, 2040))
+  expect_match(err(future_periods = four), "at most three")
+  expect_match(err(ssps = "ssp1_1_9"), "sim.ssps must be among")
+  expect_match(err(ssps = list()), "choose at least one scenario")
+  expect_match(err(residuals = "normal"), "sim.residuals must be one of")
+  expect_match(err(coef_uncertainty = NA), "coef_uncertainty must be true or false")
+  expect_match(err(baseline_survey = "BFA2021"), "CODE|YEAR")
+  expect_match(err(nope = 1), "sim.nope")
+  # Every problem is listed at once.
+  expect_match(err(residuals = "x", ssps = "y"), "residuals.*\n.*ssps|ssps.*\n.*residuals")
+})
+
+test_that("the baseline survey resolves to the latest wave of each economy", {
+  md <- fixture_metadata()
+  r <- wise_spec_resolve(sim_spec(), md, remote_cp(), c("welfare", "hhsize", "tx"))
+  expect_identical(r$sim$baseline_survey, "BFA|2021")
+  both <- wise_spec_resolve(
+    wise_spec(sample = list(countries = c("BFA", "MWI")), model = list(), sim = list()),
+    md, remote_cp(), c("welfare", "hhsize", "tx")
+  )
+  expect_identical(both$sim$baseline_survey, c("BFA|2021", "MWI|2022"))
+  given <- wise_spec_resolve(
+    sim_spec(list(baseline_survey = "BFA|2018")), md, remote_cp(), c("welfare", "hhsize", "tx")
+  )
+  expect_identical(given$sim$baseline_survey, "BFA|2018")
+  expect_error(
+    wise_spec_resolve(sim_spec(list(baseline_survey = "MWI|2019")), md, remote_cp()),
+    "outside the sample: MWI\\|2019"
+  )
+  # Resolving twice changes nothing; the resolved baseline is part of the id.
+  expect_identical(wise_spec_resolve(r, md, remote_cp(), c("welfare", "hhsize", "tx")), r)
+  expect_false(identical(wise_spec_ids(r)$sim_id, wise_spec_ids(given)$sim_id))
+})
+
+test_that("sim_id follows the fit and the simulation settings that change results", {
+  ids <- function(model = list(), ...) wise_spec_ids(wise_spec(model = model, sim = list(...)))
+  base <- ids()
+  expect_match(base$sim_id, "^[0-9a-f]{12}$")
+  # The earlier ids do not know about the simulation (they are pinned).
+  expect_identical(base$fit_id, wise_spec_ids(wise_spec(model = list()))$fit_id)
+  expect_identical(base$weather_id, wise_spec_ids(wise_spec(model = list()))$weather_id)
+  expect_identical(base$data_id, wise_spec_ids(wise_spec())$data_id)
+  # Each setting moves the id.
+  for (change in list(
+    list(hist_years = c(1981, 2010)), list(future_periods = list(c(2030, 2040))),
+    list(ssps = "ssp5_8_5"), list(residuals = "resample"), list(coef_uncertainty = FALSE),
+    list(propagate_all_covariate_uncertainty = TRUE), list(baseline_survey = "BFA|2018")
+  )) {
+    expect_false(identical(do.call(ids, change)$sim_id, base$sim_id), info = names(change))
+    expect_identical(do.call(ids, change)$fit_id, base$fit_id, info = names(change))
+  }
+  # The fit and the seed reach it.
+  expect_false(identical(ids(model = list(fixed_effects = "year"))$sim_id, base$sim_id))
+  expect_false(identical(wise_spec_ids(wise_spec(model = list(), sim = list(), seed = 5))$sim_id, base$sim_id))
+  # Residuals are not drawn for RIF: the setting does not change the run.
+  rif <- function(residuals) ids(model = list(type = "rif"), residuals = residuals)$sim_id
+  expect_identical(rif("original"), rif("resample"))
+  expect_false(identical(ids(residuals = "original")$sim_id, ids(residuals = "resample")$sim_id))
+  # Scenarios are irrelevant without projection periods.
+  hist <- function(ssps) ids(future_periods = list(), ssps = ssps)$sim_id
+  expect_identical(hist("ssp2_4_5"), hist("ssp5_8_5"))
+})
+
+test_that("a grid crosses sim profiles and shares the fit across them", {
+  skip_if_not_installed("yaml")
+  grid <- list(
+    model = list(),
+    profiles = list(sim = list(
+      ssp3 = list(ssps = "ssp3_7_0", future_periods = list(c(2025, 2035))),
+      ssp2_5 = list(ssps = c("ssp2_4_5", "ssp5_8_5"), future_periods = list(c(2025, 2035), c(2040, 2050))),
+      historical = list(future_periods = list())
+    )),
+    axes = list(country = "BFA", sim = c("ssp3", "ssp2_5", "historical"))
+  )
+  g <- wise_spec_expand(grid)
+  expect_identical(nrow(g), 3L)
+  expect_identical(length(unique(g$fit_id)), 1L)
+  expect_identical(length(unique(g$sim_id)), 3L)
+  expect_identical(g$spec[[2]]$sim$ssps, c("ssp2_4_5", "ssp5_8_5"))
+  expect_identical(g$spec[[2]]$sim$future_periods, list(c(2025L, 2035L), c(2040L, 2050L)))
+  # An empty list in a profile switches the projections off.
+  expect_identical(g$spec[[3]]$sim$future_periods, list())
+  # A top-level section merges with the profile; dotted paths work too.
+  top <- wise_spec_expand(list(
+    model = list(), sim = list(residuals = "resample", future_periods = list()),
+    axes = list(`sim.coef_uncertainty` = c(TRUE, FALSE))
+  ))
+  expect_identical(nrow(top), 2L)
+  expect_identical(top$spec[[1]]$sim$residuals, "resample")
+  expect_identical(top$spec[[1]]$sim$future_periods, list())
+  expect_identical(top$spec[[2]]$sim$coef_uncertainty, FALSE)
+  # Resolved against the data, the baseline is part of the specs.
+  r <- wise_spec_expand(
+    list(model = list(), sim = list(), axes = list(country = c("BFA", "MWI"))),
+    connection_params = remote_cp(), metadata = fixture_metadata(),
+    survey_columns = c("welfare", "hhsize", "tx")
+  )
+  expect_identical(r$spec[[1]]$sim$baseline_survey, "BFA|2021")
+  expect_identical(r$spec[[2]]$sim$baseline_survey, "MWI|2022")
+  expect_false(anyNA(r$sim_id))
+  # A simulation needs a model.
+  expect_error(wise_spec_expand(list(sim = list())), "needs a model section")
+})
+
+test_that("a configuration export carries the simulation settings", {
+  cfg <- list(
+    wiseapp_config_version = 1L, random_seed = 5L,
+    inputs = list(
+      `step1-model-model_type` = "Linear regression",
+      `step2-weathersim-hist_years` = c(1981, 2010), `step2-weathersim-climate` = c("ssp2_4_5", "ssp5_8_5"),
+      `step2-weathersim-fut_period_1` = c(2030, 2040), `step2-weathersim-fut_period_2` = c(2015, 2015),
+      `step2-weathersim-fut_period_3` = c(2050, 2060), `step2-weathersim-baseline_survey` = "BFA|2018",
+      `step2-weathersim-residuals` = "resample", `step2-weathersim-include_coef_uncertainty` = FALSE,
+      `step2-weathersim-propagate_all_covariate_uncertainty` = TRUE
+    )
+  )
+  s <- wise_spec_from_config(cfg)$sim
+  expect_identical(s$hist_years, c(1981L, 2010L))
+  expect_identical(s$ssps, c("ssp2_4_5", "ssp5_8_5"))
+  # The empty period is left out, as the app leaves it out.
+  expect_identical(s$future_periods, list(c(2030L, 2040L), c(2050L, 2060L)))
+  expect_identical(s$baseline_survey, "BFA|2018")
+  expect_identical(s$residuals, "resample")
+  expect_false(s$coef_uncertainty)
+  expect_true(s$propagate_all_covariate_uncertainty)
+  # No usable period: no projections.
+  none <- cfg
+  none$inputs[c("step2-weathersim-fut_period_1", "step2-weathersim-fut_period_3")] <- list(c(2015, 2015), c(2015, 2015))
+  expect_identical(wise_spec_from_config(none)$sim$future_periods, list())
+  # Without Step 2 inputs there is no simulation; without a model the
+  # simulation is dropped, with a warning.
+  expect_null(wise_spec_from_config(list(
+    wiseapp_config_version = 1L, inputs = list(`step1-model-model_type` = "Linear regression")
+  ))$sim)
+  nomodel <- cfg
+  nomodel$inputs[["step1-model-model_type"]] <- NULL
+  expect_warning(spec <- wise_spec_from_config(nomodel), "needs a Step 1 model")
+  expect_null(spec$sim)
+  # The app default state is the empty section.
+  defaults <- list(
+    wiseapp_config_version = 1L, inputs = list(
+      `step1-model-model_type` = "Linear regression", `step2-weathersim-hist_years` = c(1991, 2020),
+      `step2-weathersim-climate` = "ssp3_7_0", `step2-weathersim-fut_period_1` = c(2025, 2035),
+      `step2-weathersim-fut_period_2` = c(2015, 2015), `step2-weathersim-fut_period_3` = c(2015, 2015),
+      `step2-weathersim-residuals` = "original", `step2-weathersim-include_coef_uncertainty` = TRUE,
+      `step2-weathersim-propagate_all_covariate_uncertainty` = FALSE
+    )
+  )
+  expect_identical(wise_spec_from_config(defaults)$sim, sim_spec()$sim)
+})
+
+test_that("a sim spec survives the JSON round trip", {
+  f <- withr::local_tempfile(fileext = ".json")
+  for (s in list(
+    sim_spec(list(future_periods = list(c(2025, 2035), c(2040, 2050)), ssps = c("ssp2_4_5", "ssp5_8_5"))),
+    sim_spec(list(future_periods = list(), baseline_survey = c("BFA|2018", "MWI|2019"))),
+    sim_spec(list(future_periods = list(c(2025, 2035))))
+  )) {
+    wise_spec_write(s, f)
+    expect_identical(wise_spec_read(f), s)
+  }
 })

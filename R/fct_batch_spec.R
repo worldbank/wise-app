@@ -2,9 +2,8 @@
 # One canonical, plain-list description of a single run (`wise_spec()`), its
 # validation, its stage hashes, and the YAML grid that expands to many runs.
 # App defaults live in `wise_spec_defaults()` (fct_spec_defaults.R). Phases 1
-# and 2 cover the `source`, `sample`, `outcome`, `weather`, `stats` and
-# `model` sections; the simulation and policy sections arrive with their
-# phases. Shiny-free.
+# to 3 cover the `source`, `sample`, `outcome`, `weather`, `stats`, `model`
+# and `sim` sections; the policy section arrives with its phase. Shiny-free.
 
 # Construction ----
 
@@ -173,11 +172,119 @@
   bad
 }
 
+# Simulation section ----
+
+.SIM_RESIDUALS <- c("original", "resample")
+.SIM_FIELDS <- c(
+  "hist_years", "future_periods", "ssps", "residuals", "coef_uncertainty",
+  "propagate_all_covariate_uncertainty", "baseline_survey"
+)
+
+# Normalise the simulation section: defaults filled field by field (an empty
+# `future_periods` or `ssps` means "none", not "the default"), scenarios in the
+# order the app runs them, the baseline sorted, so equal specs hash equal.
+# Unknown fields are kept for the validation to report. Periods stay in the
+# order given: the order of the runs sets the random stream of the residual
+# draws.
+#' @noRd
+.normalise_sim <- function(s) {
+  d <- wise_default_sim()
+  pick <- function(f) if (is.null(s[[f]])) d[[f]] else s[[f]]
+  periods <- pick("future_periods")
+  if (is.atomic(periods) && length(periods) == 2L) periods <- list(periods)
+  ssps <- unique(tolower(as.character(unlist(pick("ssps")))))
+  out <- list(
+    hist_years = as.integer(unlist(pick("hist_years"))),
+    future_periods = unname(lapply(periods, function(p) as.integer(unlist(p)))),
+    ssps = c(intersect(WISEAPP_SSP_CODES, ssps), setdiff(ssps, WISEAPP_SSP_CODES)),
+    residuals = .match_choice(as.character(pick("residuals")), .SIM_RESIDUALS),
+    coef_uncertainty = as.logical(pick("coef_uncertainty")),
+    propagate_all_covariate_uncertainty = as.logical(pick("propagate_all_covariate_uncertainty"))
+  )
+  if (!is.null(s$baseline_survey)) {
+    out$baseline_survey <- sort(unique(as.character(unlist(s$baseline_survey))))
+  }
+  out <- c(out, s[setdiff(names(s), .SIM_FIELDS)])
+  out[order(names(out))]
+}
+
+# Problems of the simulation section on its own.
+#' @noRd
+.sim_problems <- function(s) {
+  bad <- character(0)
+  add <- function(...) bad <<- c(bad, paste0(...))
+  unknown <- setdiff(names(s), .SIM_FIELDS)
+  if (length(unknown)) add("sim.", paste(unknown, collapse = ", "), ": not a simulation setting.")
+  hy <- s$hist_years
+  if (length(hy) != 2L || anyNA(hy) || hy[1] > hy[2] || hy[1] < WISEAPP_SIM_HIST_RANGE[[1L]] ||
+    hy[2] > WISEAPP_SIM_HIST_RANGE[[2L]]) {
+    add(
+      "sim.hist_years must be two years between ", WISEAPP_SIM_HIST_RANGE[[1L]], " and ",
+      WISEAPP_SIM_HIST_RANGE[[2L]], ", in ascending order."
+    )
+  }
+  fp <- s$future_periods
+  if (length(fp) > 3L) add("sim.future_periods: at most three projection periods (the app limit).")
+  for (i in seq_along(fp)) {
+    p <- fp[[i]]
+    if (length(p) != 2L || anyNA(p) || p[2] <= p[1] || p[1] < .STEP2_SSP_START_YEAR ||
+      p[2] > .STEP2_SSP_END_YEAR) {
+      add(
+        "sim.future_periods[", i, "] must be two years, the end after the start, between ",
+        .STEP2_SSP_START_YEAR, " (the first year of the climate projections) and ",
+        .STEP2_SSP_END_YEAR, "."
+      )
+    }
+  }
+  if (anyDuplicated(fp)) add("sim.future_periods: a period is listed twice.")
+  bad_ssp <- setdiff(s$ssps, WISEAPP_SSP_CODES)
+  if (length(bad_ssp)) {
+    add(
+      "sim.ssps must be among: ", paste(WISEAPP_SSP_CODES, collapse = ", "),
+      " (not ", paste(bad_ssp, collapse = ", "), ")."
+    )
+  }
+  if (length(fp) && !length(s$ssps)) add("sim.ssps: choose at least one scenario when future_periods are set.")
+  if (length(s$residuals) != 1L || !s$residuals %in% .SIM_RESIDUALS) {
+    add("sim.residuals must be one of: ", paste(.SIM_RESIDUALS, collapse = ", "), ".")
+  }
+  for (f in c("coef_uncertainty", "propagate_all_covariate_uncertainty")) {
+    if (length(s[[f]]) != 1L || is.na(s[[f]])) add("sim.", f, " must be true or false.")
+  }
+  b <- s$baseline_survey
+  if (!is.null(b) && (!length(b) || !all(grepl("^[^|]+\\|[0-9]{4}$", b)))) {
+    add("sim.baseline_survey must list survey waves as CODE|YEAR (for example BFA|2021).")
+  }
+  bad
+}
+
+# Shallow merge for the simulation section: its fields are flat, and an empty
+# value (`future_periods: []`) is a setting, not an absent one.
+#' @noRd
+.merge_sim <- function(base, over) {
+  base <- base %||% list()
+  for (nm in names(over)) {
+    if (!is.null(over[[nm]])) base[nm] <- list(over[[nm]])
+  }
+  base
+}
+
+# The simulation settings that change results: residuals are not drawn for RIF
+# and a run without projection periods has no scenarios.
+#' @noRd
+.sim_effective <- function(spec) {
+  s <- spec$sim
+  if (identical(spec$model$type, "Unconditional quantile regression (RIF)")) s$residuals <- "none"
+  if (!length(s$future_periods)) s$ssps <- character(0)
+  s
+}
+
 # Normalise a spec: types coerced, empty optional fields dropped, vectors in a
 # canonical order.
 #' @noRd
 .spec_normalise <- function(spec) {
   if (!is.null(spec$model)) spec$model <- .normalise_model(spec$model)
+  if (!is.null(spec$sim)) spec$sim <- .normalise_sim(spec$sim)
   spec$seed <- as.integer(spec$seed)
   spec$schema_version <- as.integer(spec$schema_version)
   spec$source$type <- as.character(spec$source$type)
@@ -318,6 +425,10 @@ wise_spec_validate <- function(spec) {
     }
   }
   if (!is.null(spec$model)) bad <- c(bad, .model_problems(spec$model))
+  if (!is.null(spec$sim)) {
+    if (is.null(spec$model)) add("sim: a simulation needs a model section (use `model: {}` for the app defaults).")
+    bad <- c(bad, .sim_problems(spec$sim))
+  }
   if (length(bad)) {
     stop(
       structure(
@@ -372,6 +483,24 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
   })
   spec$sample$countries <- sort(cs)
   spec$sample$years <- years[order(names(years))]
+
+  # The baseline survey of the simulation: the latest wave of each economy
+  # unless the spec names waves.
+  if (!is.null(spec$sim)) {
+    waves <- unlist(lapply(spec$sample$countries, function(code) {
+      paste0(code, "|", spec$sample$years[[code]])
+    }))
+    given <- spec$sim$baseline_survey
+    if (is.null(given)) {
+      spec$sim$baseline_survey <- sort(wise_default_baseline(waves))
+    } else if (length(setdiff(given, waves))) {
+      stop(
+        "sim.baseline_survey names survey wave(s) outside the sample: ",
+        paste(setdiff(given, waves), collapse = ", "), call. = FALSE
+      )
+    }
+    spec$sim <- spec$sim[order(names(spec$sim))]
+  }
 
   wvars <- get_weather_vars(metadata$variable_list)
   vars <- wise_spec_weather_vars(spec$weather)
@@ -470,12 +599,13 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
 #' variable's reference period, temporal aggregation and transformation, and
 #' the historical years; one per variable), `weather_id` (the data plus the
 #' whole weather section, binning included: the survey-weather frame),
-#' `fit_id` (data, weather, model and seed; `NA` without a model section) and
-#' `run_id` (the whole spec, including the seed).
+#' `fit_id` (data, weather, model and seed; `NA` without a model section),
+#' `sim_id` (the fit and the simulation settings that change results; `NA`
+#' without a `sim` section) and `run_id` (the whole spec, including the seed).
 #'
 #' @param spec A resolved spec.
 #' @return A list: `data_id`, `wxvar_ids` (named by variable), `weather_id`,
-#'   `fit_id`, `run_id`.
+#'   `fit_id`, `sim_id`, `run_id`.
 #' @export
 wise_spec_ids <- function(spec) {
   data_id <- .spec_digest(spec[c("schema_version", "source", "sample", "outcome", "stats")])
@@ -501,9 +631,14 @@ wise_spec_ids <- function(spec) {
   } else {
     .spec_digest(list(data_id = data_id, weather = spec$weather, model = spec$model, seed = spec$seed))
   }
+  sim_id <- if (is.null(spec$sim) || is.na(fit_id)) {
+    NA_character_
+  } else {
+    .spec_digest(list(fit_id = fit_id, sim = .sim_effective(spec)))
+  }
   list(
     data_id = data_id, wxvar_ids = wxvar_ids, weather_id = weather_id, fit_id = fit_id,
-    run_id = .spec_digest(spec)
+    sim_id = sim_id, run_id = .spec_digest(spec)
   )
 }
 
@@ -535,7 +670,7 @@ wise_spec_read <- function(file) {
 # (`<step>-<module>-<input>`).
 .CONFIG_PREFIX <- c(
   sample = "step1-sample-", outcome = "step1-outcome-", weather = "step1-weather-",
-  model = "step1-model-"
+  model = "step1-model-", sim = "step2-weathersim-"
 )
 
 #' Translate an app configuration export into a run spec
@@ -622,8 +757,34 @@ wise_spec_from_config <- function(config) {
     ))
   }
 
+  # Step 2 sidebar. A projection period the app leaves out (incomplete, empty
+  # or before the climate projections) is left out here as well.
+  sim <- NULL
+  s2 <- function(id) get(paste0(p[["sim"]], id))
+  period_inputs <- lapply(1:3, function(i) s2(paste0("fut_period_", i)))
+  sim_settings <- Filter(Negate(is.null), list(
+    hist_years = s2("hist_years"), ssps = s2("climate"), residuals = s2("residuals"),
+    coef_uncertainty = s2("include_coef_uncertainty"),
+    propagate_all_covariate_uncertainty = s2("propagate_all_covariate_uncertainty"),
+    baseline_survey = s2("baseline_survey"),
+    future_periods = if (!all(vapply(period_inputs, is.null, logical(1)))) {
+      Filter(Negate(is.null), lapply(period_inputs, .step2_valid_future_period))
+    }
+  ))
+  if (length(sim_settings)) {
+    if (is.null(model)) {
+      warning(
+        "The configuration sets the simulation, which needs a Step 1 model; ",
+        "no model is set, so the simulation is read without.", call. = FALSE
+      )
+    } else {
+      sim <- sim_settings
+    }
+  }
+
   args <- list(
-    sample = sample, outcome = outcome, weather = weather, model = model, seed = config$random_seed
+    sample = sample, outcome = outcome, weather = weather, model = model, sim = sim,
+    seed = config$random_seed
   )
   do.call(wise_spec, Filter(Negate(is.null), args))
 }
@@ -641,7 +802,7 @@ wise_spec_from_config <- function(config) {
 )
 
 # Spec sections that later phases will add; named in errors.
-.FUTURE_SECTIONS <- c("sim", "policy")
+.FUTURE_SECTIONS <- "policy"
 
 # Profile groups that set a part of a section rather than the section itself.
 .PROFILE_PATHS <- list(
@@ -686,6 +847,8 @@ wise_spec_from_config <- function(config) {
     path <- .PROFILE_PATHS[[axis]] %||% axis
     new <- if (identical(axis, "fixed_effects")) {
       as.character(unlist(prof[[value]]))
+    } else if (identical(axis, "sim")) {
+      .merge_sim(.get_path(spec, path), prof[[value]])
     } else {
       .spec_merge(.get_path(spec, path) %||% list(), prof[[value]])
     }
@@ -760,7 +923,8 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL,
     base$schema_version <- NULL
   }
   top <- grid[intersect(c("seed", WISEAPP_SPEC_SECTIONS), names(grid))]
-  base <- .spec_merge(base, top)
+  base <- .spec_merge(base, top[setdiff(names(top), "sim")])
+  if (!is.null(top$sim)) base$sim <- .merge_sim(base$sim, top$sim)
 
   axes <- grid$axes %||% list()
   profiles <- grid$profiles %||% list()
@@ -844,6 +1008,7 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL,
   out$wxvar_ids <- lapply(ids, `[[`, "wxvar_ids")
   out$weather_id <- vapply(ids, `[[`, "", "weather_id")
   out$fit_id <- vapply(ids, `[[`, "", "fit_id")
+  out$sim_id <- vapply(ids, `[[`, "", "sim_id")
   out$resolved <- resolved
   out$spec <- specs
   dup <- duplicated(out$run_id)

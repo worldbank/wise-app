@@ -9,7 +9,7 @@
 WISEAPP_WELFARE_FLOOR <- 0.28
 
 # Spec sections that exist in the current batch phase.
-WISEAPP_SPEC_SECTIONS <- c("source", "sample", "outcome", "weather", "stats", "model")
+WISEAPP_SPEC_SECTIONS <- c("source", "sample", "outcome", "weather", "stats", "model", "sim")
 
 # Model types of the Model tab and the engine each one runs on. Phase 2 covers
 # the fixest and RIF engines.

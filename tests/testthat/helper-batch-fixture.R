@@ -51,8 +51,9 @@ batch_fixture_survey <- function(n_per_wave = 60L, years = c(2018, 2019), seed =
       loc <- rep(paste0("loc_", 1:4), length.out = n)
       data.frame(
         code = "TST", economy = "Testland", survname = "SRV", year = as.character(y),
-        loc_id = loc,
+        hhid = paste0("hh_", y, "_", seq_len(n)), loc_id = loc,
         timestamp = as.Date(sprintf("%d-%02d-01", y, rep(3:5, length.out = n))),
+        int_year = as.integer(y), int_month = rep(3:5, length.out = n),
         weight = round(stats::runif(n, 0.5, 3), 3),
         welfare = round(stats::rlnorm(n, 1.3, 0.8), 3),
         hhsize = sample(1:9, n, replace = TRUE),
@@ -108,7 +109,10 @@ batch_fixture_weather <- function(wave_years = c(2018, 2019), cal_years = 2016:2
 
 # Write the fixture data folder. Needs arrow and the DuckDB h3 extension
 # (the weather query joins on H3 cells); the caller skips when unavailable.
-batch_fixture_tree <- function(dir, years = c(2018, 2019)) {
+# With `projections`, two climate models of CMIP6 weather are written too: the
+# historical file (2010-2014) and SSP3-7.0 (2015-2035), monthly, on the same
+# cells as the observed weather.
+batch_fixture_tree <- function(dir, years = c(2018, 2019), projections = FALSE) {
   testthat::skip_if_not_installed("arrow")
   testthat::skip_if_not_installed("bit64")
   dir.create(file.path(dir, "metadata"), recursive = TRUE, showWarnings = FALSE)
@@ -173,5 +177,22 @@ batch_fixture_tree <- function(dir, years = c(2018, 2019)) {
   w_dir <- file.path(dir, "hazard", "weather", "historical", "TST")
   dir.create(w_dir, recursive = TRUE, showWarnings = FALSE)
   arrow::write_parquet(weather, file.path(w_dir, "TST_era5land.parquet"))
+  if (projections) {
+    p_dir <- file.path(dir, "hazard", "weather", "projections", "TST")
+    dir.create(p_dir, recursive = TRUE, showWarnings = FALSE)
+    models <- c("MODEL.A", "MODEL.B")
+    proj <- function(from, to) {
+      months <- seq(as.Date(sprintf("%d-01-01", from)), as.Date(sprintf("%d-12-01", to)), by = "month")
+      g <- expand.grid(model = models, loc = seq_along(cells), timestamp = months, stringsAsFactors = FALSE)
+      yr <- as.integer(format(g$timestamp, "%Y"))
+      withr::with_seed(9L, data.frame(
+        model = g$model, h3 = ints[g$loc], timestamp = g$timestamp,
+        tx = round(30 + 0.12 * (yr - 2010) + 0.5 * match(g$model, models) + stats::rnorm(nrow(g), 0, 0.5), 3),
+        pr = round(stats::runif(nrow(g), 0, 200), 1)
+      ))
+    }
+    arrow::write_parquet(proj(2010, 2014), file.path(p_dir, "TST_cmip6_historical.parquet"))
+    arrow::write_parquet(proj(2015, 2035), file.path(p_dir, "TST_cmip6_ssp370.parquet"))
+  }
   invisible(list(connection_params = build_connection_params("local", path = dir), cells = cells))
 }
