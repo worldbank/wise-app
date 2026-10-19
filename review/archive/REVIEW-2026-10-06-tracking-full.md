@@ -391,6 +391,10 @@ Thread-policy revisit before V4 (2026-10-08, BFA, OLS, forced weather DuckDB thr
 - 2026-10-07 - Code hygiene prompt revised into standing guidelines (`review/code_hygiene.md`).
 - 2026-10-07 - Test-suite work closed and archived: CI green, 7920 expectations, Step 3 coverage targets done, `predict_outcome` residual fixes (2a1c498), Rd gaps fixed (3666d97). Open items are in B5.
 
+### R2-BUG-19 - RIF weather curve centring and quadratic term (closed 2026-10-19)
+
+Code: `f306e6f` (`echart_weather_effect_plot()` in `R/fct_results.R`, RIF polynomial branch). Two causes. (1) The centring mean came from `mm_of(fit)`, but for a RIF fit `fit` is a `fixest_multi` with no model matrix, so `x_mean` fell back to 0 and the slope term `2 * b2 * x_mean` vanished. The fix centres on the median model (index 5, as `extract_rif_median()` does). (2) The weight regex matched only `I(x^p)`, not the `I(I(x^p))` form used in RIF grids, so polynomial terms got weight 0 and the curve was linear. Test: "RIF polynomial curve is the marginal effect at the sample mean (R2-BUG-19)" in `tests/testthat/test-fct-results-echarts.R`. Verified 2026-10-19: `devtools::test(filter = 'results|echart|rif')` passes. Not checked: that the new test fails on the commit before the fix, and not checked in a browser.
+
 ### CR-SEC-07 - Step 2 snapshot and queue size caps (closed 2026-10-19)
 
 Code: `38ee61d` (`.wise_step2_async_submit()` in `R/fct_step2_async.R`: a snapshot over `WISEAPP_ASYNC_QUEUE_MEMORY_MB` is refused at submit, and a new job is refused when queued snapshots would exceed twice the cap). Test: "submit refuses an oversize snapshot and a full queue by bytes (CR-SEC-07)" in `tests/testthat/test-step2-async.R`. Verified 2026-10-19 with `devtools::test(filter = 'step2-async')`: no failures. Not checked: that the test fails on the commit before the fix.

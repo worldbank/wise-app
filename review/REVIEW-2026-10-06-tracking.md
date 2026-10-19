@@ -14,7 +14,7 @@ All Critical and High findings are done in code, except where noted below. Done:
 | B2 | Security | 2 |
 | B3 | Headline numerics | 0 |
 | B4 | Step 3 levers | 0 (numbers owed, see Waiting on the user) |
-| B5 | Robustness, CI, tests | 4 |
+| B5 | Robustness, CI, tests | 3 |
 | B6 | Performance | 7 |
 | B7 | Medium/Low bugs | 0 |
 | B8 | Accessibility | 6 |
@@ -50,7 +50,6 @@ Closed with a documented remainder; reopen only if the area is touched again.
 - R2-BUG-08: BFA default-spec LASSO selection not re-run; selection may shift.
 - CR-BUG-06: not checked on BFA how many real CMIP6 members are partial rather than wholly missing (7 of 22 SSP3-7.0 members are excluded with t + spei6).
 - CR-BUG-17: the CMIP6 path still falls back silently to the target H3 resolution on error.
-- R2-BUG-19: `echart_weather_effect_plot` RIF polynomial curve uses `x_mean` 0 and misses the `I(I(temp^2))` term (linear only).
 - R2-BUG-06: no parity test against `predict_rif` itself; the legacy `decompose_policy_effect()` path still uses absolute period-mean hazards.
 - R2-BUG-07: the legacy non-annual decomposition keeps the observed baseline.
 - R2-BUG-28 / UI notice: `n_bad_loading` approximates `n_coef_dropped` (misses overflowing gradients).
@@ -71,7 +70,7 @@ Closed with a documented remainder; reopen only if the area is touched again.
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
 | CR-OPS-01 | M | M | ◐ | Smoke job committed (`8d9c262`, follow-ups `a32238c`, `715c638`, `73f9152`); latest GitHub run `39218399361` passed (checked 2026-10-19): `tests/e2e/smoke.R` + `.github/workflows/e2e-smoke.yaml`, non-blocking; passes locally (boot, `conditionalPanel`, axe on Overview and Step 2). First axe findings fixed in `a32238c` (see CR-A11Y-09). Still open: PNG-test skip investigation, make the job required. Original decision 2026-10-08: add a `shinytest2`/axe smoke job to CI (shared with CR-A11Y-09). Scope: one app-boot smoke, one `conditionalPanel` check and one axe run on the first screens; start as a non-blocking job, make it required once it is stable. Investigate why the headless-Chrome PNG test skips on some CI runs. CI is otherwise green (Tests step about 340 s, 0 failed, 0 skipped; `error-on` is `"warning"`). |
-| R2-OPS-09 | L | S | ◐ | Left: `set.seed` vs `local_seed` (116 calls in 48 files; convert only in files being touched); `tests/spelling.R` never fails (the `spelling` package is not installed here and there is no `inst/WORDLIST`; needs a WORDLIST pass first). The `localhost:1` tests are a refused connection with a 15-20 s deadline, so they finish at once; left as they are. |
+| R2-OPS-09 | L | S | ✗ | Deferred 2026-10-19 (user). Left: `set.seed` vs `local_seed` (116 calls in 48 files; convert only in files being touched); `tests/spelling.R` never fails (the `spelling` package is not installed here and there is no `inst/WORDLIST`; needs a WORDLIST pass first). The `localhost:1` tests are a refused connection with a 15-20 s deadline, so they finish at once; left as they are. |
 | RED-06 | M | M | ◐ | One parameterised batch driver over `step2_compute()`. Consolidating the five `04_run_sim` copies deferred by user decision 2026-10-07. |
 | Test suite: remaining | L | S-M | ☐ | (1) rename history-named test files to `test-<R file>.R`; (2) shared `helper-fixtures-*.R` only when two or more files share a builder; (3) `wiseapp.verbose` option to silence progress messages (an `R/` change); (4) `shinytest2` boot smoke plus one `conditionalPanel` check; (5) hygiene in touched files only (`library()`, `wiseapp:::`, `set.seed`, `expect_true(identical())`); (6) coverage job and ratchet in CI: dropped by user decision 2026-10-08. Coverage was 82.1% overall; `fct_predict_outcomes.R` 73%. Deliberately not done: bulk renames, test tiers, parallel test files. Background in `review/archive/test_suite_plan.md` and `test_suite_review.md`. |
 
@@ -163,6 +162,7 @@ Local column measured 2026-10-08 on the developer laptop (8 cores, 16 GB, local 
 
 Newest entries only. Earlier entries (2026-10-06 to 2026-10-08) are in the archive record.
 
+- 2026-10-19 - R2-BUG-19 closed (`f306e6f`): RIF weather curve centred on the median model and keeps the `I(I(x^p))` term; test added. R2-OPS-09 deferred by user; B5 open count 4 to 3.
 - 2026-10-19 - CR-SEC-07 closed: `38ee61d` committed and `step2-async` tests pass. Remainder "small profile for metadata loads" withdrawn: a separate profile is a second pool, which `optimization_guidelines.md` §0 forbids, and the metadata snapshot is the connection params only. B2 open count 3 to 2. SP tasks §4 restored-level notice fixed (`mod_3_01_sp.R`, new `test-mod_3_01_sp.R`).
 - 2026-10-19 - CR-PERF-13 / R2-PERF-08 closed: `WISEAPP_DUCKDB_MEMORY_LIMIT=4GB` chosen for Connect (user). Row and "Waiting on the user" item moved to the archive addendum; B5 open count 5 to 4. CR-SEC-07 committed (`38ee61d`), step2-async tests pass; row stays open for the metadata-load profile. CR-OPS-01: smoke job committed and passing on GitHub; open: PNG-test skip, required status.
 - 2026-10-13 - Added `test-mod_3_06_policy_sim.R` (testServer: cancel on a new Step 2 result, released-members guard, real-daemon publish equal to the in-process run); CR-SEC-07 queue cap by bytes (code, test); CR-OPS-01 / CR-A11Y-09 smoke job written (see rows). Fixed a stale mock in `test-mod_2_01_weathersim.R` (job lacked `artifact_dir` after CR-PERF-04). Nothing committed.
