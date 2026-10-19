@@ -4,9 +4,11 @@ Status: Phase 0, 2026-10-19. Decisions D1-D4 taken; second consolidation
 round (11 result tables) proposed. Part of `review/batch_pipeline_plan.md`.
 Column lists are indicative; each phase fixes the exact schema from the core
 table builder it extracts. The schema of the Phase 1 tables (`variable_stats`,
-`interview_dates`, `weather_stats`) is fixed and documented column by column
-in `batch/docs/phase1_tables.md`; where it differs from section 3.1 the
-reference wins (summary in "Phase 1 schema" below).
+`interview_dates`, `weather_stats`), the Phase 2 tables and the Phase 3 tables
+(`annual`, `summary`, `sim_weather`) is fixed and documented column by column
+in `batch/docs/phase1_tables.md`, `phase2_tables.md` and `phase3_tables.md`;
+where it differs from section 3 the reference wins (summaries in the "Phase 1
+schema", "Phase 2 schema" and "Phase 3 schema" notes below).
 
 ## 1. Scope rules (decided)
 
@@ -169,6 +171,31 @@ each policy adds only its own rows.
 | 10 | `decomposition` | `policy_id` | source x scenario x member x sim_year x group x channel (x metric) | The app's internal per-year tables: the compact decomposition (`channel_summary`, `decile_summary`: sums and weights of each channel by scenario, member, year and baseline decile; `fct_policy_metric_decompose.R:400-470`) and the metric-aware decomposition (`annual`, `decile_annual` of `.policy_metric_decomposition()`). Columns: channel sums and weights, so every average is exact. |
 | 11 | `policy_measures` | `policy_id` | section x measure x group (x scenario) | Small measure/value tables: transfer summary (`mod_3_08:521`), SP effectiveness (`mod_3_08:609`), reach (`policy_reach_summary()`), components (`.policy_component_table_raw()`), treatment matrix (`policy_treatment_matrix()`; row and column labels in `group`), input diagnostics (`policy_input_diagnostics()`; before and after means per lever variable), cost-effectiveness (`ce_table`, `ce_climate`, `ce_reach`, `mod_3_10_cost_effectiveness.R:295,395,497`). |
 
+Phase 3 schema (implemented 2026-10-19; reference in
+`batch/docs/phase3_tables.md`) - differences from the draft above:
+- `annual`, `summary` and `sim_weather` are published for the baseline arm
+  (`policy_id` is `NA`); the policy phase adds the policy arms and the shock
+  metrics. `annual` has the columns `value`, `sd`, `var_within`, `var_across`,
+  `weighted`; `var_within` and `var_across` describe the year and repeat on each
+  member row. `member` is the climate model; `sim_year` is the weather year the
+  aggregate draws on.
+- `summary` is a long table with `estimate`, `lo`, `hi`, `n`, `text` and the
+  sections `expected`, `adverse_year`, `adverse_dot`, `uncertainty`,
+  `headline` and `incidence`. The ensemble band is stored at p10-p90 (the
+  Results pane starts at `none`, which has no spread to keep); the coefficient
+  band is p10-p90 and the deviation is `none`. The `ensemble` spread between
+  climate models is in `lo`/`hi`. The distributional incidence has `metric` `NA`.
+- `sim_weather` holds the sections `scenario` (period and number of models),
+  `members` (the climate-model list) and `support` (the pooled weather-support
+  summary of the Diagnostics tab, per variable). The weather densities and
+  per-value weather are not stored.
+- Ids: `sim_id` (fit_id + the simulation settings; the residual rule does not
+  enter for RIF, and the scenarios do not enter without projection periods).
+  `data_id` is unchanged, so editing the statistics options still reruns fits
+  and simulations (section 2).
+- The spec has no choice of climate models: every model of the projection
+  files that covers the sample is a member, as in the app.
+
 ### 3.4 Run-level tables (all phases)
 
 | Table | Contents |
@@ -266,10 +293,12 @@ Spec options: `stats.indicators` (name -> variable, operator, threshold) and
 | `policy_config.csv` | `runs` + `specs/` |
 | Spec-curve and model-selection scripts (02a, 03a) | Post-processing on `model_terms` / `model_fit` (Phase 5) |
 
-## 7. Size estimate (per fit, BFA scale, to verify in Phase 3)
+## 7. Size estimate (per fit, BFA scale; `annual` and `summary` measured in Phase 3)
 
 `annual`: about 4 scenarios x 10 members x 30 years x 9 metrics, roughly 11k
-rows per arm. `decomposition`: about 4 x 10 x 30 x 11 groups, roughly 13k
+rows per arm. Measured on BFA with one SSP, one period, 20 climate models and
+30 weather years: 5,670 rows (630 aggregates x 9 metrics); `summary` 505 rows;
+`sim_weather` 48 rows. `decomposition`: about 4 x 10 x 30 x 11 groups, roughly 13k
 rows per policy (channels as columns). `summary`: hundreds of rows. Step 1
 tables: low thousands of rows per `data_id`. A grid of 1,000 runs stays
 around 100 MB of parquet.

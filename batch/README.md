@@ -1,12 +1,13 @@
 # WISE-APP batch runs
 
-> **Status: Phase 2.** The run spec, the grid, the runner, the Step 1 data
-> tables (survey and weather statistics) and the Step 1 model tables work. The
-> simulation and policy tables follow in later phases (see Status). The old
-> scripts are in `legacy/` for reference only; they are not maintained.
-> Design: `review/batch_pipeline_plan.md`. Tables: `batch/docs/tables.md` and,
-> for the tables that exist, `batch/docs/phase1_tables.md` (data) and
-> `batch/docs/phase2_tables.md` (model).
+> **Status: Phase 3.** The run spec, the grid, the runner, the Step 1 data
+> tables (survey and weather statistics), the Step 1 model tables and the
+> Step 2 simulation tables work. The policy tables follow in a later phase
+> (see Status). The old scripts are in `legacy/` for reference only; they are
+> not maintained. Design: `review/batch_pipeline_plan.md`. Tables:
+> `batch/docs/tables.md` and, for the tables that exist,
+> `batch/docs/phase1_tables.md` (data), `batch/docs/phase2_tables.md` (model)
+> and `batch/docs/phase3_tables.md` (simulation).
 
 The batch pipeline runs WISE-APP without the Shiny interface for many
 samples and specifications. It writes tidy result tables for reports, papers
@@ -29,7 +30,9 @@ and reproducibility packages.
 - Data: a local data folder, named in the environment variable
   `WISEAPP_DATA_PATH` (for example in `~/.Renviron`). Credentials of other
   sources come from the environment variables the app uses; they never enter
-  a spec.
+  a spec. A simulation with projection periods also reads the CMIP6 climate
+  projections from the data folder (`hazard/weather/projections/<code>/`),
+  as the app does.
 
 ## Quick start
 
@@ -101,8 +104,7 @@ exclude:
   the app, export, then vary it here. Only the Step 1 sample, outcome and
   weather settings and the seed are read.
 
-Sections of later steps (`sim`, `policy`) are rejected until their phase
-exists.
+The `policy` section is rejected until its phase exists.
 
 ### The model
 
@@ -157,6 +159,56 @@ axes:
   are in the data folder, as in the app. Without them the fit uses fixest's
   default variance, and `model_fit` and `provenance.parquet` say so.
 
+### The simulation
+
+A `sim` section adds the Step 2 simulation to every run that has a model: the
+same run as "Run simulation" in the app (the historical weather and the
+climate projections applied to the baseline survey) and the tables `annual`,
+`summary` and `sim_weather`. It needs a `model` section. Without `sim` a run
+stops at the model tables; `sim: {}` runs the app's initial state.
+
+```yaml
+sim:
+  hist_years: [1991, 2020]                      # the historical weather period
+  future_periods: [[2025, 2035], [2040, 2050]]  # up to three; [] for historical only
+  ssps: [ssp2_4_5, ssp3_7_0]                    # ssp2_4_5, ssp3_7_0, ssp5_8_5
+  residuals: original                           # original or resample
+  coef_uncertainty: true
+  propagate_all_covariate_uncertainty: false
+  baseline_survey: [BFA|2021]                   # survey waves, CODE|YEAR
+
+profiles:
+  sim:
+    ssp3: {ssps: [ssp3_7_0], future_periods: [[2025, 2035]]}
+    historical: {future_periods: []}
+axes:
+  sim: [ssp3, historical]
+```
+
+- **hist_years** is the period of historical weather that the simulation
+  draws weather years from (1950 to 2024, as the slider). It is separate from
+  `weather.hist_years` of the Step 1 comparison.
+- **future_periods** are start and end years of the projection periods (2015
+  to 2100; at most three). Every SSP is run for every period, and every
+  climate model of the data is a member. `[]` runs the historical weather only.
+- **ssps** are the scenarios (`ssp2_4_5`, `ssp3_7_0`, `ssp5_8_5`). The order
+  of the runs follows the app (SSP outer, period in the order given).
+- **residuals** is how household residuals enter the prediction: `original`
+  (each household keeps its own) or `resample`. RIF models draw none: the
+  setting is ignored for them and does not change the run's id.
+- **baseline_survey** names the survey waves whose households are simulated.
+  Left out, it is the latest wave of each economy, as in the app.
+- The standard deviations of the tables include coefficient uncertainty
+  (`coef_uncertainty`); `propagate_all_covariate_uncertainty` extends it to
+  all covariates, as the app's box does.
+- A simulation that fails (a missing projection file, no climate model with
+  full coverage) is recorded in `failures.parquet` with its run ids; the other
+  simulations still run. One that finishes without some climate-model members
+  or scenarios keeps its tables and is listed with the error class
+  `partial_simulation_failure`.
+- The Step 2 runs hold hundreds of MB each. `run.R` gives them their own,
+  smaller set of workers (`WISEAPP_BATCH_SIM_WORKERS`, default 1).
+
 ### Spec fields and defaults
 
 Settings not given take the app's defaults, which live in one place
@@ -186,6 +238,13 @@ Settings not given take the app's defaults, which live in one place
 | `model.fixed_effects` | `year`, `gaul1_code` where valid |
 | `model.covariates.method` | `user` with no covariates |
 | `model.covariates.lasso.*` | alpha 1, `lambda.1se`, 10 folds, standardize, no MICE, 5 imputations, 5 iterations, stability threshold 0.5 |
+| `sim` | none (no simulation); `{}` is the app's initial state |
+| `sim.hist_years` | `[1991, 2020]` |
+| `sim.future_periods` | `[[2025, 2035]]` |
+| `sim.ssps` | `[ssp3_7_0]` |
+| `sim.residuals` | `original` |
+| `sim.coef_uncertainty`, `sim.propagate_all_covariate_uncertainty` | true, false |
+| `sim.baseline_survey` | the latest wave of each economy, resolved when the grid is read |
 
 Values are case-insensitive for choices (`form: continuous`). In R,
 `wiseapp::wise_spec(...)` builds and validates one spec, and
@@ -201,12 +260,14 @@ Each spec hashes into stage ids that decide what is shared:
 | `wxvar_id` | the data id, one weather variable's settings, the historical years | `weather_stats` |
 | `weather_id` | the data id and the whole weather section (binning included; the seed only for K-means bins) | the survey-weather frame (not published) |
 | `fit_id` | the data id, the weather section, the model section and the seed | `model_terms`, `model_fit`, `model_vcov` |
+| `sim_id` | the fit id and the simulation settings that change results | `annual`, `summary`, `sim_weather` |
 | `run_id` | the whole spec, including the seed | `runs` |
 
 Two runs with the same sample load the survey once; two runs that use the
 same weather variable settings compute its statistics once; runs that differ
-only in the model share the weather frame and fit separately. Because the
-statistics options are part of `data_id`, changing them reruns the fits too.
+only in the model share the weather frame and fit separately; runs that differ
+only in the simulation share the fit. Because the statistics options are part
+of `data_id`, changing them reruns the fits and the simulations too.
 
 ## Output
 
@@ -226,11 +287,12 @@ Tables join to `runs` on their stage id.
 |---|---|---|
 | Survey and weather data | `variable_stats`, `interview_dates`, `weather_stats` | available |
 | Model | `model_terms`, `model_fit`, `model_vcov` | available |
-| Simulation and policy | `annual`, `summary`, `sim_weather`, `decomposition`, `policy_measures` | planned |
+| Simulation | `annual`, `summary`, `sim_weather` | available |
+| Policy | `decomposition`, `policy_measures` (and the policy arm of `annual`, `summary`) | planned |
 
 Column definitions of the available tables: `batch/docs/phase1_tables.md`
-(data) and `batch/docs/phase2_tables.md` (model). The plan for the others is
-`batch/docs/tables.md`.
+(data), `batch/docs/phase2_tables.md` (model) and `batch/docs/phase3_tables.md`
+(simulation). The plan for the others is `batch/docs/tables.md`.
 
 A stage that fails (a missing survey file, an outcome the surveys do not
 have) does not stop the others: it is listed in `failures.parquet` with the

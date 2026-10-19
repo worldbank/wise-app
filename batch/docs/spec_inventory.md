@@ -140,9 +140,35 @@ The tables are built by `model_terms_table()`, `model_fit_table()` and
 | `mod_2_03_diagnostics` | `diag_weather_vars`, `diag_weather_scenario` | Display | dimensions |
 | `mod_2_01_weathersim` | `run_sim`, `stop_sim` | UI | - |
 
-Glue: `mod_2_01_weathersim.R` lines 1002-1050 build the `step2_compute()`
-input: `build_hist_sim_dates()`, `fp_list`, `build_perturbation_method()`,
-the baseline survey subset, `stored_breaks`, `step2_slim_model_fit()`.
+App defaults (Phase 3): `sim.hist_years` 1991-2020, `sim.future_periods`
+2025-2035 (periods 2 and 3 start unused, 2015-2015), `sim.ssps` SSP3-7.0,
+`sim.residuals` `"original"`, `sim.coef_uncertainty` true,
+`sim.propagate_all_covariate_uncertainty` false, `sim.baseline_survey` the
+latest wave of each economy. They live in `wise_default_sim()` and
+`wise_default_baseline()` (`R/fct_spec_defaults.R`); the sidebar reads its
+initial values from them. The ids in a configuration export are
+`step2-weathersim-<input>`.
+
+Spec notes (Phase 3): `sim` needs a `model` section. A period that is
+incomplete, empty (end not after start) or starts before 2015 is excluded in the
+app and is an error in the spec (a configuration import drops it, as the app
+does). The residual rule and the scenarios do not enter the `sim_id` when they
+have no effect (RIF; no projection period). The spec has no choice of climate
+models: every model of the projection files with full coverage is a member.
+
+Glue extracted in Phase 3 (module -> core, `R/fct_step2_input.R`):
+
+| Glue | Core function | Module |
+|---|---|---|
+| Baseline waves, default and subset of the frame, label | `step2_baseline_choices()`, `wise_default_baseline()`, `step2_baseline_svy()`, `.step2_filter_baseline_surveys()`, `step2_baseline_label()` | `mod_2_01` |
+| Dates, periods, scenarios, perturbation, residual rule, RIF fits, model snapshot | `wise_step2_input()` (async snapshot and debugging path) | `mod_2_01` |
+| Historical label and run summary | `step2_hist_label()`, `wise_step2_annotate()` | `mod_2_01` |
+| Results views: bands, thresholds, variance, adverse dots, timeseries, incidence, headline inputs | `step2_pointrange_bands()`, `step2_headline_bands()`, `step2_threshold_table()`, `step2_variance_breakdown()`, `step2_adverse_dot_view()`, `step2_timeseries_curves()`, `step2_incidence_all()`, `step2_baseline_check_view()`, `step2_delta_ci_view()`, `step2_weather_support_view()`, `step2_card_metadata()`, `step2_contrast_sd()`, `step2_hist_ref()`, `step2_hist_f_ref()` (`R/fct_step2_tables.R`) | `mod_2_02` |
+| Weather support | `weather_support_from_stored()` (already pure) | `mod_2_03` |
+
+The tables are built by `step2_annual_table()`, `step2_summary_table()` and
+`step2_sim_weather_table()` from the aggregation tables of
+`step2_run_aggregates()`.
 
 ## 5. Step 3 - policy (Phase 4)
 

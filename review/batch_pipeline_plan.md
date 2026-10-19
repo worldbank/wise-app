@@ -1,6 +1,6 @@
 # Batch pipeline rebuild - plan
 
-Status: Phases 1 and 2 implemented (2026-10-19); Phases 3 to 5 planned.
+Status: Phases 1 to 3 implemented (2026-10-19); Phases 4 and 5 planned.
 Supersedes: `docs/batch_pipeline.md` (legacy) and the scripts in `batch/`.
 
 ## 1. Goal
@@ -444,6 +444,67 @@ Progress (2026-10-19): Phase 2 implemented with the scope below.
   exceedance and return periods, threshold tables, diagnostics (mod_2_02,
   mod_2_03), with full curve data for figures.
 - Refactor `mod_2_01` glue; parity tests.
+
+Progress (2026-10-19): Phase 3 implemented with the scope below.
+- Decisions (taken before the work): the slim fit (`step2_slim_model_fit()`)
+  is persisted per `fit_id` as a qs2 file in the targets store and the sim
+  branch reads it, no refit; `weather_effect_data()` stays deferred; the
+  statistics options stay in `data_id`; the Step 2 stage gets its own crew
+  controller (`sim`, 1 worker by default, `memory = "transient"`); `sim.residuals`
+  and `sim.coef_uncertainty` are spec fields at the app defaults and RIF forces
+  residuals to `none`; `annual` has one row per member and year, no cap;
+  interactions and `policy_vars` wait for Phase 4. The spec does not choose
+  climate models: every model of the projection files with full coverage is a
+  member, as in the app (the question recommended a member list; the app has none).
+- Shared core: `R/fct_step2_input.R` (baseline survey, periods, scenarios,
+  residual rule, model snapshot: `wise_step2_input()`) and `R/fct_step2_tables.R`
+  (the views of `mod_2_02` as pure functions, the aggregation of a run and the
+  table builders). `mod_2_01` builds its worker snapshot and its debugging-path
+  call with `wise_step2_input()`, and reads its initial control values from
+  `wise_default_sim()`; `mod_2_02` calls the view functions from its reactives;
+  `mod_2_03` needed no change (the support summary was already a pure
+  function). Rendered module output is identical before and after: the sidebar
+  HTML, the async snapshots and sync-call arguments (fixest, RIF,
+  historical-only, resampled residuals, several baselines) and every Results
+  reactive for six metric, deviation and band settings; the full suite
+  passes. Mechanics: a clean worktree of HEAD against the working tree.
+- Spec: a `sim` section (absent = no simulation), grid profile group `sim`,
+  config import of the Step 2 sidebar inputs, `sim_id`, the baseline survey
+  resolved at grid time (the latest wave of each economy).
+- Runner: stages `sim` (per `sim_id`) after `fit`; the fit stage keeps the slim
+  fit; `wise_batch_sim()` builds the input with `wise_step2_input()`, runs the
+  serial `step2_compute()` (weather in memory, no async code) and keeps only the
+  tables `annual`, `summary`, `sim_weather`. `wise_batch_controller(sim_workers =)`
+  returns a controller group; the sim branches use the `sim` controller when the
+  pipeline defines one. Failures are recorded per simulation; lost climate
+  models are listed as `partial_simulation_failure`.
+- Tests: `test-fct_step2_input.R` (input, module parity), `test-fct_step2_tables.R`
+  (module parity of every view for every metric, the three tables),
+  `test-fct_batch_spec.R` (sim section), `test-batch-pipeline.R` (fixture with
+  CMIP6 files: tables, parity with the core, reuse, failure record, controller).
+- Real data: `dev/batch_parity_bfa_sim.R` (BFA, linear fixest with a user
+  covariate list, `sim: {}`: 1991-2020 weather, SSP3-7.0 for 2025-2035, 20
+  climate models) against the module servers. Batch alone: 26 s for the whole
+  pipeline, the Step 2 branch 18 s, R heap peak 1.8 GB, process peak
+  resident set 2.6 GB; 5,670 `annual`, 505 `summary` and 48 `sim_weather` rows.
+  Results of the comparison: see `batch/docs/phase3_tables.md` notes and the
+  report of the session.
+- Findings: (1) the ensemble band of `summary` is stored at p10-p90 although
+  the pane starts at `none` (D3 names the band p10-p90; `none` has no spread);
+  (2) the Results pane aggregates a metric with the metrics of its group, the
+  streamed (async) tables and the batch aggregate all metrics in one call; the
+  results agree to about 1e-15; (3) the inline Step 2 join in `fct_simulations.R`
+  is many-to-many by construction and dplyr warns about it (the app too);
+  batch mutes that one warning; (4) the batch stage items for survey and frame
+  carry file paths, not content stamps, so a rebuilt data file does not rerun
+  the stages that read it (the sim items carry size and time stamps).
+- Not done: `weather_effect_data()`, the Export-bundle comparison, storing the
+  Step 2 run (hundreds of MB per `sim_id`).
+- Open for Phase 4: (1) the policy stage needs the Step 2 pipelines: persist
+  the run per `sim_id` (0.4-0.6 GB at BFA 2x2) or repeat it; (2) interactions and
+  `policy_vars` (the moderator values go to `model_fit` `effect_inputs`); (3)
+  `weather_effect_data()`; (4) the Export-bundle check; (5) a `frame_id` without
+  the statistics options; (6) content stamps for the earlier stage items.
 
 ### Phase 4 - Step 3 policy
 
