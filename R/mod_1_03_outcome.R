@@ -91,7 +91,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
           )
         ),
         choices = choice_map,
-        selected = outs$name[1],
+        selected = wise_default_outcome(outs$name),
         multiple = FALSE
       )
     })
@@ -121,7 +121,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
         inputId  = ns("currency"),
         label    = "Currency",
         choices  = c("PPP (2021)" = "PPP", "LCU (2021)" = "LCU"),
-        selected = "PPP"
+        selected = wise_spec_defaults()$outcome$currency
       )
     })
 
@@ -135,11 +135,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
       }
 
       currency <- input$currency
-      default_line <- if (is.null(currency) || identical(currency, "PPP")) {
-        3.00
-      } else {
-        default_lcu_poverty_line(survey_data())
-      }
+      default_line <- wise_default_poverty_line(currency, survey_data())
 
       numericInput(
         inputId = ns("poverty_line"),
@@ -191,22 +187,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
     outcome_data <- reactive({
       spec <- outcome_spec()
       req(survey_data(), spec)
-      inf <- spec$info
-      df <- survey_data()
-      oname <- as.character(inf$name[1])
-      if (identical(oname, "poor") && !"poor" %in% names(df)) {
-        so <- spec$so
-        pl <- if (!is.null(so) && !is.na(so$povline)) so$povline else 3.00
-        if ("welfare" %in% names(df)) {
-          line <- .povline_to_ppp(
-            pl, df,
-            !is.null(so) && !is.na(so$povline) &&
-              identical(as.character(so$units[1]), "LCU")
-          )
-          df$poor <- as.integer(df$welfare < line)
-        }
-      }
-      df
+      wise_outcome_data(survey_data(), spec$info, spec$so)
     })
 
     # Outcome summary statistics (PERF-41) ----

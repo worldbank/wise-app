@@ -50,7 +50,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
           "Household"  = "hh",
           "Firm"       = "firm"
         ),
-        selected = "hh"
+        selected = wise_spec_defaults()$sample$unit
       )
     })
 
@@ -58,8 +58,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
 
     surveys <- reactive({
       req(input$unit, survey_list())
-      sl <- build_survey_fnames(survey_list(), input$unit, connection_params())
-      filter_surveys_to_available(sl, available_files())
+      wise_available_surveys(survey_list(), input$unit, connection_params(), available_files())
     })
 
     # Economy selector ----
@@ -78,8 +77,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
         inputId  = ns("economy"),
         label    = "Economy",
         choices  = choices,
-        # make default "BFA" if it exists, otherwise first in list
-        selected = if ("BFA" %in% sv$code) "BFA" else choices[1],
+        selected = wise_default_economy(sv$code),
         multiple = TRUE,
         options  = list(maxItems = 2, placeholder = "Select up to 2 economies")
       )
@@ -116,7 +114,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
           inputId  = ns(paste0("year_", code)),
           label    = paste("Survey years -", economy_name),
           choices  = yrs,
-          selected = .restore_selection(prev_yrs, yrs, fallback = yrs),
+          selected = .restore_selection(prev_yrs, yrs, fallback = wise_default_years(yrs)),
           multiple = TRUE,
           options  = list(placeholder = paste("Select years for", economy_name))
         )

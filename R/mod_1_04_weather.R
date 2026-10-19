@@ -75,6 +75,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
         units <- as.character(var_info$units[1])
         display_label <- wise_label_short(as.character(var_info$label[1]))
         prefix <- paste0(v, "_")
+        defs <- wise_weather_var_defaults(units)
 
         tagList(
           if (i > 1 && n_vars > 1) hr(),
@@ -91,7 +92,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
                 ns(paste0(prefix, "relativePeriod")),
                 "Months before interview",
                 min = 0, max = 12,
-                value = c(1, 1)
+                value = defs$ref_period
               ),
               # Aggregation is only meaningful when the window spans more
               # than one month; for a single month the value is that month's
@@ -119,7 +120,8 @@ mod_1_04_weather_server <- function(id, variable_list) {
               pill_toggle(
                 ns(paste0(prefix, "contOrBinned")),
                 label = "Continuous or binned",
-                choices = c("Binned", "Continuous")
+                choices = c("Binned", "Continuous"),
+                selected = defs$form
               ),
               shiny::conditionalPanel(
                 condition = paste0("input['", ns(paste0(prefix, "contOrBinned")), "'] == 'Binned'"),
@@ -127,7 +129,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
                   shiny::sliderInput(
                     ns(paste0(prefix, "numBins")),
                     "Number of bins",
-                    min = 2, max = 10, value = 5
+                    min = 2, max = 10, value = defs$n_bins
                   ),
                   pill_toggle(
                     ns(paste0(prefix, "binningMethod")),
@@ -142,6 +144,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
                       )
                     ),
                     choices = c("Equal frequency", "Equal width", "K-means", "Custom"),
+                    selected = defs$binning_method,
                     layout = "vertical"
                   ),
                   shiny::conditionalPanel(
@@ -226,7 +229,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
               ),
               min = 1950,
               max = this_year,
-              value = c(1991, 2020),
+              value = wise_spec_defaults()$weather$hist_years,
               sep = ""
             )
           ),
@@ -240,7 +243,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
     # orders the two years so a reversed range still loads.
     hist_years <- reactive({
       years <- suppressWarnings(as.integer(input$hist_years))
-      if (length(years) != 2L || anyNA(years)) years <- c(1991L, 2020L)
+      if (length(years) != 2L || anyNA(years)) years <- wise_spec_defaults()$weather$hist_years
       yf <- years[1]
       yt <- years[2]
       if (yf > yt) {

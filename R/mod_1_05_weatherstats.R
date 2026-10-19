@@ -58,7 +58,9 @@ mod_1_05_weatherstats_server <- function(
 
     if (is.null(tabset_session)) tabset_session <- session$parent %||% session
     if (is.null(hist_years)) {
-      hist_years <- shiny::reactive(c(from = 1991L, to = 2020L))
+      hist_years <- shiny::reactive(stats::setNames(
+        wise_spec_defaults()$weather$hist_years, c("from", "to")
+      ))
     }
 
     weather_tab_added <- reactiveVal(FALSE)
@@ -182,11 +184,6 @@ mod_1_05_weatherstats_server <- function(
         svy <- survey_data()
         ss <- selected_surveys()
         hy <- hist_years()
-        survey_dates <- extract_survey_dates(svy)
-        weather_dates <- sort(unique(c(
-          survey_dates,
-          expand_hist_dates(survey_dates, hy[["from"]], hy[["to"]])
-        )))
 
         # REACT-03: an identical request to the last completed load is served
         # from state instead of re-running the weather I/O. `survey_version()`
@@ -213,14 +210,7 @@ mod_1_05_weatherstats_server <- function(
 
         weather_full <- tryCatch(
           {
-            get_weather(
-              survey_data       = svy,
-              selected_surveys  = ss,
-              selected_weather  = sw,
-              dates             = weather_dates,
-              connection_params = connection_params(),
-              seed              = seed
-            )
+            wise_weather_fetch(svy, ss, sw, hy, connection_params(), seed)
           },
           error = function(e) {
             removeNotification(notif_load)
@@ -243,22 +233,6 @@ mod_1_05_weatherstats_server <- function(
         req(!is.null(loc_wd))
 
         # One load contains both interview dates and historical calendar dates.
-        cont_wd <- attr(weather_full, "continuous_weather")
-        hist_wd <- loc_wd
-        if (!is.null(cont_wd)) {
-          weather_keys <- intersect(
-            c("code", "year", "survname", "loc_id", "timestamp"),
-            intersect(names(hist_wd), names(cont_wd))
-          )
-          continuous_vars <- setdiff(names(cont_wd), weather_keys)
-          hist_wd <- hist_wd |>
-            dplyr::select(-dplyr::any_of(continuous_vars)) |>
-            dplyr::left_join(
-              cont_wd |>
-                dplyr::select(dplyr::all_of(c(weather_keys, continuous_vars))),
-              by = weather_keys
-            )
-        }
 
         # Merge with survey data ----
         notif_merge <- showNotification(
@@ -299,25 +273,13 @@ mod_1_05_weatherstats_server <- function(
         # Companion frame with the continuous values behind the bins. Merged
         # from a slim slice of the survey data so it stays cheap and leaves
         # `survey_weather()` (used downstream) untouched.
-        survey_cont <- NULL
-        if (!is.null(cont_wd)) {
-          survey_cont <- tryCatch(
-            merge_survey_weather(
-              svy |> dplyr::select(dplyr::any_of(c(
-                "code", "year", "survname", "loc_id", "timestamp",
-                "economy", "weight"
-              ))),
-              cont_wd
-            ),
-            error = function(e) NULL
-          )
-        }
-        survey_weather_cont(survey_cont)
+        companions <- wise_weather_companions(svy, weather_full, survey_wd)
+        survey_weather_cont(companions$survey_weather_cont)
 
         # Any historical comparison on screen belongs to the previous weather
         # configuration. Drop the stale cells now; they are rebuilt under the new
         # configuration at the end of this observer.
-        hist_cells(join_hist_sample_cells(hist_wd, survey_wd))
+        hist_cells(companions$hist_cells)
         hist_cells_years(hy)
 
         # INT-05 pattern: snapshot the selection this load was built from. All

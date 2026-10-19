@@ -185,22 +185,14 @@ mod_1_02_surveystats_server <- function(
     # entire display pipeline (missingness join, labels, N filter, sort,
     # renames, wrapping) so each table render is a row subset of a polished
     # frame. Exports slice the same frame, unrounded.
-    policy_vars <- unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
+    policy_vars <- wise_policy_vars()
 
     stats_base <- reactive({
       sd <- survey_data()
       shiny::req(sd)
       vl <- if (is.function(variable_list)) variable_list() else variable_list
 
-      targets <- if (is.null(vl)) {
-        character(0)
-      } else {
-        unlist(lapply(c("outcome", "ind", "hh", "firm", "area"), function(fc) {
-          if (fc %in% names(vl)) vl$name[vl[[fc]] == 1] else character(0)
-        }), use.names = FALSE)
-      }
-
-      union_vars <- intersect(unique(c(targets, policy_vars)), names(sd))
+      union_vars <- wise_stats_vars(vl, sd)
       if (!length(union_vars)) {
         return(NULL)
       }
@@ -276,7 +268,7 @@ mod_1_02_surveystats_server <- function(
         ss <- selected_surveys()
 
         df <- tryCatch(
-          load_data(ss$fname, connection_params(), collect = TRUE, unify_schemas = TRUE),
+          load_survey_frame(ss, connection_params()),
           error = function(e) {
             notify(wise_user_error(e, "Loading survey data"), type = "error", duration = 8)
             NULL
@@ -285,23 +277,14 @@ mod_1_02_surveystats_server <- function(
 
         req(!is.null(df))
 
-        df <- add_time_columns(df)
-
-        lcu_vars <- get_lcu_vars(df, variable_list())
-        df <- df |>
-          assign_data_level() |>
-          convert_lcu_to_ppp(cpi_ppp(), lcu_vars) |>
-          bottom_code_welfare(0.28) |>
-          apply_policy_derivations()
+        df <- prepare_survey_data(df, variable_list(), cpi_ppp())
         # CR-BUG-16: report records the LCU -> PPP join could not convert.
-        if (length(lcu_vars) && all(c("cpi", "ppp2021") %in% names(df))) {
-          n_no_ppp <- sum(is.na(df$cpi) | is.na(df$ppp2021))
-          if (n_no_ppp > 0L) {
-            notify(sprintf(
-              "%d of %d survey records have no CPI/PPP deflator, so their currency values are missing.",
-              n_no_ppp, nrow(df)
-            ), type = "warning", duration = 8)
-          }
+        n_no_ppp <- survey_n_no_deflator(df, variable_list())
+        if (n_no_ppp > 0L) {
+          notify(sprintf(
+            "%d of %d survey records have no CPI/PPP deflator, so their currency values are missing.",
+            n_no_ppp, nrow(df)
+          ), type = "warning", duration = 8)
         }
 
         publish_new_survey_data(df)
