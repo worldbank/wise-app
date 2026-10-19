@@ -194,9 +194,10 @@ mod_1_05_weatherstats_server <- function(
         # the load finishes, so a failed load always retries. The outcome is part
         # of the key because the tab outputs (binscatter) bind to the outcome
         # snapshotted in `wx_spec()` below (R2-BUG-21).
+        seed <- wise_current_seed()
         sig <- digest::digest(list(
           sw, ss, survey_version(), connection_params(), hy,
-          selected_outcome()
+          selected_outcome(), seed
         ))
         if (identical(sig, last_wx_load_sig())) {
           showNotification("Weather data is already loaded for this selection.",
@@ -217,7 +218,8 @@ mod_1_05_weatherstats_server <- function(
               selected_surveys  = ss,
               selected_weather  = sw,
               dates             = weather_dates,
-              connection_params = connection_params()
+              connection_params = connection_params(),
+              seed              = seed
             )
           },
           error = function(e) {

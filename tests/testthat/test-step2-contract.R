@@ -139,9 +139,10 @@ test_that("historical and scenario payload contracts preserve key fields", {
     names(historical),
     c(
        "pipeline", "chol_obj", "so", "has_weights", "weather_raw",
-        "svy", "residuals", "shared_context"
+        "svy", "residuals", "seed", "shared_context"
     )
   )
+  expect_identical(historical$seed, WISEAPP_DEFAULT_SEED)
   expect_identical(
     names(historical$pipeline),
     c(

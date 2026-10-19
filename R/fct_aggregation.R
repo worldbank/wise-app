@@ -1067,7 +1067,8 @@ step2_display_aggregation <- function(pipelines,
                                       shared_context = NULL,
                                       historical = FALSE,
                                       preparation_cache = NULL,
-                                      suite = TRUE) {
+                                      suite = TRUE,
+                                      seed = WISEAPP_DEFAULT_SEED) {
   first <- if (isTRUE(historical) || !is.null(pipelines$y_point)) {
     pipelines
   } else {
@@ -1104,7 +1105,8 @@ step2_display_aggregation <- function(pipelines,
       model_ids = model_ids,
       scenario = scenario,
       shared_context = shared_context,
-      preparation_cache = preparation_cache
+      preparation_cache = preparation_cache,
+      seed = seed
     )[[method]]
   } else {
     out <- aggregate_pipeline_table(
@@ -1120,7 +1122,8 @@ step2_display_aggregation <- function(pipelines,
       model_ids = model_ids,
       scenario = scenario,
       shared_context = shared_context,
-      preparation_cache = preparation_cache
+      preparation_cache = preparation_cache,
+      seed = seed
     )
   }
   list(
@@ -1153,7 +1156,8 @@ step2_display_aggregation_suite <- function(pipelines,
                                             bandwidth_p0 = 0.05,
                                             shared_context = NULL,
                                             historical = FALSE,
-                                            preparation_cache = NULL) {
+                                            preparation_cache = NULL,
+                                            seed = WISEAPP_DEFAULT_SEED) {
   first <- if (isTRUE(historical) || !is.null(pipelines$y_point)) {
     pipelines
   } else {
@@ -1184,14 +1188,16 @@ step2_display_aggregation_suite <- function(pipelines,
     },
     scenario = if (isTRUE(historical)) "Historical" else NULL,
     shared_context = shared_context,
-    preparation_cache = preparation_cache
+    preparation_cache = preparation_cache,
+    seed = seed
   )
   if (identical(method, "prosperity_gap")) {
     tables[["prosperity_gap"]] <- step2_display_aggregation(
       pipelines = pipelines, method = method, so = so, residuals = residuals,
       skip_coef = skip_coef, pov_line = pov_line,
       bandwidth_p0 = bandwidth_p0, shared_context = shared_context,
-      historical = historical, preparation_cache = preparation_cache
+      historical = historical, preparation_cache = preparation_cache,
+      seed = seed
     )$table
   }
   list(
@@ -1245,11 +1251,13 @@ shared_aggregation_cache_put <- function(cache, key, value) {
 
 shared_aggregation_cache_key <- function(run_signature, poverty_line,
                                          bandwidth_p0, weighted, residuals,
-                                         skip_coef, is_log, methods) {
+                                         skip_coef, is_log, methods,
+                                         seed = WISEAPP_DEFAULT_SEED) {
   digest::digest(list(
     schema = 1L, run_signature = run_signature,
     poverty_line = poverty_line, bandwidth_p0 = bandwidth_p0,
     weighted = isTRUE(weighted), residuals = residuals,
-    skip_coef = isTRUE(skip_coef), is_log = isTRUE(is_log), methods = methods
+    skip_coef = isTRUE(skip_coef), is_log = isTRUE(is_log), methods = methods,
+    seed = as.integer(seed)
   ), algo = "xxhash64")
 }

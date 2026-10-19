@@ -311,3 +311,10 @@ test_that("the Step 2 cache directory is created private (CR-SEC-04)", {
   .step2_compute_init_process(list(), cache_dir)
   expect_identical(as.character(file.info(cache_dir)$mode), "700")
 })
+
+test_that(".step2_run_seed reads the run seed and falls back to the default", {
+  expect_identical(.step2_run_seed(list(seed = 7L)), 7L)
+  expect_identical(.step2_run_seed(list(seed = "9")), 9L)
+  expect_identical(.step2_run_seed(list()), WISEAPP_DEFAULT_SEED)
+  expect_identical(.step2_run_seed(NULL), WISEAPP_DEFAULT_SEED)
+})

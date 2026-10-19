@@ -47,6 +47,13 @@
   x
 }
 
+# Seed of the Step 2 run a `hist_sim` came from (stamped by step2_compute());
+# the default seed for results without one.
+.step2_run_seed <- function(hs) {
+  seed <- suppressWarnings(as.integer(hs$seed %||% NA_integer_)[1L])
+  if (is.na(seed)) WISEAPP_DEFAULT_SEED else seed
+}
+
 .step2_is_fixest_fit <- function(fit) {
   inherits(fit, "fixest") ||
     (is.list(fit) && length(fit) > 0L && all(vapply(fit, inherits, logical(1), "fixest")))

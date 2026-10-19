@@ -722,7 +722,8 @@ fct_run_simulation <- function(sw,
         pov_line = partial_display$pov_line,
         bandwidth_p0 = partial_display$bandwidth_p0,
         shared_context = shared_ctx,
-        historical = historical
+        historical = historical,
+        seed = seed
       )
       shown <- agg$tables[[partial_display$method]]
       if (is.null(shown)) return(invisible(NULL))
@@ -927,7 +928,7 @@ fct_run_simulation <- function(sw,
         tryCatch({
           weighted <- !is.null(out$weight)
           is_log <- isTRUE(so$transform == "log")
-          withr::with_seed(WISEAPP_DEFAULT_SEED, {
+          withr::with_seed(seed, {
             preview_pipeline <- .compact_pipeline(out)
             summary <- aggregate_pipeline_tables_multi(
               pipelines = preview_pipeline,
@@ -938,7 +939,7 @@ fct_run_simulation <- function(sw,
               band_q = c(lo = 0.10, hi = 0.90),
               skip_coef = isTRUE(skip_coef_draws),
               bandwidth_p0 = 0.05,
-              seed = WISEAPP_DEFAULT_SEED,
+              seed = seed,
               model_ids = "Historical",
               scenario = "Historical",
               shared_context = preview_context
@@ -962,7 +963,7 @@ fct_run_simulation <- function(sw,
                 transform = so$transform %||% NA_character_,
                 is_log = is_log,
                 residuals = residuals,
-                seed = WISEAPP_DEFAULT_SEED,
+                seed = seed,
                 bands = c(lo = 0.10, hi = 0.90),
                 bandwidth_p0 = 0.05
               )
@@ -1205,6 +1206,10 @@ fct_run_simulation <- function(sw,
     total_runs,
     if (n_failed > 0L) sprintf(" | %d key(s) FAILED", n_failed) else ""
   ))
+
+  # The Results panes, Step 3 and the metric decomposition draw display
+  # residuals with the seed of the run they show (`.step2_run_seed()`).
+  if (is.list(hist_sim_result)) hist_sim_result$seed <- seed
 
   result <- list(
     hist_sim_result = hist_sim_result,

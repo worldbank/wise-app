@@ -1116,7 +1116,8 @@ mod_2_02_results_server <- function(id,
               )
             shared_key <- shared_aggregation_cache_key(
               ws$hs$.sig %||% list(pipeline = "step2"), suite_pov,
-              bandwidth_p0(), weighted, ws$res, ws$skip, is_log, group$methods
+              bandwidth_p0(), weighted, ws$res, ws$skip, is_log, group$methods,
+              seed = .step2_run_seed(ws$hs)
             )
             suite <- shared_aggregation_cache_get(shared_aggregation_cache, shared_key)
             if (!is.null(suite)) return(setNames(list(suite[[method]]), method))
@@ -1135,7 +1136,8 @@ mod_2_02_results_server <- function(id,
                model_ids = "Historical",
                scenario = "Historical",
                shared_context = ws$hs$shared_context,
-               preparation_cache = ws$prep_cache
+               preparation_cache = ws$prep_cache,
+               seed = .step2_run_seed(ws$hs)
               )
               assign(suite_key, suite, envir = ws$weighted_suite_cache)
               shared_aggregation_cache_put(shared_aggregation_cache, shared_key, suite)
@@ -1156,7 +1158,8 @@ mod_2_02_results_server <- function(id,
           model_ids = "Historical",
           scenario = "Historical",
           shared_context = ws$hs$shared_context,
-          preparation_cache = ws$prep_cache
+          preparation_cache = ws$prep_cache,
+          seed = .step2_run_seed(ws$hs)
          )
         setNames(list(out), method)
        }
@@ -1205,7 +1208,8 @@ mod_2_02_results_server <- function(id,
                  bandwidth_p0 = bandwidth_p0(),
                  model_ids = names(pipes) %||% paste0("m", seq_along(pipes)),
                  shared_context = s$shared_context,
-                 preparation_cache = ws$prep_cache
+                 preparation_cache = ws$prep_cache,
+                 seed = .step2_run_seed(ws$hs)
                )
                assign(suite_key, suite, envir = ws$weighted_suite_cache)
              }
@@ -1224,7 +1228,8 @@ mod_2_02_results_server <- function(id,
             bandwidth_p0 = bandwidth_p0(),
             model_ids = names(pipes) %||% paste0("m", seq_along(pipes)),
             shared_context = s$shared_context,
-            preparation_cache = ws$prep_cache
+            preparation_cache = ws$prep_cache,
+            seed = .step2_run_seed(ws$hs)
           )
           setNames(list(out), method)
         }

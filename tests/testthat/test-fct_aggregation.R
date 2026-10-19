@@ -71,3 +71,12 @@ test_that(".aggregation_assemble_rows handles a single row, skipped years and no
   )
   expect_equal(nrow(.aggregation_assemble_rows(list(), "mean", TRUE)), 0L)
 })
+
+test_that("shared aggregation cache keys differ by seed, default 123", {
+  key <- function(...) {
+    shared_aggregation_cache_key(list(run = 1), 3, 0.05, TRUE, "normal",
+      FALSE, TRUE, c("mean", "gini"), ...)
+  }
+  expect_identical(key(), key(seed = 123L))
+  expect_false(identical(key(seed = 123L), key(seed = 7L)))
+})

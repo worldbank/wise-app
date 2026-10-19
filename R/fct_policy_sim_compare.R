@@ -2469,6 +2469,9 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
 
     baseline_skip_coef <- is.null(pl$F_loading)
     suite_pov <- if (group$poverty_dependent) poverty_line %||% 3 else "none"
+    # Both arms draw display residuals with the Step 2 run's seed, so paired
+    # comparisons and the shared Step 2 suite stay aligned.
+    run_seed <- .step2_run_seed(baseline_hist_sim())
     shared_key <- shared_aggregation_cache_key(
       if (share_step2) hs$.sig else list(
         arm = tag,
@@ -2482,7 +2485,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         }
       ),
       suite_pov, 0.05, TRUE, active_residuals(hs), baseline_skip_coef,
-      isTRUE(hs$so$transform == "log"), group$methods
+      isTRUE(hs$so$transform == "log"), group$methods,
+      seed = run_seed
     )
     shared <- shared_aggregation_cache_get(aggregation_cache, shared_key)
     if (!is.null(shared)) {
@@ -2504,7 +2508,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       skip_coef = baseline_skip_coef,
       model_ids = "Historical",
       scenario = "Historical",
-      shared_context = hs$shared_context
+      shared_context = hs$shared_context,
+      seed = run_seed
     )
     .agg_cache_put(suite_cache, suite_key, agg)
     shared_aggregation_cache_put(aggregation_cache, shared_key, agg)
@@ -2601,7 +2606,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
             is_log = isTRUE(s$so$transform == "log"),
             band_q = c(lo = 0.10, hi = 0.90),
             model_ids = names(pipes),
-            shared_context = s$shared_context
+            shared_context = s$shared_context,
+            seed = .step2_run_seed(baseline_hist_sim())
           )
            if (!length(combined) || !any(vapply(combined, function(x) {
              !is.null(x) && nrow(x) > 0L

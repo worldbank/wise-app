@@ -579,6 +579,18 @@ test_that(".compute_breaks: Custom binning uses user-supplied cut values", {
   expect_equal(brks$tx[-c(1, length(brks$tx))], c(20, 25, 30, 35))
 })
 
+test_that(".compute_breaks: K-means breaks follow the seed, default 123", {
+  set.seed(1)
+  ref_df <- data.frame(tx = runif(500, 10, 40))
+  sw <- sw_binned("tx", method = "K-means", n_bins = 4L)
+  default <- wiseapp:::.compute_breaks(ref_df, sw)
+  expect_identical(default, wiseapp:::.compute_breaks(ref_df, sw, seed = 123L))
+  expect_identical(
+    wiseapp:::.compute_breaks(ref_df, sw, seed = 7L),
+    wiseapp:::.compute_breaks(ref_df, sw, seed = 7L)
+  )
+})
+
 test_that(".compute_breaks: Custom binning sorts/dedups user cuts", {
   ref_df <- data.frame(tx = seq(0, 100, by = 1))
   sw <- sw_binned("tx", method = "Custom", n_bins = 5L,

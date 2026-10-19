@@ -55,7 +55,7 @@ test_that("weather stats tab is inert to selector changes until re-pressed", {
   real_swl  <- summarise_weather_by_loc
   local_mocked_bindings(
     get_weather = function(survey_data, selected_surveys, selected_weather,
-                           dates, connection_params) {
+                           dates, connection_params, seed = NULL) {
       rows <- make_wx_rows(selected_weather$name[1])
       structure(
         list(historical = rows),

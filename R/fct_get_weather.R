@@ -841,11 +841,13 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
 #' @param selected_weather Data frame with columns `name`, `cont_binned`,
 #'   `num_bins`, `binning_method`, and (optionally) `custom_breaks` (list
 #'   column of numeric vectors used when `binning_method == "Custom"`).
+#' @param seed Integer seed for `"K-means"` binning.
 #'
 #' @return A named list of break vectors (one per binned variable).
 #'   Variables that are not binned or fail to produce valid breaks are omitted.
 #' @noRd
-.compute_breaks <- function(ref_df, selected_weather) {
+.compute_breaks <- function(ref_df, selected_weather,
+                            seed = WISEAPP_DEFAULT_SEED) {
   stored_breaks <- list()
   has_custom_col <- "custom_breaks" %in% names(selected_weather)
 
@@ -874,7 +876,7 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
           {
             if (length(unique(haz_vals)) >= num_bins) {
               km <- withr::with_seed(
-                123,
+                seed,
                 stats::kmeans(haz_vals, centers = num_bins)
               )
               centers <- sort(as.numeric(km$centers))
@@ -1196,6 +1198,8 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
 #'   value before binning, in the historical frame and in every future member.
 #'   Step 2 sets it so a shock-responsive trigger can use a binned variable.
 #'   Default `FALSE`: the frames are exactly as before.
+#' @param seed Integer seed for the K-means bin breaks (the session seed in
+#'   the app). Unused when `stored_breaks` is supplied.
 #' @return A named list of collected data frames with columns
 #'   `code, year, survname, loc_id, timestamp, <weather_vars>`:
 #'   * `"historical"` - unperturbed result filtered to `dates`.
@@ -1227,7 +1231,8 @@ get_weather <- function(
   weather_collect = c("fast", "bounded"),
   weather_threads = c("auto", "1", "2"),
   weather_consumer = NULL,
-  keep_continuous = FALSE
+  keep_continuous = FALSE,
+  seed = WISEAPP_DEFAULT_SEED
 ) {
   # The async Step 2 worker passes dates as character. Coerce once so the
   # climate-reference window (max() against a Date below), the date filters
@@ -1684,7 +1689,7 @@ get_weather <- function(
       sort_cols <- intersect(c("code", "year", "survname", "loc_id", "timestamp"), names(result[["historical"]]))
       keep <- unique(c(sort_cols, wx_cols))
       hist_ref <- result[["historical"]][result[["historical"]]$timestamp %in% survey_timestamps, keep, drop = FALSE]
-      stored_breaks <- .compute_breaks(hist_ref, selected_weather)
+      stored_breaks <- .compute_breaks(hist_ref, selected_weather, seed = seed)
     }
 
     # Keep the untouched (already transformed) values of the binned columns

@@ -718,7 +718,7 @@
 # draw of each year with the ids and length it was drawn for; a different frame,
 # mode, id vector or length is a miss, never a stale hit.
 .policy_metric_residuals <- function(cache, effective, train_aug, id_col, ids, n,
-                                     year) {
+                                     year, seed = WISEAPP_DEFAULT_SEED) {
   if (!isTRUE(cache$ready) || !identical(cache$train_aug, train_aug) ||
     !identical(cache$id_col, id_col)) {
     cache$ready <- TRUE
@@ -731,13 +731,15 @@
   key <- as.character(year)
   hit <- cache$draws[[key]]
   if (!is.null(hit) && identical(hit$mode, effective) && identical(hit$n, n) &&
-    identical(hit$ids, ids)) {
+    identical(hit$ids, ids) && identical(hit$seed, seed)) {
     return(hit$value)
   }
   value <- draw_residuals_vec(effective, train_aug, n, ids, id_col,
-    seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", year),
+    seed = wise_seed(seed, "residual", year),
     resid_lookup = cache$lookup, resid_sigma2 = cache$sigma2)
-  cache$draws[[key]] <- list(mode = effective, n = n, ids = ids, value = value)
+  cache$draws[[key]] <- list(
+    mode = effective, n = n, ids = ids, seed = seed, value = value
+  )
   value
 }
 
@@ -746,7 +748,8 @@
                                     scenario, member, owner = NULL,
                                     exposure_cache = NULL,
                                     validation_cache = NULL,
-                                    residual_cache = NULL) {
+                                    residual_cache = NULL,
+                                    seed = WISEAPP_DEFAULT_SEED) {
   context <- prepared$context
   residual_cache <- residual_cache %||% new.env(parent = emptyenv())
   # R2-PERF-06b: the exposure checks are a per-row scan of every member. Within
@@ -809,7 +812,8 @@
     # reuse its invariant lookup/variance without hashing training data per year,
     # and the draw itself across members that share the rows.
     residual <- .policy_metric_residuals(residual_cache, effective,
-      bctx$train_aug, bctx$id_col, baseline$id_vec[rows], length(rows), year)
+      bctx$train_aug, bctx$id_col, baseline$id_vec[rows], length(rows), year,
+      seed = seed)
     w <- if (!is.null(baseline$weight)) as.numeric(baseline$weight[rows]) else NULL
     row_deciles <- deciles[baseline$svy_row_id[rows]]
     n_states <- .policy_metric_n_states
@@ -985,7 +989,8 @@
         b$pipelines[[id]], p$pipelines[[id]], prepared, method, pov_line,
         requested_residuals, b$shared_context, p$shared_context, nm, id,
         owner = b, exposure_cache = exposure_cache,
-        validation_cache = validation_cache, residual_cache = residual_cache))
+        validation_cache = validation_cache, residual_cache = residual_cache,
+        seed = .step2_run_seed(baseline_hist)))
       annual_full <- dplyr::bind_rows(lapply(members, `[[`, "annual"))
       decile_annual_full <- dplyr::bind_rows(lapply(members, `[[`, "decile_annual"))
       annual <- annual_full

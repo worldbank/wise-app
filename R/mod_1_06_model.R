@@ -815,6 +815,7 @@ mod_1_06_model_server <- function(id,
         m_val <- if (is.null(input$mi_m)) 5 else input$mi_m
         maxit_val <- if (is.null(input$mi_maxit)) 5 else input$mi_maxit
         threshold_val <- if (is.null(input$stability_threshold)) 0.5 else input$stability_threshold
+        seed_val <- wise_current_seed()
 
         incProgress(0.15, detail = "Running MI + LASSO")
 
@@ -836,7 +837,7 @@ mod_1_06_model_server <- function(id,
         lasso_key <- rlang::hash(list(
           df, selected_outcome(), weather_vars, fe_vars, int_vars, vl_for_lasso,
           input$model_type, alpha_val, lambda_choice, nfolds_val, standardize_val,
-          use_mice_val, m_val, maxit_val, threshold_val
+          use_mice_val, m_val, maxit_val, threshold_val, seed_val
         ))
         .memoise_last(lasso_cache, lasso_key, function() {
           run_lasso_selection(
@@ -856,7 +857,7 @@ mod_1_06_model_server <- function(id,
             mi_method = "norm",
             use_mice = use_mice_val,
             stability_threshold = threshold_val,
-            parallel_seed = 123L,
+            parallel_seed = seed_val,
             cv_selection = "random",
             glmnet_tol = 1e-4
           )
