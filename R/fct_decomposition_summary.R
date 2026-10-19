@@ -93,7 +93,7 @@
 .decomposition_outcome_summary <- function(decomp_df, so, baseline_svy = NULL) {
   channels <- .decomposition_outcome_channels(decomp_df, so, baseline_svy)
   if (!nrow(channels)) return(data.frame())
-  fields <- c(main = "Main effect", shock = "Shock-responsive transfer",
+  fields <- c(main = "Direct effect", shock = "Shock-responsive transfer",
     repositioning = "Repositioning", interaction = "Interaction", total = "Total")
   # A regular program has no shock channel: it is shown only when it is active
   fields <- fields[names(fields) != "shock" | .decomposition_shock_active(channels$shock)]
@@ -163,18 +163,18 @@
   x
 }
 
-echart_outcome_decomposition_headline <- function(data, y_label = "Weighted average change (outcome units)", height = "360px") {
+echart_outcome_decomposition_headline <- function(data, y_label = "Mean effect (outcome units)", height = "360px") {
   if (is.null(data) || !nrow(data)) return(echart_blank("Decomposition is unavailable.", height))
   data$channel <- factor(data$channel,
-    levels = c("Main effect", "Shock-responsive transfer", "Repositioning", "Interaction", "Total"))
+    levels = c("Direct effect", "Shock-responsive transfer", "Repositioning", "Interaction", "Total"))
   channel_colours <- c(
-    "Main effect" = .wise_cat[[4]], "Shock-responsive transfer" = .wise_cat[[1]],
+    "Direct effect" = .wise_cat[[4]], "Shock-responsive transfer" = .wise_cat[[1]],
     "Repositioning" = .wise_cat[[3]], "Interaction" = .wise_cat[[6]], "Total" = .wise_support
   )
   fmt <- htmlwidgets::JS("function(v){ if (v == null || isNaN(v)) return '-'; return Number(v).toLocaleString('en-US',{maximumFractionDigits:2}); }")
   e <- data |>
     echarts4r::e_charts(channel, height = height) |>
-    echarts4r::e_bar(value, name = "Weighted average change") |>
+    echarts4r::e_bar(value, name = "Mean effect") |>
     echarts4r::e_color(unname(channel_colours[as.character(data$channel)])) |>
     echarts4r::e_x_axis(axisLabel = wise_eaxis_label(fontSize = 13),
       axisTick = list(alignWithLabel = TRUE), axisLine = list(lineStyle = list(color = .wise_grid))) |>
@@ -195,9 +195,9 @@ echart_outcome_decomposition_headline <- function(data, y_label = "Weighted aver
   .wise_zero_markline(e)
 }
 
-echart_outcome_decomposition_deciles <- function(data, y_label = "Weighted average change (outcome units)", height = "450px") {
+echart_outcome_decomposition_deciles <- function(data, y_label = "Mean effect (outcome units)", height = "450px") {
   if (is.null(data) || !nrow(data)) return(echart_blank("Decile decomposition is unavailable for this run.", height))
-  channel_names <- c(main = "Main effect", shock = "Shock-responsive transfer",
+  channel_names <- c(main = "Direct effect", shock = "Shock-responsive transfer",
     repositioning = "Repositioning", interaction = "Interaction")
   active <- names(channel_names)[vapply(names(channel_names), function(n) {
     values <- suppressWarnings(as.numeric(data[[n]]))
@@ -210,7 +210,7 @@ echart_outcome_decomposition_deciles <- function(data, y_label = "Weighted avera
   levels_decile <- as.character(sort(unique(data$decile)))
   long$decile <- factor(long$decile, levels = levels_decile)
   long$channel <- factor(long$channel, levels = unname(channel_names[active]))
-  colours <- c("Main effect" = .wise_cat[[4]], "Shock-responsive transfer" = .wise_cat[[1]],
+  colours <- c("Direct effect" = .wise_cat[[4]], "Shock-responsive transfer" = .wise_cat[[1]],
     "Repositioning" = .wise_cat[[3]], "Interaction" = .wise_cat[[6]])
   fmt <- htmlwidgets::JS("function(v){ if (v == null || isNaN(v)) return '-'; return Number(v).toLocaleString('en-US',{maximumFractionDigits:2}); }")
   e <- long |>
@@ -515,6 +515,9 @@ echart_rif_weather_curve <- function(rif_grid, pred_var,
         paste0(parts[[1L]], "\u2013", parts[[2L]])
       }
 
+      # Set for moderated curves with several bins: the legend names then read
+      # "<bin> . <level>" and this line says what the two parts are.
+      curve_title <- NULL
       curves <- if (n_terms > 1L && !has_int_terms) {
         tu <- unique(plot_data$term)
         tu <- tu[order(suppressWarnings(.bin_lower(tu)))]
@@ -590,12 +593,18 @@ echart_rif_weather_curve <- function(rif_grid, pred_var,
         # per (bin, moderator level) so each tau appears once per series.
         bins <- unique(main_rows$.bin_id)
         bins <- bins[order(suppressWarnings(.bin_lower(bins)))]
+        modx_short <- function(v) if (v == 1) "yes" else "no"
+        if (length(bins) > 1L) {
+          curve_title <- paste0(
+            "Curves: ", label_fun(pred_var), " range \u00b7 ", modx_lab_print, " (yes / no)"
+          )
+        }
         out <- lapply(bins, function(b) {
           lapply(modx_vals, function(v) {
             d <- combined[combined$modx == v & combined$.bin_id == b, ]
             d <- d[order(d$tau), ]
             nm <- modx_name(v)
-            if (length(bins) > 1L) nm <- paste0(nm, " \u00b7 ", .bin_label(b))
+            if (length(bins) > 1L) nm <- paste0(.bin_label(b), " \u00b7 ", modx_short(v))
             list(name = nm, data = d)
           })
         })
@@ -625,6 +634,7 @@ echart_rif_weather_curve <- function(rif_grid, pred_var,
           lineStyle = list(width = 0, opacity = 0),
           areaStyle = list(color = col, opacity = 0.15),
           silent = TRUE,
+          tooltip = list(show = FALSE),
           z = 1
         )
         curve <- list(
@@ -665,33 +675,60 @@ echart_rif_weather_curve <- function(rif_grid, pred_var,
         splitLine = wise_esplit_line(),
         axisLine = list(lineStyle = list(color = .wise_grid))
       )
+      # The title sits beside the axis labels, inside the grid margin
       e$x$opts$yAxis <- list(
         type = "value",
         name = y_lab,
-        nameTextStyle = wise_eaxis_name(),
+        nameLocation = "middle",
+        nameGap = 40,
+        nameTextStyle = wise_eaxis_name(padding = c(0, 0, 0, 0)),
         axisLabel = wise_eaxis_label(),
         splitLine = wise_esplit_line()
       )
       e$x$opts$series <- series_list
       if (length(curves) > 1L) {
+        legend_top <- if (is.null(curve_title)) 0 else 22
+        if (!is.null(curve_title)) {
+          e$x$opts$title <- list(
+            text = curve_title, left = "center", top = 0,
+            textStyle = list(
+              color = .wise_slate, fontSize = 12, fontWeight = "normal"
+            )
+          )
+        }
         e$x$opts$legend <- list(
           orient = "horizontal",
-          left = 0,
-          top = "bottom",
+          left = "center",
+          top = legend_top,
           data = as.list(vapply(curves, `[[`, character(1L), "name")),
           textStyle = list(color = .wise_charcoal, fontSize = 13)
         )
         e$x$opts$grid <- list(
-          containLabel = TRUE, left = 8, right = 14, top = 24, bottom = 58
+          containLabel = TRUE, left = 28, right = 14,
+          top = if (is.null(curve_title)) 44 else 70, bottom = 28
         )
       } else {
         e$x$opts$grid <- list(
-          containLabel = TRUE, left = 8, right = 14, top = 24, bottom = 28
+          containLabel = TRUE, left = 28, right = 14, top = 24, bottom = 28
         )
       }
+      # One row per curve at the hovered quantile, rounded to two decimals;
+      # the confidence ribbons have no tooltip of their own.
       e$x$opts$tooltip <- list(
         trigger = "axis",
-        textStyle = list(color = .wise_charcoal, fontSize = 13)
+        textStyle = list(color = .wise_charcoal, fontSize = 13),
+        formatter = htmlwidgets::JS(
+          "function(ps) {
+            if (!ps || !ps.length) return '';
+            var rows = ps.filter(function(p) { return p.value && p.value.length > 1; });
+            if (!rows.length) return '';
+            var t = '<b>' + Math.round(Number(rows[0].value[0]) * 100) + '% welfare quantile</b>';
+            rows.forEach(function(p) {
+              t += '<br/>' + p.marker + p.seriesName + ': <b>' + Number(p.value[1]).toFixed(2) + '</b>';
+            });
+            return t;
+          }"
+        )
       )
       e$x$opts$textStyle <- list(fontFamily = "Helvetica, Arial, sans-serif")
       e$x$opts$series[[1L]]$markLine <- list(

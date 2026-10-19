@@ -102,7 +102,7 @@ Because `δ_sp` is already inside `delta_total`, the level-scale SP block later 
 
 This is the single most important consistency property of the current RIF policy pipeline: **the simulation y_point and the decomposition display are produced by the same function with the same inputs, so the channel totals reconcile exactly with the simulated welfare level** (up to the back-transform, which is monotone).
 
-##### Channel 1: Main effect (δ_main)
+##### Channel 1: Direct effect (δ_main)
 
 The main effect captures the direct welfare shift from the policy, composed of two sub-channels:
 

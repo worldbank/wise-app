@@ -6,7 +6,7 @@ diag_series_names <- function(chart) {
 
 test_that("the reach chart has one bar per component and drops missing shares", {
   comp <- data.frame(
-    component = c("Social protection", "Education", "Touched by both policy types"),
+    component = c("Social protection", "Education", "Overlap: reached by both"),
     population_share = c(0.4, 0.1, 0.05), weighted_affected = c(4e5, 1e5, 5e4)
   )
   ch <- echart_policy_reach(comp)
@@ -117,4 +117,38 @@ test_that("the reach and cost cards describe annual and shock programs", {
   d$admin_share <- 0
   expect_match(.sp_cost_cards(d)[[1L]]$note, "No administration")
   expect_null(.sp_cost_cards(NULL))
+})
+
+test_that("the overlap bar is styled apart and a shock program renames the unreached segment", {
+  comp <- data.frame(
+    component = c("Social protection", "Electricity", "Overlap: reached by both"),
+    population_share = c(0.96, 0.225, 0.214), weighted_affected = c(9.6e5, 2.25e5, 2.14e5)
+  )
+  d <- echart_policy_reach(comp)$x$opts$series[[1L]]$data
+  expect_null(d[[1L]]$itemStyle$borderType)
+  expect_identical(d[[3L]]$itemStyle$borderType, "dashed")
+  expect_match(d[[3L]]$note, "not additional")
+
+  tm <- data.frame(
+    status = c(
+      "Not eligible, not treated", "Inclusion error: not eligible, treated",
+      "Exclusion error: eligible, not treated", "Eligible and treated"
+    ),
+    weighted_share = c(0.6, 0.05, 0.1, 0.25)
+  )
+  expect_true("Exclusion error: eligible, not treated" %in% diag_series_names(echart_sp_treatment(tm)))
+  s <- echart_sp_treatment(tm, shock = TRUE)
+  expect_true("Eligible, never paid (error or no trigger)" %in% diag_series_names(s))
+  expect_false("Exclusion error: eligible, not treated" %in% diag_series_names(s))
+})
+
+test_that("fmt_compact shortens large numbers and keeps small ones exact", {
+  expect_identical(fmt_compact(c(164569659, 21283160, 3202444)), c("164.6M", "21.3M", "3.2M"))
+  expect_identical(fmt_compact(1.9e9, prefix = "$"), "$1.9B")
+  expect_identical(fmt_compact(2e6, prefix = "$"), "$2M")
+  expect_identical(fmt_compact(12500), "12.5K")
+  expect_identical(fmt_compact(c(50, 38.64), prefix = "$", small_digits = 2), c("$50.00", "$38.64"))
+  expect_identical(fmt_compact(9999), "9,999")
+  expect_identical(fmt_compact(NA), "—")
+  expect_identical(fmt_compact(-2.5e6), "-2.5M")
 })

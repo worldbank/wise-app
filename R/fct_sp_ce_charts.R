@@ -25,7 +25,7 @@
 .sp_ce_ratio_fmt <- function(res, currency = "PPP") {
   prefix <- .sp_currency_prefix(currency)
   if (grepl("^Cost per person", res$measure[[1L]])) {
-    function(x) fmt_num(x, digits = 2, prefix = prefix, na = "Not available")
+    function(x) fmt_compact(x, prefix = prefix, small_digits = 2, na = "Not available")
   } else {
     function(x) fmt_num(x, digits = 2, na = "Not available")
   }
@@ -63,7 +63,7 @@
   per_person <- grepl("^Cost per person", r$measure[[1L]])
   prefix <- .sp_currency_prefix(currency)
   fmt <- .sp_ce_ratio_fmt(r, currency)
-  money <- function(x) fmt_num(x, digits = 0, prefix = prefix, na = "Not available")
+  money <- function(x) fmt_compact(x, prefix = prefix, na = "Not available")
   short <- .sp_ce_short_label(r$measure[[1L]])
   ratio_card <- function(basis, label) {
     row <- r[r$basis == basis, , drop = FALSE]
@@ -74,7 +74,7 @@
     note <- if (ok) {
       paste(c(
         if (per_person) {
-          paste("Net people lifted:", fmt_num(row$amount, digits = 0))
+          paste("Net people lifted:", fmt_compact(row$amount))
         } else {
           paste("Annual value of the change:", money(row$amount))
         },
@@ -250,7 +250,8 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
 # Grouped bars of money per scenario. `measures` is a named list of numeric
 # vectors; labels abbreviate to K, M and B.
 .diag_grouped_money_chart <- function(scenarios, measures, colours, prefix = "$",
-                                      height = "320px", bottom = 46) {
+                                      height = "320px", bottom = 12,
+                                      y_label = paste0("Annual cost (", trimws(prefix), ")")) {
   keep <- vapply(measures, function(x) any(is.finite(x)), logical(1))
   if (!length(scenarios) || !any(keep)) {
     return(echart_blank("Not available", height = height))
@@ -260,8 +261,8 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
   scenarios <- as.character(scenarios)
   abbrev <- sprintf(
     "function(v) { if (typeof v !== 'number') return '';
-      var s = Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(1) + 'B' : Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + 'M' :
-        Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : v.toFixed(0);
+      var a = Math.abs(v), t = function(x) { return String(parseFloat(x.toFixed(1))); };
+      var s = a >= 1e9 ? t(v / 1e9) + 'B' : a >= 1e6 ? t(v / 1e6) + 'M' : a >= 1e3 ? t(v / 1e3) + 'K' : t(v);
       return %s + s; }",
     jsonlite::toJSON(prefix, auto_unbox = TRUE)
   )
@@ -282,17 +283,20 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
   })
   e$x$opts$xAxis <- list(
     type = "category", data = scenarios,
-    axisLabel = wise_eaxis_label(interval = 0L, width = 160, overflow = "break"),
+    axisLabel = wise_eaxis_label(interval = 0L, width = 240, overflow = "break"),
     axisLine = list(lineStyle = list(color = .wise_grid)),
     axisTick = list(alignWithLabel = TRUE), splitLine = wise_esplit_line(show = FALSE)
   )
-  e$x$opts$yAxis <- list(
-    type = "value", min = 0,
-    axisLabel = wise_eaxis_label(formatter = htmlwidgets::JS(sprintf("function(v) { return (%s)(v); }", abbrev))),
-    splitLine = wise_esplit_line()
+  e$x$opts$yAxis <- c(
+    list(
+      type = "value", min = 0,
+      axisLabel = wise_eaxis_label(formatter = htmlwidgets::JS(sprintf("function(v) { return (%s)(v); }", abbrev))),
+      splitLine = wise_esplit_line()
+    ),
+    .diag_y_title(y_label, gap = 68)
   )
   e$x$opts$legend <- modifyList(
-    list(bottom = 0, left = 0, orient = "horizontal"), wise_elegend_style()
+    list(top = 0, left = "center", orient = "horizontal"), wise_elegend_style()
   )
   e$x$opts$tooltip <- list(
     trigger = "axis", axisPointer = list(type = "shadow"),
@@ -302,7 +306,9 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
     ))
   )
   e$x$opts$color <- unname(colours)
-  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 14, top = 34, bottom = bottom)
+  e$x$opts$grid <- list(
+    containLabel = TRUE, left = if (is.null(y_label)) 8 else 40, right = 14, top = 52, bottom = bottom
+  )
   wise_echart_theme(e)
 }
 
@@ -374,7 +380,7 @@ echart_shock_climate_cost <- function(d, currency = "PPP") {
       "95th percentile annual cost" = d$cost_1_in_20
     ),
     c(.wise_blue, .wise_policy),
-    prefix = .sp_currency_prefix(currency), height = "380px", bottom = 64
+    prefix = .sp_currency_prefix(currency), height = "380px", bottom = 12
   )
 }
 
@@ -393,6 +399,6 @@ echart_shock_affected_poor <- function(res) {
       "Coverage: poor household-years paid" = res$coverage,
       "Adequacy: payment as a share of loss" = res$adequacy
     ),
-    c(.wise_blue, "#009E73")
+    c(.wise_blue, "#009E73"), y_label = "Share"
   )
 }

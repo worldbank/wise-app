@@ -363,12 +363,23 @@ mod_3_scenario_server <- function(id,
       stale = s6$stale
     )
 
-    # Wire the cost-effectiveness tab into the tabset on the first successful run
+    # Wire the cost-effectiveness tab into the tabset after a successful run that
+    # has a cash transfer with spending; other levers have no unit costs, so a
+    # run without one has nothing to show here. A later run without a transfer
+    # removes the tab again.
     ce_tab_added <- reactiveVal(FALSE)
     observeEvent(s6$sim_run_id(),
       {
         req(s6$sim_run_id() > 0)
-        if (!ce_tab_added()) {
+        has_transfer <- has_sp_change(s6$sp_scenario())
+        if (!has_transfer && ce_tab_added()) {
+          shiny::removeTab(
+            inputId = "step3_output_tabs", target = "cost_effectiveness_tab",
+            session = session
+          )
+          ce_tab_added(FALSE)
+        }
+        if (has_transfer && !ce_tab_added()) {
           shiny::appendTab(
             inputId = "step3_output_tabs",
             shiny::tabPanel(

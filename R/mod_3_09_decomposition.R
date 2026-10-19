@@ -226,7 +226,7 @@ mod_3_09_decomposition_ui <- function(id) {
         shiny::uiOutput(ns("headline_scenario_ui"))
       ),
       wise_chart_output(ns("headline_decomp_plot"),
-        "Weighted average main effect, repositioning, interaction, and total policy effect",
+        "Mean direct effect, repositioning, interaction, and total policy effect",
         height = "360px"),
       shiny::uiOutput(ns("headline_decomp_note_ui")),
       shiny::uiOutput(ns("interaction_warning_ui")),
@@ -248,7 +248,7 @@ mod_3_09_decomposition_ui <- function(id) {
         shiny::uiOutput(ns("decile_scenario_ui"))
       ),
       wise_chart_output(ns("decomp_bar_plot"),
-        "Weighted average policy effect by baseline welfare decile", height = "450px"),
+        "Mean policy effect by baseline welfare decile", height = "450px"),
       shiny::uiOutput(ns("decomp_bar_note_ui")),
       shiny::tags$details(
         class = "decomposition-data-details",
@@ -259,7 +259,7 @@ mod_3_09_decomposition_ui <- function(id) {
       ),
       shiny::tags$p(class = "diagnostic-note",
         paste0(
-          "Effects are weighted means by baseline welfare decile, in the outcome's units or ",
+          "Effects are means by baseline welfare decile (survey-weighted), in the outcome's units or ",
           "percent of baseline as selected. Uncertainty is not shown."
         ))
     ),
@@ -455,12 +455,18 @@ mod_3_09_decomposition_server <- function(id,
         is.finite(.decomposition_baseline_mean(so(), baseline_svy()))
     })
     output$units_ui <- shiny::renderUI({
-      if (!isTRUE(relative_available())) return(NULL)
-      shiny::div(style = "display:flex; justify-content:flex-end; margin-bottom:8px;",
-        pill_toggle(ns("decomp_units"), label = "Units",
-          choices = c("Absolute (outcome units)" = "absolute", "% of baseline" = "relative"),
-          selected = isolate(input$decomp_units) %||% "absolute",
-          layout = "horizontal"))
+      shiny::tagList(
+        if (isTRUE(relative_available())) {
+          shiny::div(style = "display:flex; justify-content:flex-start; margin-bottom:4px;",
+            pill_toggle(ns("decomp_units"), label = "Units for results shown on this page",
+              choices = c("Absolute (outcome units)" = "absolute", "% of baseline" = "relative"),
+              selected = isolate(input$decomp_units) %||% "absolute",
+              layout = "horizontal"))
+        },
+        shiny::tags$p(class = "diagnostic-note", style = "margin: 0 0 8px;",
+          "Effects are means over the sampled units, weighted by the survey weights",
+          "(the population each unit represents).")
+      )
     })
     is_relative <- reactive(isTRUE(relative_available()) &&
       identical(input$decomp_units %||% "absolute", "relative"))
@@ -481,7 +487,7 @@ mod_3_09_decomposition_server <- function(id,
           shiny::tags$p(class = "diagnostic-note", "Decomposition is unavailable for this selection."))
       }
       shiny::tags$p(class = "diagnostic-note", paste0(
-        "Weighted average change in ", outcome, " (", unit, ") under ", scenario,
+        "Mean effect in ", outcome, " (", unit, ") under ", scenario,
         " for ", weather_basis_text(basis, outcome), ".",
         if (is_relative()) " Percent of observed baseline mean, the same for all channels."
       ))
@@ -491,7 +497,7 @@ mod_3_09_decomposition_server <- function(id,
     headline_decomp_chart <- function() {
       echart_outcome_decomposition_headline(
         headline_decomp_data(),
-        y_label = paste0("Weighted average change (", change_unit_text(), ")"),
+        y_label = paste0("Mean effect (", change_unit_text(), ")"),
         height = "360px"
       )
     }
@@ -508,7 +514,7 @@ mod_3_09_decomposition_server <- function(id,
       label = "Headline mean outcome decomposition",
       step = 3L,
       fun = headline_decomp_chart,
-      description = "Registry mean-metric weighted average decomposition in the selected outcome's change units.",
+      description = "Mean decomposition (survey-weighted) in the selected outcome's change units.",
       width = 9, height = 5, stale = stale
     )
     wise_export_table(
@@ -525,10 +531,10 @@ mod_3_09_decomposition_server <- function(id,
           Outcome = rep(metric$outcome_label %||% metric$outcome_name %||% "", n),
           `Change unit` = rep(change_unit_text(), n),
           `Effect component` = data$channel,
-          `Weighted average change` = data$value,
+          `Mean effect` = data$value,
           check.names = FALSE)
       },
-      description = "Registry mean-metric weighted average decomposition in the selected outcome's change units.",
+      description = "Mean decomposition (survey-weighted) in the selected outcome's change units.",
       stale = stale
     )
 
@@ -552,7 +558,7 @@ mod_3_09_decomposition_server <- function(id,
     # Channel columns of the decile table and export; the shock-responsive
     # transfer appears only when it carries an effect (regular runs: unchanged).
     decile_channel_cols <- function(data) {
-      cols <- c(main = "Main effect", shock = "Shock-responsive transfer",
+      cols <- c(main = "Direct effect", shock = "Shock-responsive transfer",
         repositioning = "Repositioning", interaction = "Interaction",
         total = "Total policy effect")
       if (!.decomposition_shock_active(data$shock)) cols <- cols[names(cols) != "shock"]
@@ -590,9 +596,9 @@ mod_3_09_decomposition_server <- function(id,
         Outcome = rep(metric$outcome_label %||% metric$outcome_name %||% "", n),
         `Change unit` = rep(change_unit_text(), n),
         `Effect component` = data$channel,
-        `Weighted average change` = data$value, check.names = FALSE)
+        `Mean effect` = data$value, check.names = FALSE)
       .step2_reactable(tab, col_defs = list(
-        `Weighted average change` = reactable::colDef(
+        `Mean effect` = reactable::colDef(
           format = reactable::colFormat(digits = 4), minWidth = 70)))
     })
     outputOptions(output, "headline_decomp_table", suspendWhenHidden = TRUE)
@@ -617,7 +623,7 @@ mod_3_09_decomposition_server <- function(id,
     decomp_bar_chart <- function() {
       echart_outcome_decomposition_deciles(
         decile_decomp_data(),
-        y_label = paste0("Weighted average change (", change_unit_text(), ")"),
+        y_label = paste0("Mean effect (", change_unit_text(), ")"),
         height = "450px"
       )
     }
@@ -642,7 +648,7 @@ mod_3_09_decomposition_server <- function(id,
           c("Baseline welfare decile", names(channels)))
       },
       description = paste0(
-        "Weighted average mean-metric channel contributions in registry outcome units ",
+        "Mean channel contributions in registry outcome units ",
         "by fixed baseline welfare decile."
       ),
       stale = stale
@@ -653,7 +659,7 @@ mod_3_09_decomposition_server <- function(id,
       step = 3L,
       fun = decomp_bar_chart,
       description = paste0(
-        "Weighted average mean-metric channel contributions in registry outcome units ",
+        "Mean channel contributions in registry outcome units ",
         "by fixed baseline welfare decile."
       ),
       width = 9, height = 6, stale = stale
@@ -666,7 +672,7 @@ mod_3_09_decomposition_server <- function(id,
       shiny::tags$p(
         class = "diagnostic-note",
         paste0(
-          "Bars: weighted average change in ", outcome, " (",
+          "Bars: mean effect in ", outcome, " (",
           change_unit_text(),
           ") by channel; marker: total, for ", input$decile_scenario %||% hist_label(),
           " under ", weather_basis_text(basis, outcome),

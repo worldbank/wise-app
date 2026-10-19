@@ -195,6 +195,6 @@ policy_component_matrix <- function(baseline_svy, policy_svy,
   )
   for (v in non_sp_vars) add_row(.policy_display_name(v), changed_mask(v))
   if (length(non_sp_vars) > 1L) add_row("Other policy levers (combined)", other_mask)
-  if (any(sp_mask & other_mask)) add_row("Touched by both policy types", sp_mask & other_mask)
+  if (any(sp_mask & other_mask)) add_row(.policy_overlap_label, sp_mask & other_mask)
   dplyr::bind_rows(rows)
 }

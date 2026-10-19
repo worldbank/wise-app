@@ -2104,15 +2104,26 @@ echart_shock_cost_distribution <- function(summary, y_label = "Annual cost", hei
     axisLine = list(lineStyle = list(color = .wise_grid)),
     axisTick = list(alignWithLabel = TRUE), splitLine = wise_esplit_line(show = FALSE)
   )
+  # Money labels are abbreviated (K, M, B); tooltips show whole numbers with
+  # thousands separators. The title sits beside the axis, inside the grid margin.
   e$x$opts$yAxis <- list(
-    type = "value", name = y_label, nameTextStyle = wise_eaxis_name(),
-    axisLabel = wise_eaxis_label(), splitLine = wise_esplit_line()
+    type = "value", name = y_label, nameLocation = "middle", nameGap = 52,
+    nameTextStyle = wise_eaxis_name(padding = c(0, 0, 0, 0)),
+    axisLabel = wise_eaxis_label(formatter = htmlwidgets::JS(
+      "function(v) { var a = Math.abs(v), t = function(x) { return String(parseFloat(x.toFixed(1))); }; return a >= 1e9 ? t(v / 1e9) + 'B' : a >= 1e6 ? t(v / 1e6) + 'M' : a >= 1e3 ? t(v / 1e3) + 'K' : t(v); }"
+    )),
+    splitLine = wise_esplit_line()
   )
   e$x$opts$legend <- modifyList(
-    list(bottom = 0, left = 0, orient = "horizontal"), wise_elegend_style()
+    list(top = 0, left = "center", orient = "horizontal"), wise_elegend_style()
   )
-  e$x$opts$tooltip <- list(trigger = "axis", axisPointer = list(type = "shadow"))
-  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 14, top = 30, bottom = 46)
+  e$x$opts$tooltip <- list(
+    trigger = "axis", axisPointer = list(type = "shadow"),
+    valueFormatter = htmlwidgets::JS(
+      "function(v) { return typeof v === 'number' ? v.toLocaleString(undefined, {maximumFractionDigits: 0}) : 'Not available'; }"
+    )
+  )
+  e$x$opts$grid <- list(containLabel = TRUE, left = 28, right = 14, top = 52, bottom = 12)
   e$x$opts$color <- unname(.wise_cat)
   wise_echart_theme(e)
 }

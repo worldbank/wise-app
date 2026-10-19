@@ -728,6 +728,45 @@ fmt_num <- function(x, digits = 1, prefix = "", suffix = "", na = "\u2014") {
   out
 }
 
+#' Compact number for cards: 21.3M, $164.6M, $12K
+#'
+#' Values from `threshold` upwards are shortened to K, M or B with up to one
+#' decimal and no trailing zero, matching the chart axes. Smaller values keep
+#' `small_digits` decimals, so a $50.00 transfer is not rounded. Tables and
+#' exports keep the exact value (`fmt_num()`).
+#'
+#' @param x Numeric vector.
+#' @param prefix,suffix Strings placed either side of the number.
+#' @param small_digits Decimals for values below `threshold`.
+#' @param threshold Smallest absolute value that is abbreviated.
+#' @param na Text used for non-finite values.
+#' @return A character vector.
+#' @noRd
+fmt_compact <- function(x, prefix = "", suffix = "", small_digits = 0,
+                        threshold = 1e4, na = "—") {
+  x <- suppressWarnings(as.numeric(x))
+  trim <- function(v) {
+    s <- formatC(round(v, 1), format = "f", digits = 1)
+    sub("\\.0$", "", s)
+  }
+  vapply(x, function(v) {
+    if (!is.finite(v)) {
+      return(na)
+    }
+    a <- abs(v)
+    body <- if (a >= 1e9 && a >= threshold) {
+      paste0(trim(v / 1e9), "B")
+    } else if (a >= 1e6 && a >= threshold) {
+      paste0(trim(v / 1e6), "M")
+    } else if (a >= threshold) {
+      paste0(trim(v / 1e3), "K")
+    } else {
+      formatC(round(v, small_digits), format = "f", digits = small_digits, big.mark = ",")
+    }
+    paste0(prefix, body, suffix)
+  }, character(1))
+}
+
 #' Format a count for display
 #'
 #' Whole units (households, individuals, firms) are counts, so they get

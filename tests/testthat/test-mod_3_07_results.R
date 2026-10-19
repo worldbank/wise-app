@@ -71,7 +71,7 @@ test_that("resilience and adverse headline cards use metric-aware shared results
   # The total and main effects are not repeated on the card; they are in the popover.
   expect_false(grepl("Total", cards[[2]]$note, fixed = TRUE))
   expect_match(cards[[2]]$info, "Total adverse-year effect: -8.00 pp", fixed = TRUE)
-  expect_match(cards[[2]]$info, "Main effect: -2.00 pp", fixed = TRUE)
+  expect_match(cards[[2]]$info, "Direct effect: -2.00 pp", fixed = TRUE)
   expect_match(cards[[2]]$note, "SSP2-4.5 / 2030-2040", fixed = TRUE)
   expect_match(cards[[2]]$note, "1-in-20 year", fixed = TRUE)
   expect_match(cards[[2]]$info, "Repositioning: -1.00 pp", fixed = TRUE)

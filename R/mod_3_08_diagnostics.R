@@ -140,7 +140,7 @@
     return(NULL)
   }
   prefix <- .sp_currency_prefix(d$transfer_currency)
-  money <- function(x, digits = 0) fmt_num(x, digits = digits, prefix = prefix)
+  money <- function(x, digits = 0) fmt_compact(x, prefix = prefix, small_digits = digits)
   admin <- isTRUE(d$admin_share > 0)
   total <- if (is.finite(d$total_cost_sum %||% NA_real_)) d$total_cost_sum else d$transfer_sum
   unit <- if (identical(d$analysis_unit, "hh")) "household" else "unit"
@@ -150,7 +150,7 @@
     note = if (admin) {
       paste0(
         "Transfers ", money(d$transfer_sum), "; administration ", money(d$admin_sum),
-        " (", fmt_num(100 * d$admin_share, digits = 0), "% of transfers)"
+        " (", fmt_num(100 * d$admin_share, digits = 0), "% of total cost)"
       )
     } else {
       "No administration cost counted"
@@ -160,7 +160,7 @@
     cards[[length(cards) + 1L]] <- list(
       label = paste0("Transfer per recipient ", unit),
       value = money(d$transfer_pp, 1),
-      note = if (shock) "Annual mean over the historical years" else "Per year"
+      note = if (shock) "In a year in which the household is paid" else "Per year"
     )
   }
   if (!is.null(per_person) && is.finite(per_person$value)) {
@@ -173,7 +173,7 @@
   if (length(d$transfer_households) && is.finite(d$transfer_households)) {
     cards[[length(cards) + 1L]] <- list(
       label = if (shock) "Households paid at least once" else "Recipient households",
-      value = fmt_count(d$transfer_households),
+      value = fmt_compact(d$transfer_households),
       note = "Represented by the survey weights"
     )
   }
@@ -188,12 +188,12 @@
   cards <- list(list(
     label = "Population reached by any policy",
     value = fmt_num(100 * reach$share, digits = 1, suffix = "%"),
-    note = paste(fmt_count(reach$people), "people represented")
+    note = paste(fmt_compact(reach$people), "people represented")
   ))
   if (is.finite(reach$households %||% NA_real_)) {
     cards[[2L]] <- list(
       label = "Households reached",
-      value = fmt_count(reach$households),
+      value = fmt_compact(reach$households),
       note = "Represented by the survey weights"
     )
   }
@@ -969,7 +969,12 @@ mod_3_08_diagnostics_server <- function(id,
 
     treatment_chart <- function() {
       d <- valid_diag()
-      if (is.null(d)) NULL else echart_sp_treatment(d$treatment_matrix)
+      if (is.null(d)) {
+        NULL
+      } else {
+        shock <- identical(tryCatch(sp_scenario()$sp_type, error = function(e) NULL), "shock")
+        echart_sp_treatment(d$treatment_matrix, shock = shock)
+      }
     }
     metrics_chart <- function() {
       m <- tryCatch(sp_effectiveness_res()$metrics, error = function(e) NULL)
@@ -1037,7 +1042,7 @@ mod_3_08_diagnostics_server <- function(id,
       }
 
       counts <- d$changed_counts
-      count_label <- if (identical(d$analysis_unit, "hh")) "Households changed" else "Observations changed"
+      count_label <- if (identical(d$analysis_unit, "hh")) "Sample households changed" else "Sample observations changed"
       df[[count_label]] <- unname(counts[df$variable])
       df <- df[, c("variable", count_label, setdiff(names(df), c("variable", count_label))), drop = FALSE]
       # Raw values in the data; display rounding lives in colFormat.
@@ -1084,7 +1089,7 @@ mod_3_08_diagnostics_server <- function(id,
           return(NULL)
         }
         counts <- d$changed_counts
-        count_label <- if (identical(d$analysis_unit, "hh")) "Households changed" else "Observations changed"
+        count_label <- if (identical(d$analysis_unit, "hh")) "Sample households changed" else "Sample observations changed"
         df[[count_label]] <- unname(counts[df$variable])
         df <- df[, c("variable", count_label, setdiff(names(df), c("variable", count_label))), drop = FALSE]
         .format_policy_input_table(df)

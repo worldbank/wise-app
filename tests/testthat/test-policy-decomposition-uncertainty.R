@@ -279,7 +279,7 @@ test_that("decomposition UI provides collapsible data tables below charts", {
   expect_true(grepl("Who gains, and through which channel?", html, fixed = TRUE))
   expect_true(grepl("headline_weather_basis_ui", html, fixed = TRUE))
   expect_true(grepl("decile_weather_basis_ui", html, fixed = TRUE))
-  expect_true(grepl("Weighted average policy effect by baseline welfare decile", html, fixed = TRUE))
+  expect_true(grepl("Mean policy effect by baseline welfare decile", html, fixed = TRUE))
   expect_true(grepl("View decomposition data", html, fixed = TRUE))
   expect_true(grepl("headline_decomp_table", html, fixed = TRUE))
   expect_true(grepl("decile_decomp_table", html, fixed = TRUE))

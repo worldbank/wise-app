@@ -144,7 +144,7 @@ The thin "coef" band reflects `var_pool` (analytic Gaussian); the thick "model s
 
 The decomposition output is a *display/reporting* artifact, not a correction applied to predictions. `decompose_policy_effect()` dispatches on engine: linear calls `.decompose_ols()`, RIF calls `.decompose_rif()` (which delegates to `.compute_rif_channels()`). The linear decomposition reports the following channels:
 
-##### Channel 1: Main effect (δ_main = δ_sp + δ_main_covar)
+##### Channel 1: Direct effect (δ_main = δ_sp + δ_main_covar)
 
 1. **SP cash transfer (δ_sp):** on log scale,
    ```

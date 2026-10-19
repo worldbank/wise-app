@@ -4,6 +4,9 @@
 # no Shiny dependency. Shares are passed as fractions and shown as percent.
 
 # Colours of the four assignment states (eligible x treated)
+# Name of the units reached by social protection and another lever
+.policy_overlap_label <- "Overlap: reached by both"
+
 .diag_status_colours <- c(
   "Eligible and treated" = "#0072B2",
   "Exclusion error: eligible, not treated" = "#A86400",
@@ -18,7 +21,8 @@
 # One horizontal bar per row, values in percent. `notes` is an optional
 # character vector shown under the value in the tooltip.
 .diag_hbar_chart <- function(labels, values, colours, notes = NULL, x_max = 100,
-                             empty = "Not available", name = "Share") {
+                             empty = "Not available", name = "Share",
+                             item_styles = NULL) {
   keep <- is.finite(values)
   if (!any(keep)) {
     return(echart_blank(empty, height = "160px"))
@@ -27,6 +31,8 @@
   values <- values[keep]
   colours <- rep_len(colours, length(keep))[keep]
   notes <- if (is.null(notes)) rep("", length(keep))[keep] else as.character(notes)[keep]
+  item_styles <- if (is.null(item_styles)) vector("list", length(keep)) else item_styles
+  item_styles <- item_styles[keep]
   n <- length(labels)
   height <- paste0(70 + 46 * n, "px")
   e <- echarts4r::e_charts(
@@ -38,7 +44,9 @@
     data = lapply(seq_len(n), function(i) {
       list(
         value = values[[i]], note = notes[[i]],
-        itemStyle = list(color = unname(colours[[i]]))
+        itemStyle = utils::modifyList(
+          list(color = unname(colours[[i]])), item_styles[[i]] %||% list()
+        )
       )
     }),
     label = list(
@@ -81,14 +89,23 @@ echart_policy_reach <- function(component) {
   if (is.null(component) || !nrow(component)) {
     return(echart_blank("No policy component reaches the population.", height = "160px"))
   }
-  both <- component$component == "Touched by both policy types"
+  # The overlap is part of the bars above it, not another policy: a dashed,
+  # pale bar keeps it from reading as a component.
+  both <- component$component == .policy_overlap_label
   pal <- unname(.wise_cat)
   colours <- ifelse(both, .wise_slate, pal[(seq_len(nrow(component)) - 1L) %% length(pal) + 1L])
+  styles <- lapply(both, function(b) {
+    if (b) list(color = "rgba(91,107,121,0.15)", borderColor = .wise_slate, borderType = "dashed", borderWidth = 2)
+  })
+  notes <- paste(fmt_count(component$weighted_affected), "people represented")
+  notes[both] <- paste0(
+    notes[both], ". Overlap: units reached by social protection and by another",
+    " lever. Already counted in the bars above, not additional."
+  )
   .diag_hbar_chart(
     component$component, 100 * component$population_share, colours,
-    notes = paste(fmt_count(component$weighted_affected), "people represented"),
-    x_max = NULL, empty = "No policy component reaches the population.",
-    name = "Population share"
+    notes = notes, x_max = NULL, empty = "No policy component reaches the population.",
+    name = "Population share", item_styles = styles
   )
 }
 
@@ -96,22 +113,31 @@ echart_policy_reach <- function(component) {
 #'
 #' @param treatment Result of `policy_treatment_matrix()`: `status` and
 #'   `weighted_share` (fraction).
+#' @param shock For a shock-responsive program, "treated" means paid in at
+#'   least one historical year, so an eligible household that is not treated may
+#'   simply never have been reached by the trigger; the segment is named so.
 #' @return An `echarts4r` widget.
 #' @keywords internal
-echart_sp_treatment <- function(treatment) {
+echart_sp_treatment <- function(treatment, shock = FALSE) {
   if (is.null(treatment) || !nrow(treatment) ||
     !all(is.finite(treatment$weighted_share))) {
-    return(echart_blank("No social protection assignment to show.", height = "170px"))
+    return(echart_blank("No social protection assignment to show.", height = "200px"))
   }
   states <- names(.diag_status_colours)
   states <- states[states %in% treatment$status]
+  shown <- states
+  if (isTRUE(shock)) {
+    shown[shown == "Exclusion error: eligible, not treated"] <-
+      "Eligible, never paid (error or no trigger)"
+  }
   e <- echarts4r::e_charts(
-    data.frame(x = "Population", y = 0), x, reorder = FALSE, height = "170px"
+    data.frame(x = "Population", y = 0), x, reorder = FALSE, height = "200px"
   )
-  e$x$opts$series <- lapply(states, function(s) {
+  e$x$opts$series <- lapply(seq_along(states), function(k) {
+    s <- states[[k]]
     v <- 100 * treatment$weighted_share[match(s, treatment$status)]
     list(
-      name = s, type = "bar", stack = "population", barWidth = 46,
+      name = shown[[k]], type = "bar", stack = "population", barWidth = 46,
       data = list(list(value = v, itemStyle = list(color = unname(.diag_status_colours[[s]])))),
       label = list(
         show = TRUE, position = "inside", fontSize = 12,
@@ -128,7 +154,7 @@ echart_sp_treatment <- function(treatment) {
     axisLabel = wise_eaxis_label(formatter = "{value}%"), splitLine = wise_esplit_line(show = FALSE)
   )
   e$x$opts$legend <- modifyList(
-    list(bottom = 0, left = 0, orient = "horizontal", data = states),
+    list(top = 0, left = "center", orient = "horizontal", data = shown),
     wise_elegend_style()
   )
   e$x$opts$tooltip <- list(
@@ -138,7 +164,7 @@ echart_sp_treatment <- function(treatment) {
     )
   )
   e$x$opts$color <- unname(.diag_status_colours[states])
-  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 14, top = 6, bottom = 54)
+  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 14, top = 76, bottom = 10)
   wise_echart_theme(e)
 }
 
@@ -168,10 +194,21 @@ echart_sp_targeting_metrics <- function(metrics) {
   )
 }
 
+# Y-axis title beside the axis labels; the grid reserves room for it.
+.diag_y_title <- function(y_label, gap = 52) {
+  if (is.null(y_label)) {
+    return(NULL)
+  }
+  list(
+    name = y_label, nameLocation = "middle", nameGap = gap,
+    nameTextStyle = wise_eaxis_name(padding = c(0, 0, 0, 0))
+  )
+}
+
 # Grouped vertical bars of percentages, one group per scenario. `measures` is
 # a named list of fraction vectors (one value per scenario).
 .diag_grouped_pct_chart <- function(scenarios, measures, colours,
-                                    height = "300px") {
+                                    height = "300px", y_label = NULL) {
   keep <- vapply(measures, function(x) any(is.finite(x)), logical(1))
   if (!length(scenarios) || !any(keep)) {
     return(echart_blank("Not available", height = height))
@@ -204,14 +241,17 @@ echart_sp_targeting_metrics <- function(metrics) {
     axisLine = list(lineStyle = list(color = .wise_grid)),
     axisTick = list(alignWithLabel = TRUE), splitLine = wise_esplit_line(show = FALSE)
   )
-  e$x$opts$yAxis <- list(
-    type = "value", min = 0,
-    # Shares are at most 100%, but a ratio such as adequacy can exceed it
-    max = max(100, ceiling(100 * max(unlist(measures), 0, na.rm = TRUE) / 10) * 10),
-    axisLabel = wise_eaxis_label(formatter = "{value}%"), splitLine = wise_esplit_line()
+  e$x$opts$yAxis <- c(
+    list(
+      type = "value", min = 0,
+      # Shares are at most 100%, but a ratio such as adequacy can exceed it
+      max = max(100, ceiling(100 * max(unlist(measures), 0, na.rm = TRUE) / 10) * 10),
+      axisLabel = wise_eaxis_label(formatter = "{value}%"), splitLine = wise_esplit_line()
+    ),
+    .diag_y_title(y_label)
   )
   e$x$opts$legend <- modifyList(
-    list(bottom = 0, left = 0, orient = "horizontal"), wise_elegend_style()
+    list(top = 0, left = "center", orient = "horizontal"), wise_elegend_style()
   )
   e$x$opts$tooltip <- list(
     trigger = "axis", axisPointer = list(type = "shadow"),
@@ -220,7 +260,9 @@ echart_sp_targeting_metrics <- function(metrics) {
     )
   )
   e$x$opts$color <- unname(colours)
-  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 14, top = 34, bottom = 46)
+  e$x$opts$grid <- list(
+    containLabel = TRUE, left = if (is.null(y_label)) 8 else 28, right = 14, top = 52, bottom = 12
+  )
   wise_echart_theme(e)
 }
 
@@ -235,7 +277,7 @@ echart_shock_activation <- function(summary) {
   }
   .diag_grouped_pct_chart(
     summary$scenario, list("Years with payments" = summary$activation_freq),
-    .wise_blue
+    .wise_blue, y_label = "Share of simulated years"
   )
 }
 
@@ -258,6 +300,6 @@ echart_shock_basis_risk <- function(summary) {
       "False positives: paid, no loss event" = summary$false_positive_rate,
       "False negatives: loss event, not paid" = summary$false_negative_rate
     ),
-    c(.wise_policy, "#A86400")
+    c(.wise_policy, "#A86400"), y_label = "Rate"
   )
 }

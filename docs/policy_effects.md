@@ -1,6 +1,6 @@
 # Decomposing policy effects in wiseapp simulations
 
-1. **Main effect** The direct welfare impact of the policy, independent of weather. This answers the question - how much does the policy shift a household's position in the welfare distribution?
+1. **Direct effect** The direct welfare impact of the policy, independent of weather. This answers the question - how much does the policy shift a household's position in the welfare distribution?
 
 The size of a cash transfer may vary by welfare quantile of an individual ($τ_i$) or other characteristics ($x_i$), due to targeting etc. With RIF approach, the shift is allowed to vary across the distribution. The coefficient $\beta_x(τ)$ on any variable $x$ in the model that a policy changes tells us the marginal effect on the τ-th quantile of the unconditional welfare distribution:
 
@@ -32,6 +32,6 @@ $$\Delta y_{total} = \Delta y_{main} + \Delta y_{res}$$
 
 **Why the distinction matters for policy**
 
-A policy could have a large main effect and no resilience effect — unconditional cash transfers that are spent on non-agricultural consumption. Or a small main effect but a large resilience effect — index insurance or early warning systems that don't raise average income much but dramatically reduce vulnerability to downside weather risk. Or both — a productive asset transfer that raises baseline income and also reduces weather sensitivity because the assets are drought-tolerant inputs.
+A policy could have a large direct effect and no resilience effect — unconditional cash transfers that are spent on non-agricultural consumption. Or a small direct effect but a large resilience effect — index insurance or early warning systems that don't raise average income much but dramatically reduce vulnerability to downside weather risk. Or both — a productive asset transfer that raises baseline income and also reduces weather sensitivity because the assets are drought-tolerant inputs.
 
 The decomposition allows us to distinguish ex-ante resilience-building interventions from ex-post consumption-smoothing ones.

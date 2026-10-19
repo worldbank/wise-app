@@ -90,6 +90,24 @@ mod_3_01_sp_server <- function(id,
       }
     }
 
+    # Currency label of the amount inputs: the outcome's units; LCU amounts are
+    # in 2021 prices, matching the "LCU (2021)" outcome option (see R2-BUG-04).
+    amount_currency_label <- function() {
+      currency <- tryCatch(
+        {
+          so <- selected_outcome()
+          if (is.null(so) || nrow(so) == 0 || !"units" %in% names(so)) {
+            "PPP"
+          } else {
+            as.character(so$units[[1]])
+          }
+        },
+        error = function(e) "PPP"
+      )
+      if (is.na(currency) || !nzchar(currency)) currency <- "PPP"
+      if (identical(.sp_currency(currency), "LCU")) "2021 LCU" else currency
+    }
+
     # Proxy variable candidates (numeric, non-missing for welfare rows) ----
     pmt_candidates <- reactive({
       svy <- survey_weather()
@@ -134,7 +152,7 @@ mod_3_01_sp_server <- function(id,
           tags$span(
             class = "sp-inline-label",
             tags$i(class = "fa fa-hand-holding-dollar me-1"),
-            "Program"
+            "Cash transfer"
           )
         ),
         tags$div(
@@ -142,14 +160,13 @@ mod_3_01_sp_server <- function(id,
           pill_toggle(
             inputId = ns("sp_type"),
             label = NULL,
-            aria_label = "Program type",
+            aria_label = "Cash transfer type",
             choices = c(
               "Regular"          = "regular",
               "Shock-responsive" = "shock"
             ),
             selected = "regular"
-          ),
-          tags$span(class = "sp-program-suffix", "cash transfer")
+          )
         ),
         tags$hr(style = "margin: 8px 0;")
       )
@@ -229,7 +246,21 @@ mod_3_01_sp_server <- function(id,
         tags$label(
           class = "control-label",
           tags$i(class = "fa fa-bolt me-1"),
-          "Trigger"
+          "Trigger",
+          info_popover(
+            title = "How payments are triggered",
+            tags$p(
+              "A household is paid in a year when its survey location and interview",
+              "month pass the trigger, so households of one location interviewed in",
+              "different months can differ."
+            ),
+            tags$p(
+              "Payments follow the shock (ex post) unless \"On a forecast\" is",
+              "chosen under Payments are made; then a forecast with the set",
+              "detection and false-alarm rates decides. Quantile-based welfare",
+              "effects (RIF) do not respond to the payment."
+            )
+          )
         ),
         config_flyout_block(
           ns("trigger_toggle"),
@@ -243,15 +274,6 @@ mod_3_01_sp_server <- function(id,
             )
           } else {
             tagList(
-              tags$p(
-                class = "text-muted small",
-                "Payments are made after the shock (ex post), in the survey",
-                "location where the weather is measured. A household is paid in",
-                "a year when its location and interview month pass the trigger;",
-                "households of one location interviewed in different months can",
-                "differ. Quantile-based welfare effects (RIF) do not respond to the",
-                "payment."
-              ),
               selectInput(
                 ns("trigger_metric"),
                 label = tags$span(
@@ -342,7 +364,9 @@ mod_3_01_sp_server <- function(id,
                 label = "Trigger on",
                 aria_label = "Trigger type",
                 choices = c("Fixed level" = "weather", "Return period" = "return_period"),
-                selected = "weather"
+                # A return period needs no threshold typed in, so the program
+                # runs with the defaults
+                selected = "return_period"
               ),
               conditionalPanel(
                 condition = paste0("input['", ns("trigger_metric"), "'] == 'weather'"),
@@ -877,6 +901,44 @@ mod_3_01_sp_server <- function(id,
       )
     })
 
+    # Defaults that let a shock-responsive run start without opening the flyout.
+    # Like the poverty-line prefill, an edited or imported value is kept: a
+    # default only replaces the value it set itself (or the static initial one).
+    #
+    # Return period: 1 in 10 years, or the longest return period the historical
+    # record supports when it is shorter (half of it at either extreme).
+    last_rp_default <- 10
+    observe({
+      tbl <- hist_exposure()$table
+      var <- input$trigger_variable
+      if (is.null(tbl) || is.null(var) || !var %in% names(tbl) ||
+        !"sim_year" %in% names(tbl)) {
+        return()
+      }
+      years <- length(unique(tbl$sim_year[is.finite(as.numeric(tbl[[var]]))]))
+      supported <- if (identical(input$trigger_direction, "either")) years %/% 2L else years
+      default <- max(2L, min(10L, supported))
+      current <- suppressWarnings(as.numeric(shiny::isolate(input$trigger_return_period_years)))[1L]
+      if (is.na(current) || isTRUE(all.equal(current, last_rp_default))) {
+        updateNumericInput(session, "trigger_return_period_years", value = default)
+        last_rp_default <<- default
+      }
+    })
+
+    # Direction: the adverse end the response check finds for the variable.
+    last_dir_default <- "above"
+    observeEvent(trigger_response(), {
+      direction <- trigger_response()$direction
+      if (is.null(direction) || !direction %in% c("above", "below", "either")) {
+        return()
+      }
+      current <- shiny::isolate(input$trigger_direction)
+      if (is.null(current) || identical(current, last_dir_default)) {
+        shiny::updateRadioButtons(session, "trigger_direction", selected = direction)
+        last_dir_default <<- direction
+      }
+    })
+
     # 3. Targeting ----
 
     output$sp_targeting_ui <- renderUI({
@@ -1076,22 +1138,7 @@ mod_3_01_sp_server <- function(id,
     # Admin cost reduces the amount available for direct transfers in both modes.
 
     output$sp_budget_amount_ui <- renderUI({
-      currency <- tryCatch(
-        {
-          so <- selected_outcome()
-          if (is.null(so) || nrow(so) == 0 || !"units" %in% names(so)) {
-            "PPP"
-          } else {
-            as.character(so$units[[1]])
-          }
-        },
-        error = function(e) "PPP"
-      )
-      if (is.na(currency) || !nzchar(currency)) currency <- "PPP"
-      # The amount is in the outcome's currency; LCU amounts are in 2021 prices,
-      # matching the "LCU (2021)" outcome option (see R2-BUG-04).
-      is_lcu <- identical(.sp_currency(currency), "LCU")
-      currency <- if (is_lcu) "2021 LCU" else currency
+      currency <- amount_currency_label()
 
       tagList(
         # Amount and budget mode ----
@@ -1187,13 +1234,6 @@ mod_3_01_sp_server <- function(id,
                 "targeting errors and the payout scope carry through. Under the",
                 "national gate with all targeted households, each location is",
                 "still budgeted from its own loss."
-              ),
-              tags$p(
-                tags$b("Annual cap:"),
-                "an upper limit on total cost (including administration) in",
-                "any one year. When the payments of a year would exceed it,",
-                "all payments of that year are scaled down by the same",
-                "proportion. Leave blank for no cap."
               )
             )
           ),
@@ -1221,20 +1261,6 @@ mod_3_01_sp_server <- function(id,
                 label = NULL,
                 value = 50, min = 1, max = 100, step = 5
               )
-            )
-          ),
-          tags$div(
-            class = "sp-inline-control",
-            tags$label(
-              class = "sp-inline-label",
-              `for` = ns("annual_cap"),
-              tags$i(class = "fa fa-lock me-1"),
-              paste0("Annual cap on total cost (", currency, ", blank = none)")
-            ),
-            numericInput(
-              inputId = ns("annual_cap"),
-              label = NULL,
-              value = NA, min = 0, step = 100000
             )
           )
         ),
@@ -1341,6 +1367,28 @@ mod_3_01_sp_server <- function(id,
             )
           ),
           value = 0, min = 0, max = 50, step = 1
+        ),
+
+        # Shock-responsive programs only: a budget ceiling on a year's payments
+        conditionalPanel(
+          condition = paste0("input['", ns("sp_type"), "'] == 'shock'"),
+          numericInput(
+            inputId = ns("annual_cap"),
+            label = tags$span(
+              tags$i(class = "fa fa-lock me-1"),
+              paste0("Annual cost cap (", amount_currency_label(), ")"),
+              info_popover(
+                title = "Annual cost cap",
+                tags$p(
+                  "An upper limit on total cost (including administration) in any",
+                  "one year. When the payments of a year would exceed it, all",
+                  "payments of that year are scaled down by the same proportion.",
+                  "Leave blank for no cap."
+                )
+              )
+            ),
+            value = NA, min = 0, step = 100000
+          )
         )
       ), tags$hr(style = "margin: 8px 0;"))
     })
@@ -1705,12 +1753,12 @@ mod_3_01_sp_server <- function(id,
             ),
             selection_card_row(
               name = "Expected annual cost",
-              pills = fmt_num(s$mean_cost, digits = 0, prefix = cur)
+              pills = fmt_compact(s$mean_cost, prefix = cur)
             ),
             selection_card_row(
               name = "95th percentile annual cost",
               pills = if (is.finite(s$cost_1_in_20)) {
-                fmt_num(s$cost_1_in_20, digits = 0, prefix = cur)
+                fmt_compact(s$cost_1_in_20, prefix = cur)
               } else {
                 "Needs 20 years"
               }
@@ -1768,7 +1816,7 @@ mod_3_01_sp_server <- function(id,
         rows = Filter(Negate(is.null), c(list(
           selection_card_row(
             name  = paste("Recipient", unit_pl),
-            pills = fmt_count(r$n_recipient_units)
+            pills = fmt_compact(r$n_recipient_units)
           ),
           selection_card_row(
             name  = if (identical(analysis_unit(), "hh")) {
@@ -1776,7 +1824,7 @@ mod_3_01_sp_server <- function(id,
             } else {
               "Population represented"
             },
-            pills = fmt_count(r$n_pop)
+            pills = fmt_compact(r$n_pop)
           ),
           selection_card_row(
             name  = "Share of total population",
@@ -1786,33 +1834,31 @@ mod_3_01_sp_server <- function(id,
             identical(preview_unit, "hh")) {
             selection_card_row(
               name  = "Annual transfer per person",
-              pills = fmt_num(
+              pills = fmt_compact(
                 r$transfer_per_person,
-                digits = 2, prefix = .sp_currency_prefix(preview_spec$currency)
+                small_digits = 2, prefix = .sp_currency_prefix(preview_spec$currency)
               )
             )
           } else {
             selection_card_row(
               name  = paste("Annual transfer per", unit_sg),
-              pills = fmt_num(
+              pills = fmt_compact(
                 r$transfer_per_unit,
-                digits = 2, prefix = .sp_currency_prefix(preview_spec$currency)
+                small_digits = 2, prefix = .sp_currency_prefix(preview_spec$currency)
               )
             )
           },
           selection_card_row(
             name  = cost_label,
-            pills = fmt_num(
-              r$transfer_total,
-              digits = 0, prefix = .sp_currency_prefix(preview_spec$currency)
+            pills = fmt_compact(
+              r$transfer_total, prefix = .sp_currency_prefix(preview_spec$currency)
             )
           ),
           if (isTRUE(r$admin_cost > 0)) {
             selection_card_row(
               name  = "Of which administration",
-              pills = fmt_num(
-                r$admin_cost,
-                digits = 0, prefix = .sp_currency_prefix(preview_spec$currency)
+              pills = fmt_compact(
+                r$admin_cost, prefix = .sp_currency_prefix(preview_spec$currency)
               )
             )
           }
@@ -1823,11 +1869,11 @@ mod_3_01_sp_server <- function(id,
           if (is_shock) {
             paste(
               "Recipients and cost are for a year in which the program pays.",
-              "Years with payments, expected cost and the 1-in-20 cost come from",
-              "the historical weather years of Step 2, evaluated per survey",
-              "location; they are not a forecast. A loss event is a location whose",
-              "modelled welfare loss reaches the share set in Trigger settings;",
-              "paid without one, or a loss event without payment, is basis risk."
+              "Years with payments, expected cost and the 95th percentile annual",
+              "cost come from the historical weather years of Step 2, evaluated per",
+              "survey location; they are not a forecast. Basis risk and the full",
+              "set of measures are in the Policy profile tab. Large numbers are",
+              "shortened (K thousand, M million, B billion)."
             )
           } else {
             ""

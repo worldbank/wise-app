@@ -180,11 +180,31 @@ test_that("echart_rif_weather_curve draws one series per moderator level", {
     interaction_terms = "temp:electricity", label_fun = identity
   )
   expect_s3_class(w, "echarts4r")
-  # Two curves + two ribbons, with a bottom-left legend naming both levels.
+  # Two curves + two ribbons, with a top-centre legend naming both levels.
   expect_length(w$x$opts$series, 4L)
-  expect_identical(w$x$opts$legend$top, "bottom")
+  expect_identical(w$x$opts$legend$left, "center")
+  expect_identical(w$x$opts$legend$top, 0)
   labs <- vapply(w$x$opts$legend$data, as.character, character(1L))
   expect_setequal(labs, c("electricity: no", "electricity: yes"))
+  # Ribbons stay out of the tooltip, and the y title is placed beside the axis
+  expect_false(w$x$opts$series[[1L]]$tooltip$show)
+  expect_identical(w$x$opts$yAxis$nameLocation, "middle")
+})
+
+test_that("echart_rif_weather_curve shortens legend names across several bins", {
+  taus <- seq(0.1, 0.9, by = 0.2)
+  rg <- do.call(rbind, lapply(c("temp[1,2)", "temp[2,3)"), function(b) {
+    rbind(
+      data.frame(model = 3L, term = b, tau = taus, estimate = 0, std.error = 0.1),
+      data.frame(model = 3L, term = paste0(b, ":electricity"), tau = taus, estimate = 0, std.error = 0.1)
+    )
+  }))
+  w <- echart_rif_weather_curve(
+    rg, "temp", interaction_terms = "temp:electricity", label_fun = identity
+  )
+  labs <- vapply(w$x$opts$legend$data, as.character, character(1L))
+  expect_setequal(labs, c("1\u20132 \u00b7 no", "1\u20132 \u00b7 yes", "2\u20133 \u00b7 no", "2\u20133 \u00b7 yes"))
+  expect_match(w$x$opts$title$text, "electricity \\(yes / no\\)")
 })
 
 test_that("echart_rif_weather_curve keeps the missing-term message", {

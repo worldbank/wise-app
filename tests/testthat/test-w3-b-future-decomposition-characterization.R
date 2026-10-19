@@ -149,7 +149,7 @@ test_that("decomposition export contracts expose current future and historical p
 
       headline <- items[["policy_decomposition_headline_data"]]$fun()
       expect_identical(names(headline), c("Scenario", "Metric", "Outcome", "Change unit",
-        "Effect component", "Weighted average change"))
+        "Effect component", "Mean effect"))
       expect_true("Scenario A" %in% headline$Scenario)
 
       decile <- items[["policy_decomposition_channels_by_decile"]]$fun()

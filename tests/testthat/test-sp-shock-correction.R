@@ -288,7 +288,7 @@ test_that("a regular run shows no shock channel and keeps the old numbers (P2-3)
   rows$delta_main <- 0.6
   rows$delta_sp_shock <- 0.4
   s <- .decomposition_outcome_summary(rows, list(transform = "none"))
-  expect_identical(s$channel, c("Main effect", "Shock-responsive transfer", "Repositioning",
+  expect_identical(s$channel, c("Direct effect", "Shock-responsive transfer", "Repositioning",
     "Interaction", "Total"))
   expect_equal(s$value, c(0.6, 0.4, 0.1, 0.2, 1.3))
 })
