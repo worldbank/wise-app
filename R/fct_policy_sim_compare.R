@@ -3375,7 +3375,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   # Section 1: Annual weather variation (baseline and policy) ----
   # Zero-arg echarts closures shared by the on-screen renders and the export
   # bundle (guidelines sec. 7 pattern); static renderers are archived under
-  # dev/static plots/.
+  # dev/archive/static_plots/.
   annual_distribution_chart <- function() {
     echart_step3_annual_distribution(
       timeseries_curves_rv(),

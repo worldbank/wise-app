@@ -97,7 +97,7 @@ Standard: `ExtendedTask` (UI/session layer) + `mirai` (worker backend).
 
 Benchmark optimizations against real app data before merging, using the local dataset folder given by `WISEAPP_DATA_PATH` (set in `.Renviron`).
 
-- Reuse the existing benchmark harness (`dev/bench_*.R`, `dev/run_step2_benchmark.sh`, results under `dev/outputs/`) rather than writing ad-hoc timing scripts.
+- Reuse the existing benchmark harness (`dev/bench/bench_*.R`, `dev/bench/run_step2_benchmark.sh`, results under `dev/outputs/`) rather than writing ad-hoc timing scripts.
 - **Smaller payload**: BFA surveys (all years), default weather and climate scenario.
 - **Larger payload**: IRN surveys (all years), default weather and climate scenario. For this payload, also benchmark a multi-period, multi-SSP climate scenario combination, since that is the realistic worst-case load for climate-scenario processing.
 

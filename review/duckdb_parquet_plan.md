@@ -60,7 +60,7 @@ Partition pruning, clustering on real filter keys, projection and sensible row-g
 
 The two experiments should maintain independent baselines and report results separately. The Parquet v1/v2 encoding comparison starts under the current engine; only selected candidates need a subsequent cross with the pinned DuckDB 2.0 preview. The Step 2 streaming/progress work remains independently actionable and must not be gated on either storage experiment.
 
-Relevant code and harness references are `R/fct_load_data.R`, `R/fct_get_weather.R`, and `dev/bench_w3_weather.R`. Step 2 implementation and outstanding validation notes are recorded in [`optimization_tracking.md`](archive/optimization_tracking.md).
+Relevant code and harness references are `R/fct_load_data.R`, `R/fct_get_weather.R`, and `dev/bench/bench_w3_weather.R`. Step 2 implementation and outstanding validation notes are recorded in [`optimization_tracking.md`](archive/optimization_tracking.md).
 
 Sources:
 

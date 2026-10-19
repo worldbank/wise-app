@@ -1,7 +1,7 @@
 # Development-only benchmark for Step 1 multi-tau RIF preparation.
 #
 # Run from the repository root:
-#   Rscript dev/bench_rif_preparation.R
+#   Rscript dev/bench/bench_rif_preparation.R
 
 pkgload::load_all(quiet = TRUE)
 

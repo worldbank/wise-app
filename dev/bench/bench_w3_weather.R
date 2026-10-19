@@ -8,8 +8,8 @@
 options(golem.app.prod = FALSE)
 args <- commandArgs(trailingOnly = FALSE)
 file_arg <- grep("^--file=", args, value = TRUE)
-script_path <- if (length(file_arg)) sub("^--file=", "", file_arg[[1L]]) else "dev/bench_w3_weather.R"
-repo_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
+script_path <- if (length(file_arg)) sub("^--file=", "", file_arg[[1L]]) else "dev/bench/bench_w3_weather.R"
+repo_root <- normalizePath(file.path(dirname(script_path), "..", ".."), mustWork = TRUE)
 pkgload::load_all(repo_root, quiet = TRUE)
 
 env <- function(name, default = "") Sys.getenv(name, unset = default)

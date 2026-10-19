@@ -79,11 +79,11 @@ test_that("worker run validation refuses unlocked or mismatched runs", {
 # dev/ is not part of the built package, so the fixture parity test only runs
 # in a source checkout.
 test_that("a worker run equals the in-process run on the smoke fixture", {
-  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench/bench_step3_helpers.R")),
     "dev/ benchmark helpers not available")
   skip_if_not_installed("qs2")
-  source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
-  source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step2_helpers.R"), local = TRUE)
 
   input <- .bench_small_step3_input(n = 60L)
   baseline <- .bench_small_step2_result(input, "ols", "one_ssp_one_period")
@@ -163,11 +163,11 @@ test_that("a stale Step 2 artifact is refused by the worker", {
 
 test_that("a run submitted to the shared daemon is read back and equals the in-process run", {
   skip_on_cran()
-  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench/bench_step3_helpers.R")),
     "dev/ benchmark helpers not available")
   skip_if_not_installed("qs2")
-  source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
-  source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step2_helpers.R"), local = TRUE)
 
   state <- .wise_step2_async_state
   withr::local_envvar(WISEAPP_ASYNC_SYNC = "0")
@@ -418,11 +418,11 @@ test_that("a snapshot over the queue cap is refused instead of retried", {
 })
 
 test_that("a metric job sees the same baseline as the policy run that wrote the result", {
-  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench/bench_step3_helpers.R")),
     "dev/ benchmark helpers not available")
   skip_if_not_installed("qs2")
-  source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
-  source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step2_helpers.R"), local = TRUE)
 
   # The published baseline: `.sig` is the policy signature, the Step 2 one is
   # `.step2_sig` (what mod_3_06 does), so a metric overlay built from `.sig`

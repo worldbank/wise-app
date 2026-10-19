@@ -432,7 +432,7 @@ mod_1_02_surveystats_server <- function(
         if (!survey_tab_added()) {
           # Interview dates bar chart. Grouped columns keep wave totals directly
           # comparable; the archived ggplot renderer remains available under
-          # dev/static plots/ for design comparisons.
+          # dev/archive/static_plots/ for design comparisons.
           interview_date_chart <- function() {
             unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
             unit_label <- switch(unit %||% "hh",

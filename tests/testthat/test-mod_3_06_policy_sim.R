@@ -2,11 +2,11 @@ library(testthat)
 
 # End-to-end checks of the mod_3_06 async path (CR-PERF-04, R2-PERF-07,
 # R2-PERF-01) through shiny::testServer(). The Step 2 result and the Step 1 fit
-# come from the smoke fixture in dev/, so these run only in a source checkout.
+# come from the smoke fixture in dev/bench/, so these run only in a source checkout.
 
 .policy_sim_fixture <- function() {
-  source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
-  source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/bench_step2_helpers.R"), local = TRUE)
   input <- .bench_small_step3_input(n = 60L)
   baseline <- .bench_small_step2_result(input, "ols", "one_ssp_one_period")
   fixture <- .bench_step3_policy_fixtures("targeted_sp")[[1L]]
@@ -49,7 +49,7 @@ library(testthat)
 }
 
 test_that("a new Step 2 result cancels the run in flight and frees the button", {
-  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench/bench_step3_helpers.R")),
     "dev/ benchmark helpers not available")
   skip_if_not_installed("qs2")
   fx <- .policy_sim_with_artifact(.policy_sim_fixture(), withr::local_tempdir())
@@ -110,7 +110,7 @@ test_that("a new Step 2 result cancels the run in flight and frees the button", 
 })
 
 test_that("a result whose member weather was released is never computed in process", {
-  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench/bench_step3_helpers.R")),
     "dev/ benchmark helpers not available")
   skip_if_not_installed("qs2")
   fx <- .policy_sim_fixture()
@@ -141,7 +141,7 @@ test_that("a result whose member weather was released is never computed in proce
 
 test_that("a run on the shared daemon is published and equals the in-process run", {
   skip_on_cran()
-  skip_if_not(file.exists(testthat::test_path("../../dev/bench_step3_helpers.R")),
+  skip_if_not(file.exists(testthat::test_path("../../dev/bench/bench_step3_helpers.R")),
     "dev/ benchmark helpers not available")
   skip_if_not_installed("qs2")
 

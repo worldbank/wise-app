@@ -5,7 +5,7 @@
 # Payloads mirror the app's simulation pipelines: per-year mu vectors sized
 # from real BFA (small) and IRN (large) survey welfare/weight columns.
 #
-# Usage: Rscript dev/bench_aggregation.R [bfa|irn|both]
+# Usage: Rscript dev/bench/bench_aggregation.R [bfa|irn|both]
 
 suppressPackageStartupMessages({
   library(duckdb)

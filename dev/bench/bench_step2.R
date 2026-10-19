@@ -18,7 +18,7 @@
 # Recommended usage:
 #   WISEAPP_DATA_PATH=/path/to/data \
 #     WISEAPP_STEP2_COUNTRIES=LKA,IRN \
-#     Rscript dev/bench_step2.R
+#     Rscript dev/bench/bench_step2.R
 #
 # Set WISEAPP_STEP2_PAYLOAD_MODE=compact to benchmark the opt-in compact result
 # payload. The default is legacy so existing baseline runs remain comparable.
@@ -26,7 +26,7 @@
 # after successful Step 2 cases. WISEAPP_STEP2_FIXTURE=smoke uses fabricated,
 # in-memory data for smoke testing only and is never production-path evidence.
 #
-# For process-tree RSS, use dev/run_step2_benchmark.sh. The R-side RSS values
+# For process-tree RSS, use dev/bench/run_step2_benchmark.sh. The R-side RSS values
 # are sampled at stage boundaries; /usr/bin/time -l remains the external peak
 # memory measurement and production memory gate.
 
@@ -39,18 +39,18 @@ options(golem.app.prod = FALSE)
 .bench_script_path <- function() {
   args <- commandArgs(trailingOnly = FALSE)
   file_arg <- grep("^--file=", args, value = TRUE)
-  if (!length(file_arg)) return(normalizePath("dev/bench_step2.R", mustWork = FALSE))
+  if (!length(file_arg)) return(normalizePath("dev/bench/bench_step2.R", mustWork = FALSE))
   sub("^--file=", "", file_arg[[1L]])
 }
 
 .bench_repo_root <- normalizePath(
-  file.path(dirname(.bench_script_path()), ".."),
+  file.path(dirname(.bench_script_path()), "..", ".."),
   winslash = "/", mustWork = TRUE
 )
 
 pkgload::load_all(.bench_repo_root, quiet = TRUE)
-source(file.path(.bench_repo_root, "dev", "bench_step2_helpers.R"), local = TRUE)
-source(file.path(.bench_repo_root, "dev", "bench_step3_helpers.R"), local = TRUE)
+source(file.path(.bench_repo_root, "dev", "bench", "bench_step2_helpers.R"), local = TRUE)
+source(file.path(.bench_repo_root, "dev", "bench", "bench_step3_helpers.R"), local = TRUE)
 
 .bench_env <- function(name, default = "") {
   value <- Sys.getenv(name, unset = default)
@@ -1228,7 +1228,7 @@ jsonlite::write_json(
     "",
     "## Scope",
     "",
-    "This report is produced by `dev/bench_step2.R`. The serial `fct_run_simulation()` path remains the reference. RSS values in the CSV are sampled diagnostics; complete process-tree peak RSS must be taken from `dev/run_step2_benchmark.sh` or an equivalent deployment measurement.",
+    "This report is produced by `dev/bench/bench_step2.R`. The serial `fct_run_simulation()` path remains the reference. RSS values in the CSV are sampled diagnostics; complete process-tree peak RSS must be taken from `dev/bench/run_step2_benchmark.sh` or an equivalent deployment measurement.",
     "",
     "## Results",
     ""

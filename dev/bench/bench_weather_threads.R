@@ -1,6 +1,6 @@
 # Focused S2-P16 weather-only benchmark.
 #
-# This intentionally does not call dev/bench_step2.R. It loads one survey,
+# This intentionally does not call dev/bench/bench_step2.R. It loads one survey,
 # constructs one weather variable, and calls get_weather() directly. Use it for
 # fast thread/rounding characterization before running any broader benchmark.
 #
@@ -10,7 +10,7 @@
 #   WISEAPP_WEATHER_VAR=t \
 #   WISEAPP_WEATHER_THREADS=1,2 \
 #   WISEAPP_WEATHER_REPETITIONS=1 \
-#   Rscript dev/bench_weather_threads.R
+#   Rscript dev/bench/bench_weather_threads.R
 
 options(golem.app.prod = FALSE)
 devtools::load_all(quiet = TRUE)

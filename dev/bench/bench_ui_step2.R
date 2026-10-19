@@ -12,10 +12,10 @@
 # are identical by construction in each pair, so the comparison isolates the
 # rendering layer (guidelines §7 / §9). Medians of 10 iterations via
 # bench::mark (memory = FALSE: htmlwidget assembly trips bench's memory
-# profiler on this platform, as in dev/bench_surveystats.R).
+# profiler on this platform, as in dev/bench/bench_surveystats.R).
 #
 # Usage:
-#   Rscript dev/bench_ui_step2.R
+#   Rscript dev/bench/bench_ui_step2.R
 
 options(golem.app.prod = FALSE)
 devtools::load_all(quiet = TRUE)

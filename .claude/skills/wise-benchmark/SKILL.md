@@ -2,7 +2,7 @@
 name: wise-benchmark
 description: >
   Benchmark a performance-related change to WISE-APP against real data using the
-  existing dev/bench_*.R harnesses. Produces before/after wall time and peak
+  existing dev/bench/bench_*.R harnesses. Produces before/after wall time and peak
   memory for the small (BFA) and large (IRN) payloads, as required by
   review/optimization_guidelines.md section 9.
 when_to_use: >
@@ -21,7 +21,7 @@ sections 0 and 9 first; they win over this summary if they differ.
 
 ## Rules
 
-- Reuse the harnesses in `dev/`. Do not write ad-hoc timing scripts.
+- Reuse the harnesses in `dev/bench/`. Do not write ad-hoc timing scripts.
 - Benchmark against real data, never `WISEAPP_STEP2_FIXTURE=smoke`. The smoke
   fixture is fabricated and is never production-path evidence.
 - Data location comes from the `WISEAPP_DATA_PATH` environment variable (set in
@@ -46,7 +46,7 @@ sections 0 and 9 first; they win over this summary if they differ.
 
 Variables: `WISEAPP_STEP2_COUNTRIES`, `WISEAPP_STEP2_SURVEY_YEARS`,
 `WISEAPP_STEP2_PERIODS`, `WISEAPP_STEP2_SSPS`, `WISEAPP_STEP2_REPETITIONS`.
-Read the header of `dev/bench_step2.R` for the full list and defaults before
+Read the header of `dev/bench/bench_step2.R` for the full list and defaults before
 choosing values; confirm the multi-period and multi-SSP values against what the
 app offers for IRN.
 
@@ -54,15 +54,15 @@ app offers for IRN.
 
 | Area | Harness |
 |---|---|
-| Step 2 pipeline end to end | `dev/run_step2_benchmark.sh` (wraps `dev/bench_step2.R`, adds process-tree peak RSS) |
-| Step 3 policy | `dev/bench_step2.R` with `WISEAPP_STEP2_INCLUDE_STEP3=1` and `WISEAPP_STEP3_POLICIES=...`; helpers in `dev/bench_step3_helpers.R` |
-| Aggregation / welfare stats | `dev/bench_aggregation.R`, `dev/bench_surveystats.R`, `dev/profile_agg_hotpath.R` |
-| RIF | `dev/bench_rif_kernels.R`, `dev/bench_rif_preparation.R` |
-| Prediction | `dev/bench_prediction_core.R` |
-| Weather | `dev/bench_w3_weather.R`, `dev/bench_weather_threads.R` |
-| Overview metadata | `dev/bench_overview_metadata.R` |
-| UI stages | `dev/bench_ui_step1.R`, `dev/bench_ui_step2.R`, `dev/bench_ui_step3.R` |
-| Multi-process | `dev/bench_multi_par.R` |
+| Step 2 pipeline end to end | `dev/bench/run_step2_benchmark.sh` (wraps `dev/bench/bench_step2.R`, adds process-tree peak RSS) |
+| Step 3 policy | `dev/bench/bench_step2.R` with `WISEAPP_STEP2_INCLUDE_STEP3=1` and `WISEAPP_STEP3_POLICIES=...`; helpers in `dev/bench/bench_step3_helpers.R` |
+| Aggregation / welfare stats | `dev/bench/bench_aggregation.R`, `dev/bench/bench_surveystats.R`, `dev/bench/profile_agg_hotpath.R` |
+| RIF | `dev/bench/bench_rif_kernels.R`, `dev/bench/bench_rif_preparation.R` |
+| Prediction | `dev/bench/bench_prediction_core.R` |
+| Weather | `dev/bench/bench_w3_weather.R`, `dev/bench/bench_weather_threads.R` |
+| Overview metadata | `dev/bench/bench_overview_metadata.R` |
+| UI stages | `dev/bench/bench_ui_step1.R`, `dev/bench/bench_ui_step2.R`, `dev/bench/bench_ui_step3.R` |
+| Multi-process | `dev/bench/bench_multi_par.R` |
 
 Open the chosen script header to confirm its env vars; they differ per harness.
 
@@ -96,7 +96,7 @@ notification; do not poll.
 
 ## Memory
 
-- Use `dev/run_step2_benchmark.sh` for peak RSS. It records the complete
+- Use `dev/bench/run_step2_benchmark.sh` for peak RSS. It records the complete
   process tree (main process plus mirai daemons) with `/usr/bin/time -l` on
   macOS and writes `external_process_metrics.csv`. This is the production
   memory gate.

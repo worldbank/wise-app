@@ -5,10 +5,10 @@
 # implementation side by side, stage by stage, on the survey welfare payloads
 # used by the app. Run from the repository root:
 #
-#   Rscript dev/bench_rif_kernels.R
+#   Rscript dev/bench/bench_rif_kernels.R
 #
 # For external peak RSS, run:
-#   /usr/bin/time -l Rscript dev/bench_rif_kernels.R
+#   /usr/bin/time -l Rscript dev/bench/bench_rif_kernels.R
 #
 # Payload rows come from the local dataset folder (optimization guidelines
 # Section 9). Override with WISEAPP_RIF_BENCH_DATA if needed.

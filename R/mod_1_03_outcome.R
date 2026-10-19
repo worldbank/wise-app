@@ -270,7 +270,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
 
           # Outcome distribution: echarts builder shared by the screen render
           # and the export bundle (UI-48). The static ggplot renderer is
-          # archived under dev/static plots/ for reference.
+          # archived under dev/archive/static_plots/ for reference.
           outcome_dist_fig <- function() {
             spec <- outcome_spec()
             od <- outcome_data()

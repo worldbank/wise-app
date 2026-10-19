@@ -7,8 +7,8 @@
 # WISEAPP_BENCH_CC=BFA for the smaller BFA payload (guidelines §9).
 #
 # Usage:
-#   Rscript dev/bench_surveystats.R   (WISEAPP_DATA_PATH set in .Renviron)
-#   WISEAPP_BENCH_CC=BFA Rscript dev/bench_surveystats.R
+#   Rscript dev/bench/bench_surveystats.R   (WISEAPP_DATA_PATH set in .Renviron)
+#   WISEAPP_BENCH_CC=BFA Rscript dev/bench/bench_surveystats.R
 #
 # Alternatives benchmarked against the shipped collapse implementation:
 #   - .wsl_nocopy : collapse grouped passes directly on the data.frame,

@@ -10,8 +10,7 @@
 #   .resolve_year_styles()    -- internal; dynamic linetype map by sorted year
 #   build_threshold_table_df()  -- return-period threshold data frame for DT
 #
-# NOTE: plot_bar_climate() had no active call sites and was removed
-#   (formerly archived under dev/archived_fct/plot_bar_climate_archived.R).
+# NOTE: plot_bar_climate() had no active call sites and was removed.
 
 # Label helpers ----
 

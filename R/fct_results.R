@@ -1001,7 +1001,7 @@ calc_fit_stats <- function(model, is_logistic, engine = "fixest", taus = NULL) {
 
 
 # Echarts counterparts of the Results / Model fit figures (guidelines §7) ----
-# Static ggplot renderers are archived under dev/static plots; these interactive
+# Static ggplot renderers are archived under dev/archive/static_plots; these interactive
 # echarts4r widgets draw the same statistics, computed with the same parameters.
 
 # Transparent polygon band (lo..hi) plus an estimate line: the echarts idiom

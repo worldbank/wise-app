@@ -6,7 +6,7 @@
 # like a real fit snapshot (~5k households, 1 weather var with quadratic
 # terms, an interaction, controls and a fixed effect).
 #
-# Run: Rscript dev/bench_ui_step1.R
+# Run: Rscript dev/bench/bench_ui_step1.R
 
 pkgload::load_all(".", quiet = TRUE)
 
