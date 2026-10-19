@@ -197,3 +197,92 @@ test_that("weighted median ignores the weight of missing welfare rows (CR-BUG-10
   expect_equal(resolve_agg_fn("median")(y, w, NULL), 2)
   expect_equal(unname(welfare_stats_suite(y, w)[["median"]]), 2)
 })
+
+# Group-wise linear statistics ----
+# welfare_group_stats() must give the bits resolve_agg_fn() gives on each group's
+# rows (same row order, long double sums, products rounded to double), so a
+# result never depends on which path produced it.
+
+.group_stat_reference <- function(method, y, w, groups, n_groups, pov) {
+  f <- resolve_agg_fn(method)
+  c(f(y, w, pov), vapply(seq_len(n_groups), function(k) {
+    keep <- which(groups == k)
+    f(y[keep], w[keep], pov)
+  }, numeric(1)))
+}
+
+test_that("welfare_group_stats is identical to resolve_agg_fn on every group", {
+  set.seed(20261019)
+  methods <- names(.WELFARE_GROUP_METHODS)
+  for (rep in seq_len(60)) {
+    n <- sample(c(1, 2, 7, 50, 500, 5000), 1)
+    y <- exp(rnorm(n, rnorm(1, 1, 1), runif(1, 0.2, 2)))
+    if (runif(1) < 0.5) y[sample(n, max(1L, n %/% 20L))] <- NA_real_
+    if (runif(1) < 0.3) y[sample(n, 1L)] <- c(Inf, -Inf, 0, -3, NaN)[sample(5, 1)]
+    w <- runif(n, 0.1, 4)
+    if (runif(1) < 0.3) w[sample(n, max(1L, n %/% 10L))] <- 0
+    groups <- sample(0:10, n, replace = TRUE, prob = c(0.1, rep(0.09, 10)))
+    pov <- sample(c(3, 3.25, 0.5, 6.85, 1.9), 1)
+    for (m in methods) {
+      got <- welfare_group_stats(y, w, groups, 10L, m, pov)
+      expect_identical(got, .group_stat_reference(m, y, w, groups, 10L, pov),
+        info = sprintf("rep=%d n=%d method=%s", rep, n, m))
+    }
+  }
+})
+
+test_that("welfare_group_stats keeps the resolver's edge cases", {
+  w <- c(1, 2, 3, 4)
+  g <- c(1L, 1L, 2L, 0L)
+  cases <- list(
+    all_missing = c(NA_real_, NA_real_, NA_real_, NA_real_),
+    nonpositive = c(0, -1, -2, 0),
+    infinite = c(Inf, 1, -Inf, 2),
+    mixed = c(NaN, 5, 0, 1e-300)
+  )
+  for (case in names(cases)) {
+    for (m in names(.WELFARE_GROUP_METHODS)) {
+      expect_identical(
+        welfare_group_stats(cases[[case]], w, g, 3L, m, 3),
+        .group_stat_reference(m, cases[[case]], w, g, 3L, 3),
+        info = paste(case, m)
+      )
+    }
+  }
+  # An empty group is the resolver's value on zero rows.
+  expect_identical(
+    welfare_group_stats(c(1, 2), c(1, 1), c(1L, 1L), 2L, "mean", NULL)[[3]],
+    resolve_agg_fn("mean")(numeric(0), numeric(0), NULL)
+  )
+})
+
+test_that("welfare_group_stats declines what the kernel does not cover", {
+  y <- c(1, 2, 3)
+  w <- c(1, 1, 1)
+  g <- c(1L, 1L, 0L)
+  expect_null(welfare_group_stats(y, w, g, 1L, "median"))
+  expect_null(welfare_group_stats(y, w, g, 1L, "gini"))
+  expect_null(welfare_group_stats(y, NULL, g, 1L, "mean"))
+  expect_null(welfare_group_stats(y, c(1, NA, 1), g, 1L, "mean"))
+  expect_null(welfare_group_stats(y, c(1, Inf, 1), g, 1L, "mean"))
+  expect_null(welfare_group_stats(y, w, g, 1L, "headcount_ratio", NULL))
+  expect_null(welfare_group_stats(y, w, g, 1L, "gap", NA_real_))
+  expect_false(is.null(welfare_group_stats(y, w, g, 1L, "headcount_ratio", 2)))
+})
+
+test_that("welfare_stats_all without the sort keeps every scan statistic", {
+  set.seed(7)
+  for (rep in 1:20) {
+    n <- sample(c(1, 5, 300, 4000), 1)
+    y <- exp(rnorm(n))
+    y[sample(n, max(1L, n %/% 30L))] <- NA_real_
+    w <- if (runif(1) < 0.7) runif(n, 0.1, 3) else numeric(0)
+    full <- welfare_stats_all(y, w, 1.5, 1.5, 1.5, 28)
+    lean <- welfare_stats_all(y, w, 1.5, 1.5, 1.5, 28, FALSE)
+    scan <- setdiff(names(full), c("median", "gini"))
+    expect_identical(lean[scan], full[scan])
+    expect_true(is.na(lean[["median"]]) && is.na(lean[["gini"]]))
+    expect_null(attr(lean, "order"))
+    expect_false(is.null(attr(full, "order")))
+  }
+})

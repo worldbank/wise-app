@@ -337,7 +337,7 @@
     owner, exposure_cache)
   n <- length(pipeline$y_point)
   years <- sort(unique(pipeline$sim_year))
-  channel_stats <- decile_stats <- NULL
+  channel_stats <- decile_stats <- cell_stats <- NULL
   stat_names <- as.vector(rbind(paste0("sum_", .compact_decomp_channels),
     paste0("weight_", .compact_decomp_channels)))
   baseline_stat_names <- c("sum_baseline_y_point", "weight_baseline_y_point",
@@ -413,15 +413,22 @@
         stats[, channel_count + 4L + 2L * k] <- lvl_weight[, k]
       }
       year_id <- match(pipeline$sim_year[rows], years)
-      channel_stats <- accumulate(channel_stats, stats, year_id, length(years))
       deciles <- prepared$context$baseline_deciles[pipeline$svy_row_id[rows]]
-      keep <- which(is.finite(deciles) & deciles >= 1 & deciles <= 10)
-      if (length(keep)) {
-        decile_stats <- accumulate(decile_stats,
-          cbind(stats[keep, , drop = FALSE], 1, weights[keep]),
-          (year_id[keep] - 1L) * 10L + deciles[keep], length(years) * 10L)
-      }
+      decile_code <- integer(length(rows))
+      in_decile <- is.finite(deciles) & deciles >= 1 & deciles <= 10
+      decile_code[in_decile] <- as.integer(deciles[in_decile])
+      # One grouped sum per chunk over (year, decile) cells, decile 0 for rows
+      # without a baseline decile; the year totals are summed from the cells
+      # after the loop instead of scanning the chunk a second time.
+      cell_stats <- accumulate(cell_stats, cbind(stats, 1, weights),
+        (year_id - 1L) * 11L + decile_code + 1L, length(years) * 11L)
     }
+  }
+  if (!is.null(cell_stats)) {
+    channel_stats <- rowsum(cell_stats[, seq_along(stat_names), drop = FALSE],
+      rep(seq_along(years), each = 11L))
+    rownames(channel_stats) <- NULL
+    decile_stats <- cell_stats[rep(c(FALSE, rep(TRUE, 10L)), length(years)), , drop = FALSE]
   }
   make_table <- function(stats, decile = FALSE) {
     if (is.null(stats)) return(data.frame())
@@ -814,8 +821,15 @@
     deltas <- list(rep(0, length(rows)),
       if (is.null(shock_ch)) ch$delta_main else ch$delta_main - shock_ch,
       shock_ch, ch$delta_res1, ch$delta_res2)
+    in_decile <- is.finite(row_deciles) & row_deciles >= 1 & row_deciles <= 10
+    decile_codes <- integer(length(rows))
+    decile_codes[in_decile] <- as.integer(row_deciles[in_decile])
     values <- numeric(n_states)
     state_values <- vector("list", n_states)
+    # Whole-sample and per-decile values of the methods that need no sort come
+    # from one pass per state (bit-identical to the resolver); other methods,
+    # unweighted surveys and non-finite weights keep the per-call resolver.
+    group_stats <- vector("list", n_states)
     for (j in seq_len(n_states)) {
       if (j == 3L && is.null(shock_ch)) {
         state_values[[j]] <- state_values[[2L]]
@@ -826,7 +840,13 @@
       if (j > 1L) y <- y + deltas[[j]]
       mu <- if (is_log) exp(y + residual) else y + residual
       state_values[[j]] <- mu
-      values[j] <- aggregate(mu, w, pov_line)
+      # `[<-` with list(): a NULL (not covered) must not delete the element
+      group_stats[j] <- list(
+        welfare_group_stats(mu, w, decile_codes, 10L, method, pov_line)
+      )
+      values[j] <- if (is.null(group_stats[[j]])) {
+        aggregate(mu, w, pov_line)
+      } else group_stats[[j]][[1L]]
       excluded[j] <- sum(!is.finite(mu) | (method == "avg_poverty" & mu <= 0))
     }
     names(values) <- .policy_metric_fields[seq_len(n_states)]
@@ -838,7 +858,6 @@
       excluded_after_main = excluded[3L],
       excluded_after_repositioning = excluded[4L], excluded_policy = excluded[5L],
       parity_error = error, requested_residuals = requested_residuals, effective_residuals = effective)
-    in_decile <- is.finite(row_deciles) & row_deciles >= 1 & row_deciles <= 10
     valid_deciles <- sort(unique(row_deciles[in_decile]))
     decile_rows <- collapse::gsplit(which(in_decile), as.integer(row_deciles[in_decile]),
       use.g.names = FALSE)
@@ -849,6 +868,8 @@
       for (j in seq_len(n_states)) {
         decile_states[[j]] <- if (j == 3L && is.null(shock_ch)) {
           decile_states[[2L]]
+        } else if (!is.null(group_stats[[j]])) {
+          group_stats[[j]][[decile + 1L]]
         } else {
           aggregate(
             state_values[[j]][selected], if (is.null(w)) NULL else w[selected], pov_line

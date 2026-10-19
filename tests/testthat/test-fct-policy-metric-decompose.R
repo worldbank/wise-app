@@ -850,3 +850,53 @@ test_that("the metric decomposition draws residuals once per year and scenario, 
   expect_identical(run(), shared)
   expect_identical(draws, 3L * years)
 })
+
+test_that("grouped metric statistics give the same annual and decile results as the resolver", {
+  for (engine in c("fixest", "rif")) for (trans in c("none", "log")) {
+    fx <- metric_channel_fixture(engine, trans)
+    for (method in names(.WISE_METRIC_REGISTRY)) {
+      args <- list(fx$hist, fx$policy_hist, list(), list(), fx$prepared, method, 3, "none")
+      fast <- do.call(.policy_metric_decomposition, args)
+      local({
+        local_mocked_bindings(welfare_group_stats = function(...) NULL, .package = "wiseapp")
+        slow <- do.call(.policy_metric_decomposition, args)
+        expect_identical(fast$annual, slow$annual, info = paste(engine, trans, method))
+        expect_identical(fast$decile_annual, slow$decile_annual, info = paste(engine, trans, method))
+        expect_identical(fast$summary, slow$summary, info = paste(engine, trans, method))
+      })
+    }
+  }
+})
+
+test_that("compact policy channels match a direct recomputation per year and per decile", {
+  fx <- annual_channel_fixture()
+  out <- apply_policy_delta_to_baseline(fx$base, fx$policy, fx$model, fx$context$so,
+    list(pipeline = fx$pipeline), list(future = list(pipelines = list(a = fx$pipeline))),
+    decomp_context = fx$context, run_identity = "annual-run", chunk_size = 3L)
+  compact <- out$decomp_scenarios
+  chan_a <- compact$channel_summary[compact$channel_summary$member == "a", ]
+  dec_a <- compact$decile_summary[compact$decile_summary$member == "a", ]
+  pipe <- fx$pipeline
+  ch <- .policy_annual_channels(pipe, out$annual_channels, "annual-run")
+  decile <- fx$context$baseline_deciles[pipe$svy_row_id]
+  for (yr in unique(pipe$sim_year)) {
+    sel <- pipe$sim_year == yr
+    # Year totals cover every row, with or without a baseline decile.
+    expect_equal(chan_a$sum_delta_total[chan_a$sim_year == yr],
+      sum(ch$delta_total[sel] * pipe$weight[sel]), tolerance = 1e-12)
+    expect_equal(chan_a$weight_delta_total[chan_a$sim_year == yr],
+      sum(pipe$weight[sel]), tolerance = 1e-12)
+    for (d in unique(decile[sel & is.finite(decile)])) {
+      cell <- sel & is.finite(decile) & decile == d
+      row <- dec_a[dec_a$sim_year == yr & dec_a$decile == d, ]
+      expect_equal(nrow(row), 1L)
+      expect_equal(row$sum_delta_total, sum(ch$delta_total[cell] * pipe$weight[cell]),
+        tolerance = 1e-12)
+      expect_equal(row$n_households, sum(cell))
+      expect_equal(row$weighted_population, sum(pipe$weight[cell]), tolerance = 1e-12)
+    }
+  }
+  # No decile cell for a (year, decile) without rows.
+  expect_equal(nrow(dec_a), nrow(unique(
+    data.frame(y = pipe$sim_year, d = decile)[is.finite(decile), ])))
+})

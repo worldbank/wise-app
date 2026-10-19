@@ -11,8 +11,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // welfare_stats_all
-NumericVector welfare_stats_all(NumericVector y, NumericVector w, double pov_line, double gap_line, double sev_line, double prosp_line);
-RcppExport SEXP _wiseapp_welfare_stats_all(SEXP ySEXP, SEXP wSEXP, SEXP pov_lineSEXP, SEXP gap_lineSEXP, SEXP sev_lineSEXP, SEXP prosp_lineSEXP) {
+NumericVector welfare_stats_all(NumericVector y, NumericVector w, double pov_line, double gap_line, double sev_line, double prosp_line, bool need_sort);
+RcppExport SEXP _wiseapp_welfare_stats_all(SEXP ySEXP, SEXP wSEXP, SEXP pov_lineSEXP, SEXP gap_lineSEXP, SEXP sev_lineSEXP, SEXP prosp_lineSEXP, SEXP need_sortSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -22,13 +22,31 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type gap_line(gap_lineSEXP);
     Rcpp::traits::input_parameter< double >::type sev_line(sev_lineSEXP);
     Rcpp::traits::input_parameter< double >::type prosp_line(prosp_lineSEXP);
-    rcpp_result_gen = Rcpp::wrap(welfare_stats_all(y, w, pov_line, gap_line, sev_line, prosp_line));
+    Rcpp::traits::input_parameter< bool >::type need_sort(need_sortSEXP);
+    rcpp_result_gen = Rcpp::wrap(welfare_stats_all(y, w, pov_line, gap_line, sev_line, prosp_line, need_sort));
+    return rcpp_result_gen;
+END_RCPP
+}
+// welfare_group_stat
+NumericVector welfare_group_stat(NumericVector y, NumericVector w, IntegerVector g, int n_groups, int method, double line);
+RcppExport SEXP _wiseapp_welfare_group_stat(SEXP ySEXP, SEXP wSEXP, SEXP gSEXP, SEXP n_groupsSEXP, SEXP methodSEXP, SEXP lineSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type w(wSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type g(gSEXP);
+    Rcpp::traits::input_parameter< int >::type n_groups(n_groupsSEXP);
+    Rcpp::traits::input_parameter< int >::type method(methodSEXP);
+    Rcpp::traits::input_parameter< double >::type line(lineSEXP);
+    rcpp_result_gen = Rcpp::wrap(welfare_group_stat(y, w, g, n_groups, method, line));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_wiseapp_welfare_stats_all", (DL_FUNC) &_wiseapp_welfare_stats_all, 6},
+    {"_wiseapp_welfare_stats_all", (DL_FUNC) &_wiseapp_welfare_stats_all, 7},
+    {"_wiseapp_welfare_group_stat", (DL_FUNC) &_wiseapp_welfare_group_stat, 6},
     {NULL, NULL, 0}
 };
 

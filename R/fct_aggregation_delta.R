@@ -796,6 +796,7 @@ aggregate_pipeline_per_year_multi <- function(pipe,
   }, numeric(1))
   kernel_ok <- !is.na(kernel_pov) | !(methods %in% pov_methods)
   kernel_pov_unique <- unique(kernel_pov[kernel_ok])
+  need_sort <- !point_estimate_only || any(methods %in% c("median", "gini"))
 
   out <- setNames(lapply(methods, function(method) vector("list", length(prep$years))),
                   methods)
@@ -815,12 +816,14 @@ aggregate_pipeline_per_year_multi <- function(pipe,
     w_idx <- if (isTRUE(weighted)) prep$weights[[i]] else NULL
 
     # One kernel pass per distinct poverty line shares the scan and the sort
-    # across the whole method suite.
+    # across the whole method suite. The sort is skipped when no method needs
+    # it (the line-dependent group: headcount, gap, fgt2) and no uncertainty
+    # band reuses its order; every other statistic comes from the scan pass.
     kernel_suites <- lapply(kernel_pov_unique, function(p) {
       welfare_stats_all(
         prep$mu[[i]],
         if (is.null(w_idx)) numeric(0) else w_idx,
-        p, p, p, 28
+        p, p, p, 28, need_sort
       )
     })
 

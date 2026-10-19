@@ -15,6 +15,10 @@
 #' @param gap_line Poverty-gap threshold; NA yields NA for poverty_gap.
 #' @param sev_line Poverty-severity threshold; NA yields NA for fgt2.
 #' @param prosp_line Prosperity threshold, hardcoded $28/day by the app.
+#' @param need_sort When FALSE the sort is skipped: median and gini are NA and
+#'   there is no \code{"order"} attribute. Every other statistic is identical
+#'   (they come from the scan pass), so callers that need only those save the
+#'   O(n log n) sort.
 #'
 #' @return Named numeric vector of length 9 with the statistics in the fixed
 #'   order mean, median, total, headcount_ratio, poverty_gap,
@@ -22,7 +26,36 @@
 #'   \code{"order"}: the 1-based stable sort index of \code{y}.
 #'
 #' @noRd
-welfare_stats_all <- function(y, w, pov_line, gap_line, sev_line, prosp_line) {
-    .Call(`_wiseapp_welfare_stats_all`, y, w, pov_line, gap_line, sev_line, prosp_line)
+welfare_stats_all <- function(y, w, pov_line, gap_line, sev_line, prosp_line, need_sort = TRUE) {
+    .Call(`_wiseapp_welfare_stats_all`, y, w, pov_line, gap_line, sev_line, prosp_line, need_sort)
+}
+
+#' Group-wise Weighted Statistic for the Linear Aggregation Methods
+#'
+#' One scan over \code{y} that returns a single statistic for the whole vector
+#' and for each group (for example the ten baseline deciles), instead of one R
+#' call per group. It covers the methods that need no sort: mean, total,
+#' headcount ratio, poverty gap, poverty severity, prosperity gap and average
+#' poverty. Each group's sums run in row order in \code{long double}, the way
+#' R's \code{sum()} does, and each product is rounded to double first, so the
+#' result is identical to \code{resolve_agg_fn()} applied to that group's rows
+#' (\code{weighted.mean(..., na.rm = TRUE)} semantics: rows with a missing
+#' statistic are dropped, zero-weight rows add to the denominator only).
+#'
+#' @param y Numeric welfare values.
+#' @param w Numeric weights; must all be finite (callers fall back otherwise).
+#' @param g Group code per row: 1..n_groups, or 0/NA for a row in no group
+#'   (it still counts in the whole-vector statistic).
+#' @param n_groups Number of groups.
+#' @param method 1 mean, 2 total, 3 headcount_ratio, 4 gap, 5 fgt2,
+#'   6 prosperity_gap, 7 avg_poverty.
+#' @param line Poverty line for methods 3 to 5 (finite); ignored otherwise.
+#'
+#' @return Numeric vector of length n_groups + 1: the whole-vector statistic
+#'   first, then groups 1..n_groups.
+#'
+#' @noRd
+welfare_group_stat <- function(y, w, g, n_groups, method, line) {
+    .Call(`_wiseapp_welfare_group_stat`, y, w, g, n_groups, method, line)
 }
 

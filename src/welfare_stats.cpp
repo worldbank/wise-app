@@ -105,6 +105,10 @@ inline bool entry_less(const SortEntry& a, const SortEntry& b) {
 //' @param gap_line Poverty-gap threshold; NA yields NA for poverty_gap.
 //' @param sev_line Poverty-severity threshold; NA yields NA for fgt2.
 //' @param prosp_line Prosperity threshold, hardcoded $28/day by the app.
+//' @param need_sort When FALSE the sort is skipped: median and gini are NA and
+//'   there is no \code{"order"} attribute. Every other statistic is identical
+//'   (they come from the scan pass), so callers that need only those save the
+//'   O(n log n) sort.
 //'
 //' @return Named numeric vector of length 9 with the statistics in the fixed
 //'   order mean, median, total, headcount_ratio, poverty_gap,
@@ -115,7 +119,8 @@ inline bool entry_less(const SortEntry& a, const SortEntry& b) {
 // [[Rcpp::export]]
 NumericVector welfare_stats_all(NumericVector y, NumericVector w,
                                 double pov_line, double gap_line,
-                                double sev_line, double prosp_line) {
+                                double sev_line, double prosp_line,
+                                bool need_sort = true) {
   const int n = y.size();
   if (w.size() != 0 && w.size() != n) {
     stop("'y' and 'w' must have the same length");
@@ -140,7 +145,7 @@ NumericVector welfare_stats_all(NumericVector y, NumericVector w,
   const bool sev_na = ISNAN(sev_line);
 
   std::vector<SortEntry> sorted;
-  sorted.reserve(n);
+  if (need_sort) sorted.reserve(n);
 
   for (int i = 0; i < n; ++i) {
     const double yi = y[i];
@@ -218,104 +223,108 @@ NumericVector welfare_stats_all(NumericVector y, NumericVector w,
       }
     }
 
-    SortEntry e;
-    e.y = yi;
-    e.w = wi;
-    e.idx = i;
-    e.rank = y_missing ? (R_IsNA(yi) ? 2 : 1) : 0;
-    sorted.push_back(e);
+    if (need_sort) {
+      SortEntry e;
+      e.y = yi;
+      e.w = wi;
+      e.idx = i;
+      e.rank = y_missing ? (R_IsNA(yi) ? 2 : 1) : 0;
+      sorted.push_back(e);
+    }
   }
 
-  std::sort(sorted.begin(), sorted.end(), entry_less);
-
-  // Non-missing prefix of the sorted array; shared by both medians and the
-  // Gini (missing welfare sorts last, so rows [0, n_valid) are the values
-  // R obtains from x[!is.na(x)] followed by order()).
-  int n_valid = 0;
-  while (n_valid < n && sorted[n_valid].rank == 0) ++n_valid;
-
-  // --- median ----
   double median_v = NA_REAL;
-  if (has_w) {
-    // Weighted: R drops missing welfare rows, then the denominator is
-    // sum(weights, na.rm = TRUE) - NA weights are dropped from the
-    // denominator but retained in the cumulative sum, poisoning it from
-    // their sorted position onward.
-    double denom_med = 0.0;
-    for (int i = 0; i < n_valid; ++i) {
-      const double wi = sorted[i].w;
-      if (ISNAN(wi)) {
-        continue; // na.rm = TRUE drops NA/NaN from the denominator sum
-      }
-      denom_med += wi;
-    }
-    if (n_valid > 0) {
-      double cumw = 0.0;
-      for (int i = 0; i < n_valid; ++i) {
-        const double wn = sorted[i].w / denom_med;
-        if (ISNAN(wn)) break; // NA weight: cumulative sum poisoned onward
-        cumw += wn;
-        if (cumw >= 0.5) {
-          median_v = sorted[i].y;
-          break;
-        }
-      }
-    }
-  } else {
-    // Unweighted: stats::median(y, na.rm = TRUE) type-7 semantics.
-    if (n_valid == 0) {
-      median_v = NA_REAL;
-    } else if (n_valid % 2 == 1) {
-      median_v = sorted[(n_valid - 1) / 2].y;
-    } else {
-      median_v = (sorted[n_valid / 2 - 1].y + sorted[n_valid / 2].y) / 2.0;
-    }
-  }
-
-  // --- gini ----
   double gini_v = NA_REAL;
-  if (n_valid >= 2) {
-    // Unweighted rows carry w = 1 (equal weights), so both cases share
-    // the one Gini definition.
-    // R: w <- weights[valid][ord] / sum(weights[valid], na.rm = TRUE);
-    //    2 * sum(w * y * (cumsum(w) - w / 2)) / sum(w * y) - 1
-    // An NA weight keeps its NA into the products, so the R result is NA.
-    double denom_g = 0.0;
-    for (int i = 0; i < n_valid; ++i) {
-      const double wi = sorted[i].w;
-      if (ISNAN(wi)) {
-        continue; // denominator drops NA/NaN weights (na.rm = TRUE)
-      }
-      denom_g += wi;
-    }
-    if (!ISNAN(denom_g)) {
-      PoisonSum s_g;  // sum(w * y * F_i) with normalised w
-      PoisonSum wy_g; // sum(w * y)
-      double cum = 0.0;
-      bool poison_na = false;
-      bool poison_nan = false;
+  if (need_sort) {
+    std::sort(sorted.begin(), sorted.end(), entry_less);
+
+    // Non-missing prefix of the sorted array; shared by both medians and the
+    // Gini (missing welfare sorts last, so rows [0, n_valid) are the values
+    // R obtains from x[!is.na(x)] followed by order()).
+    int n_valid = 0;
+    while (n_valid < n && sorted[n_valid].rank == 0) ++n_valid;
+
+    // --- median ----
+    if (has_w) {
+      // Weighted: R drops missing welfare rows, then the denominator is
+      // sum(weights, na.rm = TRUE) - NA weights are dropped from the
+      // denominator but retained in the cumulative sum, poisoning it from
+      // their sorted position onward.
+      double denom_med = 0.0;
       for (int i = 0; i < n_valid; ++i) {
-        const double wn = sorted[i].w / denom_g;
-        if (ISNAN(wn)) {
-          // NA weight -> R products become NA (gini NA); a NaN quotient
-          // (0/0, Inf/Inf) becomes NaN (gini NaN). Mirrors R exactly.
-          if (R_IsNA(wn)) poison_na = true; else poison_nan = true;
-          break;
+        const double wi = sorted[i].w;
+        if (ISNAN(wi)) {
+          continue; // na.rm = TRUE drops NA/NaN from the denominator sum
         }
-        cum += wn;
-        const double F = cum - 0.5 * wn;
-        s_g.add_prod(wn * sorted[i].y, F);
-        wy_g.add_prod(wn, sorted[i].y);
+        denom_med += wi;
       }
-      if (!poison_na && !poison_nan) {
-        gini_v = 2.0 * s_g.value() / wy_g.value() - 1.0;
-      } else if (poison_na) {
-        gini_v = NA_REAL;
+      if (n_valid > 0) {
+        double cumw = 0.0;
+        for (int i = 0; i < n_valid; ++i) {
+          const double wn = sorted[i].w / denom_med;
+          if (ISNAN(wn)) break; // NA weight: cumulative sum poisoned onward
+          cumw += wn;
+          if (cumw >= 0.5) {
+            median_v = sorted[i].y;
+            break;
+          }
+        }
+      }
+    } else {
+      // Unweighted: stats::median(y, na.rm = TRUE) type-7 semantics.
+      if (n_valid == 0) {
+        median_v = NA_REAL;
+      } else if (n_valid % 2 == 1) {
+        median_v = sorted[(n_valid - 1) / 2].y;
       } else {
-        gini_v = R_NaN;
+        median_v = (sorted[n_valid / 2 - 1].y + sorted[n_valid / 2].y) / 2.0;
       }
     }
-  }
+
+    // --- gini ----
+    if (n_valid >= 2) {
+      // Unweighted rows carry w = 1 (equal weights), so both cases share
+      // the one Gini definition.
+      // R: w <- weights[valid][ord] / sum(weights[valid], na.rm = TRUE);
+      //    2 * sum(w * y * (cumsum(w) - w / 2)) / sum(w * y) - 1
+      // An NA weight keeps its NA into the products, so the R result is NA.
+      double denom_g = 0.0;
+      for (int i = 0; i < n_valid; ++i) {
+        const double wi = sorted[i].w;
+        if (ISNAN(wi)) {
+          continue; // denominator drops NA/NaN weights (na.rm = TRUE)
+        }
+        denom_g += wi;
+      }
+      if (!ISNAN(denom_g)) {
+        PoisonSum s_g;  // sum(w * y * F_i) with normalised w
+        PoisonSum wy_g; // sum(w * y)
+        double cum = 0.0;
+        bool poison_na = false;
+        bool poison_nan = false;
+        for (int i = 0; i < n_valid; ++i) {
+          const double wn = sorted[i].w / denom_g;
+          if (ISNAN(wn)) {
+            // NA weight -> R products become NA (gini NA); a NaN quotient
+            // (0/0, Inf/Inf) becomes NaN (gini NaN). Mirrors R exactly.
+            if (R_IsNA(wn)) poison_na = true; else poison_nan = true;
+            break;
+          }
+          cum += wn;
+          const double F = cum - 0.5 * wn;
+          s_g.add_prod(wn * sorted[i].y, F);
+          wy_g.add_prod(wn, sorted[i].y);
+        }
+        if (!poison_na && !poison_nan) {
+          gini_v = 2.0 * s_g.value() / wy_g.value() - 1.0;
+        } else if (poison_na) {
+          gini_v = NA_REAL;
+        } else {
+          gini_v = R_NaN;
+        }
+      }
+    }
+  }  // need_sort
 
   // --- assemble ----
   // Plain IEEE division reproduces R's ratio behaviour for zero/poisoned
@@ -340,10 +349,135 @@ NumericVector welfare_stats_all(NumericVector y, NumericVector w,
     _["avg_poverty"] = ap_v
   );
 
-  IntegerVector order(n);
-  for (int i = 0; i < n; ++i) {
-    order[i] = sorted[i].idx + 1;
+  if (need_sort) {
+    IntegerVector order(n);
+    for (int i = 0; i < n; ++i) {
+      order[i] = sorted[i].idx + 1;
+    }
+    out.attr("order") = order;
   }
-  out.attr("order") = order;
+  return out;
+}
+
+//' Group-wise Weighted Statistic for the Linear Aggregation Methods
+//'
+//' One scan over \code{y} that returns a single statistic for the whole vector
+//' and for each group (for example the ten baseline deciles), instead of one R
+//' call per group. It covers the methods that need no sort: mean, total,
+//' headcount ratio, poverty gap, poverty severity, prosperity gap and average
+//' poverty. Each group's sums run in row order in \code{long double}, the way
+//' R's \code{sum()} does, and each product is rounded to double first, so the
+//' result is identical to \code{resolve_agg_fn()} applied to that group's rows
+//' (\code{weighted.mean(..., na.rm = TRUE)} semantics: rows with a missing
+//' statistic are dropped, zero-weight rows add to the denominator only).
+//'
+//' @param y Numeric welfare values.
+//' @param w Numeric weights; must all be finite (callers fall back otherwise).
+//' @param g Group code per row: 1..n_groups, or 0/NA for a row in no group
+//'   (it still counts in the whole-vector statistic).
+//' @param n_groups Number of groups.
+//' @param method 1 mean, 2 total, 3 headcount_ratio, 4 gap, 5 fgt2,
+//'   6 prosperity_gap, 7 avg_poverty.
+//' @param line Poverty line for methods 3 to 5 (finite); ignored otherwise.
+//'
+//' @return Numeric vector of length n_groups + 1: the whole-vector statistic
+//'   first, then groups 1..n_groups.
+//'
+//' @noRd
+// [[Rcpp::export]]
+NumericVector welfare_group_stat(NumericVector y, NumericVector w,
+                                 IntegerVector g, int n_groups, int method,
+                                 double line) {
+  const int n = y.size();
+  if (w.size() != n || g.size() != n) {
+    stop("'y', 'w' and 'g' must have the same length");
+  }
+  if (n_groups < 0 || method < 1 || method > 7) {
+    stop("invalid 'n_groups' or 'method'");
+  }
+  const int k = n_groups + 1;
+  std::vector<long double> num(k, 0.0L), den(k, 0.0L);
+  std::vector<int> n_ok(k, 0);
+
+  for (int i = 0; i < n; ++i) {
+    const double yi = y[i];
+    const double wi = w[i];
+    if (!R_FINITE(wi)) stop("weights must be finite");
+    int grp = g[i];
+    if (grp == NA_INTEGER || grp < 1 || grp > n_groups) grp = 0;
+
+    if (method == 2) {
+      // total: sum(welfare * weights, na.rm = TRUE) - NaN products dropped.
+      volatile double prod = yi * wi;
+      if (!ISNAN(prod)) {
+        num[0] += prod;
+        if (grp) num[grp] += prod;
+      }
+      continue;
+    }
+
+    // Value whose weighted mean is taken, and whether the row takes part.
+    // `volatile` keeps every product rounded to double before it is added, as
+    // R computes (x * w) as its own vector operation (no fused multiply-add).
+    bool valid = true;
+    volatile double term = 0.0;
+    switch (method) {
+      case 1:  // mean
+        valid = !ISNAN(yi);
+        term = yi;
+        break;
+      case 3:  // headcount_ratio: as.numeric(welfare < line)
+        valid = !ISNAN(yi);
+        term = yi < line ? 1.0 : 0.0;
+        break;
+      case 4: {  // gap: pmax(line - welfare, 0) / line
+        const double d = line - yi;
+        term = (d > 0.0 ? d : 0.0) / line;
+        valid = !ISNAN(yi) && !ISNAN(term);
+        break;
+      }
+      case 5: {  // fgt2: (pmax(line - welfare, 0) / line)^2
+        const double d = line - yi;
+        volatile double shortfall = (d > 0.0 ? d : 0.0) / line;
+        valid = !ISNAN(yi) && !ISNAN(shortfall);
+        term = shortfall * shortfall;
+        break;
+      }
+      case 6: {  // prosperity_gap: pmax(28 / welfare, 1)
+        const double t = 28.0 / yi;
+        valid = !ISNAN(yi);
+        term = t > 1.0 ? t : 1.0;
+        break;
+      }
+      case 7:  // avg_poverty: 1 / welfare over finite, positive welfare
+        valid = R_FINITE(yi) && yi > 0.0;
+        term = valid ? 1.0 / yi : 0.0;
+        break;
+    }
+    if (!valid) continue;
+    den[0] += wi;
+    ++n_ok[0];
+    if (grp) {
+      den[grp] += wi;
+      ++n_ok[grp];
+    }
+    // weighted.mean: sum((x * w)[w != 0]) / sum(w)
+    if (wi != 0.0) {
+      volatile double prod = term * wi;
+      num[0] += prod;
+      if (grp) num[grp] += prod;
+    }
+  }
+
+  NumericVector out(k);
+  for (int j = 0; j < k; ++j) {
+    if (method == 2) {
+      out[j] = (double) num[j];
+    } else if (method == 7 && n_ok[j] == 0) {
+      out[j] = NA_REAL;  // resolve_agg_fn(): no positive finite welfare
+    } else {
+      out[j] = (double) num[j] / (double) den[j];
+    }
+  }
   return out;
 }
