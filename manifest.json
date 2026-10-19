@@ -4498,16 +4498,16 @@
       "checksum": "c9dcc6529841a312038be68f3a1654c3"
     },
     "inst/batch/_targets.R": {
-      "checksum": "5c43001e34b998ed08772c7573532d45"
+      "checksum": "d6a4f60e8c05a9447d4d646691a83792"
     },
     "inst/batch/README.md": {
       "checksum": "1c22a1d548806b87a29de810875e37b1"
     },
     "inst/batch/run.R": {
-      "checksum": "27e9258a6e0d94a8cd94deb1307cc11e"
+      "checksum": "75c869fc7554dbb13413d1224e7cd13c"
     },
     "inst/batch/spec.yaml": {
-      "checksum": "9597ca83860396c8b72e47ffef146ea3"
+      "checksum": "0fb93ed25946294b4ea81d8813caf692"
     },
     "inst/duckdb_extensions/h3.duckdb_extension.gz": {
       "checksum": "f9fac7c2a8fd0825a46b6d8fe0fb13f8"
@@ -4519,7 +4519,7 @@
       "checksum": "44be73bbe45ca39f0e4f310f24998709"
     },
     "NAMESPACE": {
-      "checksum": "e7881512e75b98cd47194b74921f7496"
+      "checksum": "a90fca705f3632d117ea472c4104ef97"
     },
     "R/_disable_autoload.R": {
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
@@ -4543,10 +4543,10 @@
       "checksum": "a50516efe904cea2a451c815bb5ca2ba"
     },
     "R/fct_batch_spec.R": {
-      "checksum": "f3cf51aa27e3dc72883f4528a9ca3d3a"
+      "checksum": "96fbe63b6f80a5fb736c0409a5e73d51"
     },
     "R/fct_batch_targets.R": {
-      "checksum": "4d62d61c497624a1f9d039de352517c6"
+      "checksum": "ba7f538ac1f1eb1efb9ab8599d4f31f2"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
@@ -4648,7 +4648,7 @@
       "checksum": "141489944077ec410367dc7d12f424e0"
     },
     "R/fct_spec_defaults.R": {
-      "checksum": "ba2befe750e601145987e5a8a1502291"
+      "checksum": "56058595e51daee9876743fe4cc9db10"
     },
     "R/fct_step1_data.R": {
       "checksum": "988a9c900132ef53a89d162899796b71"
@@ -4671,8 +4671,14 @@
     "R/fct_step2_compute.R": {
       "checksum": "1389c571c67e852bf2ad8eab4c23b314"
     },
+    "R/fct_step2_input.R": {
+      "checksum": "eb204b429a8791807b94e8b92a8ae10c"
+    },
     "R/fct_step2_payload.R": {
       "checksum": "a0b09e843e838fbfa7eb9343ba23d0ea"
+    },
+    "R/fct_step2_tables.R": {
+      "checksum": "76454e1eff12a30b052d7e6332bf74db"
     },
     "R/fct_step3_async.R": {
       "checksum": "74f152a12be8d038c79464aaf2fbd778"
@@ -4726,10 +4732,10 @@
       "checksum": "38470f5047f98fcaee239887a2c8798a"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "adb9d4be33bbdab7656654b5cb9be006"
+      "checksum": "bdaaae5d892b610e4849edd6fb95c137"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "24bc4f9981e4230fe42b8a17d18da9d9"
+      "checksum": "007c40924f4bb99b0902f21cb2782174"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "cfc0c89b78ac7b8e9dd0943873b7b013"
