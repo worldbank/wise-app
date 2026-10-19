@@ -51,17 +51,11 @@ WISEAPP_STAT_PROBS <- c(
     )
   }
   wave_key <- as.character(df$countryyear)
+  wave_label <- function(k) {
+    vapply(k, function(x) paste(unique(year[wave_key %in% x]), collapse = "+"), "")
+  }
   scopes <- list(
-    wave = list(
-      key = wave_key,
-      info = {
-        i <- info_for(wave_key, function(k) vapply(k, function(x) {
-          y <- unique(year[wave_key %in% x])
-          paste(y, collapse = "+")
-        }, ""))
-        i
-      }
-    ),
+    wave = list(key = wave_key, info = info_for(wave_key, wave_label)),
     country = list(key = code, info = info_for(code, function(k) rep("All", length(k))))
   )
   if (length(unique(code[!is.na(code)])) > 1L) {

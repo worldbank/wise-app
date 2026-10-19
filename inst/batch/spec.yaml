@@ -1,0 +1,28 @@
+# WISE-APP batch grid. Settings left out take the app defaults.
+#
+# Run `wiseapp::wise_spec_expand("spec.yaml")` to list the runs before
+# running anything.
+
+seed: 123                       # the app default
+
+outcome:
+  name: welfare
+  currency: PPP
+
+# Named settings that an axis can switch between. A weather profile lists the
+# weather variables (the names of the variable list, at most two).
+profiles:
+  weather:
+    tx_3m:
+      tx: {ref_period: [1, 3], form: continuous}
+    tx_12m:
+      tx: {ref_period: [1, 12], form: continuous}
+
+# Every combination of the axes is one run. Axes that share work (the same
+# country or weather variable) reuse it.
+axes:
+  country: [BFA]
+  weather: [tx_3m, tx_12m]
+
+# exclude:
+#   - {country: MWI, weather: tx_12m}
