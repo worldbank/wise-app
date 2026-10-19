@@ -1,11 +1,12 @@
 # WISE-APP batch runs
 
-> **Status: Phase 1.** The run spec, the grid, the runner and the Step 1
-> data tables (survey and weather statistics) work. The model, simulation and
-> policy tables follow in later phases (see Status). The old scripts are in
-> `legacy/` for reference only; they are not maintained. Design:
-> `review/batch_pipeline_plan.md`. Tables: `batch/docs/tables.md` and, for the
-> three tables that exist, `batch/docs/phase1_tables.md`.
+> **Status: Phase 2.** The run spec, the grid, the runner, the Step 1 data
+> tables (survey and weather statistics) and the Step 1 model tables work. The
+> simulation and policy tables follow in later phases (see Status). The old
+> scripts are in `legacy/` for reference only; they are not maintained.
+> Design: `review/batch_pipeline_plan.md`. Tables: `batch/docs/tables.md` and,
+> for the tables that exist, `batch/docs/phase1_tables.md` (data) and
+> `batch/docs/phase2_tables.md` (model).
 
 The batch pipeline runs WISE-APP without the Shiny interface for many
 samples and specifications. It writes tidy result tables for reports, papers
@@ -100,8 +101,61 @@ exclude:
   the app, export, then vary it here. Only the Step 1 sample, outcome and
   weather settings and the seed are read.
 
-Sections of later steps (`model`, `sim`, `policy`) are rejected until their
-phase exists.
+Sections of later steps (`sim`, `policy`) are rejected until their phase
+exists.
+
+### The model
+
+A `model` section adds the Step 1 model to every run: the three progressive
+fits of the Model tab and the tables `model_terms`, `model_fit` and
+`model_vcov`. Without a `model` section a run only produces the descriptive
+tables; `model: {}` fits the app's defaults.
+
+```yaml
+model:
+  type: linear                    # linear (default), logistic, rif
+  fixed_effects: [year, gaul1_code]
+  covariates:
+    method: user                  # user (default) or lasso
+    vars: [hhsize, urban]
+
+profiles:
+  covariates:
+    basic: {method: user, vars: [hhsize, urban]}
+    lasso: {method: lasso, lasso: {alpha: 1, lambda: lambda.1se, nfolds: 10}}
+  model:
+    linear: {type: linear}
+    rif: {type: rif}
+axes:
+  model: [linear, rif]
+  covariates: [basic, lasso]
+```
+
+- **type** is `linear`, `logistic` (binary outcomes) or `rif` (the
+  unconditional quantile regression, quantiles 0.1 to 0.9, continuous
+  outcomes). The default is the first choice the Model tab offers for the
+  outcome. Fixest runs linear and logistic models; RIF has its own engine.
+  The random-forest and XGBoost engines are not available in batch yet.
+- **fixed_effects** left out follows the app: `year` and `gaul1_code`, where
+  the data offers them. `[]` means none. Other names must be fixed-effect
+  variables of the variable list that are complete enough to use.
+- **covariates.vars** lists the covariates by name (household, individual,
+  firm and area variables, as the Model tab offers them for the unit of
+  analysis). With `method: lasso` the covariates come from the stability
+  Lasso of the app; its settings are `alpha`, `lambda` (`lambda.1se` or
+  `lambda.min`), `nfolds`, `standardize`, `use_mice`, `mi_m`, `mi_maxit`,
+  `stability_threshold`, plus `force_in` and `force_out` lists. The
+  Lasso uses the run's `seed`.
+- **Axes** `model`, `fixed_effects` and `covariates` take profile names; the
+  dotted path of any setting works as well (`model.covariates.lasso.alpha`).
+- Interactions and policy-relevant variables are not available yet; an app
+  configuration that sets them is read without them, with a warning.
+- A fit that cannot run (an unavailable covariate, a Lasso that selects
+  nothing) is recorded in `failures.parquet` with its run ids; the other fits
+  still run.
+- The standard errors are clustered at the location panel when the H3 files
+  are in the data folder, as in the app. Without them the fit uses fixest's
+  default variance, and `model_fit` and `provenance.parquet` say so.
 
 ### Spec fields and defaults
 
@@ -115,7 +169,7 @@ Settings not given take the app's defaults, which live in one place
 | `sample.unit` | `hh` (`ind`, `firm`) |
 | `sample.countries` | `BFA` when available, otherwise the first economy; at most two |
 | `sample.years.<code>` | every available survey year |
-| `outcome.name` | the first available outcome (`welfare`) |
+| `outcome.name` | the first available outcome (`welfare`), resolved from the survey columns when the grid is read |
 | `outcome.currency` | `PPP` (`LCU`) |
 | `outcome.poverty_line` | 3.00 for PPP; for LCU the app default. Used by the `poor` outcome only. |
 | `weather.<var>.ref_period` | `[1, 1]` (months before the interview, 0 to 12) |
@@ -127,6 +181,11 @@ Settings not given take the app's defaults, which live in one place
 | `weather.hist_years` | `[1991, 2020]` |
 | `stats.indicators` | `poor300`, `poor420`, `poor830`, `ttime_health_gt15/30/45/60` |
 | `stats.location_samples` | `true` |
+| `model` | none (no model); `{}` is the app default model |
+| `model.type` | `linear` (`logistic` for a binary outcome) |
+| `model.fixed_effects` | `year`, `gaul1_code` where valid |
+| `model.covariates.method` | `user` with no covariates |
+| `model.covariates.lasso.*` | alpha 1, `lambda.1se`, 10 folds, standardize, no MICE, 5 imputations, 5 iterations, stability threshold 0.5 |
 
 Values are case-insensitive for choices (`form: continuous`). In R,
 `wiseapp::wise_spec(...)` builds and validates one spec, and
@@ -140,10 +199,14 @@ Each spec hashes into stage ids that decide what is shared:
 |---|---|---|
 | `data_id` | source, sample, outcome, statistics options | `variable_stats`, `interview_dates` |
 | `wxvar_id` | the data id, one weather variable's settings, the historical years | `weather_stats` |
+| `weather_id` | the data id and the whole weather section (binning included; the seed only for K-means bins) | the survey-weather frame (not published) |
+| `fit_id` | the data id, the weather section, the model section and the seed | `model_terms`, `model_fit`, `model_vcov` |
 | `run_id` | the whole spec, including the seed | `runs` |
 
 Two runs with the same sample load the survey once; two runs that use the
-same weather variable settings compute its statistics once.
+same weather variable settings compute its statistics once; runs that differ
+only in the model share the weather frame and fit separately. Because the
+statistics options are part of `data_id`, changing them reruns the fits too.
 
 ## Output
 
@@ -162,11 +225,12 @@ Tables join to `runs` on their stage id.
 | Step | Tables | Status |
 |---|---|---|
 | Survey and weather data | `variable_stats`, `interview_dates`, `weather_stats` | available |
-| Model | `model_terms`, `model_fit`, `model_vcov` | planned |
+| Model | `model_terms`, `model_fit`, `model_vcov` | available |
 | Simulation and policy | `annual`, `summary`, `sim_weather`, `decomposition`, `policy_measures` | planned |
 
-Column definitions of the available tables: `batch/docs/phase1_tables.md`.
-The plan for the others is `batch/docs/tables.md`.
+Column definitions of the available tables: `batch/docs/phase1_tables.md`
+(data) and `batch/docs/phase2_tables.md` (model). The plan for the others is
+`batch/docs/tables.md`.
 
 A stage that fails (a missing survey file, an outcome the surveys do not
 have) does not stop the others: it is listed in `failures.parquet` with the
@@ -182,9 +246,10 @@ reference marks them.
 Each run uses the spec's `seed` (default 123, as in a new app session). The
 seed controls all randomness of a run: model fits, lasso selection, K-means
 bins, simulation draws, display residual draws and policy draws. The Phase 1
-tables use no random numbers, so the seed only labels them. A `seed` axis
-in the grid gives a robustness check across seeds once the model and
-simulation tables exist.
+tables use no random numbers, so the seed only labels them; the Lasso (fold
+assignment and imputation) and K-means bins use it, so it matters for the
+model tables of those specs. A `seed` axis in the grid gives a robustness check
+across seeds.
 
 ## Parallel runs and resources
 
@@ -196,9 +261,10 @@ them. The weather disk cache (`WISEAPP_WEATHER_CACHE_DIR`) is shared.
 
 ## Checking against the app
 
-`dev/batch_parity_bfa.R` runs one BFA spec through the pipeline and through
-the app's module servers on the same selections and compares the tables. It
-needs the real data and is run per release.
+`dev/batch_parity_bfa.R` (data tables) and `dev/batch_parity_bfa_models.R`
+(model tables) run one BFA spec through the pipeline and through the app's
+module servers on the same selections and compare the tables. They need the
+real data and are run per release.
 
 ## Status
 
@@ -206,7 +272,7 @@ needs the real data and is run per release.
 |---|---|---|
 | 0 | Plan, input inventory, table catalogue | done |
 | 1 | Spec, runner, survey and weather tables | done |
-| 2 | Model tables | planned |
+| 2 | Model tables | done |
 | 3 | Simulation tables | planned |
 | 4 | Policy tables | planned |
 | 5 | Figures from tables, reproducibility package template | planned |

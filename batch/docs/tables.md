@@ -130,6 +130,30 @@ Check in Phase 2: whether the app draws effect curves for the ranger and
 xgboost engines. If it does (partial dependence, for example), those curves
 cannot come from coefficients, and their curve points go into `model_fit`.
 
+Phase 2 schema (implemented 2026-10-19; reference in
+`batch/docs/phase2_tables.md`) - differences from the draft above:
+- Engines: fixest (linear, logistic) and RIF. Ranger and xgboost, and with
+  them the curve-point question, wait for a later phase. Interactions and
+  policy-relevant variables are not in the spec yet.
+- `model_terms` has `is_weather`, `n_obs` and `translation` columns besides
+  the planned ones; `importance_share` is for specification 3 (the median
+  quantile for RIF). RIF rows cover every quantile and all three
+  specifications.
+- `model_fit` holds the sections `fit`, `sample`, `spec`, `effect_inputs`
+  (model-sample range, mean and SD of continuous weather variables, and
+  `profile_eta` for binary outcomes) and `headline` (the cards as text).
+  Fit statistics are raw numbers (`nobs`, `r2`, `ar2`, `wr2`; `pr2`, `aic`).
+  There are no moderator values yet (no interactions).
+- `model_vcov` stores the full matrix (both triangles) in long form, one block
+  per quantile for RIF, under the fit's own variance estimator.
+- `weather_effect_data()` is not extracted: it sits inside the 1,200-line
+  `echart_weather_effect_plot()` and is a chart refactor, not model glue. The
+  stored inputs are the ones that function reads. See the plan's Phase 2 note.
+- Ids: `weather_id` (data + the whole weather section, binning included; the
+  seed only for K-means) was added for the shared survey-weather frame.
+  `outcome.name` and the default model type are resolved at grid time (from
+  the survey columns), so `data_id` and `fit_id` encode them.
+
 ### 3.3 Steps 2 and 3 - outcomes (Phases 3-4)
 
 One set of tables serves both steps. The baseline arm has `policy_id = NA`.

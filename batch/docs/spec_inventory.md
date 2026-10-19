@@ -84,9 +84,8 @@ Glue extracted in Phase 1 (module -> core, `R/fct_step1_data.R`):
 | Weather fetch, survey merge and the historical comparison cells | `wise_weather_fetch()`, `merge_survey_weather()`, `wise_weather_companions()` (batch: `wise_load_weather()`) | `mod_1_05` |
 | Defaults of the controls | `wise_spec_defaults()`, `wise_default_*()`, `wise_weather_var_defaults()` (`R/fct_spec_defaults.R`) | `mod_1_01` to `mod_1_05` |
 
-Not extracted: the H3 map data and the location panel join of
-`mod_1_02` (maps, and the clustered-model location id, which Phase 2 needs);
-the Weather stats tab's reload of the historical comparison when its year
+Not extracted: the H3 map data of `mod_1_02` (maps; the location panel join
+moved out in Phase 2, see section 3); the Weather stats tab's reload of the historical comparison when its year
 range changes (screen-only state).
 
 The table closures of `batch/docs/tables.md` section 3.1 are built by
@@ -95,20 +94,36 @@ The table closures of `batch/docs/tables.md` section 3.1 are built by
 
 ## 3. Step 1 - model (Phase 2)
 
-| Module | Input ids | Kind | Spec field |
-|---|---|---|---|
-| `mod_1_06_model` | `model_type` | Spec | `model.type` (selects the engine via `ENGINE_REGISTRY`) |
-| `mod_1_06_model` | `fixedeffects` | Spec | `model.fixed_effects` |
-| `mod_1_06_model` | `interactions` | Spec | `model.interactions` |
-| `mod_1_06_model` | `covariates` (method), `indcov`, `hhcov`, `areacov`, `firmcov` | Spec | `model.covariates.method`, `model.covariates.vars.<level>` |
-| `mod_1_06_model` | `selected_policies` | Spec | `model.policy_vars` (policy-relevant variables kept in the model so Step 3 levers apply) |
-| `mod_1_06_model` | `lasso_alpha`, `lasso_nfolds`, `lasso_standardize`, `lasso_interactions`, `stability_threshold`, `use_mice`, `mi_m`, `mi_maxit`, `force_in_<level>`, `force_out_<level>` | Spec | `model.lasso.*` |
-| `mod_1_07_results` | `rif_tau` | Display | `tau` dimension of Step 1 tables |
-| `mod_1_06_model` | `run_model` | UI | - |
+| Module | Input ids | Kind | Spec field | App default |
+|---|---|---|---|---|
+| `mod_1_06_model` | `model_type` | Spec | `model.type` (`linear`, `logistic`, `rif`; the engine follows from the type) | first of `model_type_choices()` for the outcome type |
+| `mod_1_06_model` | `fixedeffects` | Spec | `model.fixed_effects` | `year`, `gaul1_code` where valid fixed-effect variables |
+| `mod_1_06_model` | `interactions` | Spec | not in the spec yet (policy phase) | `urban` where available; batch uses none, an import warns |
+| `mod_1_06_model` | `covariates` (method), `indcov`, `hhcov`, `areacov`, `firmcov` | Spec | `model.covariates.method` (`user`, `lasso`), `model.covariates.vars` (flat; the level of each follows from the variable list) | user-defined, none |
+| `mod_1_06_model` | `selected_policies` | Spec | not in the spec yet (policy phase) | none |
+| `mod_1_06_model` | `lasso_alpha`, `lasso_interactions` (the lambda rule), `lasso_nfolds`, `lasso_standardize`, `use_mice`, `mi_m`, `mi_maxit`, `stability_threshold` | Spec | `model.covariates.lasso.{alpha, lambda, nfolds, standardize, use_mice, mi_m, mi_maxit, stability_threshold}` | `wise_default_lasso()` |
+| `mod_1_06_model` | `force_in_<level>`, `force_out_<level>` | Spec | `model.covariates.lasso.{force_in, force_out}` (flat) | none |
+| `mod_1_07_results` | `rif_tau` | Display | `tau` dimension of Step 1 tables | - |
+| `mod_1_06_model` | `run_model` | UI | - | - |
 
-Glue: the covariate and FE assembly before `fit_model()` (`mod_1_07_results.R`
-around line 185) and before `run_lasso_selection()` (`mod_1_06_model.R`
-around line 842). RIF taus come from the model type.
+Notes (Phase 2): RIF taus come from the model type (0.1 to 0.9, no control).
+A run spec without a `model` section fits nothing. Defaults live in
+`wise_default_model()`, `wise_default_lasso()`, `wise_default_fixed_effects()`
+and `wise_default_model_type()` (`R/fct_spec_defaults.R`); the Model tab reads
+the Lasso and fixed-effect defaults from them.
+
+Glue extracted in Phase 2 (module -> core):
+
+| Glue | Core function | Module |
+|---|---|---|
+| H3 files, location panel (`loc_id_panel`) and its join | `wise_h3_fnames()`, `wise_location_panel()`, `wise_join_location_panel()` (batch: `wise_load_location_panel()`) in `R/fct_step1_data.R` | `mod_1_02` |
+| Valid variables, Lasso settings and run, covariates from a selection, cluster variable, model specification | `wise_valid_vars()`, `wise_lasso_settings()`, `wise_lasso_candidates()`, `wise_lasso_selection()`, `wise_lasso_covariates()`, `wise_cluster_var()`, `wise_selected_model()` in `R/fct_step1_model.R` (batch: `wise_model_from_spec()`) | `mod_1_06` |
+| Bin relabel, outcome scale, `fit_model()`, fit snapshot | `wise_fit()` | `mod_1_07` |
+| Effect scenarios, headline cards, focused estimates | `step1_translations()`, `step1_focused_df()` in `R/fct_step1_model_tables.R` | `mod_1_07` |
+| Fit statistics, importance shares | `fit_stats_raw()` (behind `calc_fit_stats()`), `importance_shares()` (behind `echart_importance()`) in `R/fct_results.R` | `mod_1_08` |
+
+The tables are built by `model_terms_table()`, `model_fit_table()` and
+`model_vcov_table()`.
 
 ## 4. Step 2 - simulation (Phase 3)
 

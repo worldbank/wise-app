@@ -1,6 +1,6 @@
 # Batch pipeline rebuild - plan
 
-Status: Phase 1 implemented (2026-10-19); Phases 2 to 5 planned.
+Status: Phases 1 and 2 implemented (2026-10-19); Phases 3 to 5 planned.
 Supersedes: `docs/batch_pipeline.md` (legacy) and the scripts in `batch/`.
 
 ## 1. Goal
@@ -396,6 +396,47 @@ Progress (2026-10-19): done as planned, with these differences.
 - Core `wise_fit()`; table builders for coefficients, fit stats, headline and
   results tables (mod_1_07, mod_1_08), lasso selection.
 - Refactor `mod_1_06`-`mod_1_08`; parity tests.
+
+Progress (2026-10-19): Phase 2 implemented with the scope below.
+- Decisions (taken before the work): `outcome.name` and the default model type
+  resolve at grid time from the survey columns, so `data_id` and `fit_id`
+  encode them; a two-economy model is one pooled fit labelled `A+B` (sorted
+  codes); fixest (linear, logistic) and RIF only; interactions and
+  `model.policy_vars` wait for Phase 4; one crew controller until Step 2;
+  real-data check against the module servers, not the Export download.
+- Shared core: `R/fct_step1_model.R` (Lasso, specification, `wise_fit()`,
+  `wise_model_from_spec()` for batch), `R/fct_step1_model_tables.R`
+  (translated effects and the three table builders), the location panel in
+  `R/fct_step1_data.R`. `calc_fit_stats()` and `echart_importance()` split into
+  raw data (`fit_stats_raw()`, `importance_shares()`) plus display.
+  `mod_1_02`, `mod_1_06` and `mod_1_07` call them; the rendered module output
+  (UI strings, coefficients, Lasso selection) is identical before and after.
+- Spec: a `model` section (absent = no fit), grid profile groups `model`,
+  `fixed_effects` and `covariates`, config import of the Model tab inputs,
+  `weather_id` and `fit_id`. Covariates are a flat list (the level follows from
+  the variable list); a user list and fixed effects are sorted for hashing.
+- Runner: stages `frame` (merged survey-weather frame per `weather_id`) and
+  `fit` (per `fit_id`), tables `model_terms`, `model_fit`, `model_vcov`;
+  the data stage joins the location panel. A grid without a model gets one
+  inert item per stage (a target cannot branch over an empty one). The fit
+  objects themselves are not kept: Phase 3 decides whether to persist them or
+  refit.
+- Tests: `test-fct_step1_model.R` (core, tables, module parity),
+  spec section tests, pipeline tests (tables, reuse, failure record, Lasso).
+  Real data: `dev/batch_parity_bfa_models.R` (BFA, linear fixest with a user
+  covariate list and with Lasso covariates) passes against the module servers:
+  Lasso case bit-identical, user list equal to 1e-16 (term order).
+- Not done: `weather_effect_data()` (the data step of
+  `echart_weather_effect_plot()`) is not split out - it is a chart refactor of
+  a 1,200-line function in a protected-looking area, and the stored inputs are
+  the ones it reads. Ranger and xgboost engines. The headless-app Export
+  bundle comparison (module servers register the same tables).
+- Open for Phase 3 and 4: (1) persist or refit the fit for Step 2; (2)
+  interactions and `policy_vars` (moderator values go to `model_fit`
+  `effect_inputs`); (3) `weather_effect_data()` split; (4) the statistics
+  options are part of `data_id`, so editing them reruns fits (tables.md
+  section 2 defines it so; a `frame_id` without them would avoid it); (5)
+  per-stage crew controllers for Step 2; (6) the Export-bundle check.
 
 ### Phase 3 - Step 2 simulation
 
