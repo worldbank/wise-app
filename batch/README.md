@@ -335,6 +335,6 @@ real data and are run per release.
 | 0 | Plan, input inventory, table catalogue | done |
 | 1 | Spec, runner, survey and weather tables | done |
 | 2 | Model tables | done |
-| 3 | Simulation tables | planned |
+| 3 | Simulation tables | done |
 | 4 | Policy tables | planned |
 | 5 | Figures from tables, reproducibility package template | planned |
