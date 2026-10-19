@@ -43,9 +43,20 @@ jobs:
           extra-packages: any::shinytest2 any::jsonlite any::pkgload
           needs: check
 
-      # chromote finds the Chrome that ships with the runner image.
+      # The ubuntu-24.04 runner image has no Chrome binary on PATH, so chromote
+      # timed out waiting for the debugging port. Install a stable Chrome and
+      # pass its path to chromote (CHROMOTE_CHROME).
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-dependencies: true
+
       - name: Smoke test
         shell: bash
+        env:
+          CHROMOTE_CHROME: ${{ steps.chrome.outputs.chrome-path }}
         run: Rscript tests/e2e/smoke.R
 
       - name: Upload axe results
