@@ -3,7 +3,10 @@
 Status: Phase 0, 2026-10-19. Decisions D1-D4 taken; second consolidation
 round (11 result tables) proposed. Part of `review/batch_pipeline_plan.md`.
 Column lists are indicative; each phase fixes the exact schema from the core
-table builder it extracts.
+table builder it extracts. The schema of the Phase 1 tables (`variable_stats`,
+`interview_dates`, `weather_stats`) is fixed and documented column by column
+in `batch/docs/phase1_tables.md`; where it differs from section 3.1 the
+reference wins (summary in "Phase 1 schema" below).
 
 ## 1. Scope rules (decided)
 
@@ -73,6 +76,24 @@ are columns, which replaces the `surveys` table.
 `weather_stats` columns: `n`, `pct_missing`, `n_unique`, `n_unique_per_loc`,
 `mean`, `sd`, `min`, `max`, `p10` ... `p90`.
 
+Phase 1 schema (implemented 2026-10-19) - differences from the draft above:
+- `wave` is the survey year as text; `All` pools the waves of a country, and
+  with two countries an extra scope has `code` = `A+B`. Surveys of one country
+  and year are merged, as in the app tables; `survname` lists their names.
+- `variable_stats` has one row per variable group a variable belongs to
+  (`var_group`: `outcome`, `policy`, `hh`, `ind`, `area`, `firm`,
+  `indicator`), and adds `n_rows` and `n_missing` to the listed columns.
+- A location is a country and `loc_id`, shared by all waves; `within_loc`
+  deviates from the location mean over all waves.
+- `interview_dates` columns: `month`, `n`, and on the total row `n_dates`,
+  `first_date`, `last_date`, `avg_dates_per_loc`.
+- `weather_stats` adds `unweighted_mean`. Historical rows weight each
+  location-month cell by its household count; their `n` counts cells and
+  `pct_missing` is missing. `wxvar_id` hashes the reference period, temporal
+  aggregation and transformation (not the binning), so profiles that bin a
+  variable differently share its statistics.
+- Variables with no valid value in a scope keep their row (`n = 0`).
+
 Dropped from the first draft:
 - `surveys`: redundant; identifiers are columns of `variable_stats`.
 - `weather_distribution` and the binned distribution table: bin counts are
@@ -128,7 +149,7 @@ each policy adds only its own rows.
 
 | Table | Contents |
 |---|---|
-| `runs` | One row per leaf run: all stage ids, profile labels, the flattened spec (weather specification, policy lever settings). |
+| `runs` | One row per leaf run: all stage ids, profile labels (columns `axis_<axis name>`), the flattened spec (weather specification, policy lever settings) and the spec as JSON. |
 | `specs/<run_id>.json` | Full normalised spec per run. |
 | `provenance` | `wise_provenance()` record per stage id (data source digest, model signature, bin edges, timings). |
 | `failures` | Stage, stage id, affected run ids, error class, message. |

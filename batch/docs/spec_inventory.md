@@ -1,6 +1,7 @@
 # Batch run spec - input inventory (Phase 0)
 
-Status: Phase 0 draft, 2026-10-19. Part of `review/batch_pipeline_plan.md`.
+Status: Phase 0 draft, 2026-10-19; sections 1 and 2 updated for Phase 1
+(implemented, 2026-10-19). Part of `review/batch_pipeline_plan.md`.
 Maps every user-facing app input to a run-spec field, the boundary argument
 it feeds, and where the glue lives today. Defaults are filled in for the
 Phase 1 sections. Later phases fill in theirs when that glue is extracted.
@@ -18,7 +19,9 @@ Legend for "Kind":
 | connection type, `s3_*`, `gcs_*`, `azure_*`, `hf_*` | Spec | `source.type`, `source.location` | Credentials never enter the spec; they come from the environment variables listed in AGENTS.md. The local path is `WISEAPP_DATA_PATH`. Batch v1 targets `local`. |
 
 Glue: `build_connection_params` family (`fct_connection.R`) and metadata
-loading (`load_overview_metadata()`), already Shiny-free.
+loading (`load_overview_metadata()`), already Shiny-free. In batch the spec
+holds only `source.type`; `wise_batch_connection()` builds the connection from
+the environment.
 
 ## 2. Step 1 - sample, outcome and weather (Phase 1)
 
@@ -32,7 +35,7 @@ loading (`load_overview_metadata()`), already Shiny-free.
 | `mod_1_03_outcome` | `currency` | Spec | `outcome.currency` | `"PPP"` | `build_selected_outcome()`, LCU/PPP conversion |
 | `mod_1_03_outcome` | `poverty_line` | Spec | `outcome.poverty_line` | 3.00 for PPP; `default_lcu_poverty_line()` for LCU. Shown only for outcome `poor`. | `build_selected_outcome()` |
 | `mod_1_03_outcome` | `summary_wave`, `cov_view`, `cov_wave`, `outcome_stats_btn` | Display / UI | - | - | The summary wave is a dimension of `outcome_summary`. |
-| `mod_1_04_weather` | `weather_variable_selector` | Spec | `weather.variables` (names; at most 2) | first weather variable | `build_selected_weather()` |
+| `mod_1_04_weather` | `weather_variable_selector` | Spec | the names of the `weather.<var>` entries (at most 2) | first weather variable | `build_selected_weather()` |
 | `mod_1_04_weather` | `<var>_relativePeriod` | Spec | `weather.<var>.ref_period` | `c(1, 1)` | `build_weather_spec()` |
 | `mod_1_04_weather` | `<var>_temporalAgg` | Spec | `weather.<var>.temporal_agg` | `temporal_agg_default(units)`: Sum for mm/days, else Mean | same |
 | `mod_1_04_weather` | `<var>_varConstruction` | Spec | `weather.<var>.transformation` | `transformation_default(units)` | same |
@@ -44,6 +47,23 @@ loading (`load_overview_metadata()`), already Shiny-free.
 | `mod_1_04_weather` | `hist_years` | Spec | `weather.hist_years` | `c(1991, 2020)` | historical comparison in mod_1_05 and the bin breaks |
 | `mod_1_05_weatherstats` | `weather_stats` (button), `wxmap_*` | UI | - | - | maps excluded |
 
+Implementation notes (Phase 1):
+- `weather.<var>` entries sit directly in the `weather` section, next to
+  `weather.hist_years`; the variables are the names in the section (at most
+  two). `form` accepts `Binned` or `Continuous` in any case.
+- A field set to `NULL` follows a data-dependent rule: the default economy,
+  every available year, the first outcome, the first weather variable, and
+  the unit-dependent aggregation and transformation. The first two and the
+  weather rules are resolved when the grid is read (`wise_spec_resolve()`);
+  the default outcome and the LCU poverty line need the loaded survey and
+  stay as given in the spec.
+- Fields that do not apply are dropped when a spec is built (`n_bins`,
+  `binning_method` and `custom_breaks` for a continuous variable,
+  `polynomial` for a binned one), so equal specs hash equal.
+- `wxvar_id` hashes the reference period, temporal aggregation and
+  transformation only, because the weather statistics describe the values
+  before binning.
+
 Batch-only statistics options (no app input; see `batch/docs/tables.md`
 section 5):
 
@@ -52,16 +72,26 @@ section 5):
 | `stats.indicators` | `poor300`, `poor420`, `poor830` (welfare below 3.00, 4.20, 8.30); `ttime_health_gt15/30/45/60` | binary indicator rows in `variable_stats` |
 | `stats.location_samples` | `true` | `with_loc`, `without_loc` and `within_loc` rows in `variable_stats` and `weather_stats` |
 
-Glue to extract in Phase 1 (module -> core):
-- Survey load and preparation: `load_data()`, `add_time_columns()`,
-  `assign_data_level()`, `convert_lcu_to_ppp()`, `bottom_code_welfare()` as
-  chained in the `survey_data` reactive (`mod_1_02_surveystats.R` around line
-  279 and `mod_1_modelling.R`).
-- Outcome data (`outcome_data()` in `mod_1_03`), then `outcome_summary_wide()`.
-- Weather load and merge: `get_weather()` + `merge_survey_weather()` and the
-  historical comparison (`expand_hist_dates()`, `join_hist_sample_cells()`)
-  in `mod_1_05_weatherstats.R` lines 215-310; stored bin breaks.
-- Table closures listed in `batch/docs/tables.md` section 3.1.
+Glue extracted in Phase 1 (module -> core, `R/fct_step1_data.R`):
+
+| Glue | Core function | Module |
+|---|---|---|
+| Surveys available for a unit | `wise_available_surveys()` (batch: `wise_select_surveys()`) | `mod_1_01` |
+| Survey load and preparation (`add_time_columns()`, `assign_data_level()`, `convert_lcu_to_ppp()`, `bottom_code_welfare()`, `apply_policy_derivations()`) | `load_survey_frame()`, `prepare_survey_data()`, `survey_n_no_deflator()` | `mod_1_02` |
+| Variables behind the survey summary tables | `wise_stats_vars()`, `wise_policy_vars()` | `mod_1_02` |
+| Outcome data with the synthetic `poor` | `wise_outcome_data()` (batch: `wise_selected_outcome()`) | `mod_1_03` |
+| Selected weather from the inputs | `build_selected_weather()` (batch: `wise_selected_weather()`) | `mod_1_04` |
+| Weather fetch, survey merge and the historical comparison cells | `wise_weather_fetch()`, `merge_survey_weather()`, `wise_weather_companions()` (batch: `wise_load_weather()`) | `mod_1_05` |
+| Defaults of the controls | `wise_spec_defaults()`, `wise_default_*()`, `wise_weather_var_defaults()` (`R/fct_spec_defaults.R`) | `mod_1_01` to `mod_1_05` |
+
+Not extracted: the H3 map data and the location panel join of
+`mod_1_02` (maps, and the clustered-model location id, which Phase 2 needs);
+the Weather stats tab's reload of the historical comparison when its year
+range changes (screen-only state).
+
+The table closures of `batch/docs/tables.md` section 3.1 are built by
+`variable_stats_table()`, `interview_dates_table()` and
+`weather_stats_table()` (`R/fct_step1_tables.R`).
 
 ## 3. Step 1 - model (Phase 2)
 

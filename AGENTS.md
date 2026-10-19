@@ -95,6 +95,8 @@ src/welfare_stats.cpp          # Rcpp kernel: all aggregation statistics in one 
 - `fct_step2_compute.R` – pure, serial Step 2 compute boundary (reference numerics remain in `fct_run_simulation()`)
 - `fct_export.R` / `fct_provenance.R` – export bundles (config, tables, figures, metadata) and the immutable run-provenance record
 - `fct_step2_async.R` – process-wide mirai async coordinator for Step 2 (FIFO queue, worker snapshots, secrets scrubbing) and the shared daemon pool for Overview metadata loads (credentials policy: see `review/optimization_guidelines.md` §0)
+- `fct_step1_data.R` / `fct_spec_defaults.R` / `fct_step1_tables.R` – **batch pipeline, Step 0/1 side**: the Shiny-free glue that `mod_1_01`-`mod_1_05` and batch both call (survey load and preparation, outcome data, weather fetch and merge), the app defaults the controls start from (`wise_spec_defaults()`), and the `variable_stats`, `interview_dates` and `weather_stats` table builders
+- `fct_batch_spec.R` / `fct_batch_targets.R` – batch run spec (defaults, validation, stage ids, YAML grid, app-config import) and the `targets` runner (`wise_targets()`); project template in `inst/batch/`. User guide `batch/README.md`, design `review/batch_pipeline_plan.md`. `targets`, `crew` and `yaml` are Suggests.
 
 ### Modeling Engine Registry
 
@@ -201,4 +203,5 @@ Tests are in `tests/testthat/` (122 files, named after the `fct_`/`mod_` file or
 - **Fixtures:** a builder moves into a `helper-*.R` file only when two or more test files use it.
 - **Coverage:** use `covr::package_coverage(type = "none", code = ...)` with `testthat::test_dir("tests/testthat", load_package = "installed", package = "wiseapp", ...)`, excluding the files that start real mirai workers or headless Chrome (`step2-async*`, `fct-overview-metadata`, `export-bundle`, `mod-0-overview`); their trace files corrupt covr. Code run inside workers is not counted.
 - **Browser smoke:** `tests/e2e/smoke.R` boots the app with `shinytest2`, checks one `conditionalPanel` and runs axe-core on the Overview and Step 2 screens (`Rscript tests/e2e/smoke.R` from the repo root; needs Chrome). It is not part of `devtools::test()` or R CMD check; the non-blocking CI job is `.github/workflows/e2e-smoke.yaml`. `WISEAPP_AXE_FAIL=1` fails it on serious or critical violations.
+- **Batch tests:** `test-fct_batch_spec.R`, `test-fct_step1_tables.R` and `test-batch-pipeline.R` (a `targets` run on a fixture data folder from `helper-batch-fixture.R`; skipped without `targets`, `arrow` or `yaml`, or the DuckDB `h3` extension). `dev/batch_parity_bfa.R` compares the batch tables with the module servers on real data (per release, not in CI).
 - **Not covered by R tests:** MapLibre rendering, `conditionalPanel` visibility, `update*Input()` on config import, and the real Step 0 to 3 flow (they need a browser).

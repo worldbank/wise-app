@@ -1,6 +1,6 @@
 # Batch pipeline rebuild - plan
 
-Status: planning (2026-10-19). No app code changed yet.
+Status: Phase 1 implemented (2026-10-19); Phases 2 to 5 planned.
 Supersedes: `docs/batch_pipeline.md` (legacy) and the scripts in `batch/`.
 
 ## 1. Goal
@@ -346,6 +346,48 @@ to `batch/docs/` as the lasting batch references; this plan stays in
 - `wise_targets()` factory + `inst/batch/` template; results store, runs
   catalogue, manifest, failures table.
 - Parity tests for the above; template smoke test on the test fixture.
+
+Progress (2026-10-19): done as planned, with these differences.
+- Shared core: `R/fct_step1_data.R` (survey load and preparation, outcome
+  data, weather fetch, merge and historical cells) with the control defaults
+  in `R/fct_spec_defaults.R`. `mod_1_01` to `mod_1_05` call them. The weather
+  controls render byte-identical HTML before and after. The H3 map data and
+  location panel join of `mod_1_02` stay in the module (Phase 2 moves the
+  panel join when the model needs `loc_id_panel`).
+- Tables: `variable_stats`, `interview_dates`, `weather_stats`
+  (`R/fct_step1_tables.R`; reference in `batch/docs/phase1_tables.md`). The
+  `weather_stats` builder calls the app's `build_weather_stats_table()`
+  (survey rows). Schema deviations from the draft are listed in
+  `batch/docs/tables.md`. Decisions made while building: a location is
+  country + `loc_id` across waves (the panel locations repeat across waves in
+  the real data); deciles use `outcome_summary_wide()`'s rule everywhere;
+  `wxvar_id` excludes binning; rows with `n = 0` are kept.
+- Spec: `R/fct_batch_spec.R` (`wise_spec`, `wise_spec_validate`,
+  `wise_spec_resolve`, `wise_spec_ids`, `wise_spec_expand`,
+  `wise_spec_from_config`, JSON read and write). Sections `source`,
+  `sample`, `outcome`, `weather`, `stats`; later sections are rejected by
+  name. Defaults are resolved when the grid is read; `outcome.name` follows
+  its rule once the survey is loaded.
+- Runner: `R/fct_batch_targets.R` (`wise_targets()`) and `inst/batch/`
+  (`wise_batch_template()`). Branches per `data_id` and `wxvar_id`; the
+  prepared survey is passed between stages as a file in the targets store
+  (`_targets/user/data/`). Branch functions catch their errors and return a
+  failure record, so `error = "continue"` is not needed for the branches.
+  `targets`, `crew` and `yaml` are in Suggests.
+- Tests: spec (`test-fct_batch_spec.R`), tables with module parity
+  (`test-fct_step1_tables.R`), end-to-end pipeline on a fixture data folder
+  (`test-batch-pipeline.R`). Real data: `dev/batch_parity_bfa.R` (BFA, two
+  waves, weather `t` binned and `r` continuous) passes against the module
+  servers' tables; it does not use the Export download.
+- Open for Phase 2: (1) the data stage must load the H3 files and join the
+  location panel (`loc_id_panel`) for clustered inference, which moves that
+  block out of `mod_1_02`; (2) `outcome.name` follows its default rule after
+  the survey is loaded, so `data_id` does not encode the resolved outcome;
+  resolve it at grid time if fit ids need it; (3) the real-data check drives
+  the module servers, not the Export download, so the per-release check
+  against a headless-app export bundle is still to do; (4) per-stage worker
+  controllers for the memory-heavy stages; (5) the pool rule for a
+  two-country model (the Phase 1 tables label it `A+B`).
 
 ### Phase 2 - Step 1 model fits
 
