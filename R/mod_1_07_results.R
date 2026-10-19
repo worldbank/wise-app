@@ -168,31 +168,19 @@ mod_1_07_results_server <- function(id,
         )
         on.exit(shiny::removeNotification(nid), add = TRUE)
 
-        df_raw <- as.data.frame(survey_weather())
-        # Bin-edge labels: cut() levels carry the +/-Inf sentinel edges used
-        # for bucketing; substitute the observed outer breaks stored at weather
-        # load so every downstream label reads "(36.3, 40.1]", not
-        # "(36.3, Inf]". Applied to the fitted frame AND the snapshot, so
-        # cards, figures and tables all show observed ranges.
-        svw <- relabel_bin_levels(
-          df_raw,
-          tryCatch(if (is.function(stored_breaks)) stored_breaks() else stored_breaks,
-            error = function(e) NULL
-          )
-        )
-        df <- prepare_outcome_df(svw, selected_outcome())
-
-        fit_args <- list(
-          df               = df,
-          selected_outcome = selected_outcome(),
-          selected_weather = selected_weather(),
-          selected_model   = selected_model()
-        )
-        if ("seed" %in% names(formals(fit_model))) {
-          fit_args$seed <- wise_current_seed()
-        }
         fit_list <- tryCatch(
-          do.call(fit_model, fit_args),
+          wise_fit(
+            survey_weather   = survey_weather(),
+            stored_breaks    = tryCatch(
+              if (is.function(stored_breaks)) stored_breaks() else stored_breaks,
+              error = function(e) NULL
+            ),
+            selected_outcome = selected_outcome(),
+            selected_weather = selected_weather(),
+            selected_model   = selected_model(),
+            variable_list    = if (is.function(variable_list)) variable_list() else variable_list,
+            seed             = wise_current_seed()
+          ),
           error = function(e) {
             shiny::showNotification(wise_user_error(e, "Model fit"),
               type = "error", duration = 10
@@ -202,16 +190,9 @@ mod_1_07_results_server <- function(id,
         )
 
         if (!is.null(fit_list)) {
-          # INT-05: snapshot every label/setting the renderers need at fit time.
-          # Result renderers must describe the fitted run, not whatever is
-          # selected when they re-render.
-          fit_list$.snap <- list(
-            outcome        = selected_outcome(),
-            weather        = selected_weather(),
-            survey_weather = svw,
-            variable_list  = if (is.function(variable_list)) variable_list() else variable_list,
-            model          = selected_model()
-          )
+          # INT-05: `fit_list$.snap` holds every label/setting the renderers
+          # need, taken at fit time. Result renderers must describe the fitted
+          # run, not whatever is selected when they re-render.
           # INT-08: the run signature is stored with the result and compared
           # against live inputs; a mismatch marks the results stale.
           fit_list$.sig <- .fit_sig_from_live()
@@ -312,50 +293,10 @@ mod_1_07_results_server <- function(id,
         # P5: derive translations once for this completed fit. Everything below
         # consumes these fit-time values, so stale live selections cannot trigger
         # recomputation or change the displayed/exported results.
-        scenarios_by_var <- stats::setNames(
-          lapply(mf$weather_terms, function(v) {
-            tryCatch(step1_scenarios(mf, snap, v), error = function(e) NULL)
-          }),
-          mf$weather_terms
-        )
-        rif_scenarios <- if (is_rif) {
-          stats::setNames(
-            lapply(mf$weather_terms, function(v) {
-              tryCatch(.s1_rif_scenarios(mf, snap, v, taus = c(0.1, 0.9)),
-                error = function(e) NULL
-              )
-            }),
-            mf$weather_terms
-          )
-        } else {
-          NULL
-        }
-        rif_heterogeneity <- if (is_rif) {
-          stats::setNames(
-            lapply(mf$weather_terms, function(v) {
-              tryCatch(step1_rif_heterogeneity_p(mf, snap, v),
-                error = function(e) NULL
-              )
-            }),
-            mf$weather_terms
-          )
-        } else {
-          NULL
-        }
-        headline_res <- tryCatch(
-          step1_headline_cards(
-            mf, snap,
-            label_fun = label_fun,
-            scenarios_list = scenarios_by_var,
-            rif_scenarios = rif_scenarios,
-            rif_heterogeneity = rif_heterogeneity
-          ),
-          error = function(e) NULL
-        )
-        headline_tbl <- tryCatch(
-          step1_headline_table(result = headline_res),
-          error = function(e) NULL
-        )
+        translations <- step1_translations(mf, label_fun)
+        scenarios_by_var <- translations$scenarios
+        headline_res <- translations$headline
+        headline_tbl <- translations$headline_table
 
         # Keep a shared effect-size label while retaining the coefficient's
         # native scale in parentheses.
@@ -469,13 +410,6 @@ mod_1_07_results_server <- function(id,
           }
           if (binned) paste0(lab, " bins (", un, ")") else paste0(lab, " (", un, ")")
         }
-
-        sd_named <- stats::setNames(vapply(mf$weather_terms, function(v) {
-          x <- suppressWarnings(as.numeric(mf$train_data[[v]]))
-          x <- x[is.finite(x)]
-          if (length(x) > 10) stats::sd(x) else NA_real_
-        }, numeric(1)), mf$weather_terms)
-        sd_named <- sd_named[is.finite(sd_named)]
 
         rif_taus <- if (is_rif && !is.null(mf$rif_grid) && nrow(mf$rif_grid)) {
           sort(unique(mf$rif_grid$tau))
@@ -814,23 +748,7 @@ mod_1_07_results_server <- function(id,
           if (is.null(mf)) {
             return(NULL)
           }
-          tryCatch(
-            make_regtable_focused_df(
-              fit3 = native_fit(mf$fit3),
-              weather_terms = mf$weather_terms,
-              interaction_terms = mf$interaction_terms,
-              label_fun = label_fun,
-              engine = mf$engine,
-              is_logistic = is_logistic_fit(mf),
-              is_lpm = is_lpm,
-              is_log_outcome = is_log_out,
-              rif_grid = mf$rif_grid,
-              mf = mf,
-              scenarios_list = scenarios_by_var,
-              sd_x = sd_named
-            ),
-            error = function(e) NULL
-          )
+          step1_focused_df(mf, translations, label_fun)
         }
         output$focused_header_ui <- renderUI({
           req(model_fit_val())

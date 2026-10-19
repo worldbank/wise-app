@@ -90,6 +90,30 @@ wise_default_poverty_line <- function(currency = "PPP", df = NULL) {
   }
 }
 
+#' Default fixed effects: year and first-level region, where available
+#' @param fe_names Names of the valid fixed-effect variables.
+#' @noRd
+wise_default_fixed_effects <- function(fe_names) intersect(c("year", "gaul1_code"), fe_names)
+
+#' Default model type for an outcome type
+#'
+#' The first choice the Model tab offers (`model_type_choices()`).
+#'
+#' @param outcome_type `"logical"` for binary outcomes, otherwise numeric.
+#' @noRd
+wise_default_model_type <- function(outcome_type) model_type_choices(outcome_type)$choices[1]
+
+#' Default Lasso settings (the Model tab's advanced controls)
+#' @return A named list: `alpha`, `lambda`, `nfolds`, `standardize`, `use_mice`,
+#'   `mi_m`, `mi_maxit`, `stability_threshold`.
+#' @noRd
+wise_default_lasso <- function() {
+  list(
+    alpha = 1, lambda = "lambda.1se", nfolds = 10L, standardize = TRUE,
+    use_mice = FALSE, mi_m = 5L, mi_maxit = 5L, stability_threshold = 0.5
+  )
+}
+
 #' Default settings of one weather variable in spec form
 #'
 #' Wraps `weather_spec_defaults()` (the unit-dependent defaults) in the spec's

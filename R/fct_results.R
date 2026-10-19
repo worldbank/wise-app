@@ -942,59 +942,93 @@ calc_fit_stats <- function(model, is_logistic, engine = "fixest", taus = NULL) {
     taus <- taus %||% seq(0.1, 0.9, by = 0.1)
     n <- min(length(model), length(taus))
     rows <- lapply(seq_len(n), function(i) {
-      m <- model[[i]]
+      v <- .fit_stat_values(model[[i]], FALSE)
       row_i <- data.frame(
         Quantile = paste0("\u03c4 = ", sprintf("%g", taus[i])),
-        N = tryCatch(fmt_int(stats::nobs(m)), error = function(e) "\u2014"),
-        R2 = tryCatch(fmt_r2(fixest::r2(m, "r2")), error = function(e) "\u2014"),
+        N = fmt_int(v[["nobs"]]),
+        R2 = fmt_r2(v[["r2"]]),
         stringsAsFactors = FALSE
       )
-      row_i[["Within R\u00b2"]] <- tryCatch(fmt_r2(fixest::r2(m, "wr2")),
-        error = function(e) "\u2014"
-      )
+      row_i[["Within R\u00b2"]] <- fmt_r2(v[["wr2"]])
       names(row_i) <- c("Quantile", "N", "R\u00b2", "Within R\u00b2")
       row_i
     })
     return(do.call(rbind, rows))
   }
 
-  nobs_val <- tryCatch(fmt_int(stats::nobs(model)), error = function(e) "\u2014")
-
+  v <- .fit_stat_values(model, is_logistic)
   if (!is_logistic) {
-    r2_val <- tryCatch(fmt_r2(fixest::r2(model, "r2")), error = function(e) "\u2014")
-    ar2_val <- tryCatch(fmt_r2(fixest::r2(model, "ar2")), error = function(e) "\u2014")
-    wr2_val <- tryCatch(fmt_r2(fixest::r2(model, "wr2")), error = function(e) "\u2014")
     data.frame(
       Statistic = c("Observations", "R\u00b2", "Adj. R\u00b2", "Within R\u00b2"),
-      Value = c(nobs_val, r2_val, ar2_val, wr2_val),
+      Value = c(fmt_int(v[["nobs"]]), fmt_r2(v[["r2"]]), fmt_r2(v[["ar2"]]), fmt_r2(v[["wr2"]])),
       stringsAsFactors = FALSE
     )
   } else {
-    aic_val <- tryCatch(fmt_int(stats::AIC(model)), error = function(e) "\u2014")
-    pr2_val <- tryCatch(fmt_r2(fixest::r2(model, "pr2")), error = function(e) {
-      # fixest::r2() only knows fixest models; fall back to McFadden from
-      # the log-likelihoods so stats::glm fits are covered too.
-      ll <- tryCatch(as.numeric(stats::logLik(model)), error = function(e2) NA_real_)
-      ll0 <- tryCatch(
-        {
-          y <- stats::model.response(stats::model.frame(model))
-          p0 <- mean(y)
-          if (p0 <= 0 || p0 >= 1) {
-            NA_real_
-          } else {
-            sum(y * log(p0) + (1 - y) * log(1 - p0))
-          }
-        },
-        error = function(e2) NA_real_
-      )
-      fmt_r2(1 - ll / ll0)
-    })
     data.frame(
       Statistic = c("Observations", "McFadden R\u00b2", "AIC"),
-      Value = c(nobs_val, pr2_val, aic_val),
+      Value = c(fmt_int(v[["nobs"]]), fmt_r2(v[["pr2"]]), fmt_int(v[["aic"]])),
       stringsAsFactors = FALSE
     )
   }
+}
+
+# Raw fit statistics of one model, `NA` where a statistic cannot be computed:
+# observations, R2, adjusted R2 and within R2 (linear); observations,
+# McFadden R2 and AIC (binary).
+.fit_stat_values <- function(model, is_logistic) {
+  num <- function(expr) tryCatch(suppressWarnings(as.numeric(expr)), error = function(e) NA_real_)
+  nobs <- num(stats::nobs(model))
+  if (!is_logistic) {
+    return(c(
+      nobs = nobs,
+      r2 = num(fixest::r2(model, "r2")),
+      ar2 = num(fixest::r2(model, "ar2")),
+      wr2 = num(fixest::r2(model, "wr2"))
+    ))
+  }
+  pr2 <- tryCatch(suppressWarnings(as.numeric(fixest::r2(model, "pr2"))), error = function(e) {
+    # fixest::r2() only knows fixest models; fall back to McFadden from
+    # the log-likelihoods so stats::glm fits are covered too.
+    ll <- tryCatch(as.numeric(stats::logLik(model)), error = function(e2) NA_real_)
+    ll0 <- tryCatch(
+      {
+        y <- stats::model.response(stats::model.frame(model))
+        p0 <- mean(y)
+        if (p0 <= 0 || p0 >= 1) {
+          NA_real_
+        } else {
+          sum(y * log(p0) + (1 - y) * log(1 - p0))
+        }
+      },
+      error = function(e2) NA_real_
+    )
+    1 - ll / ll0
+  })
+  c(nobs = nobs, pr2 = pr2, aic = num(stats::AIC(model)))
+}
+
+#' Raw model fit statistics, one row per statistic
+#'
+#' The values behind `calc_fit_stats()` before formatting: `nobs`, `r2`, `ar2`,
+#' `wr2` (linear and RIF) or `nobs`, `pr2`, `aic` (binary). RIF models give
+#' the statistics of every quantile.
+#'
+#' @inheritParams calc_fit_stats
+#' @return A data frame: `tau` (`NA` unless RIF), `statistic`, `value`.
+#' @noRd
+fit_stats_raw <- function(model, is_logistic, engine = "fixest", taus = NULL) {
+  one <- function(m, tau, logistic) {
+    v <- .fit_stat_values(m, logistic)
+    data.frame(tau = tau, statistic = names(v), value = unname(v), stringsAsFactors = FALSE)
+  }
+  if (identical(engine, "rif") && (inherits(model, "fixest_multi") || is.list(model))) {
+    taus <- taus %||% seq(0.1, 0.9, by = 0.1)
+    n <- min(length(model), length(taus))
+    out <- lapply(seq_len(n), function(i) one(model[[i]], taus[i], FALSE))
+    out <- do.call(rbind, out)
+    return(out[out$statistic %in% c("nobs", "r2", "wr2"), , drop = FALSE])
+  }
+  one(model, NA_real_, is_logistic)
 }
 
 
@@ -2724,6 +2758,47 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
 }
 
 
+#' Share of explained variation by term
+#'
+#' The data behind the importance plot: each term's share (%) of the sum of
+#' squared standardized coefficients, `(|beta| x sd(x))^2`. Fixed effects are
+#' excluded and collinearity is ignored.
+#'
+#' @param model A fitted model object (a single `fixest` model, or the median
+#'   quantile model for RIF fits).
+#' @return A data frame (`term`, `share`), or a message (character) when the
+#'   shares cannot be computed.
+#' @noRd
+importance_shares <- function(model) {
+  mm <- resolve_model_matrix(model)
+  if (is.null(mm)) {
+    return("Model matrix unavailable.")
+  }
+
+  coefs <- stats::coef(model)
+  keep <- names(coefs) != "(Intercept)" & names(coefs) %in% names(mm)
+  beta <- coefs[keep]
+  if (!length(beta)) {
+    return("No estimable terms.")
+  }
+
+  X <- mm[, names(beta), drop = FALSE]
+  sd_x <- apply(X, 2, stats::sd, na.rm = TRUE)
+  sd_x[is.na(sd_x)] <- 0
+
+  imp <- abs(as.numeric(beta)) * as.numeric(sd_x)
+  tot <- sum(imp^2)
+  if (!is.finite(tot) || tot <= 0) {
+    return("No variation to decompose.")
+  }
+
+  data.frame(
+    term = names(beta),
+    share = 100 * imp^2 / tot,
+    stringsAsFactors = FALSE
+  )
+}
+
 #' Echarts importance plot (squared standardized coefficient shares)
 #'
 #' Horizontal bars of each term's share of the sum of squared standardized
@@ -2739,33 +2814,10 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
 #'
 #' @export
 echart_importance <- function(model, label_fun = identity, height = "400px") {
-  mm <- resolve_model_matrix(model)
-  if (is.null(mm)) {
-    return(echart_blank("Model matrix unavailable.", height = height))
+  df <- importance_shares(model)
+  if (is.character(df)) {
+    return(echart_blank(df, height = height))
   }
-
-  coefs <- stats::coef(model)
-  keep <- names(coefs) != "(Intercept)" & names(coefs) %in% names(mm)
-  beta <- coefs[keep]
-  if (!length(beta)) {
-    return(echart_blank("No estimable terms.", height = height))
-  }
-
-  X <- mm[, names(beta), drop = FALSE]
-  sd_x <- apply(X, 2, stats::sd, na.rm = TRUE)
-  sd_x[is.na(sd_x)] <- 0
-
-  imp <- abs(as.numeric(beta)) * as.numeric(sd_x)
-  tot <- sum(imp^2)
-  if (!is.finite(tot) || tot <= 0) {
-    return(echart_blank("No variation to decompose.", height = height))
-  }
-
-  df <- data.frame(
-    term = names(beta),
-    share = 100 * imp^2 / tot,
-    stringsAsFactors = FALSE
-  )
   coef_map <- make_coef_map(df$term, label_fun)
   df$label <- unname(names(coef_map)[match(df$term, unname(coef_map))])
   df$label[is.na(df$label) | !nzchar(df$label)] <-

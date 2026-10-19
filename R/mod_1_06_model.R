@@ -84,11 +84,7 @@ mod_1_06_model_server <- function(id,
 
     valid_vl <- reactive({
       req(survey_weather(), variable_list())
-      filter_valid_vars(survey_weather(), variable_list(),
-        min_complete = 0.9,
-        group_cols = c("code", "year", "survname"),
-        outcome = selected_outcome()$name
-      )
+      wise_valid_vars(survey_weather(), variable_list(), selected_outcome()$name)
     })
 
     # Role-filtered variable lists ----
@@ -357,7 +353,7 @@ mod_1_06_model_server <- function(id,
             label = "Fixed effects",
             choices = setNames(fe$name, fe$label),
             selected = .restore_selection(prev_fe, fe$name,
-              fallback = intersect(c("year", "gaul1_code"), fe$name)
+              fallback = wise_default_fixed_effects(fe$name)
             ),
             multiple = TRUE,
             options = list(placeholder = "Select (several) fixed effects")
@@ -692,6 +688,7 @@ mod_1_06_model_server <- function(id,
       # INT-01: the panel is destroyed/recreated on every toggle; restore the
       # previous settings so closing and reopening does not reset them.
       prev <- function(id) shiny::isolate(input[[id]])
+      dflt <- wise_default_lasso()
 
       tagList(
         sliderInput(
@@ -699,7 +696,7 @@ mod_1_06_model_server <- function(id,
           "Elastic Net Mixing (alpha)",
           min = 0,
           max = 1,
-          value = .restore_numeric(prev("lasso_alpha"), 0, 1, fallback = 1),
+          value = .restore_numeric(prev("lasso_alpha"), 0, 1, fallback = dflt$alpha),
           step = 0.1
         ),
         shiny::selectizeInput(
@@ -708,7 +705,7 @@ mod_1_06_model_server <- function(id,
           choices = c("lambda.1se", "lambda.min"),
           selected = .restore_selection(prev("lasso_interactions"),
             c("lambda.1se", "lambda.min"),
-            fallback = "lambda.1se"
+            fallback = dflt$lambda
           ),
           multiple = FALSE,
           options = list(
@@ -721,7 +718,7 @@ mod_1_06_model_server <- function(id,
           "Cross-validation folds",
           min = 5,
           max = 20,
-          value = .restore_numeric(prev("lasso_nfolds"), 5, 20, fallback = 10),
+          value = .restore_numeric(prev("lasso_nfolds"), 5, 20, fallback = dflt$nfolds),
           step = 1
         ),
         pill_toggle(
@@ -743,7 +740,7 @@ mod_1_06_model_server <- function(id,
           "Number of imputations (m)",
           min = 1,
           max = 20,
-          value = .restore_numeric(prev("mi_m"), 1, 20, fallback = 5),
+          value = .restore_numeric(prev("mi_m"), 1, 20, fallback = dflt$mi_m),
           step = 1
         ),
         sliderInput(
@@ -751,7 +748,7 @@ mod_1_06_model_server <- function(id,
           "Imputation iterations",
           min = 1,
           max = 20,
-          value = .restore_numeric(prev("mi_maxit"), 1, 20, fallback = 5),
+          value = .restore_numeric(prev("mi_maxit"), 1, 20, fallback = dflt$mi_maxit),
           step = 1
         ),
         sliderInput(
@@ -759,7 +756,7 @@ mod_1_06_model_server <- function(id,
           "Selection frequency threshold",
           min = 0.1,
           max = 1,
-          value = .restore_numeric(prev("stability_threshold"), 0.1, 1, fallback = 0.5),
+          value = .restore_numeric(prev("stability_threshold"), 0.1, 1, fallback = dflt$stability_threshold),
           step = 0.05
         )
       )
@@ -803,18 +800,12 @@ mod_1_06_model_server <- function(id,
         fe_vars <- as.character(input$fixedeffects)
         int_vars <- as.character(input$interactions)
 
-        alpha_val <- if (is.null(input$lasso_alpha)) 1 else input$lasso_alpha
-        lambda_choice <- if (is.null(input$lasso_interactions)) "lambda.1se" else input$lasso_interactions
-        nfolds_val <- if (is.null(input$lasso_nfolds)) 10 else input$lasso_nfolds
-        standardize_val <- if (is.null(input$lasso_standardize)) {
-          TRUE
-        } else {
-          if (is.logical(input$lasso_standardize)) input$lasso_standardize else input$lasso_standardize == "Standardize"
-        }
-        use_mice_val <- if (is.null(input$use_mice)) FALSE else input$use_mice
-        m_val <- if (is.null(input$mi_m)) 5 else input$mi_m
-        maxit_val <- if (is.null(input$mi_maxit)) 5 else input$mi_maxit
-        threshold_val <- if (is.null(input$stability_threshold)) 0.5 else input$stability_threshold
+        settings <- wise_lasso_settings(
+          alpha = input$lasso_alpha, lambda = input$lasso_interactions,
+          nfolds = input$lasso_nfolds, standardize = input$lasso_standardize,
+          use_mice = input$use_mice, mi_m = input$mi_m, mi_maxit = input$mi_maxit,
+          stability_threshold = input$stability_threshold
+        )
         seed_val <- wise_current_seed()
 
         incProgress(0.15, detail = "Running MI + LASSO")
@@ -824,23 +815,16 @@ mod_1_06_model_server <- function(id,
         force_exc <- unique(c(
           forced$ind$exc, forced$hh$exc, forced$firm$exc, forced$area$exc
         ))
-        vl_for_lasso <- valid_vl()
-        if (length(force_exc) > 0 && !is.null(vl_for_lasso)) {
-          vl_for_lasso <- vl_for_lasso[
-            !vl_for_lasso$name %in% force_exc, ,
-            drop = FALSE
-          ]
-        }
+        vl_for_lasso <- wise_lasso_candidates(valid_vl(), force_exc)
 
         # R2-PERF-11: repeat clicks with identical inputs reuse the last
         # selection (about 3 s on BFA) instead of refitting.
         lasso_key <- rlang::hash(list(
           df, selected_outcome(), weather_vars, fe_vars, int_vars, vl_for_lasso,
-          input$model_type, alpha_val, lambda_choice, nfolds_val, standardize_val,
-          use_mice_val, m_val, maxit_val, threshold_val, seed_val
+          input$model_type, settings, seed_val
         ))
         .memoise_last(lasso_cache, lasso_key, function() {
-          run_lasso_selection(
+          wise_lasso_selection(
             df = df,
             selected_outcome = selected_outcome(),
             weather_vars = weather_vars,
@@ -848,18 +832,8 @@ mod_1_06_model_server <- function(id,
             int_vars = int_vars,
             valid_vl = vl_for_lasso,
             model_type = input$model_type,
-            alpha = alpha_val,
-            lambda_choice = lambda_choice,
-            nfolds = nfolds_val,
-            standardize = standardize_val,
-            mi_m = m_val,
-            mi_maxit = maxit_val,
-            mi_method = "norm",
-            use_mice = use_mice_val,
-            stability_threshold = threshold_val,
-            parallel_seed = seed_val,
-            cv_selection = "random",
-            glmnet_tol = 1e-4
+            settings = settings,
+            seed = seed_val
           )
         })
       })
@@ -943,19 +917,7 @@ mod_1_06_model_server <- function(id,
 
       # Resolve covariates by role
       covs <- if (cov_method == "Lasso") {
-        selected <- lasso_store()$selected_covariates
-        vl <- valid_vl()
-        forced <- lasso_forced()
-        resolve <- function(role) {
-          base <- vl$name[vl[[role]] %in% 1 & vl$name %in% selected]
-          setdiff(unique(c(base, forced[[role]]$inc)), forced[[role]]$exc)
-        }
-        list(
-          hh   = resolve("hh"),
-          area = resolve("area"),
-          ind  = resolve("ind"),
-          firm = resolve("firm")
-        )
+        wise_lasso_covariates(lasso_store()$selected_covariates, valid_vl(), lasso_forced())
       } else {
         list(
           hh = input$hhcov %||% character(0),
@@ -980,7 +942,7 @@ mod_1_06_model_server <- function(id,
         if (is.null(fe)) {
           character(0)
         } else {
-          intersect(c("year", "gaul1_code"), fe$name)
+          wise_default_fixed_effects(fe$name)
         }
       }
       interactions <- unique(c(ixn_sel, all_locked))
@@ -994,25 +956,23 @@ mod_1_06_model_server <- function(id,
       sw_cols <- tryCatch(colnames(survey_weather()),
         error = function(e) character(0)
       )
-      cluster_var <- if ("loc_id_panel" %in% sw_cols) "loc_id_panel" else NULL
 
-      sm <- build_selected_model(
+      sm <- wise_selected_model(
         model_type          = input$model_type,
         interactions        = interactions,
-        fixedeffects        = fe_sel,
+        fixed_effects       = fe_sel,
         covariate_selection = cov_method,
-        hh_covariates       = covs$hh,
-        area_covariates     = covs$area,
-        ind_covariates      = covs$ind,
-        firm_covariates     = covs$firm,
-        lasso_alpha         = input$lasso_alpha,
-        lasso_lambda        = input$lasso_interactions,
-        lasso_nfolds        = input$lasso_nfolds,
-        lasso_standardize   = isTRUE(input$lasso_standardize == "Standardize"),
-        mi_m                = input$mi_m,
-        mi_maxit            = input$mi_maxit,
-        stability_threshold = input$stability_threshold,
-        cluster             = cluster_var
+        covariates          = covs,
+        lasso = list(
+          alpha               = input$lasso_alpha,
+          lambda              = input$lasso_interactions,
+          nfolds              = input$lasso_nfolds,
+          standardize         = isTRUE(input$lasso_standardize == "Standardize"),
+          mi_m                = input$mi_m,
+          mi_maxit            = input$mi_maxit,
+          stability_threshold = input$stability_threshold
+        ),
+        cluster             = wise_cluster_var(sw_cols)
       )
       # R2-BUG-11: flag a Lasso spec that has no successful selection behind it
       # (not yet run, or the run failed) so mod_1_07 refuses to fit it instead

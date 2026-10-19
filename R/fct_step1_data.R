@@ -113,6 +113,82 @@ survey_n_no_deflator <- function(df, variable_list) {
 }
 
 
+# Location panel ----
+
+#' H3 cell files of the selected surveys
+#'
+#' @param selected_surveys Data frame with `code`, `year`, `survname`, `source`.
+#' @return Character vector of file names, one per survey.
+#' @noRd
+wise_h3_fnames <- function(selected_surveys) {
+  selected_surveys |>
+    dplyr::distinct(code, year, survname, source) |>
+    dplyr::mutate(fname = paste0(
+      "microdata/h3/", code, "/",
+      code, "_", year, "_", survname, "_", source, "_h3.parquet"
+    )) |>
+    dplyr::pull(fname)
+}
+
+#' Location panel ids from the H3 cell files
+#'
+#' Groups survey locations that share H3 cells into panel locations
+#' (`loc_id_panel`, the cluster level of the Step 1 models and of the Step 2
+#' coefficient uncertainty). One row per survey location.
+#'
+#' @param h3_local The H3 files as a (preferably materialised) relation with
+#'   `code`, `year`, `survname`, `loc_id`, `h3`, `pop_2020`.
+#' @return A data frame: `code`, `year`, `survname`, `loc_id`, `loc_id_panel`.
+#' @noRd
+wise_location_panel <- function(h3_local) {
+  panel_map <- loc_panel(h3_local,
+    id_col = loc_id, h3_col = h3, weight_col = pop_2020,
+    group_cols = c("code", "year", "survname")
+  )
+  loc_keys <- h3_local |>
+    dplyr::distinct(code, year, survname, loc_id) |>
+    collect_deterministic(c("code", "year", "survname", "loc_id"))
+  # CR-BUG-16: duplicated panel keys error instead of multiplying records.
+  dplyr::left_join(loc_keys, panel_map,
+    by = c("code", "year", "survname", "loc_id"),
+    relationship = "one-to-one"
+  )
+}
+
+#' Join the location panel onto a survey frame
+#'
+#' @param df Prepared survey frame.
+#' @param panel Result of `wise_location_panel()`.
+#' @return `df` with `loc_id_panel`; records without a panel location keep `NA`.
+#' @noRd
+wise_join_location_panel <- function(df, panel) {
+  dplyr::left_join(df, panel,
+    by = c("code", "year", "survname", "loc_id"),
+    relationship = "many-to-one"
+  )
+}
+
+#' Load the H3 files and build the location panel (batch)
+#'
+#' The Survey stats tab does the same steps on its own materialised relation,
+#' next to the map data.
+#'
+#' @param selected_surveys,connection_params See `wise_select_surveys()`.
+#' @return Result of `wise_location_panel()`.
+#' @noRd
+wise_load_location_panel <- function(selected_surveys, connection_params) {
+  h3_df <- load_data(wise_h3_fnames(selected_surveys), connection_params)
+  .duck_load_ext("h3")
+  nm <- basename(tempfile(pattern = "ss_h3_"))
+  h3_local <- dplyr::compute(h3_df, name = nm, temporary = TRUE)
+  on.exit(
+    try(DBI::dbRemoveTable(dbplyr::remote_con(h3_local), nm), silent = TRUE),
+    add = TRUE
+  )
+  wise_location_panel(h3_local)
+}
+
+
 # Statistics variable sets ----
 
 #' Policy-relevant variables shown in the survey statistics

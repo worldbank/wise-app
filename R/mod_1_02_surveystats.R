@@ -290,16 +290,8 @@ mod_1_02_surveystats_server <- function(
         publish_new_survey_data(df)
 
         # H3 map data (computed once per button click) ----
-        h3_fnames <- ss |>
-          dplyr::distinct(code, year, survname, source) |>
-          dplyr::mutate(fname = paste0(
-            "microdata/h3/", code, "/",
-            code, "_", year, "_", survname, "_", source, "_h3.parquet"
-          )) |>
-          dplyr::pull(fname)
-
         h3_df <- tryCatch(
-          load_data(h3_fnames, connection_params()),
+          load_data(wise_h3_fnames(ss), connection_params()),
           error = function(e) {
             notify(paste(
               "Some map data could not be loaded. Survey results are still available:",
@@ -371,26 +363,9 @@ mod_1_02_surveystats_server <- function(
 
           tryCatch(
             {
-              panel_map <- loc_panel(h3_local,
-                id_col = loc_id, h3_col = h3, weight_col = pop_2020,
-                group_cols = c("code", "year", "survname")
-              )
-
-              loc_keys <- h3_local |>
-                dplyr::distinct(code, year, survname, loc_id) |>
-                collect_deterministic(c("code", "year", "survname", "loc_id"))
-
               # CR-BUG-16: duplicated panel keys error (handled below) instead
               # of multiplying survey records; unmatched records are counted.
-              df <- df |>
-                dplyr::left_join(
-                  dplyr::left_join(loc_keys, panel_map,
-                    by = c("code", "year", "survname", "loc_id"),
-                    relationship = "one-to-one"
-                  ),
-                  by = c("code", "year", "survname", "loc_id"),
-                  relationship = "many-to-one"
-                )
+              df <- wise_join_location_panel(df, wise_location_panel(h3_local))
               n_no_panel <- if ("loc_id_panel" %in% names(df)) sum(is.na(df$loc_id_panel)) else 0L
               if (n_no_panel > 0L) {
                 notify(sprintf(
