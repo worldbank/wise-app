@@ -130,6 +130,76 @@
   }
 }
 
+.diag_subheading_style <- "margin: 14px 0 6px; font-weight: 600; color: #173042;"
+
+# Headline cards of the cost section. `per_person` is the first row of
+# `sp_effectiveness()$metrics` (cost per person in the population) or NULL.
+# A shock program reports annual means over the historical years.
+.sp_cost_cards <- function(d, shock = FALSE, per_person = NULL) {
+  if (is.null(d) || is.null(d$transfer_sum)) {
+    return(NULL)
+  }
+  prefix <- .sp_currency_prefix(d$transfer_currency)
+  money <- function(x, digits = 0) fmt_num(x, digits = digits, prefix = prefix)
+  admin <- isTRUE(d$admin_share > 0)
+  total <- if (is.finite(d$total_cost_sum %||% NA_real_)) d$total_cost_sum else d$transfer_sum
+  unit <- if (identical(d$analysis_unit, "hh")) "household" else "unit"
+  cards <- list(list(
+    label = if (shock) "Mean annual cost" else "Annual cost",
+    value = money(total),
+    note = if (admin) {
+      paste0(
+        "Transfers ", money(d$transfer_sum), "; administration ", money(d$admin_sum),
+        " (", fmt_num(100 * d$admin_share, digits = 0), "% of transfers)"
+      )
+    } else {
+      "No administration cost counted"
+    }
+  ))
+  if (is.finite(d$transfer_pp %||% NA_real_)) {
+    cards[[length(cards) + 1L]] <- list(
+      label = paste0("Transfer per recipient ", unit),
+      value = money(d$transfer_pp, 1),
+      note = if (shock) "Annual mean over the historical years" else "Per year"
+    )
+  }
+  if (!is.null(per_person) && is.finite(per_person$value)) {
+    cards[[length(cards) + 1L]] <- list(
+      label = "Cost per person in the population",
+      value = money(per_person$value, 2),
+      note = if (shock) "In a year in which every eligible household is paid" else "Per year, all represented people"
+    )
+  }
+  if (length(d$transfer_households) && is.finite(d$transfer_households)) {
+    cards[[length(cards) + 1L]] <- list(
+      label = if (shock) "Households paid at least once" else "Recipient households",
+      value = fmt_count(d$transfer_households),
+      note = "Represented by the survey weights"
+    )
+  }
+  cards
+}
+
+# Reach cards: share of the baseline population touched by any policy lever.
+.policy_reach_cards <- function(reach, analysis_unit = "hh") {
+  if (is.null(reach) || !is.finite(reach$share %||% NA_real_)) {
+    return(NULL)
+  }
+  cards <- list(list(
+    label = "Population reached by any policy",
+    value = fmt_num(100 * reach$share, digits = 1, suffix = "%"),
+    note = paste(fmt_count(reach$people), "people represented")
+  ))
+  if (is.finite(reach$households %||% NA_real_)) {
+    cards[[2L]] <- list(
+      label = "Households reached",
+      value = fmt_count(reach$households),
+      note = "Represented by the survey weights"
+    )
+  }
+  cards
+}
+
 .policy_treatment_explanation <- function(sp) {
   base <- .policy_treatment_explanation_base(sp)
   if (is.list(sp) && identical(sp$sp_type, "shock")) {
@@ -303,78 +373,38 @@
       shiny::uiOutput(ns("hist_plots_ui"))
     ),
     shiny::h4(
-      "What targeting rule was specified, and how did errors alter assignment?",
+      "Who does the policy reach?",
       info_popover(
-        title = "Program scale and targeting",
+        title = "Policy reach",
         shiny::p(
-          "Transfer totals are realized values in the policy-adjusted survey.",
-          "The treatment table compares eligibility under the selected targeting",
-          "rule with realized positive-transfer treatment after targeting errors."
-        ),
-        docs = TRUE
+          "A unit is reached when it receives a positive social protection",
+          "transfer or has a covariate changed by another policy lever. Shares",
+          "are of the baseline population, weighted. Reach is not a welfare effect."
+        )
       ),
       class = "diagnostic-section-heading"
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      shiny::tags$p(
-        class = "diagnostic-note",
-        paste0(
-          "Social protection counts positive transfers; other rows count changed covariates. ",
-          "Overlap counts units touched by both. Only social protection has a cost."
-        )
+      shiny::uiOutput(ns("reach_cards_ui")),
+      wise_chart_output(
+        ns("reach_plot"),
+        "Share of the baseline population reached by each policy component",
+        height = "300px"
       ),
-      shiny::div(
-        class = "wise-reactable-controls",
-        wise_reactable_csv_button(ns("transfer_summary_ui"), "policy_transfer_summary")
-      ),
-      reactable::reactableOutput(ns("transfer_summary_ui")),
-      shiny::div(
-        class = "wise-reactable-controls",
-        wise_reactable_csv_button(ns("policy_component_table"), "policy_component_summary")
-      ),
-      reactable::reactableOutput(ns("policy_component_table")),
-      shiny::h5(
-        "Cost and targeting effectiveness",
-        info_popover(
-          title = "Cost and targeting effectiveness",
-          shiny::p(
-            "Computed from the baseline and policy survey frames for this run's",
-            "single targeting draw, at the poverty line chosen in Results.",
-            "Leakage and adequacy are shares of transfer spending and of the",
-            "poverty gap; they say nothing about modelled welfare effects."
-          ),
-          shiny::p(
-            "For a shock-responsive program, cost, leakage and adequacy describe a",
-            "year in which every statically eligible household is paid; coverage is",
-            "who the targeting rule can reach. Trigger scope, geography and forecast",
-            "layers are not applied here. Under a share-of-loss budget the amount is",
-            "the mean payment in the years a household was paid. The cost over",
-            "simulated years is in the table below and the Cost-effectiveness tab."
-          )
-        )
-      ),
-      shiny::div(
-        class = "wise-reactable-controls",
-        wise_reactable_csv_button(ns("sp_effectiveness_table"), "policy_sp_effectiveness")
-      ),
-      reactable::reactableOutput(ns("sp_effectiveness_table")),
-      shiny::uiOutput(ns("shock_section_ui")),
-      shiny::h5("Eligibility versus realized social-protection treatment"),
-      shiny::tags$p(
-        class = "diagnostic-note",
-        paste0(
-          "Eligibility follows the selected rule; treatment is a positive transfer after errors. ",
-          "Rows show counterfactual assignment, not observed cash receipt."
-        )
-      ),
-      shiny::uiOutput(ns("treatment_explanation_ui")),
-      shiny::div(
-        class = "wise-reactable-controls",
-        wise_reactable_csv_button(ns("treatment_table"), "policy_treatment_assignment")
-      ),
-      reactable::reactableOutput(ns("treatment_table"))
+      shiny::uiOutput(ns("reach_note_ui")),
+      shiny::tags$details(
+        class = "decomposition-data-details",
+        shiny::tags$summary("View reach data"),
+        shiny::div(
+          class = "wise-reactable-controls",
+          wise_reactable_csv_button(ns("policy_component_table"), "policy_component_summary")
+        ),
+        reactable::reactableOutput(ns("policy_component_table"))
+      )
     ),
+    shiny::uiOutput(ns("sp_sections_ui")),
+    shiny::uiOutput(ns("shock_section_ui"))
   )
 }
 
@@ -512,7 +542,7 @@ mod_3_08_diagnostics_server <- function(id,
 
     # Cost and targeting effectiveness (P0-5) ----
 
-    sp_effectiveness_display <- reactive({
+    sp_effectiveness_res <- reactive({
       d <- diag_data()
       if (is.null(d) || (is.list(d) && !is.null(d$status))) {
         return(NULL)
@@ -540,7 +570,7 @@ mod_3_08_diagnostics_server <- function(id,
         if (!is.null(sp)) .determine_sp_eligibility(base, sp, apply_errors = FALSE),
         error = function(e) NULL
       )
-      res <- sp_effectiveness(
+      sp_effectiveness(
         base, pol,
         # The Results line is NULL when a non-poverty metric is selected, so
         # fall back to the line Step 1 stored with the baseline run.
@@ -554,7 +584,14 @@ mod_3_08_diagnostics_server <- function(id,
         eligibility = ideal,
         shock = shock
       )
-      .sp_effectiveness_display(res, d$transfer_currency %||% "PPP")
+    })
+
+    sp_effectiveness_display <- reactive({
+      res <- sp_effectiveness_res()
+      if (is.null(res)) {
+        return(NULL)
+      }
+      .sp_effectiveness_display(res, diag_data()$transfer_currency %||% "PPP")
     })
 
     output$sp_effectiveness_table <- reactable::renderReactable({
@@ -621,12 +658,12 @@ mod_3_08_diagnostics_server <- function(id,
         return(NULL)
       }
       shiny::tagList(
-        shiny::h5(
+        shiny::h4(
           "Shock-responsive program",
           info_popover(
             title = "Shock-responsive program",
             shiny::p(
-              "Each row pools the climate members and simulated years of the",
+              "Each bar pools the climate members and simulated years of the",
               "scenario. A year activates when any household is paid. A loss",
               "event is a survey location whose households lose at least the",
               "set share of their own typical welfare. Paying where there is no",
@@ -637,18 +674,53 @@ mod_3_08_diagnostics_server <- function(id,
               "The share is set in Trigger settings. It only scores the trigger,",
               "so changing it re-scores this run without running Step 3 again."
             )
-          )
-        ),
-        shiny::tags$p(
-          class = "diagnostic-note",
-          shiny::textOutput(ns("shock_scoring_note"), inline = TRUE)
+          ),
+          class = "diagnostic-section-heading"
         ),
         shiny::div(
-          class = "wise-reactable-controls",
-          wise_reactable_csv_button(ns("shock_summary_table"), "policy_shock_summary")
-        ),
-        reactable::reactableOutput(ns("shock_summary_table")),
-        echarts4r::echarts4rOutput(ns("shock_cost_plot"), height = "360px")
+          class = "results-section-card diagnostic-section-card",
+          shiny::tags$p(
+            class = "diagnostic-note",
+            style = "margin-top: 0;",
+            shiny::textOutput(ns("shock_scoring_note"), inline = TRUE)
+          ),
+          shiny::div(
+            style = "display: flex; flex-wrap: wrap; gap: 16px;",
+            shiny::div(
+              style = "flex: 1 1 320px; min-width: 0;",
+              shiny::h6("How often are payments made?", style = .diag_subheading_style),
+              wise_chart_output(
+                ns("shock_activation_plot"),
+                "Share of simulated years with payments, by scenario",
+                height = "300px"
+              )
+            ),
+            shiny::div(
+              style = "flex: 1 1 320px; min-width: 0;",
+              shiny::h6("Does the trigger pay the right places?", style = .diag_subheading_style),
+              wise_chart_output(
+                ns("shock_basis_plot"),
+                "False positive and false negative rates of the trigger, by scenario",
+                height = "300px"
+              )
+            )
+          ),
+          shiny::h6("What does it cost in a year?", style = .diag_subheading_style),
+          wise_chart_output(
+            ns("shock_cost_plot"),
+            "Mean, median and 1-in-20 year annual cost, by scenario",
+            height = "360px"
+          ),
+          shiny::tags$details(
+            class = "decomposition-data-details",
+            shiny::tags$summary("View all shock-responsive measures"),
+            shiny::div(
+              class = "wise-reactable-controls",
+              wise_reactable_csv_button(ns("shock_summary_table"), "policy_shock_summary")
+            ),
+            reactable::reactableOutput(ns("shock_summary_table"))
+          )
+        )
       )
     })
     outputOptions(output, "shock_section_ui", suspendWhenHidden = FALSE)
@@ -671,6 +743,14 @@ mod_3_08_diagnostics_server <- function(id,
     output$shock_cost_plot <- echarts4r::renderEcharts4r({
       req(!is.null(shock_summary()))
       shock_cost_chart()
+    })
+    output$shock_activation_plot <- echarts4r::renderEcharts4r({
+      req(!is.null(shock_summary()))
+      echart_shock_activation(shock_scored()$summary)
+    })
+    output$shock_basis_plot <- echarts4r::renderEcharts4r({
+      req(!is.null(shock_summary()))
+      echart_shock_basis_risk(shock_scored()$summary)
     })
 
     wise_export_table(
@@ -703,6 +783,221 @@ mod_3_08_diagnostics_server <- function(id,
       fun = function() if (is.null(shock_summary())) NULL else shock_cost_chart(),
       description = "Mean, median and 1-in-20 year annual cost by scenario.",
       width = 9, height = 5,
+      stale = stale
+    )
+    wise_export_figure(
+      key = "policy_shock_activation",
+      label = "Shock-responsive payment frequency",
+      step = 3L,
+      fun = function() {
+        if (is.null(shock_summary())) NULL else echart_shock_activation(shock_scored()$summary)
+      },
+      description = "Share of simulated years with payments, by scenario.",
+      width = 8, height = 5,
+      stale = stale
+    )
+    wise_export_figure(
+      key = "policy_shock_basis_risk",
+      label = "Shock-responsive trigger basis risk",
+      step = 3L,
+      fun = function() {
+        if (is.null(shock_summary())) NULL else echart_shock_basis_risk(shock_scored()$summary)
+      },
+      description = "False positive and false negative rates of the trigger, by scenario.",
+      width = 8, height = 5,
+      stale = stale
+    )
+
+    # Reach and social protection sections ----
+
+    valid_diag <- function() {
+      d <- diag_data()
+      if (is.null(d) || (is.list(d) && !is.null(d$status) && is.null(d$component_matrix))) NULL else d
+    }
+
+    output$reach_cards_ui <- shiny::renderUI({
+      d <- valid_diag()
+      headline_cards_ui(.policy_reach_cards(d$reach, d$analysis_unit))
+    })
+    outputOptions(output, "reach_cards_ui", suspendWhenHidden = FALSE)
+
+    reach_chart <- function() {
+      d <- valid_diag()
+      if (is.null(d)) NULL else echart_policy_reach(d$component_matrix)
+    }
+    output$reach_plot <- echarts4r::renderEcharts4r({
+      ch <- reach_chart()
+      req(!is.null(ch))
+      ch
+    })
+
+    output$reach_note_ui <- shiny::renderUI({
+      shock <- identical(tryCatch(sp_scenario()$sp_type, error = function(e) NULL), "shock")
+      shiny::tags$p(
+        class = "diagnostic-note",
+        "Charts show who is touched by the policy, not observed impacts.",
+        if (shock) {
+          paste(
+            "For a shock-responsive program, social protection reach is households",
+            "paid in at least one historical weather year."
+          )
+        }
+      )
+    })
+
+    wise_export_figure(
+      key = "policy_reach",
+      label = "Population reached by each policy component",
+      step = 3L,
+      fun = reach_chart,
+      description = "Share of the baseline population touched by each policy component.",
+      width = 9, height = 5,
+      stale = stale
+    )
+
+    # The social protection sections exist only when a program is in the run.
+    has_sp <- reactive({
+      if (!is.null(shock_summary())) {
+        return(TRUE)
+      }
+      tm <- valid_diag()$treatment_matrix
+      is.data.frame(tm) && nrow(tm) > 0L && any(tm$treated_policy & tm$n > 0)
+    })
+
+    output$sp_sections_ui <- shiny::renderUI({
+      if (!isTRUE(has_sp())) {
+        return(NULL)
+      }
+      shock <- identical(tryCatch(sp_scenario()$sp_type, error = function(e) NULL), "shock")
+      shiny::tagList(
+        shiny::h4(
+          "Social protection: who is targeted, and how accurately?",
+          info_popover(
+            title = "Targeting",
+            shiny::p(
+              "The bar compares eligibility under the selected rule with treatment",
+              "after targeting errors. Coverage, leakage and adequacy use the",
+              "baseline welfare and the poverty line chosen in Results, for this",
+              "run's single targeting draw. They say nothing about modelled",
+              "welfare effects."
+            ),
+            if (shock) {
+              shiny::p(
+                "For a shock-responsive program the bars describe a year in which",
+                "every eligible household is paid. Trigger scope, geography and",
+                "forecast layers are not applied here; see the shock-responsive",
+                "section for realised payments."
+              )
+            }
+          ),
+          class = "diagnostic-section-heading"
+        ),
+        shiny::div(
+          class = "results-section-card diagnostic-section-card",
+          shiny::uiOutput(ns("treatment_explanation_ui")),
+          shiny::h6("Eligibility versus treatment", style = .diag_subheading_style),
+          wise_chart_output(
+            ns("sp_treatment_plot"),
+            "Share of the population by eligibility and treatment status",
+            height = "170px"
+          ),
+          shiny::h6(
+            if (shock) "Who benefits, in a year with payments" else "Who benefits?",
+            style = .diag_subheading_style
+          ),
+          wise_chart_output(
+            ns("sp_metrics_plot"),
+            "Coverage of the poor, leakage to the non-poor and adequacy for poor recipients",
+            height = "260px"
+          ),
+          shiny::tags$details(
+            class = "decomposition-data-details",
+            shiny::tags$summary("View targeting data"),
+            shiny::div(
+              class = "wise-reactable-controls",
+              wise_reactable_csv_button(ns("treatment_table"), "policy_treatment_assignment")
+            ),
+            reactable::reactableOutput(ns("treatment_table")),
+            shiny::div(
+              class = "wise-reactable-controls",
+              wise_reactable_csv_button(ns("sp_effectiveness_table"), "policy_sp_effectiveness")
+            ),
+            reactable::reactableOutput(ns("sp_effectiveness_table"))
+          )
+        ),
+        shiny::h4(
+          "Social protection: what does it cost?",
+          info_popover(
+            title = "Program cost",
+            shiny::p(
+              "Costs are realised values in the policy-adjusted survey, annual,",
+              "and include administration when a share is set in Payment settings."
+            ),
+            if (shock) {
+              shiny::p(
+                "For a shock-responsive program the cost is the mean over the",
+                "historical years. The distribution over simulated years is in",
+                "the shock-responsive section and the Cost-effectiveness tab."
+              )
+            }
+          ),
+          class = "diagnostic-section-heading"
+        ),
+        shiny::div(
+          class = "results-section-card diagnostic-section-card",
+          shiny::uiOutput(ns("cost_cards_ui")),
+          shiny::tags$details(
+            class = "decomposition-data-details",
+            shiny::tags$summary("View cost data"),
+            shiny::div(
+              class = "wise-reactable-controls",
+              wise_reactable_csv_button(ns("transfer_summary_ui"), "policy_transfer_summary")
+            ),
+            reactable::reactableOutput(ns("transfer_summary_ui"))
+          )
+        )
+      )
+    })
+    outputOptions(output, "sp_sections_ui", suspendWhenHidden = FALSE)
+
+    output$cost_cards_ui <- shiny::renderUI({
+      shock <- identical(tryCatch(sp_scenario()$sp_type, error = function(e) NULL), "shock")
+      m <- tryCatch(sp_effectiveness_res()$metrics, error = function(e) NULL)
+      per_person <- if (is.data.frame(m) && nrow(m)) m[1L, , drop = FALSE] else NULL
+      headline_cards_ui(.sp_cost_cards(valid_diag(), shock, per_person))
+    })
+
+    treatment_chart <- function() {
+      d <- valid_diag()
+      if (is.null(d)) NULL else echart_sp_treatment(d$treatment_matrix)
+    }
+    metrics_chart <- function() {
+      m <- tryCatch(sp_effectiveness_res()$metrics, error = function(e) NULL)
+      echart_sp_targeting_metrics(m)
+    }
+    output$sp_treatment_plot <- echarts4r::renderEcharts4r({
+      ch <- treatment_chart()
+      req(!is.null(ch))
+      ch
+    })
+    output$sp_metrics_plot <- echarts4r::renderEcharts4r(metrics_chart())
+
+    wise_export_figure(
+      key = "policy_sp_treatment",
+      label = "Social protection eligibility versus treatment",
+      step = 3L,
+      fun = function() if (isTRUE(has_sp())) treatment_chart() else NULL,
+      description = "Share of the population by eligibility and treatment status.",
+      width = 9, height = 3,
+      stale = stale
+    )
+    wise_export_figure(
+      key = "policy_sp_targeting_metrics",
+      label = "Social protection coverage, leakage and adequacy",
+      step = 3L,
+      fun = function() if (isTRUE(has_sp())) metrics_chart() else NULL,
+      description = "Coverage of the poor, leakage to the non-poor and adequacy for poor recipients.",
+      width = 9, height = 4,
       stale = stale
     )
 

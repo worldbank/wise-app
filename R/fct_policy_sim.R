@@ -864,6 +864,11 @@ has_sp_change <- function(sp) {
       currency = sp_currency,
       admin_share = admin_share,
       sp_cost = shock_cost$mean_total_cost
+    ),
+    reach = policy_reach_summary(
+      svy_baseline, policy_diag,
+      analysis_unit = analysis_unit,
+      candidates = unique(c(candidates, SP_TRANSFER_COL))
     )
   )
   if (!is.null(shock)) out$is_shock <- TRUE

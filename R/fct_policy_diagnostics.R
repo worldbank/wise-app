@@ -72,8 +72,9 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
   }
 }
 
-.policy_other_mask <- function(baseline_svy, policy_svy, weight_col = "weight") {
-  changed <- detect_manipulated_vars(baseline_svy, policy_svy)
+.policy_other_mask <- function(baseline_svy, policy_svy, weight_col = "weight",
+                               candidates = NULL) {
+  changed <- detect_manipulated_vars(baseline_svy, policy_svy, candidates = candidates)
   non_sp_vars <- setdiff(changed, c("welfare", SP_TRANSFER_COL, weight_col, "sim_year", "year"))
   if (!length(non_sp_vars)) {
     return(rep(FALSE, nrow(policy_svy)))
@@ -95,10 +96,43 @@ policy_treatment_matrix <- function(baseline_svy, policy_svy,
 #' @param baseline_svy Data frame before \code{apply_policy_to_svy()}.
 #' @param policy_svy   Data frame after \code{apply_policy_to_svy()}.
 #' @param weight_col   Weight column excluded from the covariate comparison.
+#' @param candidates   Optional columns the policy can modify (see
+#'   \code{detect_manipulated_vars()}); NULL compares every shared column.
 #' @return Logical vector of length \code{nrow(policy_svy)}.
 #' @keywords internal
-policy_reach_mask <- function(baseline_svy, policy_svy, weight_col = "weight") {
-  .policy_sp_mask(policy_svy) | .policy_other_mask(baseline_svy, policy_svy, weight_col)
+policy_reach_mask <- function(baseline_svy, policy_svy, weight_col = "weight",
+                              candidates = NULL) {
+  .policy_sp_mask(policy_svy) |
+    .policy_other_mask(baseline_svy, policy_svy, weight_col, candidates)
+}
+
+# Share and count of the represented population touched by any policy lever,
+# stored on the diagnostics snapshot so the reach cards and the component table
+# use one definition of "reached". `households` is NA outside household mode.
+policy_reach_summary <- function(baseline_svy, policy_svy, weight_col = "weight",
+                                 analysis_unit = "hh", candidates = NULL) {
+  if (is.null(baseline_svy) || is.null(policy_svy) ||
+    nrow(baseline_svy) != nrow(policy_svy)) {
+    return(NULL)
+  }
+  w <- if (weight_col %in% names(baseline_svy)) as.numeric(baseline_svy[[weight_col]]) else rep(1, nrow(baseline_svy))
+  w[!is.finite(w) | w < 0] <- 0
+  hh_mode <- identical(analysis_unit, "hh") && "hhsize" %in% names(baseline_svy) &&
+    weight_col %in% names(baseline_svy)
+  hs <- if (hh_mode) {
+    h <- suppressWarnings(as.numeric(baseline_svy$hhsize))
+    h[!is.finite(h) | h <= 0] <- 1
+    h
+  } else {
+    rep(1, nrow(baseline_svy))
+  }
+  mask <- policy_reach_mask(baseline_svy, policy_svy, weight_col, candidates)
+  mask[is.na(mask)] <- FALSE
+  list(
+    share = if (sum(w) > 0) sum(w[mask]) / sum(w) else NA_real_,
+    people = sum(w[mask]),
+    households = if (hh_mode) sum((w / hs)[mask]) else NA_real_
+  )
 }
 
 policy_component_matrix <- function(baseline_svy, policy_svy,
