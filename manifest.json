@@ -4498,7 +4498,7 @@
       "checksum": "c9dcc6529841a312038be68f3a1654c3"
     },
     "inst/batch/_targets.R": {
-      "checksum": "d6a4f60e8c05a9447d4d646691a83792"
+      "checksum": "dcc9bd5a0592ce762d0b6dc88db09110"
     },
     "inst/batch/README.md": {
       "checksum": "1c22a1d548806b87a29de810875e37b1"
@@ -4507,7 +4507,7 @@
       "checksum": "75c869fc7554dbb13413d1224e7cd13c"
     },
     "inst/batch/spec.yaml": {
-      "checksum": "0fb93ed25946294b4ea81d8813caf692"
+      "checksum": "3f2872f72ec19395f312e5eaa7226f7e"
     },
     "inst/duckdb_extensions/h3.duckdb_extension.gz": {
       "checksum": "f9fac7c2a8fd0825a46b6d8fe0fb13f8"
@@ -4519,7 +4519,7 @@
       "checksum": "44be73bbe45ca39f0e4f310f24998709"
     },
     "NAMESPACE": {
-      "checksum": "a90fca705f3632d117ea472c4104ef97"
+      "checksum": "a3955f983e651873cc3fb8c6c67e46de"
     },
     "R/_disable_autoload.R": {
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
@@ -4543,10 +4543,10 @@
       "checksum": "a50516efe904cea2a451c815bb5ca2ba"
     },
     "R/fct_batch_spec.R": {
-      "checksum": "96fbe63b6f80a5fb736c0409a5e73d51"
+      "checksum": "ef397bdc0f1534d0fe2f37aec73eb5f6"
     },
     "R/fct_batch_targets.R": {
-      "checksum": "ba7f538ac1f1eb1efb9ab8599d4f31f2"
+      "checksum": "4489a2215fd49337618ded7db0be3de6"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
@@ -4603,7 +4603,7 @@
       "checksum": "681ce792b86e3fde2e469f42b94513bb"
     },
     "R/fct_policy_sim_compare.R": {
-      "checksum": "a8cd1052ff73e41ab725d8e07af27ce7"
+      "checksum": "d38b75bb33577abc4697986d644e1e5e"
     },
     "R/fct_policy_sim.R": {
       "checksum": "c566747203198be358aff956384eaad1"
@@ -4648,7 +4648,7 @@
       "checksum": "141489944077ec410367dc7d12f424e0"
     },
     "R/fct_spec_defaults.R": {
-      "checksum": "56058595e51daee9876743fe4cc9db10"
+      "checksum": "0c0af3f2e9255c5e856e98eafec40fe8"
     },
     "R/fct_step1_data.R": {
       "checksum": "988a9c900132ef53a89d162899796b71"
@@ -4657,10 +4657,10 @@
       "checksum": "5092622f0072f404588a48321d883ca3"
     },
     "R/fct_step1_model_tables.R": {
-      "checksum": "45c4249d312d5cc234c9c2e5486a0ad7"
+      "checksum": "540a9051dc71687a31f4c5372d547c09"
     },
     "R/fct_step1_model.R": {
-      "checksum": "d3d18992b9d078c363275e90f074a077"
+      "checksum": "53cd7f35e50228b33426dcb52335d79f"
     },
     "R/fct_step1_tables.R": {
       "checksum": "9437f8b8bd4a1081aa3dc6e815c6509c"
@@ -4682,6 +4682,12 @@
     },
     "R/fct_step3_async.R": {
       "checksum": "74f152a12be8d038c79464aaf2fbd778"
+    },
+    "R/fct_step3_input.R": {
+      "checksum": "ce9b783932171979858fba7d6ab46dd8"
+    },
+    "R/fct_step3_tables.R": {
+      "checksum": "e6c5cb47a4c8194fc37189033e6e6ac2"
     },
     "R/fct_surveystats.R": {
       "checksum": "8d264177f192808fc5c4f1bf4ac5163b"
@@ -4744,34 +4750,34 @@
       "checksum": "1635bad43e613277099a7e78d0d79488"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "afa300cc7ff9ad8f742f0bd16ffe5bf6"
+      "checksum": "a99866c50a44c29935a9f6668e3c951f"
     },
     "R/mod_3_02_infra.R": {
-      "checksum": "12f64fbe9c0e9e51803fb87e902b701a"
+      "checksum": "a957796584abd9baefdfcee53bfedaca"
     },
     "R/mod_3_03_digital.R": {
-      "checksum": "7af1a03f8e5d85730a1ae7109a7dea60"
+      "checksum": "46b1637c8e49bbfd7d836d228693be02"
     },
     "R/mod_3_04_labor.R": {
-      "checksum": "cc413a7df6b41ddc36fadce85bde3f9d"
+      "checksum": "b582743745c741c09a91cf2ec282cbf0"
     },
     "R/mod_3_05_education.R": {
-      "checksum": "ce6dac4360eef6248ccbe939f6017ab4"
+      "checksum": "6234c069783ec6a39e801c1e8b0403cc"
     },
     "R/mod_3_06_policy_sim.R": {
-      "checksum": "a65e88ceecdf43b5e9b03dae23efe250"
+      "checksum": "7a622224504152776be26c6dbd7c808f"
     },
     "R/mod_3_07_results.R": {
       "checksum": "3572f8115b26b726db9913ec5d7af3b5"
     },
     "R/mod_3_08_diagnostics.R": {
-      "checksum": "f72938a047358af5a875faa42776d4bc"
+      "checksum": "ced9a7ef1c5ff41fe298c4c35dd827a8"
     },
     "R/mod_3_09_decomposition.R": {
       "checksum": "5af8502a5d70d8b6c02391d1a763e364"
     },
     "R/mod_3_10_cost_effectiveness.R": {
-      "checksum": "776971db9cc80e88d4fa010ef1f9fe5e"
+      "checksum": "f5e8b0f51a4fe9dec065adb09c888df3"
     },
     "R/mod_3_scenario.R": {
       "checksum": "92a40ee4467a209ab43a868620028a32"
