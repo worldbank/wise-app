@@ -1,10 +1,10 @@
 # Batch run spec ----
 # One canonical, plain-list description of a single run (`wise_spec()`), its
 # validation, its stage hashes, and the YAML grid that expands to many runs.
-# App defaults live in `wise_spec_defaults()` (fct_spec_defaults.R). Phase 1
-# covers the `source`, `sample`, `outcome`, `weather` and `stats` sections;
-# the model, simulation and policy sections arrive with their phases.
-# Shiny-free.
+# App defaults live in `wise_spec_defaults()` (fct_spec_defaults.R). Phases 1
+# and 2 cover the `source`, `sample`, `outcome`, `weather`, `stats` and
+# `model` sections; the simulation and policy sections arrive with their
+# phases. Shiny-free.
 
 # Construction ----
 
@@ -15,8 +15,11 @@
   if (is.null(over)) {
     return(base)
   }
+  if (is.null(base)) {
+    return(over)
+  }
   if (is.list(over) && !length(over)) {
-    return(if (is.null(base)) over else base)
+    return(base)
   }
   if (is.list(base) && is.list(over) && !is.null(names(over)) && !is.null(names(base))) {
     for (nm in names(over)) {
@@ -72,10 +75,109 @@
   v[order(names(v))]
 }
 
+# Model section ----
+
+.MODEL_LAMBDAS <- c("lambda.1se", "lambda.min")
+.MODEL_METHODS <- c("user", "lasso")
+
+# Short names accepted for the model types, case-insensitive.
+.MODEL_ALIASES <- c(
+  linear = "Linear regression", logistic = "Logistic regression",
+  logit = "Logistic regression", rif = "Unconditional quantile regression (RIF)",
+  quantile = "Unconditional quantile regression (RIF)"
+)
+
+#' @noRd
+.match_model_type <- function(x) {
+  if (is.null(x) || length(x) != 1L || is.na(x)) {
+    return(x)
+  }
+  key <- tolower(as.character(x))
+  hit <- names(WISEAPP_MODEL_TYPES)[tolower(names(WISEAPP_MODEL_TYPES)) == key]
+  if (length(hit)) hit else if (key %in% names(.MODEL_ALIASES)) .MODEL_ALIASES[[key]] else x
+}
+
+# Normalise the model section: defaults filled, choices canonical, sets sorted
+# and fields that do not apply to the covariate method dropped, so equal specs
+# hash equal. `type` and `fixed_effects` stay absent until the data decides.
+#' @noRd
+.normalise_model <- function(m) {
+  m <- .spec_merge(wise_default_model(), m)
+  chr <- function(x) sort(unique(as.character(unlist(x))))
+  if (!is.null(m$type)) m$type <- .match_model_type(m$type)
+  if (!is.null(m$fixed_effects)) m$fixed_effects <- chr(m$fixed_effects)
+  cv <- m$covariates
+  method <- tolower(as.character(cv$method))
+  cv$method <- if (identical(method, "user-defined")) "user" else method
+  if (identical(cv$method, "lasso")) {
+    cv$vars <- NULL
+    l <- cv$lasso
+    l$alpha <- as.numeric(l$alpha)
+    l$lambda <- .match_choice(as.character(l$lambda), .MODEL_LAMBDAS)
+    for (f in c("nfolds", "mi_m", "mi_maxit")) l[[f]] <- as.integer(l[[f]])
+    for (f in c("standardize", "use_mice")) l[[f]] <- as.logical(l[[f]])
+    l$stability_threshold <- as.numeric(l$stability_threshold)
+    l$force_in <- chr(l$force_in)
+    l$force_out <- chr(l$force_out)
+    cv$lasso <- l[order(names(l))]
+  } else {
+    cv$lasso <- NULL
+    cv$vars <- chr(cv$vars)
+  }
+  m$covariates <- cv[order(names(cv))]
+  m[order(names(m))]
+}
+
+# Problems of the model section on its own (data-dependent checks follow in
+# `wise_spec_resolve()`).
+#' @noRd
+.model_problems <- function(m) {
+  bad <- character(0)
+  add <- function(...) bad <<- c(bad, paste0(...))
+  unknown <- setdiff(names(m), c("type", "fixed_effects", "covariates"))
+  if (length(unknown)) {
+    add(
+      "model.", paste(unknown, collapse = ", "), ": not a model setting in this version ",
+      "(interactions and policy variables arrive with the policy phase)."
+    )
+  }
+  if (!is.null(m$type) && !m$type %in% names(WISEAPP_MODEL_TYPES)) {
+    add("model.type must be one of: ", paste(names(WISEAPP_MODEL_TYPES), collapse = ", "), ".")
+  }
+  fe <- m$fixed_effects
+  if (!is.null(fe) && (anyNA(fe) || !all(nzchar(fe)))) add("model.fixed_effects must be variable names.")
+  cv <- m$covariates
+  if (length(setdiff(names(cv), c("method", "vars", "lasso")))) {
+    add("model.covariates holds method, vars and lasso only.")
+  }
+  if (!cv$method %in% .MODEL_METHODS) {
+    add("model.covariates.method must be one of: ", paste(.MODEL_METHODS, collapse = ", "), ".")
+  }
+  if (anyNA(cv$vars) || !all(nzchar(cv$vars))) add("model.covariates.vars must be variable names.")
+  if (identical(cv$method, "lasso")) {
+    l <- cv$lasso
+    p <- "model.covariates.lasso."
+    in_range <- function(x, lo, hi) length(x) == 1L && is.finite(x) && x >= lo && x <= hi
+    if (!in_range(l$alpha, 0, 1)) add(p, "alpha must be between 0 and 1.")
+    if (!l$lambda %in% .MODEL_LAMBDAS) add(p, "lambda must be one of: ", paste(.MODEL_LAMBDAS, collapse = ", "), ".")
+    if (!in_range(l$nfolds, 5, 20)) add(p, "nfolds must be between 5 and 20.")
+    if (!in_range(l$mi_m, 1, 20)) add(p, "mi_m must be between 1 and 20.")
+    if (!in_range(l$mi_maxit, 1, 20)) add(p, "mi_maxit must be between 1 and 20.")
+    if (!in_range(l$stability_threshold, 0.1, 1)) add(p, "stability_threshold must be between 0.1 and 1.")
+    for (f in c("standardize", "use_mice")) {
+      if (length(l[[f]]) != 1L || is.na(l[[f]])) add(p, f, " must be true or false.")
+    }
+    both <- intersect(l$force_in, l$force_out)
+    if (length(both)) add(p, "force_in and force_out share: ", paste(both, collapse = ", "), ".")
+  }
+  bad
+}
+
 # Normalise a spec: types coerced, empty optional fields dropped, vectors in a
 # canonical order.
 #' @noRd
 .spec_normalise <- function(spec) {
+  if (!is.null(spec$model)) spec$model <- .normalise_model(spec$model)
   spec$seed <- as.integer(spec$seed)
   spec$schema_version <- as.integer(spec$schema_version)
   spec$source$type <- as.character(spec$source$type)
@@ -215,6 +317,7 @@ wise_spec_validate <- function(spec) {
       add("stats.indicators.", nm, ": the name must be a valid column name.")
     }
   }
+  if (!is.null(spec$model)) bad <- c(bad, .model_problems(spec$model))
   if (length(bad)) {
     stop(
       structure(
@@ -236,15 +339,18 @@ wise_spec_validate <- function(spec) {
 #' Fills the fields that follow a rule on the available data: the default
 #' economy, every survey year, the first weather variable and the
 #' unit-dependent aggregation and transformation of each weather variable.
-#' The outcome follows its rule once the survey is loaded, so `outcome.name`
-#' stays as given.
+#' With `survey_columns` the default outcome (the first available outcome
+#' variable) and the default model type are resolved too, so the stage ids
+#' encode them; without it `outcome.name` stays as given.
 #'
 #' @param spec A spec from `wise_spec()`.
 #' @param metadata Output of `load_overview_metadata()`.
 #' @param connection_params Connection parameter list.
+#' @param survey_columns `NULL`, a character vector of the survey's column
+#'   names, or a function of the (sample-resolved) spec returning one.
 #' @return The resolved spec.
 #' @export
-wise_spec_resolve <- function(spec, metadata, connection_params) {
+wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns = NULL) {
   sv <- wise_available_surveys(metadata$survey_list, spec$sample$unit, connection_params)
   codes <- unique(sv$code)
   cs <- spec$sample$countries %||% wise_default_economy(codes)
@@ -291,7 +397,45 @@ wise_spec_resolve <- function(spec, metadata, connection_params) {
   }
   w$hist_years <- spec$weather$hist_years
   spec$weather <- w
+
+  if (!is.null(survey_columns)) {
+    cols <- if (is.function(survey_columns)) survey_columns(spec) else survey_columns
+    outs <- filter_outcome_vars(metadata$variable_list, cols)
+    spec$outcome$name <- spec$outcome$name %||% wise_default_outcome(outs$name)
+    spec$outcome <- spec$outcome[intersect(c("name", "currency", "poverty_line"), names(spec$outcome))]
+    info <- outs[outs$name == spec$outcome$name, , drop = FALSE]
+    # An outcome the surveys lack is left for the data stage to report, so
+    # that run fails alone and the rest of the grid still runs.
+    if (nrow(info) && !is.null(spec$model)) {
+      spec$model$type <- spec$model$type %||% wise_default_model_type(info$type[1])
+      problems <- .model_resolved_problems(spec$model, info$type[1])
+      if (length(problems)) stop(paste(problems, collapse = " "), call. = FALSE)
+    }
+  }
   spec
+}
+
+# Model type against the outcome type, as the Model tab offers them: logistic
+# needs a binary outcome, RIF a continuous one.
+#' @noRd
+.model_resolved_problems <- function(model, outcome_type) {
+  binary <- identical(outcome_type, "logical")
+  if (identical(model$type, "Logistic regression") && !binary) {
+    return("model.type 'Logistic regression' needs a binary outcome.")
+  }
+  if (identical(model$type, "Unconditional quantile regression (RIF)") && binary) {
+    return("model.type 'Unconditional quantile regression (RIF)' needs a continuous outcome.")
+  }
+  character(0)
+}
+
+# Column names of the survey files of a spec's sample (a cheap schema read).
+#' @noRd
+.read_survey_columns <- function(spec, metadata, connection_params) {
+  ss <- wise_select_surveys(
+    metadata$survey_list, spec$sample$unit, connection_params, spec$sample$countries, spec$sample$years
+  )
+  colnames(load_data(ss$fname, connection_params, unify_schemas = TRUE))
 }
 
 
@@ -324,11 +468,14 @@ wise_spec_resolve <- function(spec, metadata, connection_params) {
 #' decide which work is shared between runs: `data_id` (source, sample,
 #' outcome, statistics options), `wxvar_id` (the data plus one weather
 #' variable's reference period, temporal aggregation and transformation, and
-#' the historical years; one per variable) and `run_id` (the whole spec,
-#' including the seed).
+#' the historical years; one per variable), `weather_id` (the data plus the
+#' whole weather section, binning included: the survey-weather frame),
+#' `fit_id` (data, weather, model and seed; `NA` without a model section) and
+#' `run_id` (the whole spec, including the seed).
 #'
 #' @param spec A resolved spec.
-#' @return A list: `data_id`, `wxvar_ids` (named by variable), `run_id`.
+#' @return A list: `data_id`, `wxvar_ids` (named by variable), `weather_id`,
+#'   `fit_id`, `run_id`.
 #' @export
 wise_spec_ids <- function(spec) {
   data_id <- .spec_digest(spec[c("schema_version", "source", "sample", "outcome", "stats")])
@@ -343,7 +490,21 @@ wise_spec_ids <- function(spec) {
       hist_years = spec$weather$hist_years
     ))
   }, character(1))
-  list(data_id = data_id, wxvar_ids = wxvar_ids, run_id = .spec_digest(spec))
+  # The merged survey-weather frame depends on the whole weather section; the
+  # seed only on K-means bin breaks.
+  kmeans <- any(vapply(vars, function(v) identical(spec$weather[[v]]$binning_method, "K-means"), logical(1)))
+  weather_id <- .spec_digest(list(
+    data_id = data_id, weather = spec$weather, seed = if (kmeans) spec$seed
+  ))
+  fit_id <- if (is.null(spec$model)) {
+    NA_character_
+  } else {
+    .spec_digest(list(data_id = data_id, weather = spec$weather, model = spec$model, seed = spec$seed))
+  }
+  list(
+    data_id = data_id, wxvar_ids = wxvar_ids, weather_id = weather_id, fit_id = fit_id,
+    run_id = .spec_digest(spec)
+  )
 }
 
 
@@ -372,13 +533,18 @@ wise_spec_read <- function(file) {
 
 # Input ids of the Step 1 data controls in an app configuration export
 # (`<step>-<module>-<input>`).
-.CONFIG_PREFIX <- c(sample = "step1-sample-", outcome = "step1-outcome-", weather = "step1-weather-")
+.CONFIG_PREFIX <- c(
+  sample = "step1-sample-", outcome = "step1-outcome-", weather = "step1-weather-",
+  model = "step1-model-"
+)
 
 #' Translate an app configuration export into a run spec
 #'
-#' Reads the Step 1 sample, outcome and weather inputs of a configuration
-#' written by the app's Export (`wise_config_snapshot()`); the seed comes from
-#' `random_seed`. Settings of later steps are ignored here.
+#' Reads the Step 1 sample, outcome, weather and model inputs of a
+#' configuration written by the app's Export (`wise_config_snapshot()`); the
+#' seed comes from `random_seed`. Interactions and policy scenarios of the
+#' Model tab are not read (a warning says so); settings of later steps are
+#' ignored here.
 #'
 #' @param config A parsed configuration (`jsonlite::fromJSON()`), or the path
 #'   of a configuration JSON file.
@@ -421,7 +587,44 @@ wise_spec_from_config <- function(config) {
   if (!is.null(hy)) weather$hist_years <- hy
   if (!length(wise_spec_weather_vars(weather)) && is.null(hy)) weather <- NULL
 
-  args <- list(sample = sample, outcome = outcome, weather = weather, seed = config$random_seed)
+  model <- NULL
+  model_type <- get(paste0(p[["model"]], "model_type"))
+  if (!is.null(model_type)) {
+    m <- function(id) get(paste0(p[["model"]], id))
+    roles <- c("hh", "ind", "firm", "area")
+    flat <- function(prefix) as.character(unlist(lapply(roles, function(r) m(paste0(prefix, r)))))
+    ignored <- c(
+      if (length(m("interactions"))) "interactions",
+      if (length(m("selected_policies"))) "policy scenario"
+    )
+    if (length(ignored)) {
+      warning(
+        "The configuration sets ", paste(ignored, collapse = " and "),
+        "; the batch model section does not support ", if (length(ignored) > 1L) "them" else "it",
+        " yet, so the model is read without.", call. = FALSE
+      )
+    }
+    lasso <- Filter(Negate(is.null), list(
+      alpha = m("lasso_alpha"), lambda = m("lasso_interactions"), nfolds = m("lasso_nfolds"),
+      standardize = if (!is.null(m("lasso_standardize"))) m("lasso_standardize") == "Standardize",
+      use_mice = m("use_mice"), mi_m = m("mi_m"), mi_maxit = m("mi_maxit"),
+      stability_threshold = m("stability_threshold"),
+      force_in = flat("force_in_"), force_out = flat("force_out_")
+    ))
+    model <- Filter(Negate(is.null), list(
+      type = model_type,
+      fixed_effects = if (!is.null(m("fixedeffects"))) as.character(unlist(m("fixedeffects"))),
+      covariates = list(
+        method = m("covariates"),
+        vars = as.character(unlist(lapply(c("hhcov", "indcov", "firmcov", "areacov"), m))),
+        lasso = lasso
+      )
+    ))
+  }
+
+  args <- list(
+    sample = sample, outcome = outcome, weather = weather, model = model, seed = config$random_seed
+  )
   do.call(wise_spec, Filter(Negate(is.null), args))
 }
 
@@ -438,7 +641,18 @@ wise_spec_from_config <- function(config) {
 )
 
 # Spec sections that later phases will add; named in errors.
-.FUTURE_SECTIONS <- c("model", "fixed_effects", "covariates", "sim", "policy")
+.FUTURE_SECTIONS <- c("sim", "policy")
+
+# Profile groups that set a part of a section rather than the section itself.
+.PROFILE_PATHS <- list(
+  covariates = c("model", "covariates"), fixed_effects = c("model", "fixed_effects")
+)
+
+#' @noRd
+.get_path <- function(x, path) {
+  for (p in path) x <- x[[p]]
+  x
+}
 
 #' @noRd
 .set_path <- function(x, path, value) {
@@ -464,12 +678,18 @@ wise_spec_from_config <- function(config) {
     if (!value %in% names(prof)) {
       stop("Axis '", axis, "': no profile '", value, "' in profiles.", axis, ".", call. = FALSE)
     }
-    # A weather profile replaces the variable set; other sections merge.
+    # A weather profile replaces the variable set; other sections merge. A
+    # fixed-effects profile is a list of variable names and replaces the set.
     if (identical(axis, "weather")) {
       spec$weather <- spec$weather[intersect(names(spec$weather), "hist_years")]
     }
-    spec[[axis]] <- .spec_merge(spec[[axis]] %||% list(), prof[[value]])
-    return(spec)
+    path <- .PROFILE_PATHS[[axis]] %||% axis
+    new <- if (identical(axis, "fixed_effects")) {
+      as.character(unlist(prof[[value]]))
+    } else {
+      .spec_merge(.get_path(spec, path) %||% list(), prof[[value]])
+    }
+    return(.set_path(spec, path, new))
   }
   path <- .AXIS_PATHS[[axis]]
   if (is.null(path) && grepl(".", axis, fixed = TRUE)) path <- strsplit(axis, ".", fixed = TRUE)[[1L]]
@@ -505,11 +725,15 @@ wise_spec_from_config <- function(config) {
 #'   ids differ from those of a run.
 #' @param metadata Output of `load_overview_metadata()` (loaded from
 #'   `connection_params` when `NULL`).
+#' @param survey_columns Survey column names (a vector, or a function of the
+#'   spec) used to resolve the default outcome and model type; `NULL` reads
+#'   them from the survey files.
 #' @return A data frame, one row per run: `run_id`, one column per axis with
-#'   the profile label, `data_id`, `wxvar_ids` (list), `resolved`, `spec`
-#'   (list of specs).
+#'   the profile label, `data_id`, `wxvar_ids` (list), `weather_id`, `fit_id`
+#'   (`NA` without a model section), `resolved`, `spec` (list of specs).
 #' @export
-wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL) {
+wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL,
+                             survey_columns = NULL) {
   if (is.character(grid)) {
     .need_pkg("yaml", "read a grid file")
     grid_dir <- dirname(normalizePath(grid, mustWork = TRUE))
@@ -594,7 +818,23 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL) {
   resolved <- !is.null(cp)
   if (resolved) {
     if (is.null(metadata)) metadata <- load_overview_metadata(cp)
-    specs <- lapply(specs, wise_spec_resolve, metadata = metadata, connection_params = cp)
+    # Survey columns decide the default outcome and model type; read once per
+    # sample.
+    cache <- new.env(parent = emptyenv())
+    cols <- function(spec) {
+      if (is.function(survey_columns)) {
+        return(survey_columns(spec))
+      }
+      if (!is.null(survey_columns)) {
+        return(survey_columns)
+      }
+      key <- .spec_digest(spec[c("sample", "source")])
+      cache[[key]] <- cache[[key]] %||% .read_survey_columns(spec, metadata, cp)
+      cache[[key]]
+    }
+    specs <- lapply(specs, wise_spec_resolve,
+      metadata = metadata, connection_params = cp, survey_columns = cols
+    )
   }
 
   ids <- lapply(specs, wise_spec_ids)
@@ -602,6 +842,8 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL) {
   for (ax in axis_names) out[[ax]] <- vapply(rows, function(r) r$labels[[ax]], "")
   out$data_id <- vapply(ids, `[[`, "", "data_id")
   out$wxvar_ids <- lapply(ids, `[[`, "wxvar_ids")
+  out$weather_id <- vapply(ids, `[[`, "", "weather_id")
+  out$fit_id <- vapply(ids, `[[`, "", "fit_id")
   out$resolved <- resolved
   out$spec <- specs
   dup <- duplicated(out$run_id)

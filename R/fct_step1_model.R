@@ -173,6 +173,96 @@ wise_selected_model <- function(model_type, interactions, fixed_effects, covaria
 }
 
 
+#' Model specification from a run spec's model section (batch)
+#'
+#' Does what the Model tab does between the controls and "Run model": checks
+#' the choices against the variables the data offers, runs the Lasso when the
+#' covariates come from it, and assembles the specification. Interactions are
+#' not part of the run spec yet.
+#'
+#' @param model The spec `model` section, resolved (`type` set).
+#' @param unit Unit of analysis (`"hh"`, `"ind"`, `"firm"`).
+#' @param survey_weather Survey-weather frame (with `loc_id_panel` when the
+#'   location panel was joined).
+#' @param selected_outcome One-row outcome table.
+#' @param selected_weather Selected weather table.
+#' @param variable_list Variable metadata.
+#' @param seed Seed of the run.
+#' @return A list: `selected_model` and `selection_frequency` (Lasso only).
+#' @noRd
+wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, selected_weather,
+                                 variable_list, seed) {
+  sw <- as.data.frame(survey_weather)
+  vl <- wise_valid_vars(sw, variable_list, selected_outcome$name)
+  outcome <- as.character(selected_outcome$name)
+  weather_vars <- as.character(selected_weather$name)
+  roles <- c("hh", "area", "ind", "firm")
+  shown <- function(role) identical(role, "area") || identical(unit, role)
+  unavailable <- function(what, bad) {
+    stop(what, " not available in the data: ", paste(bad, collapse = ", "), ".", call. = FALSE)
+  }
+
+  fe_valid <- filter_vars_by_role(vl, "fe")$name
+  fe <- model$fixed_effects %||% wise_default_fixed_effects(fe_valid)
+  if (length(setdiff(fe, fe_valid))) unavailable("Fixed effect(s)", setdiff(fe, fe_valid))
+
+  cv <- model$covariates
+  lasso <- list()
+  selection <- NULL
+  if (identical(cv$method, "lasso")) {
+    l <- cv$lasso
+    settings <- wise_lasso_settings(
+      l$alpha, l$lambda, l$nfolds, l$standardize, l$use_mice, l$mi_m, l$mi_maxit,
+      l$stability_threshold
+    )
+    # The variables the force-in / force-out controls offer at each level.
+    offered <- function(role) {
+      if (!shown(role) || !role %in% names(vl)) {
+        return(character(0))
+      }
+      x <- vl[vl[[role]] %in% 1, , drop = FALSE]
+      keep <- !x$name %in% c(outcome, weather_vars)
+      if ("outcome" %in% names(x)) keep <- keep & (is.na(x$outcome) | x$outcome != 1L)
+      x$name[keep]
+    }
+    bad <- setdiff(c(l$force_in, l$force_out), unlist(lapply(roles, offered)))
+    if (length(bad)) unavailable("Forced covariate(s)", bad)
+    forced <- stats::setNames(lapply(c("ind", "hh", "firm", "area"), function(r) {
+      list(inc = intersect(l$force_in, offered(r)), exc = intersect(l$force_out, offered(r)))
+    }), c("ind", "hh", "firm", "area"))
+    selection <- wise_lasso_selection(
+      prepare_outcome_df(sw, selected_outcome), selected_outcome, weather_vars, fe, character(0),
+      wise_lasso_candidates(vl, unique(c(l$force_out))), model$type, settings, seed
+    )
+    covs <- wise_lasso_covariates(selection$selected_covariates, vl, forced)
+    lasso <- settings
+    lasso$use_mice <- NULL
+    method <- "Lasso"
+  } else {
+    pool <- function(role) {
+      if (!shown(role)) {
+        return(character(0))
+      }
+      exclude_selected_vars(
+        filter_vars_by_role(vl, role),
+        outcome_name = outcome, weather_names = weather_vars,
+        interactions = character(0), fixedeffects = fe
+      )$name
+    }
+    bad <- setdiff(cv$vars, unlist(lapply(roles, pool)))
+    if (length(bad)) unavailable("Covariate(s)", bad)
+    covs <- stats::setNames(lapply(roles, function(r) intersect(cv$vars, pool(r))), roles)
+    method <- "User-defined"
+  }
+  list(
+    selected_model = wise_selected_model(
+      model$type, character(0), fe, method, covs, lasso, wise_cluster_var(colnames(sw))
+    ),
+    selection_frequency = selection$selection_frequency
+  )
+}
+
+
 # Fit ----
 
 #' Fit the three progressive Step 1 models

@@ -9,7 +9,15 @@
 WISEAPP_WELFARE_FLOOR <- 0.28
 
 # Spec sections that exist in the current batch phase.
-WISEAPP_SPEC_SECTIONS <- c("source", "sample", "outcome", "weather", "stats")
+WISEAPP_SPEC_SECTIONS <- c("source", "sample", "outcome", "weather", "stats", "model")
+
+# Model types of the Model tab and the engine each one runs on. Phase 2 covers
+# the fixest and RIF engines.
+WISEAPP_MODEL_TYPES <- c(
+  "Linear regression" = "fixest",
+  "Logistic regression" = "fixest",
+  "Unconditional quantile regression (RIF)" = "rif"
+)
 
 #' Default binary indicator variables for the batch statistics tables
 #'
@@ -88,6 +96,22 @@ wise_default_poverty_line <- function(currency = "PPP", df = NULL) {
   } else {
     default_lcu_poverty_line(df)
   }
+}
+
+#' Default model section
+#'
+#' What `model: {}` stands for in a spec. A run spec without a `model` section
+#' fits no model. `type` and `fixed_effects` follow rules on the data (see
+#' `wise_default_model_type()` and `wise_default_fixed_effects()`), so they stay
+#' absent until the spec is resolved or fitted.
+#'
+#' @return A named list: `covariates` (`method`, `vars`, `lasso`).
+#' @noRd
+wise_default_model <- function() {
+  list(covariates = list(
+    method = "user", vars = character(0),
+    lasso = c(wise_default_lasso(), list(force_in = character(0), force_out = character(0)))
+  ))
 }
 
 #' Default fixed effects: year and first-level region, where available

@@ -19,7 +19,11 @@ batch_fixture_variable_list <- function() {
     firm = 0,
     area = c(0, 0, 0, 0, 1, 0, 0),
     interact = 0, fe = 0
-  )
+  ) |>
+    dplyr::bind_rows(tibble::tibble(
+      name = "year", label = "Year", type = "numeric", units = "", id = NA_character_,
+      outcome = 0, hazard = 0, ind = 0, hh = 0, firm = 0, area = 0, interact = 0, fe = 1
+    ))
 }
 
 batch_fixture_survey_list <- function(codes = "TST", years = c(2018, 2019)) {

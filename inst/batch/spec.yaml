@@ -9,6 +9,13 @@ outcome:
   name: welfare
   currency: PPP
 
+# Step 1 model. Leave `model` out to run the descriptive tables only; `{}` fits
+# the app's default model (linear, fixed effects year and gaul1_code, no
+# covariates) for every run. Add `type` (linear, logistic, rif),
+# `fixed_effects` and `covariates` here, or switch them on an axis (see the
+# commented profiles below).
+model: {}
+
 # Named settings that an axis can switch between. A weather profile lists the
 # weather variables (the names of the variable list, at most two).
 profiles:
@@ -17,12 +24,20 @@ profiles:
       tx: {ref_period: [1, 3], form: continuous}
     tx_12m:
       tx: {ref_period: [1, 12], form: continuous}
+  # covariates:
+  #   basic: {method: user, vars: [hhsize, urban]}
+  #   lasso: {method: lasso}          # settings: lasso: {alpha, lambda, nfolds, ...}
+  # model:
+  #   linear: {type: linear}          # linear, logistic, rif
+  #   rif: {type: rif}
 
 # Every combination of the axes is one run. Axes that share work (the same
 # country or weather variable) reuse it.
 axes:
   country: [BFA]
   weather: [tx_3m, tx_12m]
+  # covariates: [basic, lasso]
+  # model: [linear, rif]
 
 # exclude:
 #   - {country: MWI, weather: tx_12m}

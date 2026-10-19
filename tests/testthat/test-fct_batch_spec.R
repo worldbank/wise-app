@@ -91,7 +91,7 @@ test_that("validation lists every problem and follows the app's limits", {
   expect_match(msg, "weather.tx.n_bins")
   expect_match(msg, "at most two variables")
   expect_match(msg, "hist_years")
-  expect_error(wise_spec(model = list(engine = "fixest")), "Unknown spec section")
+  expect_error(wise_spec(sim = list(engine = "fixest")), "Unknown spec section")
   expect_error(wise_spec(weather = list(tx = list(form = "Binned", binning_method = "Custom"))), "custom_breaks")
   expect_error(
     wise_spec(stats = list(indicators = list(bad = list(variable = "x", operator = "=", threshold = 1)))),
@@ -240,8 +240,8 @@ test_that("a YAML grid expands by crossing, zipping and excluding", {
   expect_identical(pooled$country, c("BFA+MWI", "BFA"))
   expect_identical(pooled$spec[[1]]$sample$countries, c("BFA", "MWI"))
 
-  expect_error(wise_spec_expand(list(axes = list(model = c("a", "b")))), "later phase")
-  expect_error(wise_spec_expand(list(model = list())), "later phase")
+  expect_error(wise_spec_expand(list(axes = list(sim = c("a", "b")))), "later phase")
+  expect_error(wise_spec_expand(list(policy = list())), "later phase")
   expect_error(wise_spec_expand(list(axes = list(country = "BFA", bogus = 1))), "Unknown axis")
   expect_error(
     wise_spec_expand(list(axes = list(country = "BFA"), exclude = list(list(nope = 1)))),
@@ -257,13 +257,17 @@ test_that("a YAML grid expands by crossing, zipping and excluding", {
 test_that("grid expansion resolves against the data when metadata is given", {
   g <- wise_spec_expand(
     list(axes = list(country = c("BFA", "MWI"))),
-    connection_params = remote_cp(), metadata = fixture_metadata()
+    connection_params = remote_cp(), metadata = fixture_metadata(),
+    survey_columns = c("welfare", "hhsize", "tx", "pr")
   )
   expect_true(all(g$resolved))
   expect_identical(g$spec[[2]]$sample$years, list(MWI = c(2016L, 2019L, 2022L)))
+  expect_identical(g$spec[[1]]$outcome$name, "welfare")
   # Ids of a resolved grid equal the ids of the explicit spec.
   explicit <- wise_spec(sample = list(countries = "BFA", years = list(BFA = c(2018, 2021))))
-  explicit <- wise_spec_resolve(explicit, fixture_metadata(), remote_cp())
+  explicit <- wise_spec_resolve(explicit, fixture_metadata(), remote_cp(),
+    survey_columns = c("welfare", "hhsize", "tx", "pr")
+  )
   expect_identical(g$run_id[1], wise_spec_ids(explicit)$run_id)
 })
 
@@ -349,10 +353,215 @@ test_that("the configuration input ids still exist in the module controls", {
   for (key in unname(.WX_INPUT_KEYS)) {
     expect_match(s4, paste0('"', key, '"'), fixed = TRUE)
   }
-  prefixes <- c("step1-sample-", "step1-outcome-", "step1-weather-")
+  s6 <- src("mod_1_06_model.R")
+  for (id in c(
+    "model_type", "fixedeffects", "covariates", "hhcov", "indcov", "firmcov", "areacov",
+    "lasso_alpha", "lasso_interactions", "lasso_nfolds", "lasso_standardize", "use_mice", "mi_m",
+    "mi_maxit", "stability_threshold", "interactions", "selected_policies"
+  )) {
+    expect_match(s6, paste0('ns("', id, '")'), fixed = TRUE)
+  }
+  expect_match(s6, 'paste0("force_in_", role)', fixed = TRUE)
+  expect_match(s6, 'paste0("force_out_", role)', fixed = TRUE)
+  prefixes <- c("step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-")
   expect_identical(unname(.CONFIG_PREFIX), prefixes)
   app <- src("app_server.R")
   expect_match(app, 'mod_1_modelling_server\\(\\s+id = "step1"')
   mod <- src("mod_1_modelling.R")
-  for (m in c("sample", "outcome", "weather")) expect_match(mod, paste0('"', m, '",'), fixed = TRUE)
+  for (m in c("sample", "outcome", "weather", "model")) expect_match(mod, paste0('"', m, '",'), fixed = TRUE)
+})
+
+# Model section ----
+
+test_that("the model section: absent means no fit, empty means the app defaults", {
+  expect_null(wise_spec()$model)
+  expect_true(is.na(wise_spec_ids(wise_spec())$fit_id))
+  m <- wise_spec(model = list())$model
+  expect_identical(m, wise_spec(model = list(covariates = list(method = "User-defined")))$model)
+  expect_identical(m$covariates$method, "user")
+  expect_identical(m$covariates$vars, character(0))
+  expect_null(m$covariates$lasso)
+  expect_null(m$type)
+  expect_null(m$fixed_effects)
+  # An explicitly empty fixed-effects set is not the rule.
+  none <- wise_spec(model = list(fixed_effects = list()))$model
+  expect_identical(none$fixed_effects, character(0))
+  expect_false(identical(wise_spec_ids(wise_spec(model = list()))$fit_id,
+    wise_spec_ids(wise_spec(model = list(fixed_effects = list())))$fit_id))
+  # The Lasso block carries the Model tab defaults.
+  l <- wise_spec(model = list(covariates = list(method = "Lasso")))$model$covariates
+  expect_null(l$vars)
+  expect_identical(l$lasso[names(wise_default_lasso())], wise_default_lasso())
+  expect_identical(l$lasso$force_in, character(0))
+})
+
+test_that("model types and covariates are normalised so equal specs hash equal", {
+  a <- wise_spec(model = list(
+    type = "linear", fixed_effects = c("year", "gaul1_code"),
+    covariates = list(vars = c("urban", "hhsize", "urban"))
+  ))
+  b <- wise_spec(model = list(
+    type = "Linear regression", fixed_effects = c("gaul1_code", "year"),
+    covariates = list(method = "user", vars = c("hhsize", "urban"))
+  ))
+  expect_identical(a, b)
+  expect_identical(a$model$type, "Linear regression")
+  expect_identical(wise_spec(model = list(type = "RIF"))$model$type, "Unconditional quantile regression (RIF)")
+  # User covariates do not enter a Lasso spec; Lasso settings do not enter a user spec.
+  u <- wise_spec(model = list(covariates = list(method = "user", lasso = list(alpha = 0.3))))
+  expect_identical(u, wise_spec(model = list()))
+  s <- wise_spec(model = list(covariates = list(method = "lasso", vars = "hhsize")))
+  expect_identical(s, wise_spec(model = list(covariates = list(method = "lasso"))))
+})
+
+test_that("fit_id follows data, weather, model and seed", {
+  base <- wise_spec(weather = list(tx = list()), model = list())
+  ids <- wise_spec_ids(base)
+  expect_match(ids$fit_id, "^[0-9a-f]{12}$")
+  vary <- function(...) wise_spec_ids(wise_spec(weather = list(tx = list()), model = list(), ...))
+  # Binning is part of the weather, so it moves the fit id but not the wxvar id.
+  bins <- wise_spec_ids(wise_spec(weather = list(tx = list(n_bins = 4)), model = list()))
+  expect_false(identical(bins$fit_id, ids$fit_id))
+  expect_identical(bins$wxvar_ids, ids$wxvar_ids)
+  expect_false(identical(bins$weather_id, ids$weather_id))
+  expect_false(identical(vary(seed = 7)$fit_id, ids$fit_id))
+  expect_false(identical(vary(outcome = list(currency = "LCU"))$fit_id, ids$fit_id))
+  m2 <- wise_spec_ids(wise_spec(weather = list(tx = list()), model = list(fixed_effects = "year")))
+  expect_false(identical(m2$fit_id, ids$fit_id))
+  # The weather frame is shared across models; the seed matters for K-means bins only.
+  expect_identical(m2$weather_id, ids$weather_id)
+  expect_identical(vary(seed = 7)$weather_id, ids$weather_id)
+  km <- function(seed) {
+    wise_spec_ids(wise_spec(
+      weather = list(tx = list(binning_method = "K-means")), model = list(), seed = seed
+    ))$weather_id
+  }
+  expect_false(identical(km(1), km(2)))
+  # A change in the statistics options changes data_id and so the fit id (tables.md section 2).
+  st <- wise_spec_ids(wise_spec(
+    weather = list(tx = list()), model = list(), stats = list(location_samples = FALSE)
+  ))
+  expect_false(identical(st$fit_id, ids$fit_id))
+})
+
+test_that("model validation lists the problems", {
+  err <- function(...) conditionMessage(tryCatch(wise_spec(model = list(...)), error = identity))
+  expect_match(err(type = "Random forest"), "model.type must be one of")
+  expect_match(err(interactions = "urban"), "model.interactions")
+  expect_match(err(policy_vars = "x"), "policy variables arrive")
+  expect_match(err(covariates = list(method = "stepwise")), "method must be")
+  lasso <- function(...) err(covariates = list(method = "lasso", lasso = list(...)))
+  expect_match(lasso(alpha = 2), "alpha must be between 0 and 1")
+  expect_match(lasso(lambda = "lambda.max"), "lambda must be")
+  expect_match(lasso(nfolds = 3), "nfolds must be between 5 and 20")
+  expect_match(lasso(stability_threshold = 0.05), "stability_threshold")
+  expect_match(lasso(force_in = "a", force_out = "a"), "share: a")
+  expect_match(err(fixed_effects = c("year", "")), "variable names")
+  # Model type against the outcome type, once the outcome is known.
+  md <- fixture_metadata()
+  md$variable_list$name[3] <- "welfare"
+  cols <- c("welfare", "hhsize", "tx")
+  logit <- wise_spec(model = list(type = "logistic"))
+  expect_error(wise_spec_resolve(logit, md, remote_cp(), cols), "needs a binary outcome")
+  rif_poor <- wise_spec(outcome = list(name = "poor"), model = list(type = "rif"))
+  expect_error(wise_spec_resolve(rif_poor, md, remote_cp(), cols), "needs a continuous outcome")
+  ok <- wise_spec_resolve(wise_spec(outcome = list(name = "poor"), model = list(type = "logistic")), md, remote_cp(), cols)
+  expect_identical(ok$model$type, "Logistic regression")
+})
+
+test_that("resolution fills the default outcome and model type", {
+  md <- fixture_metadata()
+  r <- wise_spec_resolve(wise_spec(model = list()), md, remote_cp(), c("welfare", "hhsize", "tx"))
+  expect_identical(r$outcome$name, "welfare")
+  expect_identical(r$model$type, "Linear regression")
+  p <- wise_spec_resolve(wise_spec(outcome = list(name = "poor"), model = list()), md, remote_cp(), "welfare")
+  expect_identical(p$model$type, "Logistic regression")
+  # An outcome the surveys lack is left for the data stage to report.
+  expect_identical(
+    wise_spec_resolve(wise_spec(outcome = list(name = "nope")), md, remote_cp(), "welfare")$outcome$name,
+    "nope"
+  )
+  # Without survey columns the outcome stays as given.
+  expect_null(wise_spec_resolve(wise_spec(), md, remote_cp())$outcome$name)
+  # The resolved outcome is part of the stage ids.
+  expect_false(identical(
+    wise_spec_ids(r)$data_id, wise_spec_ids(wise_spec_resolve(wise_spec(model = list()), md, remote_cp()))$data_id
+  ))
+})
+
+test_that("a grid crosses model, fixed-effects and covariate profiles", {
+  skip_if_not_installed("yaml")
+  grid <- list(
+    profiles = list(
+      model = list(linear = list(type = "linear"), rif = list(type = "rif")),
+      fixed_effects = list(year_region = c("year", "gaul1_code"), none = list()),
+      covariates = list(
+        basic = list(method = "user", vars = c("hhsize", "urban")), lasso = list(method = "lasso")
+      )
+    ),
+    axes = list(
+      country = "BFA", model = c("linear", "rif"), fixed_effects = c("year_region", "none"),
+      covariates = c("basic", "lasso")
+    ),
+    exclude = list(list(model = "rif", covariates = "lasso"))
+  )
+  g <- wise_spec_expand(grid)
+  expect_identical(nrow(g), 6L)
+  expect_identical(length(unique(g$fit_id)), 6L)
+  # Weather and data are shared by all of them.
+  expect_identical(length(unique(g$weather_id)), 1L)
+  expect_identical(length(unique(g$data_id)), 1L)
+  one <- g$spec[[which(g$model == "rif" & g$fixed_effects == "none" & g$covariates == "basic")]]
+  expect_identical(one$model$type, "Unconditional quantile regression (RIF)")
+  expect_identical(one$model$fixed_effects, character(0))
+  expect_identical(one$model$covariates$vars, c("hhsize", "urban"))
+  l <- g$spec[[which(g$model == "linear" & g$covariates == "lasso")[1]]]
+  expect_identical(l$model$covariates$method, "lasso")
+  expect_null(l$model$covariates$vars)
+  # Dotted paths work too.
+  d <- wise_spec_expand(list(model = list(covariates = list(method = "lasso")), axes = list(`model.covariates.lasso.alpha` = c(0.5, 1))))
+  expect_identical(nrow(d), 2L)
+})
+
+test_that("a configuration export carries the model settings", {
+  cfg <- list(
+    wiseapp_config_version = 1L, random_seed = 5L,
+    inputs = list(
+      `step1-model-model_type` = "Linear regression",
+      `step1-model-fixedeffects` = c("year", "gaul1_code"),
+      `step1-model-covariates` = "User-defined",
+      `step1-model-hhcov` = c("hhsize", "urban"), `step1-model-areacov` = "ttime_health",
+      `step1-model-interactions` = character(0)
+    )
+  )
+  s <- wise_spec_from_config(cfg)
+  expect_identical(s$model$type, "Linear regression")
+  expect_identical(s$model$fixed_effects, c("gaul1_code", "year"))
+  expect_identical(s$model$covariates$vars, c("hhsize", "ttime_health", "urban"))
+  lasso <- cfg
+  lasso$inputs <- c(cfg$inputs, list(
+    `step1-model-covariates` = "Lasso", `step1-model-lasso_alpha` = 0.5,
+    `step1-model-lasso_standardize` = "Do not standardize", `step1-model-force_in_hh` = "hhsize"
+  ))
+  lasso$inputs <- lasso$inputs[!duplicated(names(lasso$inputs), fromLast = TRUE)]
+  l <- wise_spec_from_config(lasso)$model$covariates
+  expect_identical(l$method, "lasso")
+  expect_identical(l$lasso$alpha, 0.5)
+  expect_false(l$lasso$standardize)
+  expect_identical(l$lasso$force_in, "hhsize")
+  # A section the batch model does not support is reported, not dropped silently.
+  cfg$inputs[["step1-model-interactions"]] <- "urban"
+  expect_warning(wise_spec_from_config(cfg), "interactions")
+  # No model inputs, no model section.
+  expect_null(wise_spec_from_config(list(wiseapp_config_version = 1L, inputs = list(other = 1)))$model)
+})
+
+test_that("a model spec survives the JSON round trip", {
+  s <- wise_spec(model = list(
+    type = "rif", fixed_effects = list(),
+    covariates = list(method = "lasso", lasso = list(alpha = 0.5, force_in = "hhsize"))
+  ))
+  f <- withr::local_tempfile(fileext = ".json")
+  wise_spec_write(s, f)
+  expect_identical(wise_spec_read(f), s)
 })

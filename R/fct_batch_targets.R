@@ -46,7 +46,23 @@ wise_targets <- function(spec_file, out_dir = "results") {
     t("weather_tables", quote(wiseapp::wise_batch_weather(wx_specs)),
       pattern = quote(map(wx_specs)), iteration = "list"
     ),
-    t("results", bquote(wiseapp::wise_batch_write(.(out_dir), grid, data_tables, weather_tables)),
+    # Step 1 models: the merged survey-weather frame once per weather
+    # profile, then one fit per model specification.
+    t("wx_frame_specs", quote(wiseapp::wise_batch_unique(grid, "frame", data_specs, data_frames)),
+      iteration = "list"
+    ),
+    t("wx_frames", quote(wiseapp::wise_batch_frame(wx_frame_specs)),
+      pattern = quote(map(wx_frame_specs)), format = "file"
+    ),
+    t("fit_specs", quote(wiseapp::wise_batch_unique(
+      grid, "fit", data_specs, data_frames, wx_frame_specs, wx_frames
+    )), iteration = "list"),
+    t("fit_tables", quote(wiseapp::wise_batch_fit(fit_specs)),
+      pattern = quote(map(fit_specs)), iteration = "list"
+    ),
+    t("results", bquote(wiseapp::wise_batch_write(
+      .(out_dir), grid, data_tables, weather_tables, fit_tables
+    )),
       format = "file"
     )
   )
@@ -146,30 +162,73 @@ wise_batch_grid <- function(spec_file, connection_params = NULL) {
 #' One work item per unique stage id
 #'
 #' @param grid Result of `wise_batch_grid()`.
-#' @param stage `"data"` or `"weather"`.
-#' @param data_specs,data_frames For `"weather"`: the data items and the files
-#'   their branches wrote, to attach the file of each weather variable's data.
-#' @return A list of items (`id`, `spec`, ...).
+#' @param stage `"data"`, `"weather"` (one variable's statistics), `"frame"`
+#'   (the survey-weather frame of a weather profile; runs with a model only) or
+#'   `"fit"` (one model fit).
+#' @param data_specs,data_frames For `"weather"`, `"frame"` and `"fit"`: the
+#'   data items and the files their branches wrote, to attach the file of each
+#'   item's data.
+#' @param frame_specs,frames For `"fit"`: the frame items and their files.
+#' @return A list of items (`id`, `spec`, ...). Items hold only the spec
+#'   sections their stage depends on, so adding a model profile leaves the
+#'   items of the earlier stages unchanged.
 #' @keywords internal
 #' @export
-wise_batch_unique <- function(grid, stage = c("data", "weather"), data_specs = NULL, data_frames = NULL) {
+wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit"), data_specs = NULL,
+                              data_frames = NULL, frame_specs = NULL, frames = NULL) {
   stage <- match.arg(stage)
   runs <- grid$runs
+  no_model <- function(spec) {
+    spec$model <- NULL
+    spec
+  }
+  data_file <- function(data_id) {
+    data_frames[match(data_id, vapply(data_specs, `[[`, "", "id"))]
+  }
   if (identical(stage, "data")) {
     first <- !duplicated(runs$data_id)
     digest <- grid$source$metadata_digest
     return(unname(Map(
-      function(id, spec) list(id = id, spec = spec, metadata_digest = digest),
+      function(id, spec) list(id = id, spec = no_model(spec), metadata_digest = digest),
       runs$data_id[first], runs$spec[first]
     )))
+  }
+  # A grid without models still needs one (inert) item: a target cannot
+  # branch over an empty one.
+  none <- list(list(id = "none", none = TRUE))
+  if (identical(stage, "frame")) {
+    keep <- !is.na(runs$fit_id) & !duplicated(runs$weather_id)
+    items <- unname(Map(
+      function(id, data_id, spec) {
+        list(id = id, data_id = data_id, spec = no_model(spec), data_file = data_file(data_id))
+      },
+      runs$weather_id[keep], runs$data_id[keep], runs$spec[keep]
+    ))
+    return(if (length(items)) items else none)
+  }
+  if (identical(stage, "fit")) {
+    keep <- !is.na(runs$fit_id) & !duplicated(runs$fit_id)
+    items <- unname(Map(
+      function(id, weather_id, data_id, spec) {
+        list(
+          id = id, weather_id = weather_id, data_id = data_id, spec = spec,
+          data_file = data_file(data_id),
+          frame_file = frames[match(weather_id, vapply(frame_specs, `[[`, "", "id"))]
+        )
+      },
+      runs$fit_id[keep], runs$weather_id[keep], runs$data_id[keep], runs$spec[keep]
+    ))
+    return(if (length(items)) items else none)
   }
   items <- list()
   for (i in seq_len(nrow(runs))) {
     for (v in names(runs$wxvar_ids[[i]])) {
       id <- runs$wxvar_ids[[i]][[v]]
       if (is.null(items[[id]])) {
-        file <- data_frames[match(runs$data_id[i], vapply(data_specs, `[[`, "", "id"))]
-        items[[id]] <- list(id = id, variable = v, data_id = runs$data_id[i], spec = runs$spec[[i]], data_file = file)
+        items[[id]] <- list(
+          id = id, variable = v, data_id = runs$data_id[i], spec = no_model(runs$spec[[i]]),
+          data_file = data_file(runs$data_id[i])
+        )
       }
     }
   }
@@ -199,13 +258,23 @@ wise_batch_data <- function(item, connection_params = NULL) {
         md$survey_list, spec$sample$unit, cp, spec$sample$countries, spec$sample$years
       )
       df <- prepare_survey_data(load_survey_frame(ss, cp), md$variable_list, md$cpi_ppp)
+      # Location panel for clustered inference (the Survey stats tab does the
+      # same). Without it the models use fixest's default variance, and the
+      # model tables say so.
+      panel <- tryCatch(wise_load_location_panel(ss, cp), error = function(e) e)
+      if (inherits(panel, "error")) {
+        location_panel <- list(ok = FALSE, message = wise_user_error(panel, "batch location panel"))
+      } else {
+        df <- wise_join_location_panel(df, panel)
+        location_panel <- list(ok = TRUE, message = NA_character_, n_unmatched = sum(is.na(df$loc_id_panel)))
+      }
       oc <- wise_selected_outcome(
         md$variable_list, df, spec$outcome$name, spec$outcome$currency, spec$outcome$poverty_line
       )
       list(
         ok = TRUE, id = item$id, survey_data = df,
         outcome_data = wise_outcome_data(df, oc$info, oc$so), outcome = oc,
-        selected_surveys = ss, variable_list = md$variable_list,
+        selected_surveys = ss, variable_list = md$variable_list, location_panel = location_panel,
         seconds = as.numeric(difftime(Sys.time(), t0, units = "secs")),
         source = c(.provenance_source_label(cp), list(
           files = paste0(ss$fname, ":", file.size(ss$fpath), collapse = ";")
@@ -249,6 +318,8 @@ wise_batch_data_tables <- function(item, file) {
           n_surveys = nrow(d$selected_surveys),
           source_type = d$source$type, source_origin = d$source$origin,
           source_files = d$source$files,
+          location_panel = if (isTRUE(d$location_panel$ok)) "joined" else d$location_panel$message,
+          n_no_panel = d$location_panel$n_unmatched %||% NA_integer_,
           seconds = d$seconds + as.numeric(difftime(Sys.time(), t0, units = "secs")),
           stringsAsFactors = FALSE
         )
@@ -307,6 +378,112 @@ wise_batch_weather <- function(item, connection_params = NULL) {
 }
 
 
+#' Build the survey-weather frame of one weather profile
+#'
+#' Loads the weather as the profile specifies it (binned variables cut on the
+#' sample's breaks, seeded for K-means), merges it onto the survey data of the
+#' item and stores the frame in the targets store for the fit branches.
+#'
+#' @param item A frame item from `wise_batch_unique()`.
+#' @param connection_params Connection (default: the environment's).
+#' @return The path of the file holding the frame (or the failure).
+#' @keywords internal
+#' @export
+wise_batch_frame <- function(item, connection_params = NULL) {
+  path <- file.path(.batch_dir("frames"), paste0(item$id, ".qs2"))
+  res <- tryCatch(
+    {
+      d <- if (isTRUE(item$none)) list(ok = FALSE) else qs2::qs_read(item$data_file)
+      if (!isTRUE(d$ok)) {
+        list(ok = FALSE, stage = "frame", id = item$id, skipped = TRUE, message = "The data stage failed.")
+      } else {
+        t0 <- Sys.time()
+        spec <- item$spec
+        cp <- connection_params %||% wise_batch_connection(spec$source)
+        hy <- stats::setNames(spec$weather$hist_years, c("from", "to"))
+        sw <- wise_selected_weather(spec$weather, d$variable_list)
+        w <- wise_load_weather(d$survey_data, d$selected_surveys, sw, hy, cp, spec$seed)
+        list(
+          ok = TRUE, id = item$id, survey_weather = w$survey_weather,
+          stored_breaks = w$stored_breaks, selected_weather = sw,
+          seconds = as.numeric(difftime(Sys.time(), t0, units = "secs"))
+        )
+      }
+    },
+    error = function(e) .batch_failure("frame", item$id, e)
+  )
+  qs2::qs_save(res, path)
+  path
+}
+
+#' Fit the Step 1 models of one specification and build the model tables
+#'
+#' The batch counterpart of pressing "Run model": covariates (user list or
+#' Lasso), fixed effects and the three progressive fits, then the tables
+#' `model_terms`, `model_fit` and `model_vcov`. The fit itself is not kept.
+#'
+#' @param item A fit item from `wise_batch_unique()`.
+#' @return A list: `ok`, `id`, `tables`, `provenance` (one row); or a failure
+#'   record.
+#' @keywords internal
+#' @export
+wise_batch_fit <- function(item) {
+  if (isTRUE(item$none)) {
+    return(list(ok = FALSE, stage = "fit", id = item$id, skipped = TRUE, message = "No model in the grid."))
+  }
+  d <- qs2::qs_read(item$data_file)
+  if (!isTRUE(d$ok)) {
+    return(list(ok = FALSE, stage = "fit", id = item$id, skipped = TRUE, message = "The data stage failed."))
+  }
+  w <- qs2::qs_read(item$frame_file)
+  if (!isTRUE(w$ok)) {
+    return(if (isTRUE(w$skipped)) {
+      list(ok = FALSE, stage = "fit", id = item$id, skipped = TRUE, message = w$message)
+    } else {
+      w
+    })
+  }
+  tryCatch(
+    {
+      t0 <- Sys.time()
+      spec <- item$spec
+      so <- d$outcome$so
+      m <- wise_model_from_spec(
+        spec$model, spec$sample$unit, w$survey_weather, so, w$selected_weather,
+        d$variable_list, spec$seed
+      )
+      mf <- wise_fit(
+        w$survey_weather, w$stored_breaks, so, w$selected_weather, m$selected_model,
+        d$variable_list, spec$seed
+      )
+      tables <- step1_model_tables(mf, m$selection_frequency)
+      # Inference level: say when the location panel was not available.
+      panel <- if (isTRUE(d$location_panel$ok)) "joined" else paste0("unavailable: ", d$location_panel$message)
+      tables$model_fit <- rbind(tables$model_fit, data.frame(
+        section = "spec", variable = NA_character_, model = NA_integer_, tau = NA_real_,
+        statistic = "location_panel", value = NA_real_, text = panel, detail = NA_character_,
+        stringsAsFactors = FALSE
+      ))
+      code <- paste(spec$sample$countries, collapse = "+")
+      add_id <- function(x) if (is.null(x)) NULL else cbind(fit_id = item$id, code = code, x)
+      list(
+        ok = TRUE, id = item$id,
+        tables = lapply(tables, add_id),
+        provenance = data.frame(
+          stage = "fit", id = item$id, n_rows = nrow(mf$train_data),
+          n_surveys = nrow(d$selected_surveys),
+          source_type = d$source$type, source_origin = d$source$origin,
+          source_files = d$source$files, location_panel = panel,
+          seconds = as.numeric(difftime(Sys.time(), t0, units = "secs")),
+          stringsAsFactors = FALSE
+        )
+      )
+    },
+    error = function(e) .batch_failure("fit", item$id, e)
+  )
+}
+
+
 # Results store ----
 
 # One row of flattened settings per run.
@@ -322,6 +499,14 @@ wise_batch_weather <- function(item, connection_params = NULL) {
     weather = .spec_json(spec$weather[wise_spec_weather_vars(spec$weather)]),
     hist_from = spec$weather$hist_years[1], hist_to = spec$weather$hist_years[2],
     location_samples = spec$stats$location_samples,
+    model_type = spec$model$type %||% NA_character_,
+    fixed_effects = if (is.null(spec$model) || is.null(spec$model$fixed_effects)) {
+      NA_character_
+    } else {
+      paste(spec$model$fixed_effects, collapse = ",")
+    },
+    covariate_method = spec$model$covariates$method %||% NA_character_,
+    covariates = if (is.null(spec$model)) NA_character_ else .spec_json(spec$model$covariates),
     stringsAsFactors = FALSE
   )
 }
@@ -361,11 +546,11 @@ wise_batch_weather <- function(item, connection_params = NULL) {
 #'
 #' @param out_dir Results folder.
 #' @param grid Result of `wise_batch_grid()`.
-#' @param data_tables,weather_tables Branch results.
+#' @param data_tables,weather_tables,fit_tables Branch results.
 #' @return `out_dir` (a `targets` file target).
 #' @keywords internal
 #' @export
-wise_batch_write <- function(out_dir, grid, data_tables, weather_tables) {
+wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tables = list()) {
   .need_pkg("arrow", "write result tables")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   runs <- grid$runs
@@ -377,15 +562,21 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables) {
   .write_table(pick(data_tables, "variable_stats"), out_dir, "variable_stats")
   .write_table(pick(data_tables, "interview_dates"), out_dir, "interview_dates")
   .write_table(pick(weather_tables, "weather_stats"), out_dir, "weather_stats")
+  for (name in c("model_terms", "model_fit", "model_vcov")) {
+    .write_table(pick(fit_tables, name), out_dir, name)
+  }
 
   # Run catalogue and per-run specs.
   flat <- dplyr::bind_rows(lapply(runs$spec, .spec_flat))
-  axes <- setdiff(names(runs), c("run_id", "data_id", "wxvar_ids", "resolved", "spec"))
+  axes <- setdiff(names(runs), c(
+    "run_id", "data_id", "wxvar_ids", "weather_id", "fit_id", "resolved", "spec"
+  ))
   labels <- tibble::as_tibble(runs[axes])
   names(labels) <- paste0("axis_", axes)
   catalogue <- dplyr::bind_cols(
     tibble::as_tibble(runs[c("run_id", "data_id")]), labels,
     tibble::tibble(wxvar_ids = lapply(runs$wxvar_ids, unname)),
+    tibble::as_tibble(runs[c("weather_id", "fit_id")]),
     flat,
     tibble::tibble(spec_json = vapply(runs$spec, .spec_json, ""))
   )
@@ -397,21 +588,26 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables) {
   }
 
   # Provenance and failures.
-  prov <- dplyr::bind_rows(lapply(c(ok(data_tables), ok(weather_tables)), function(b) b$provenance))
+  prov <- dplyr::bind_rows(lapply(
+    c(ok(data_tables), ok(weather_tables), ok(fit_tables)), function(b) b$provenance
+  ))
   prov$wiseapp_version <- as.character(utils::packageVersion("wiseapp"))
   prov$completed_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
   arrow::write_parquet(prov, file.path(out_dir, "provenance.parquet"))
 
   failed <- Filter(
     function(b) is.list(b) && !isTRUE(b$ok) && !isTRUE(b$skipped),
-    c(data_tables, weather_tables)
+    c(data_tables, weather_tables, fit_tables)
   )
+  # Fit branches that share a failed weather frame report it once.
+  failed <- failed[!duplicated(vapply(failed, function(b) paste(b$stage, b$id), ""))]
   failures <- dplyr::bind_rows(lapply(failed, function(b) {
-    affected <- if (identical(b$stage, "data")) {
-      runs$run_id[runs$data_id == b$id]
-    } else {
+    affected <- switch(b$stage,
+      data = runs$run_id[runs$data_id == b$id],
+      frame = runs$run_id[runs$weather_id == b$id],
+      fit = runs$run_id[runs$fit_id %in% b$id],
       runs$run_id[vapply(runs$wxvar_ids, function(x) b$id %in% x, logical(1))]
-    }
+    )
     data.frame(
       stage = b$stage, id = b$id, run_ids = paste(affected, collapse = ","),
       n_runs = length(affected), error_class = b$error_class, message = b$message,
@@ -440,7 +636,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables) {
     started_at = format(grid$started, "%Y-%m-%dT%H:%M:%S%z"),
     finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
     n_runs = nrow(runs), n_data_sets = length(data_tables), n_weather_variables = length(weather_tables),
-    n_failures = nrow(failures), tables = as.list(tables)
+    n_fits = length(fit_tables), n_failures = nrow(failures), tables = as.list(tables)
   )
   writeLines(
     jsonlite::toJSON(manifest, auto_unbox = TRUE, pretty = TRUE, na = "null", null = "null"),
