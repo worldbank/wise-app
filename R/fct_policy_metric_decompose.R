@@ -705,12 +705,43 @@
   dplyr::bind_rows(frame)
 }
 
+# Residual draws depend only on the effective mode, the training residuals, the
+# row ids and the year seed, so members of one scenario (same rows) share them.
+# `cache` holds the lookup and variance built once per training frame and the
+# draw of each year with the ids and length it was drawn for; a different frame,
+# mode, id vector or length is a miss, never a stale hit.
+.policy_metric_residuals <- function(cache, effective, train_aug, id_col, ids, n,
+                                     year) {
+  if (!isTRUE(cache$ready) || !identical(cache$train_aug, train_aug) ||
+    !identical(cache$id_col, id_col)) {
+    cache$ready <- TRUE
+    cache$train_aug <- train_aug
+    cache$id_col <- id_col
+    cache$lookup <- .residual_lookup(train_aug, id_col)
+    cache$sigma2 <- .residual_sigma2(train_aug)
+    cache$draws <- list()
+  }
+  key <- as.character(year)
+  hit <- cache$draws[[key]]
+  if (!is.null(hit) && identical(hit$mode, effective) && identical(hit$n, n) &&
+    identical(hit$ids, ids)) {
+    return(hit$value)
+  }
+  value <- draw_residuals_vec(effective, train_aug, n, ids, id_col,
+    seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", year),
+    resid_lookup = cache$lookup, resid_sigma2 = cache$sigma2)
+  cache$draws[[key]] <- list(mode = effective, n = n, ids = ids, value = value)
+  value
+}
+
 .policy_metric_pipeline <- function(baseline, policy, prepared, method, pov_line,
                                     requested_residuals, shared_baseline, shared_policy,
                                     scenario, member, owner = NULL,
                                     exposure_cache = NULL,
-                                    validation_cache = NULL) {
+                                    validation_cache = NULL,
+                                    residual_cache = NULL) {
   context <- prepared$context
+  residual_cache <- residual_cache %||% new.env(parent = emptyenv())
   # R2-PERF-06b: the exposure checks are a per-row scan of every member. Within
   # one run (the cache is dropped when any run input changes) a member that has
   # passed once only needs its exposure rebuilt, not revalidated.
@@ -748,8 +779,6 @@
   }
   effective <- requested_residuals
   if (is.null(bctx$train_aug) || !".resid" %in% names(bctx$train_aug)) effective <- "none"
-  lookup <- .residual_lookup(bctx$train_aug, bctx$id_col)
-  sigma2 <- .residual_sigma2(bctx$train_aug)
   is_log <- isTRUE(context$so$transform == "log")
   aggregate <- resolve_agg_fn(method)
   years <- sort(unique(baseline$sim_year))
@@ -770,11 +799,10 @@
       stop("Final cumulative state does not match production policy predictions.", call. = FALSE)
     }
     # Same row mask, draw helper and year seed as .aggregation_prepare_pipeline;
-    # reuse its invariant lookup/variance without hashing training data per year.
-    residual <- draw_residuals_vec(effective, bctx$train_aug, length(rows),
-      baseline$id_vec[rows], bctx$id_col,
-      seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", year),
-      resid_lookup = lookup, resid_sigma2 = sigma2)
+    # reuse its invariant lookup/variance without hashing training data per year,
+    # and the draw itself across members that share the rows.
+    residual <- .policy_metric_residuals(residual_cache, effective,
+      bctx$train_aug, bctx$id_col, baseline$id_vec[rows], length(rows), year)
     w <- if (!is.null(baseline$weight)) as.numeric(baseline$weight[rows]) else NULL
     row_deciles <- deciles[baseline$svy_row_id[rows]]
     n_states <- .policy_metric_n_states
@@ -931,11 +959,12 @@
         stop("Baseline/policy member identity mismatch.", call. = FALSE)
       }
       exposure_cache <- new.env(parent = emptyenv())
+      residual_cache <- new.env(parent = emptyenv())
       members <- lapply(names(b$pipelines), function(id) .policy_metric_pipeline(
         b$pipelines[[id]], p$pipelines[[id]], prepared, method, pov_line,
         requested_residuals, b$shared_context, p$shared_context, nm, id,
         owner = b, exposure_cache = exposure_cache,
-        validation_cache = validation_cache))
+        validation_cache = validation_cache, residual_cache = residual_cache))
       annual_full <- dplyr::bind_rows(lapply(members, `[[`, "annual"))
       decile_annual_full <- dplyr::bind_rows(lapply(members, `[[`, "decile_annual"))
       annual <- annual_full

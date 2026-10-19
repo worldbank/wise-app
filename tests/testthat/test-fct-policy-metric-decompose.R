@@ -775,3 +775,78 @@ test_that("a primed exposure cache leaves the annual policy run and metric decom
       ref$pipeline$y_point)
   }
 })
+
+test_that("residual draws are shared across members and never reused across different inputs", {
+  train <- data.frame(id = 1:12, .resid = seq(-0.2, 0.2, length.out = 12))
+  ids <- c(3L, 1L, 99L, 5L)
+  for (mode in c("original", "normal", "resample", "none")) {
+    cache <- new.env(parent = emptyenv())
+    expected <- draw_residuals_vec(mode, train, 4L, ids, "id",
+      seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", 2030L))
+    first <- .policy_metric_residuals(cache, mode, train, "id", ids, 4L, 2030L)
+    expect_identical(first, expected, info = mode)
+    expect_identical(.policy_metric_residuals(cache, mode, train, "id", ids, 4L, 2030L), expected)
+  }
+
+  draws <- 0L
+  real <- draw_residuals_vec
+  local_mocked_bindings(
+    draw_residuals_vec = function(...) { draws <<- draws + 1L; real(...) },
+    .package = "wiseapp")
+  cache <- new.env(parent = emptyenv())
+  call <- function(mode = "original", tr = train, i = ids, n = length(ids), year = 2030L) {
+    .policy_metric_residuals(cache, mode, tr, "id", i, n, year)
+  }
+  call(); call()
+  expect_identical(draws, 1L)
+  # Each changed input is a miss and gives the value an uncached draw gives.
+  other_train <- transform(train, .resid = rev(.resid))
+  for (case in list(
+    list(year = 2031L), list(i = c(3L, 1L, 99L, 6L)), list(i = ids[1:3], n = 3L),
+    list(mode = "normal"), list(tr = other_train)
+  )) {
+    before <- draws
+    got <- do.call(call, case)
+    expect_identical(draws, before + 1L)
+    mode <- case$mode %||% "original"
+    tr <- case$tr %||% train
+    i <- case$i %||% ids
+    n <- case$n %||% length(ids)
+    year <- case$year %||% 2030L
+    expect_identical(got, real(mode, tr, n, i, "id",
+      seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", year)))
+  }
+})
+
+test_that("the metric decomposition draws residuals once per year and scenario, with unchanged results", {
+  fx <- metric_channel_fixture("fixest", residuals = "original")
+  member <- fx$hist$pipeline
+  sibling <- member
+  sibling$weather_exposure$table$rain <- sibling$weather_exposure$table$rain * 1.5
+  baseline <- list(future = list(pipelines = list(a = member, b = sibling),
+    shared_context = fx$hist$shared_context))
+  policy <- lapply(baseline, function(s) {
+    s$pipelines <- lapply(s$pipelines, function(p)
+      .apply_policy_annual_pipeline(p, fx$prepared, "annual-run")$pipeline)
+    s
+  })
+  run <- function() .policy_metric_decomposition(fx$hist, fx$policy_hist, baseline,
+    policy, fx$prepared, "mean", NULL, "original", focus_scenario = "future")
+  draws <- 0L
+  real <- draw_residuals_vec
+  local_mocked_bindings(
+    draw_residuals_vec = function(...) { draws <<- draws + 1L; real(...) },
+    .package = "wiseapp")
+  shared <- run()
+  years <- length(unique(member$sim_year))
+  # Historical (1 member) + future (2 members sharing their draws).
+  expect_identical(draws, 2L * years)
+  # Reference: a cache that never hits reproduces the pre-cache computation.
+  fresh <- .policy_metric_residuals
+  local_mocked_bindings(
+    .policy_metric_residuals = function(cache, ...) fresh(new.env(parent = emptyenv()), ...),
+    .package = "wiseapp")
+  draws <- 0L
+  expect_identical(run(), shared)
+  expect_identical(draws, 3L * years)
+})
