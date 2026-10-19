@@ -411,7 +411,7 @@ mod_1_02_surveystats_server <- function(
               n_no_panel <- if ("loc_id_panel" %in% names(df)) sum(is.na(df$loc_id_panel)) else 0L
               if (n_no_panel > 0L) {
                 notify(sprintf(
-                  "%d of %d survey records have no location panel id and are excluded from clustered models.",
+                  "%d of %d survey records have no location data and are excluded from clustered models.",
                   n_no_panel, nrow(df)
                 ), type = "warning", duration = 8)
               }

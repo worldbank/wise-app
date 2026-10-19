@@ -285,7 +285,7 @@ mod_1_05_weatherstats_server <- function(
         if (n_wx_dropped > 0L) {
           showNotification(
             sprintf(
-              "%d of %d survey records have no matching weather data and are excluded.",
+              "%d of %d survey records have no location data and are excluded.",
               n_wx_dropped, nrow(svy)
             ),
             type = "warning", duration = 8

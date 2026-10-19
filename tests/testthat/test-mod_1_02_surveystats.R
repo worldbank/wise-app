@@ -395,7 +395,7 @@ test_that("CR-BUG-16: panel join reports unmatched records and rejects duplicate
       expect_equal(nrow(sd), 3L)
       expect_equal(sum(is.na(sd$loc_id_panel)), 1L)
       expect_true(any(grepl(
-        "1 of 3 survey records have no location panel id", notes, fixed = TRUE
+        "1 of 3 survey records have no location data", notes, fixed = TRUE
       )))
 
       # A location mapped to two panel ids errors instead of duplicating rows.
