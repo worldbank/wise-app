@@ -50,7 +50,8 @@ cfg <- if (use_fixture) {
   )
 } else {
   list(
-    economy = "BFA", years = c(2018, 2021), covs = c("hhsize", "electricity", "cellphone"),
+    economy = Sys.getenv("WISEAPP_PARITY_ECONOMY", "BFA"), years = c(2018, 2021),
+    covs = strsplit(Sys.getenv("WISEAPP_PARITY_COVS", "hhsize,electricity,cellphone"), ",")[[1L]],
     fe = c("year", "gaul1_code"), weather = c("t", "r"), hist = c(1991, 2020),
     sim_hist = c(1991, 2020), future = c(2025, 2035), trigger = "t_cont",
     weather_yaml = c(
@@ -83,7 +84,7 @@ yaml_sp <- function(x) {
   paste0("{sp: {", paste(names(x), vapply(x, function(v) as.character(v), ""), sep = ": ", collapse = ", "), "}}")
 }
 
-proj <- file.path(tempdir(), "batch-parity-policy")
+proj <- Sys.getenv("WISEAPP_PARITY_DIR", file.path(tempdir(), "batch-parity-policy"))
 dir.create(proj, showWarnings = FALSE)
 writeLines(c(
   "seed: 123",
@@ -120,9 +121,12 @@ cat(sprintf("Batch pipeline: %.0f s\n", as.numeric(difftime(Sys.time(), t0, unit
 out <- file.path(proj, "results")
 table <- function(name) dplyr::collect(arrow::open_dataset(file.path(out, "tables", name)))
 fail <- arrow::read_parquet(file.path(out, "failures.parquet"))
-if (nrow(fail)) print(fail)
-stopifnot(nrow(fail) == 0L)
-prov <- arrow::read_parquet(file.path(out, "provenance.parquet"))
+if (nrow(fail)) {
+  print(fail)
+  cat(fail$message, sep = "\n")
+}
+if (!"--continue" %in% args) stopifnot(nrow(fail) == 0L)
+prov <-arrow::read_parquet(file.path(out, "provenance.parquet"))
 for (i in which(prov$stage %in% c("sim", "policy"))) {
   cat(sprintf(
     "%s branch: %.0f s, R heap peak %.0f MB, %d failed key(s)\n",
@@ -131,8 +135,8 @@ for (i in which(prov$stage %in% c("sim", "policy"))) {
 }
 annual <- table("annual")
 summ <- table("summary")
-dec <- table("decomposition")
-meas <- table("policy_measures")
+dec <- tryCatch(table("decomposition"), error = function(e) NULL)
+meas <- tryCatch(table("policy_measures"), error = function(e) NULL)
 runs <- arrow::read_parquet(file.path(out, "runs.parquet"))
 pid <- function(label) runs$policy_id[runs$axis_policy == label]
 cat(
