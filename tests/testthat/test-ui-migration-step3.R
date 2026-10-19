@@ -158,6 +158,10 @@ test_that("echart_rif_weather_curve draws ribbon plus curve for a single term", 
   expect_null(w$x$opts$legend)
   expect_match(w$x$opts$yAxis$name, "Effect", fixed = TRUE)
   expect_match(w$x$opts$xAxis$name, "Welfare quantile", fixed = TRUE)
+  # Numeric axis spanning the tau grid: (tau, value) points on a category axis
+  # were read as indices and squeezed to the left edge.
+  expect_identical(w$x$opts$xAxis$type, "value")
+  expect_equal(c(w$x$opts$xAxis$min, w$x$opts$xAxis$max), c(0.1, 0.9))
   # Zero reference line rides on the first series.
   expect_identical(w$x$opts$series[[1]]$markLine$data[[1]]$yAxis, 0)
 })

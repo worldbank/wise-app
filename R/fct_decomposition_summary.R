@@ -652,15 +652,17 @@ echart_rif_weather_curve <- function(rif_grid, pred_var,
       )
       e$x$opts$series <- list()
       e$x$opts$xAxis <- list(
-        type = "category",
-        data = as.list(taus),
-        boundaryGap = FALSE,
+        # Series points are (tau, value) pairs, so the axis must be numeric;
+        # a category axis would read tau as an index and squeeze them left.
+        type = "value",
+        min = min(taus),
+        max = max(taus),
         name = "Welfare quantile",
         nameLocation = "middle",
         nameGap = 28,
         nameTextStyle = wise_eaxis_name(fontSize = 13),
         axisLabel = wise_eaxis_label(fontSize = 12, formatter = tau_pct),
-        axisTick = list(alignWithLabel = TRUE),
+        splitLine = wise_esplit_line(),
         axisLine = list(lineStyle = list(color = .wise_grid))
       )
       e$x$opts$yAxis <- list(
