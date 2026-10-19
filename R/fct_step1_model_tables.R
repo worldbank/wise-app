@@ -197,7 +197,9 @@ model_terms_table <- function(mf, translations = step1_translations(mf),
 #' goodness-of-fit statistics per specification (and quantile); `sample` the
 #' estimation sample; `spec` the engine, model family, variance estimator and
 #' any fallback the fitter applied (as `text`); `effect_inputs` the model-sample
-#' range, mean and SD of each continuous weather variable and, for binary
+#' range, mean and SD of each continuous weather variable, the values of each
+#' moderator (interaction: `mod_min`, `mod_max`, `mod_mean`, `mod_sd`,
+#' `mod_n_distinct`, or the `mod_levels` of a categorical one) and, for binary
 #' outcomes, the median-risk linear predictor `profile_eta` that the effect
 #' chart needs; `headline` the "At a glance" cards (`text` = value, `detail` =
 #' note).
@@ -267,6 +269,28 @@ model_fit_table <- function(mf, translations = step1_translations(mf)) {
     eta <- translations$scenarios[[v]]$profile_eta
     if (length(eta) == 1L && is.finite(eta)) {
       parts[[length(parts) + 1L]] <- row("effect_inputs", "profile_eta", eta, variable = v)
+    }
+  }
+  # Moderators of the weather effect (interactions): the values the "who is
+  # affected" chart draws at, in the model sample. A numeric or binary moderator
+  # has its range, mean and SD; a categorical one its levels.
+  for (v in intersect(as.character(snap$model$interactions %||% character(0)), names(mf$train_data))) {
+    z <- mf$train_data[[v]]
+    if (is.numeric(z) || is.logical(z)) {
+      z <- suppressWarnings(as.numeric(z))
+      z <- z[is.finite(z)]
+      if (length(z)) {
+        parts[[length(parts) + 1L]] <- row("effect_inputs",
+          c("mod_min", "mod_max", "mod_mean", "mod_sd", "mod_n_distinct"),
+          c(min(z), max(z), mean(z), if (length(z) > 1L) stats::sd(z) else NA_real_, length(unique(z))),
+          variable = v
+        )
+      }
+    } else {
+      lv <- if (is.factor(z)) levels(droplevels(z)) else sort(unique(as.character(z[!is.na(z)])))
+      parts[[length(parts) + 1L]] <- row("effect_inputs", c("mod_n_distinct", "mod_levels"),
+        c(length(lv), NA_real_), text = c(NA_character_, paste(lv, collapse = ",")), variable = v
+      )
     }
   }
 

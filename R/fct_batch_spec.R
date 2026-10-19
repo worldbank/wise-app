@@ -96,6 +96,25 @@
   if (length(hit)) hit else if (key %in% names(.MODEL_ALIASES)) .MODEL_ALIASES[[key]] else x
 }
 
+# Policy scenario keys of the Model tab (`A` to `M`), from keys or labels.
+#' @noRd
+.match_policy_keys <- function(x) {
+  x <- unique(as.character(unlist(x)))
+  labels <- vapply(POLICY_DEFINITIONS, `[[`, "", "label")
+  key <- vapply(x, function(v) {
+    if (v %in% names(POLICY_DEFINITIONS)) {
+      v
+    } else if (toupper(v) %in% names(POLICY_DEFINITIONS)) {
+      toupper(v)
+    } else if (tolower(v) %in% tolower(labels)) {
+      names(labels)[match(tolower(v), tolower(labels))]
+    } else {
+      v
+    }
+  }, "")
+  sort(unique(unname(key)))
+}
+
 # Normalise the model section: defaults filled, choices canonical, sets sorted
 # and fields that do not apply to the covariate method dropped, so equal specs
 # hash equal. `type` and `fixed_effects` stay absent until the data decides.
@@ -105,6 +124,16 @@
   chr <- function(x) sort(unique(as.character(unlist(x))))
   if (!is.null(m$type)) m$type <- .match_model_type(m$type)
   if (!is.null(m$fixed_effects)) m$fixed_effects <- chr(m$fixed_effects)
+  # Moderators of the weather effect and the policy scenario that locks some;
+  # none is the same as absent, so the ids of earlier specs hold.
+  if (!is.null(m$interactions)) {
+    ix <- chr(m$interactions)
+    m$interactions <- if (length(ix)) ix
+  }
+  if (!is.null(m$policy_vars)) {
+    pv <- .match_policy_keys(m$policy_vars)
+    m$policy_vars <- if (length(pv)) pv
+  }
   cv <- m$covariates
   method <- tolower(as.character(cv$method))
   cv$method <- if (identical(method, "user-defined")) "user" else method
@@ -133,11 +162,18 @@
 .model_problems <- function(m) {
   bad <- character(0)
   add <- function(...) bad <<- c(bad, paste0(...))
-  unknown <- setdiff(names(m), c("type", "fixed_effects", "covariates"))
-  if (length(unknown)) {
+  unknown <- setdiff(names(m), c("type", "fixed_effects", "covariates", "interactions", "policy_vars"))
+  if (length(unknown)) add("model.", paste(unknown, collapse = ", "), ": not a model setting.")
+  if (!is.null(m$interactions) && (anyNA(m$interactions) || !all(nzchar(m$interactions)))) {
+    add("model.interactions must be variable names.")
+  }
+  pv <- m$policy_vars
+  if (length(pv) > 1L) add("model.policy_vars: the app selects at most one policy scenario.")
+  bad_pv <- setdiff(pv, names(POLICY_DEFINITIONS))
+  if (length(bad_pv)) {
     add(
-      "model.", paste(unknown, collapse = ", "), ": not a model setting in this version ",
-      "(interactions and policy variables arrive with the policy phase)."
+      "model.policy_vars must be policy scenario keys (", paste(names(POLICY_DEFINITIONS), collapse = ", "),
+      ") or their labels, not ", paste(bad_pv, collapse = ", "), "."
     )
   }
   if (!is.null(m$type) && !m$type %in% names(WISEAPP_MODEL_TYPES)) {
@@ -279,12 +315,190 @@
   s
 }
 
+# Policy section ----
+
+.POLICY_LEVERS <- c("sp", "infra", "digital", "labor", "education")
+# The input ids of each lever (defined with the Step 3 input glue, which loads
+# after this file).
+#' @noRd
+.policy_ids <- function() {
+  list(
+    sp = STEP3_SP_IDS, infra = STEP3_INFRA_IDS, digital = STEP3_DIGITAL_IDS,
+    labor = STEP3_LABOR_IDS, education = STEP3_EDUCATION_IDS
+  )
+}
+.POLICY_CHAR <- c(
+  "sp_type", "budget_mode", "targeting", "pmt_variable", "amount_basis", "trigger_type",
+  "trigger_variable", "trigger_direction", "trigger_metric", "trigger_level", "payout_scope",
+  "dyn_geo", "budget_rule", "transfer_timing", "health_mode"
+)
+#' @noRd
+.policy_lgl <- function() c("dyn_welfare", grep("_universal$", unlist(.policy_ids()), value = TRUE))
+.POLICY_CHOICES <- list(
+  sp_type = c("regular", "shock"), budget_mode = c("transfer_first", "budget_first"),
+  targeting = c("universal", "exante_poor", "pmt"), amount_basis = c("per_household", "per_capita"),
+  trigger_type = c("weather", "return_period"), trigger_direction = c("above", "below", "either"),
+  trigger_metric = c("weather", "loss", "poverty_rate", "poor_count"),
+  trigger_level = c("national", "admin1", "admin2", "location"),
+  payout_scope = c("local", "national_triggered", "national_all"), dyn_geo = c("all", "worst_share"),
+  budget_rule = c("fixed", "loss_share"), transfer_timing = c("expost", "anticipatory"),
+  health_mode = c("pct", "max"), error_concentration = c(0, 5, 20)
+)
+# Allowed ranges of the numeric controls (the sliders and inputs of the modules).
+.POLICY_RANGES <- list(
+  budget_fixed = c(0, Inf), targeting_threshold_pct = c(5, 60), inclusion_error_pct = c(0, 30),
+  exclusion_error_pct = c(0, 30), transfer_amount_usd = c(0, Inf), admin_cost_pct = c(0, 50),
+  transfer_n_payments = c(2, 24), trigger_return_period_years = c(1, Inf),
+  national_k_pct = c(5, 100), payments_per_activation = c(1, 12), dyn_geo_pct = c(5, 100),
+  dyn_welfare_pct = c(5, 60), dyn_incl_error_pct = c(0, 50), dyn_excl_error_pct = c(0, 50),
+  loss_share_pct = c(1, 100), loss_event_pct = c(1, 50), timeliness_weeks = c(0, 52),
+  forecast_pod_pct = c(0, 100), forecast_far_pct = c(0, 100), effect_multiplier = c(0.1, 10),
+  delay_loss_pct_per_week = c(0, 100), trigger_pov_line = c(0, Inf), annual_cap = c(0, Inf),
+  health_travel_pct = c(-100, 20), health_travel_max = c(15, 240), labor_emp = c(-20, 20),
+  sector_manufacturing = c(0, 100), sector_services = c(0, 100)
+)
+.POLICY_PCT_RANGE <- c(-20, 100)
+
+# One lever: the defaults of its controls, then the given values, types coerced
+# and fields in name order, so equal levers hash equal. Unknown fields are kept
+# for the validation to report.
+#' @noRd
+.normalise_policy_lever <- function(lever, x) {
+  merged <- wise_default_policy()[[lever]]
+  for (f in names(x)) {
+    if (!is.null(x[[f]])) merged[f] <- list(x[[f]])
+  }
+  for (f in names(merged)) {
+    v <- merged[[f]]
+    merged[[f]] <- if (f %in% .policy_lgl()) {
+      as.logical(v)
+    } else if (f %in% .POLICY_CHAR) {
+      as.character(v)
+    } else if (f %in% .policy_ids()[[lever]]) {
+      suppressWarnings(as.numeric(v))
+    } else {
+      v
+    }
+  }
+  merged[order(names(merged))]
+}
+
+# Normalise the policy section: each lever from its defaults. A lever that is
+# absent is not part of the run; an empty section is no section.
+#' @noRd
+.normalise_policy <- function(p) {
+  out <- list()
+  for (lv in names(p)) {
+    out[[lv]] <- if (lv %in% .POLICY_LEVERS) {
+      .normalise_policy_lever(lv, p[[lv]] %||% list())
+    } else {
+      p[[lv]]
+    }
+  }
+  if (!length(out)) {
+    return(NULL)
+  }
+  out[order(names(out))]
+}
+
+# Problems of the policy section on its own.
+#' @noRd
+.policy_problems <- function(p) {
+  bad <- character(0)
+  add <- function(...) bad <<- c(bad, paste0(...))
+  unknown <- setdiff(names(p), .POLICY_LEVERS)
+  if (length(unknown)) {
+    add("policy.", paste(unknown, collapse = ", "), ": not a lever (use ", paste(.POLICY_LEVERS, collapse = ", "), ").")
+  }
+  for (lv in intersect(names(p), .POLICY_LEVERS)) {
+    x <- p[[lv]]
+    pre <- paste0("policy.", lv, ".")
+    extra <- setdiff(names(x), .policy_ids()[[lv]])
+    if (length(extra)) add(pre, paste(extra, collapse = ", "), ": not a ", lv, " setting.")
+    for (f in intersect(names(x), .policy_ids()[[lv]])) {
+      v <- x[[f]]
+      if (f %in% .policy_lgl()) {
+        if (length(v) != 1L || is.na(v)) add(pre, f, " must be true or false.")
+        next
+      }
+      if (f %in% .POLICY_CHAR) {
+        ch <- .POLICY_CHOICES[[f]]
+        if (is.null(ch)) {
+          if (length(v) != 1L || is.na(v) || !nzchar(v)) add(pre, f, " must be a single name.")
+        } else if (length(v) != 1L || is.na(v) || !v %in% ch) {
+          add(pre, f, " must be one of: ", paste(ch, collapse = ", "), ".")
+        }
+        next
+      }
+      if (length(v) != 1L || is.na(v)) {
+        # An empty optional number is the rule on the data; a non-number is an error.
+        add(pre, f, " must be a single number.")
+        next
+      }
+      ch <- .POLICY_CHOICES[[f]]
+      rng <- .POLICY_RANGES[[f]] %||% if (grepl("_pct$", f) && lv %in% c("infra", "digital", "education")) .POLICY_PCT_RANGE
+      if (!is.null(ch) && !v %in% ch) {
+        add(pre, f, " must be one of: ", paste(ch, collapse = ", "), ".")
+      } else if (!is.null(rng) && (v < rng[[1L]] || v > rng[[2L]])) {
+        add(pre, f, " must be between ", rng[[1L]], " and ", rng[[2L]], ".")
+      }
+    }
+  }
+  sp <- p$sp
+  if (is.list(sp) && !length(bad)) {
+    if (identical(sp$targeting, "pmt") &&
+      (is.null(sp$pmt_variable) || is.null(sp$pmt_cutoff))) {
+      add("policy.sp: proxy targeting needs pmt_variable and pmt_cutoff.")
+    }
+    if (identical(sp$sp_type, "shock")) {
+      problem <- .sp_shock_problem(wise_sp_config(sp))
+      if (!is.null(problem)) add("policy.sp: ", problem)
+    }
+  }
+  bad
+}
+
+# The lever configurations a policy section stands for (`NULL` for a lever that
+# is not part of the run). The labour sector targets need the observed shares of
+# the survey (`labor_defaults`); the trigger poverty line follows the outcome.
+#' @noRd
+wise_policy_configs <- function(policy, so = NULL, analysis_unit = "hh", labor_defaults = NULL) {
+  sp <- policy$sp
+  if (!is.null(sp)) {
+    # A shock program's trigger poverty line is prefilled from the outcome's own
+    # line (else 3.00), as the Trigger settings do.
+    if (is.null(sp$trigger_pov_line)) {
+      pl <- if (is.null(so)) NA_real_ else .sp_default_pov_line(so)
+      sp$trigger_pov_line <- if (is.na(pl)) 3 else pl
+    }
+    sp <- wise_sp_config(sp, currency = .sp_currency(so[["units"]][1L]), analysis_unit = analysis_unit)
+  }
+  list(
+    sp = sp,
+    infra = if (!is.null(policy$infra)) wise_infra_config(policy$infra),
+    digital = if (!is.null(policy$digital)) wise_digital_config(policy$digital),
+    labor = if (!is.null(policy$labor)) {
+      wise_labor_config(policy$labor, labor_defaults %||% c(industry = 0, services = 0))
+    },
+    education = if (!is.null(policy$education)) wise_education_config(policy$education)
+  )
+}
+
+# Shallow merge for the policy section: a lever replaces the lever of the base.
+#' @noRd
+.merge_policy <- function(base, over) {
+  base <- base %||% list()
+  for (nm in names(over)) base[nm] <- list(over[[nm]] %||% list())
+  base
+}
+
 # Normalise a spec: types coerced, empty optional fields dropped, vectors in a
 # canonical order.
 #' @noRd
 .spec_normalise <- function(spec) {
   if (!is.null(spec$model)) spec$model <- .normalise_model(spec$model)
   if (!is.null(spec$sim)) spec$sim <- .normalise_sim(spec$sim)
+  if (!is.null(spec$policy)) spec$policy <- .normalise_policy(spec$policy)
   spec$seed <- as.integer(spec$seed)
   spec$schema_version <- as.integer(spec$schema_version)
   spec$source$type <- as.character(spec$source$type)
@@ -313,7 +527,9 @@
       threshold = as.numeric(i$threshold)
     )
   })
-  spec
+  # Sections in a fixed order, whatever order they were given in.
+  first <- c("schema_version", "seed", WISEAPP_SPEC_SECTIONS)
+  spec[c(intersect(first, names(spec)), setdiff(names(spec), first))]
 }
 
 #' Build a run spec
@@ -428,6 +644,10 @@ wise_spec_validate <- function(spec) {
   if (!is.null(spec$sim)) {
     if (is.null(spec$model)) add("sim: a simulation needs a model section (use `model: {}` for the app defaults).")
     bad <- c(bad, .sim_problems(spec$sim))
+  }
+  if (!is.null(spec$policy)) {
+    if (is.null(spec$sim)) add("policy: a policy run needs a sim section (use `sim: {}` for the app defaults).")
+    bad <- c(bad, .policy_problems(spec$policy))
   }
   if (length(bad)) {
     stop(
@@ -601,11 +821,12 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
 #' whole weather section, binning included: the survey-weather frame),
 #' `fit_id` (data, weather, model and seed; `NA` without a model section),
 #' `sim_id` (the fit and the simulation settings that change results; `NA`
-#' without a `sim` section) and `run_id` (the whole spec, including the seed).
+#' without a `sim` section), `policy_id` (the simulation and the policy
+#' section; `NA` without one) and `run_id` (the whole spec, including the seed).
 #'
 #' @param spec A resolved spec.
 #' @return A list: `data_id`, `wxvar_ids` (named by variable), `weather_id`,
-#'   `fit_id`, `sim_id`, `run_id`.
+#'   `fit_id`, `sim_id`, `policy_id`, `run_id`.
 #' @export
 wise_spec_ids <- function(spec) {
   data_id <- .spec_digest(spec[c("schema_version", "source", "sample", "outcome", "stats")])
@@ -636,9 +857,14 @@ wise_spec_ids <- function(spec) {
   } else {
     .spec_digest(list(fit_id = fit_id, sim = .sim_effective(spec)))
   }
+  policy_id <- if (is.null(spec$policy) || is.na(sim_id)) {
+    NA_character_
+  } else {
+    .spec_digest(list(sim_id = sim_id, policy = spec$policy))
+  }
   list(
     data_id = data_id, wxvar_ids = wxvar_ids, weather_id = weather_id, fit_id = fit_id,
-    sim_id = sim_id, run_id = .spec_digest(spec)
+    sim_id = sim_id, policy_id = policy_id, run_id = .spec_digest(spec)
   )
 }
 
@@ -670,16 +896,17 @@ wise_spec_read <- function(file) {
 # (`<step>-<module>-<input>`).
 .CONFIG_PREFIX <- c(
   sample = "step1-sample-", outcome = "step1-outcome-", weather = "step1-weather-",
-  model = "step1-model-", sim = "step2-weathersim-"
+  model = "step1-model-", sim = "step2-weathersim-",
+  sp = "step3-sp-", infra = "step3-infra-", digital = "step3-digital-",
+  labor = "step3-labor-", education = "step3-education-"
 )
 
 #' Translate an app configuration export into a run spec
 #'
-#' Reads the Step 1 sample, outcome, weather and model inputs of a
-#' configuration written by the app's Export (`wise_config_snapshot()`); the
-#' seed comes from `random_seed`. Interactions and policy scenarios of the
-#' Model tab are not read (a warning says so); settings of later steps are
-#' ignored here.
+#' Reads the Step 1 sample, outcome, weather and model inputs (interactions
+#' and the policy scenario included), the Step 2 sidebar and the Step 3 lever
+#' controls of a configuration written by the app's Export
+#' (`wise_config_snapshot()`); the seed comes from `random_seed`.
 #'
 #' @param config A parsed configuration (`jsonlite::fromJSON()`), or the path
 #'   of a configuration JSON file.
@@ -728,17 +955,6 @@ wise_spec_from_config <- function(config) {
     m <- function(id) get(paste0(p[["model"]], id))
     roles <- c("hh", "ind", "firm", "area")
     flat <- function(prefix) as.character(unlist(lapply(roles, function(r) m(paste0(prefix, r)))))
-    ignored <- c(
-      if (length(m("interactions"))) "interactions",
-      if (length(m("selected_policies"))) "policy scenario"
-    )
-    if (length(ignored)) {
-      warning(
-        "The configuration sets ", paste(ignored, collapse = " and "),
-        "; the batch model section does not support ", if (length(ignored) > 1L) "them" else "it",
-        " yet, so the model is read without.", call. = FALSE
-      )
-    }
     lasso <- Filter(Negate(is.null), list(
       alpha = m("lasso_alpha"), lambda = m("lasso_interactions"), nfolds = m("lasso_nfolds"),
       standardize = if (!is.null(m("lasso_standardize"))) m("lasso_standardize") == "Standardize",
@@ -749,6 +965,8 @@ wise_spec_from_config <- function(config) {
     model <- Filter(Negate(is.null), list(
       type = model_type,
       fixed_effects = if (!is.null(m("fixedeffects"))) as.character(unlist(m("fixedeffects"))),
+      interactions = if (length(m("interactions"))) as.character(unlist(m("interactions"))),
+      policy_vars = if (length(m("selected_policies"))) as.character(unlist(m("selected_policies"))),
       covariates = list(
         method = m("covariates"),
         vars = as.character(unlist(lapply(c("hhcov", "indcov", "firmcov", "areacov"), m))),
@@ -782,8 +1000,27 @@ wise_spec_from_config <- function(config) {
     }
   }
 
+  # Step 3 levers. A lever is part of the spec when the configuration holds any
+  # of its controls; its other controls take the defaults.
+  policy <- list()
+  for (lv in .POLICY_LEVERS) {
+    vals <- Filter(
+      Negate(is.null),
+      step3_read_inputs(.policy_ids()[[lv]], function(id) get(paste0(p[[lv]], id)))
+    )
+    if (length(vals)) policy[[lv]] <- vals
+  }
+  if (length(policy) && is.null(sim)) {
+    warning(
+      "The configuration sets policy levers, which need a Step 2 simulation; ",
+      "no simulation is set, so the policy is read without.", call. = FALSE
+    )
+    policy <- list()
+  }
+
   args <- list(
     sample = sample, outcome = outcome, weather = weather, model = model, sim = sim,
+    policy = if (length(policy)) policy,
     seed = config$random_seed
   )
   do.call(wise_spec, Filter(Negate(is.null), args))
@@ -802,7 +1039,7 @@ wise_spec_from_config <- function(config) {
 )
 
 # Spec sections that later phases will add; named in errors.
-.FUTURE_SECTIONS <- "policy"
+.FUTURE_SECTIONS <- character(0)
 
 # Profile groups that set a part of a section rather than the section itself.
 .PROFILE_PATHS <- list(
@@ -849,6 +1086,9 @@ wise_spec_from_config <- function(config) {
       as.character(unlist(prof[[value]]))
     } else if (identical(axis, "sim")) {
       .merge_sim(.get_path(spec, path), prof[[value]])
+    } else if (identical(axis, "policy")) {
+      # A policy profile is the whole policy: it replaces the section.
+      prof[[value]] %||% list()
     } else {
       .spec_merge(.get_path(spec, path) %||% list(), prof[[value]])
     }
@@ -923,8 +1163,9 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL,
     base$schema_version <- NULL
   }
   top <- grid[intersect(c("seed", WISEAPP_SPEC_SECTIONS), names(grid))]
-  base <- .spec_merge(base, top[setdiff(names(top), "sim")])
+  base <- .spec_merge(base, top[setdiff(names(top), c("sim", "policy"))])
   if (!is.null(top$sim)) base$sim <- .merge_sim(base$sim, top$sim)
+  if (!is.null(top$policy)) base$policy <- .merge_policy(base$policy, top$policy)
 
   axes <- grid$axes %||% list()
   profiles <- grid$profiles %||% list()
@@ -1009,6 +1250,7 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL,
   out$weather_id <- vapply(ids, `[[`, "", "weather_id")
   out$fit_id <- vapply(ids, `[[`, "", "fit_id")
   out$sim_id <- vapply(ids, `[[`, "", "sim_id")
+  out$policy_id <- vapply(ids, `[[`, "", "policy_id")
   out$resolved <- resolved
   out$spec <- specs
   dup <- duplicated(out$run_id)

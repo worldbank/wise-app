@@ -91,7 +91,7 @@ test_that("validation lists every problem and follows the app's limits", {
   expect_match(msg, "weather.tx.n_bins")
   expect_match(msg, "at most two variables")
   expect_match(msg, "hist_years")
-  expect_error(wise_spec(policy = list(engine = "fixest")), "Unknown spec section")
+  expect_error(wise_spec(climate = list(engine = "fixest")), "Unknown spec section")
   expect_error(wise_spec(weather = list(tx = list(form = "Binned", binning_method = "Custom"))), "custom_breaks")
   expect_error(
     wise_spec(stats = list(indicators = list(bad = list(variable = "x", operator = "=", threshold = 1)))),
@@ -240,8 +240,11 @@ test_that("a YAML grid expands by crossing, zipping and excluding", {
   expect_identical(pooled$country, c("BFA+MWI", "BFA"))
   expect_identical(pooled$spec[[1]]$sample$countries, c("BFA", "MWI"))
 
-  expect_error(wise_spec_expand(list(axes = list(policy = c("a", "b")))), "later phase")
-  expect_error(wise_spec_expand(list(policy = list())), "later phase")
+  expect_error(wise_spec_expand(list(axes = list(policy = c("a", "b")))), "Unknown axis 'policy'")
+  expect_error(
+    wise_spec_expand(list(profiles = list(policy = list(a = list())), axes = list(policy = "b"))),
+    "no profile 'b'"
+  )
   expect_error(wise_spec_expand(list(axes = list(country = "BFA", bogus = 1))), "Unknown axis")
   expect_error(
     wise_spec_expand(list(axes = list(country = "BFA"), exclude = list(list(nope = 1)))),
@@ -374,9 +377,33 @@ test_that("the configuration input ids still exist in the module controls", {
   expect_match(s21, 'ns("fut_period_2")', fixed = TRUE)
   expect_match(s21, 'ns("fut_period_3")', fixed = TRUE)
   prefixes <- c(
-    "step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-", "step2-weathersim-"
+    "step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-", "step2-weathersim-",
+    "step3-sp-", "step3-infra-", "step3-digital-", "step3-labor-", "step3-education-"
   )
   expect_identical(unname(.CONFIG_PREFIX), prefixes)
+  # Every Step 3 control of the spec is a control of its module.
+  for (lever in list(
+    list("mod_3_01_sp.R", STEP3_SP_IDS), list("mod_3_02_infra.R", STEP3_INFRA_IDS),
+    list("mod_3_03_digital.R", STEP3_DIGITAL_IDS), list("mod_3_04_labor.R", STEP3_LABOR_IDS),
+    list("mod_3_05_education.R", STEP3_EDUCATION_IDS)
+  )) {
+    code <- src(lever[[1L]])
+    for (id in lever[[2L]]) {
+      # An id is a literal control id or the stem of a built one (`<stem>_universal`).
+      stem <- sub("_(universal|pct)$", "", id)
+      expect_true(
+        grepl(paste0('"', id, '"'), code, fixed = TRUE) ||
+          grepl(paste0('"', stem, '"'), code, fixed = TRUE) ||
+          grepl(paste0('"', stem, '_ui"'), code, fixed = TRUE),
+        info = paste(lever[[1L]], id)
+      )
+    }
+  }
+  app3 <- src("mod_3_scenario.R")
+  for (m in c("sp", "infra", "digital", "labor", "education")) {
+    expect_match(app3, paste0('"', m, '",'), fixed = TRUE)
+  }
+  expect_match(src("app_server.R"), 'mod_3_scenario_server\\(\\s+id = "step3"')
   app <- src("app_server.R")
   expect_match(app, 'mod_1_modelling_server\\(\\s+id = "step1"')
   expect_match(app, 'mod_2_simulation_server\\(\\s+id\\s+= "step2"')
@@ -461,8 +488,10 @@ test_that("fit_id follows data, weather, model and seed", {
 test_that("model validation lists the problems", {
   err <- function(...) conditionMessage(tryCatch(wise_spec(model = list(...)), error = identity))
   expect_match(err(type = "Random forest"), "model.type must be one of")
-  expect_match(err(interactions = "urban"), "model.interactions")
-  expect_match(err(policy_vars = "x"), "policy variables arrive")
+  expect_match(err(interactions = c("urban", "")), "model.interactions must be variable names")
+  expect_match(err(policy_vars = "x"), "model.policy_vars must be policy scenario keys")
+  expect_match(err(policy_vars = c("A", "B")), "at most one policy scenario")
+  expect_match(err(bogus = 1), "model.bogus: not a model setting")
   expect_match(err(covariates = list(method = "stepwise")), "method must be")
   lasso <- function(...) err(covariates = list(method = "lasso", lasso = list(...)))
   expect_match(lasso(alpha = 2), "alpha must be between 0 and 1")
@@ -563,11 +592,46 @@ test_that("a configuration export carries the model settings", {
   expect_identical(l$lasso$alpha, 0.5)
   expect_false(l$lasso$standardize)
   expect_identical(l$lasso$force_in, "hhsize")
-  # A section the batch model does not support is reported, not dropped silently.
+  # The interaction and the policy scenario of the Model tab are model settings.
   cfg$inputs[["step1-model-interactions"]] <- "urban"
-  expect_warning(wise_spec_from_config(cfg), "interactions")
+  expect_identical(wise_spec_from_config(cfg)$model$interactions, "urban")
+  expect_null(wise_spec_from_config(cfg)$model$policy_vars)
+  cfg$inputs[["step1-model-selected_policies"]] <- "A"
+  cfg$inputs[["step1-model-interactions"]] <- "electricity"
+  m <- wise_spec_from_config(cfg)$model
+  expect_identical(m$policy_vars, "A")
+  expect_identical(m$interactions, "electricity")
+  # No interaction selected is no interaction.
+  cfg$inputs[["step1-model-interactions"]] <- character(0)
+  cfg$inputs[["step1-model-selected_policies"]] <- NULL
+  expect_null(wise_spec_from_config(cfg)$model$interactions)
   # No model inputs, no model section.
   expect_null(wise_spec_from_config(list(wiseapp_config_version = 1L, inputs = list(other = 1)))$model)
+})
+
+test_that("interactions and the policy scenario are normalised and move only the fit id", {
+  base <- wise_spec(model = list())
+  none <- wise_spec(model = list(interactions = list(), policy_vars = list()))
+  expect_identical(base, none)
+  expect_identical(wise_spec_ids(base)$fit_id, wise_spec_ids(none)$fit_id)
+  a <- wise_spec(model = list(interactions = c("urban", "urban"), policy_vars = "a"))
+  expect_identical(a$model$interactions, "urban")
+  expect_identical(a$model$policy_vars, "A")
+  # A label names the scenario too.
+  b <- wise_spec(model = list(policy_vars = "Energy / Electricity access"))
+  expect_identical(b$model$policy_vars, "A")
+  ia <- wise_spec_ids(a)
+  ib <- wise_spec_ids(wise_spec(model = list(interactions = "urban")))
+  expect_false(identical(ia$fit_id, wise_spec_ids(base)$fit_id))
+  expect_false(identical(ia$fit_id, ib$fit_id))
+  expect_identical(ia$data_id, wise_spec_ids(base)$data_id)
+  expect_identical(ia$weather_id, wise_spec_ids(base)$weather_id)
+  # A grid axis sets a moderator.
+  g <- wise_spec_expand(list(
+    model = list(), axes = list(model.interactions = list("urban", "electricity"))
+  ))
+  expect_identical(vapply(g$spec, function(s) s$model$interactions, ""), c("urban", "electricity"))
+  expect_length(unique(g$fit_id), 2L)
 })
 
 test_that("a model spec survives the JSON round trip", {
@@ -801,4 +865,204 @@ test_that("a sim spec survives the JSON round trip", {
     wise_spec_write(s, f)
     expect_identical(wise_spec_read(f), s)
   }
+})
+
+# Policy section ----
+
+pol_spec <- function(policy = list(), ...) wise_spec(model = list(), sim = list(), policy = policy, ...)
+
+test_that("the policy section: absent or empty is no policy, a lever starts from the control defaults", {
+  expect_null(wise_spec()$policy)
+  expect_true(is.na(wise_spec_ids(wise_spec(model = list(), sim = list()))$policy_id))
+  expect_null(pol_spec(list())$policy)
+  s <- pol_spec(list(sp = list(), infra = list()))$policy
+  expect_identical(names(s), c("infra", "sp"))
+  d <- wise_default_policy()
+  for (lv in c("sp", "infra")) {
+    for (f in names(d[[lv]])) expect_identical(s[[lv]][[f]], d[[lv]][[f]], info = paste(lv, f))
+  }
+  # The defaults are the initial values of the controls: universal targeting, a
+  # return-period trigger, no change in access.
+  expect_identical(s$sp$targeting, "universal")
+  expect_identical(s$sp$trigger_type, "return_period")
+  expect_false(s$infra$elec_universal)
+  expect_identical(s$infra$elec_pct, 0)
+  # Rule-based fields stay absent until given.
+  expect_false(any(c("pmt_variable", "trigger_variable", "annual_cap", "trigger_pov_line") %in% names(s$sp)))
+})
+
+test_that("policy levers are normalised so equal specs hash equal and only policy_id moves", {
+  a <- pol_spec(list(sp = list(transfer_amount_usd = 100L, targeting = "exante_poor")))
+  b <- pol_spec(list(sp = list(targeting = "exante_poor", transfer_amount_usd = 100)))
+  expect_identical(a, b)
+  ia <- wise_spec_ids(a)
+  c2 <- pol_spec(list(sp = list(transfer_amount_usd = 120, targeting = "exante_poor")))
+  ic <- wise_spec_ids(c2)
+  for (id in c("data_id", "weather_id", "fit_id", "sim_id")) expect_identical(ia[[id]], ic[[id]], info = id)
+  expect_false(identical(ia$policy_id, ic$policy_id))
+  expect_false(identical(ia$run_id, ic$run_id))
+  # A lever's own defaults equal stating them.
+  expect_identical(
+    wise_spec_ids(pol_spec(list(infra = list())))$policy_id,
+    wise_spec_ids(pol_spec(list(infra = list(elec_pct = 0, health_mode = "pct"))))$policy_id
+  )
+  # A different simulation is a different policy_id.
+  other <- wise_spec(model = list(), sim = list(ssps = "ssp2_4_5"), policy = list(sp = list()))
+  expect_false(identical(wise_spec_ids(other)$policy_id, wise_spec_ids(pol_spec(list(sp = list())))$policy_id))
+  expect_false(identical(other$seed, 1L))
+})
+
+test_that("policy validation lists the problems", {
+  err <- tryCatch(
+    pol_spec(list(
+      sp = list(targeting_threshold_pct = 99, foo = 1, error_concentration = 7, targeting = "pmt"),
+      infra = list(elec_pct = 500, health_mode = "x"), bar = list(), labor = list(labor_emp = 40)
+    )),
+    error = identity
+  )
+  expect_s3_class(err, "wise_spec_error")
+  msg <- conditionMessage(err)
+  expect_match(msg, "policy.bar")
+  expect_match(msg, "policy.sp.foo")
+  expect_match(msg, "policy.sp.targeting_threshold_pct must be between 5 and 60")
+  expect_match(msg, "policy.sp.error_concentration must be one of: 0, 5, 20")
+  expect_match(msg, "policy.infra.elec_pct must be between -20 and 100")
+  expect_match(msg, "policy.infra.health_mode")
+  expect_match(msg, "policy.labor.labor_emp")
+  # A policy needs a simulation.
+  expect_error(wise_spec(model = list(), policy = list(sp = list())), "needs a sim section")
+  # Proxy targeting needs its variable and cutoff.
+  expect_error(pol_spec(list(sp = list(targeting = "pmt"))), "proxy targeting needs")
+  expect_no_error(pol_spec(list(sp = list(targeting = "pmt", pmt_variable = "hhsize", pmt_cutoff = 4))))
+  # A shock program is checked by the trigger rules of the module.
+  expect_error(pol_spec(list(sp = list(sp_type = "shock"))), "weather variable for the trigger")
+  expect_error(
+    pol_spec(list(sp = list(sp_type = "shock", trigger_variable = "tx", trigger_type = "weather"))),
+    "threshold value"
+  )
+  expect_no_error(pol_spec(list(sp = list(sp_type = "shock", trigger_variable = "tx"))))
+  expect_no_error(pol_spec(list(sp = list(
+    sp_type = "shock", trigger_metric = "loss", trigger_level = "location",
+    budget_rule = "loss_share", annual_cap = 1e6, transfer_timing = "anticipatory",
+    forecast_pod_pct = 80, forecast_far_pct = 20, effect_multiplier = 1.5, dyn_geo = "worst_share",
+    dyn_welfare = TRUE, payout_scope = "national_triggered"
+  ))))
+})
+
+test_that("a policy spec resolves to the lever configurations of the modules", {
+  so <- list(units = "PPP", povline = 2.15)
+  s <- pol_spec(list(
+    sp = list(transfer_amount_usd = 80, targeting = "exante_poor", amount_basis = "per_capita"),
+    infra = list(elec_universal = TRUE, water_pct = 25), digital = list(), education = list(primary_pct = 10),
+    labor = list(sector_services = 40)
+  ))$policy
+  cfg <- wise_policy_configs(s, so, "hh", c(industry = 10, services = 30))
+  expect_identical(cfg$sp$transfer_amount_usd, 80)
+  expect_identical(cfg$sp$targeting, "exante_poor")
+  expect_identical(cfg$sp$amount_basis, "per_capita")
+  expect_identical(cfg$sp$currency, "PPP")
+  expect_identical(cfg$infra$elec_access_change_pct, 100L)
+  expect_identical(cfg$infra$water_access_change_pct, 25)
+  expect_false(cfg$digital$internet_universal)
+  expect_identical(cfg$education$primary_access_change_pct, 10)
+  expect_null(cfg$labor$sector_manufacturing)
+  expect_identical(cfg$labor$sector_services, 40)
+  # A per-person amount only exists for household analysis.
+  expect_identical(wise_policy_configs(s, so, "ind")$sp$amount_basis, "per_household")
+  # A shock program takes the outcome's poverty line for its trigger.
+  shock <- pol_spec(list(sp = list(sp_type = "shock", trigger_variable = "tx")))$policy
+  expect_identical(wise_policy_configs(shock, so)$sp$trigger_pov_line, 2.15)
+  expect_identical(wise_policy_configs(shock, list(units = "LCU"))$sp$trigger_pov_line, 3)
+  expect_identical(wise_policy_configs(shock, list(units = "LCU"))$sp$currency, "LCU")
+  # A lever that is absent is not part of the run.
+  only <- wise_policy_configs(pol_spec(list(infra = list()))$policy, so)
+  expect_null(only$sp)
+  expect_null(only$labor)
+})
+
+test_that("a grid crosses policy profiles; the profile replaces the whole policy", {
+  grid <- list(
+    model = list(), sim = list(),
+    profiles = list(policy = list(
+      none = list(),
+      cash = list(sp = list(transfer_amount_usd = 50, targeting = "exante_poor")),
+      infra = list(infra = list(elec_pct = 30))
+    )),
+    axes = list(policy = c("none", "cash", "infra"))
+  )
+  runs <- wise_spec_expand(grid)
+  expect_identical(runs$policy, c("none", "cash", "infra"))
+  expect_true(is.na(runs$policy_id[[1L]]))
+  expect_false(anyNA(runs$policy_id[-1L]))
+  # One data, weather, fit and sim for all three.
+  expect_length(unique(runs$fit_id), 1L)
+  expect_length(unique(runs$sim_id), 1L)
+  expect_null(runs$spec[[1L]]$policy)
+  expect_identical(names(runs$spec[[2L]]$policy), "sp")
+  expect_identical(names(runs$spec[[3L]]$policy), "infra")
+  # A lever setting is also an axis by its dotted path, on top of a base lever.
+  amounts <- wise_spec_expand(list(
+    model = list(), sim = list(), policy = list(sp = list(targeting = "exante_poor")),
+    axes = list(policy.sp.transfer_amount_usd = c(50, 100))
+  ))
+  expect_identical(
+    vapply(amounts$spec, function(s) s$policy$sp$transfer_amount_usd, 0), c(50, 100)
+  )
+  expect_identical(vapply(amounts$spec, function(s) s$policy$sp$targeting, ""), rep("exante_poor", 2L))
+  expect_length(unique(amounts$sim_id), 1L)
+  expect_length(unique(amounts$policy_id), 2L)
+  # A top-level policy merges lever by lever into the base.
+  top <- wise_spec_expand(list(model = list(), sim = list(), policy = list(infra = list(elec_pct = 5))))
+  expect_identical(top$spec[[1L]]$policy$infra$elec_pct, 5)
+})
+
+test_that("a configuration export carries every lever of Step 3", {
+  inputs <- c(
+    list(
+      `step1-model-model_type` = "Linear regression", `step2-weathersim-hist_years` = c(1991, 2020),
+      `step2-weathersim-climate` = "ssp3_7_0", `step2-weathersim-fut_period_1` = c(2025, 2035),
+      `step2-weathersim-fut_period_2` = c(2015, 2015), `step2-weathersim-fut_period_3` = c(2015, 2015)
+    ),
+    list(
+      `step3-sp-sp_type` = "shock", `step3-sp-trigger_variable` = "tx",
+      `step3-sp-trigger_type` = "weather", `step3-sp-trigger_value` = 31.5,
+      `step3-sp-trigger_direction` = "above", `step3-sp-transfer_amount_usd` = 90,
+      `step3-sp-targeting` = "exante_poor", `step3-sp-targeting_threshold_pct` = 30,
+      `step3-sp-error_concentration` = "5", `step3-sp-dyn_welfare` = TRUE,
+      `step3-sp-payments_per_activation` = 3, `step3-sp-budget_rule` = "loss_share",
+      `step3-sp-annual_cap` = 2e6, `step3-sp-trigger_metric` = "weather",
+      `step3-infra-elec_universal` = TRUE, `step3-infra-water_pct` = 20,
+      `step3-infra-health_mode` = "max", `step3-infra-health_travel_max` = 45,
+      `step3-digital-internet_pct` = 15, `step3-labor-labor_emp` = 2,
+      `step3-labor-sector_manufacturing` = 25, `step3-education-secondary_pct` = 10
+    )
+  )
+  cfg <- list(wiseapp_config_version = 1L, random_seed = 7L, inputs = inputs)
+  s <- wise_spec_from_config(cfg)
+  expect_identical(sort(names(s$policy)), c("digital", "education", "infra", "labor", "sp"))
+  sp <- s$policy$sp
+  expect_identical(sp$sp_type, "shock")
+  expect_identical(sp$trigger_value, 31.5)
+  expect_identical(sp$error_concentration, 5)
+  expect_true(sp$dyn_welfare)
+  expect_identical(sp$annual_cap, 2e6)
+  expect_identical(sp$payments_per_activation, 3)
+  expect_true(s$policy$infra$elec_universal)
+  expect_identical(s$policy$infra$health_travel_max, 45)
+  expect_identical(s$policy$digital$internet_pct, 15)
+  expect_identical(s$policy$labor$sector_manufacturing, 25)
+  expect_identical(s$policy$education$secondary_pct, 10)
+  # The lever the configuration omits is not part of the spec.
+  one <- cfg
+  one$inputs <- one$inputs[!grepl("^step3-(infra|digital|labor|education)", names(one$inputs))]
+  expect_identical(names(wise_spec_from_config(one)$policy), "sp")
+  # No Step 3 input, no policy; a policy without a simulation is dropped.
+  expect_null(wise_spec_from_config(list(wiseapp_config_version = 1L, inputs = inputs[1:6]))$policy)
+  nosim <- list(wiseapp_config_version = 1L, inputs = inputs[c("step1-model-model_type", "step3-sp-sp_type")])
+  expect_warning(spec <- wise_spec_from_config(nosim), "need a Step 2 simulation")
+  expect_null(spec$policy)
+  # Round trip through JSON.
+  f <- withr::local_tempfile(fileext = ".json")
+  wise_spec_write(s, f)
+  expect_identical(wise_spec_read(f), s)
 })

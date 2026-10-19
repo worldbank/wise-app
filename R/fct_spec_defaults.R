@@ -9,7 +9,7 @@
 WISEAPP_WELFARE_FLOOR <- 0.28
 
 # Spec sections that exist in the current batch phase.
-WISEAPP_SPEC_SECTIONS <- c("source", "sample", "outcome", "weather", "stats", "model", "sim")
+WISEAPP_SPEC_SECTIONS <- c("source", "sample", "outcome", "weather", "stats", "model", "sim", "policy")
 
 # Model types of the Model tab and the engine each one runs on. Phase 2 covers
 # the fixest and RIF engines.
@@ -171,6 +171,52 @@ wise_default_baseline <- function(values) {
   year <- as.integer(sub("^.*\\|", "", values))
   latest <- tapply(year, code, max)
   values[year == latest[code]]
+}
+
+#' Default Step 3 lever settings
+#'
+#' The initial values of the Step 3 controls, by input id. A lever in the run
+#' spec starts from these; a lever that is absent is not part of the run. Fields
+#' that follow a rule on the data have no entry: the proxy variable and its
+#' cutoff, the trigger variable, direction and thresholds, the annual cap, and
+#' the trigger poverty line (the outcome's own line, else 3.00). The labour
+#' sector targets default to the observed shares.
+#'
+#' @return A named list of levers (`sp`, `infra`, `digital`, `labor`,
+#'   `education`), each a named list of control values.
+#' @noRd
+wise_default_policy <- function() {
+  access <- function(stems) {
+    out <- list()
+    for (s in stems) {
+      out[[paste0(s, "_universal")]] <- FALSE
+      out[[paste0(s, "_pct")]] <- 0
+    }
+    out
+  }
+  list(
+    sp = list(
+      sp_type = "regular", budget_mode = "transfer_first", budget_fixed = 0,
+      targeting = "universal", targeting_threshold_pct = 20, inclusion_error_pct = 10,
+      exclusion_error_pct = 10, error_concentration = 0, transfer_amount_usd = 0,
+      amount_basis = "per_household", admin_cost_pct = 0, transfer_n_payments = 6,
+      trigger_type = "return_period", trigger_direction = "above",
+      trigger_return_period_years = 10, trigger_metric = "weather", trigger_level = "national",
+      payout_scope = "local", national_k_pct = 20, payments_per_activation = 1,
+      dyn_geo = "all", dyn_geo_pct = 50, dyn_welfare = FALSE, dyn_welfare_pct = 20,
+      dyn_incl_error_pct = 20, dyn_excl_error_pct = 20, budget_rule = "fixed",
+      loss_share_pct = 50, loss_event_pct = 10, transfer_timing = "expost",
+      timeliness_weeks = 0, forecast_pod_pct = 100, forecast_far_pct = 0,
+      effect_multiplier = 1, delay_loss_pct_per_week = 0
+    ),
+    infra = c(
+      access(c("elec", "water", "sanitation", "piped", "piped_to_prem", "imp_wat_san")),
+      list(health_mode = "pct", health_travel_pct = 0, health_travel_max = 60)
+    ),
+    digital = access(c("internet", "mobile")),
+    labor = list(labor_emp = 0),
+    education = access(c("primary", "secondary", "postsec"))
+  )
 }
 
 #' Default Lasso settings (the Model tab's advanced controls)

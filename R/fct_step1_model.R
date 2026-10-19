@@ -177,8 +177,9 @@ wise_selected_model <- function(model_type, interactions, fixed_effects, covaria
 #'
 #' Does what the Model tab does between the controls and "Run model": checks
 #' the choices against the variables the data offers, runs the Lasso when the
-#' covariates come from it, and assembles the specification. Interactions are
-#' not part of the run spec yet.
+#' covariates come from it, and assembles the specification. The interactions
+#' are the moderators of the spec plus the variables the policy scenario
+#' (`policy_vars`) locks; no interaction is the default.
 #'
 #' @param model The spec `model` section, resolved (`type` set).
 #' @param unit Unit of analysis (`"hh"`, `"ind"`, `"firm"`).
@@ -206,6 +207,21 @@ wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, 
   fe <- model$fixed_effects %||% wise_default_fixed_effects(fe_valid)
   if (length(setdiff(fe, fe_valid))) unavailable("Fixed effect(s)", setdiff(fe, fe_valid))
 
+  # Moderators of the weather effect: those chosen, and those a policy scenario
+  # locks (the Model tab adds them to the selection).
+  ixn_valid <- filter_vars_by_role(vl, "interact", extra_filter = list(type = "numeric"))$name
+  locked <- unique(unlist(get_policy_locked_vars(model$policy_vars, vl), use.names = FALSE))
+  no_policy_var <- vapply(model$policy_vars, function(k) {
+    !any(POLICY_DEFINITIONS[[k]]$vars %in% vl$name)
+  }, logical(1))
+  if (any(no_policy_var)) {
+    unavailable("Policy scenario variable(s) of", names(no_policy_var)[no_policy_var])
+  }
+  if (length(setdiff(model$interactions, c(ixn_valid, locked)))) {
+    unavailable("Interaction variable(s)", setdiff(model$interactions, c(ixn_valid, locked)))
+  }
+  interactions <- unique(c(model$interactions, locked))
+
   cv <- model$covariates
   lasso <- list()
   selection <- NULL
@@ -231,7 +247,7 @@ wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, 
       list(inc = intersect(l$force_in, offered(r)), exc = intersect(l$force_out, offered(r)))
     }), c("ind", "hh", "firm", "area"))
     selection <- wise_lasso_selection(
-      prepare_outcome_df(sw, selected_outcome), selected_outcome, weather_vars, fe, character(0),
+      prepare_outcome_df(sw, selected_outcome), selected_outcome, weather_vars, fe, interactions,
       wise_lasso_candidates(vl, unique(c(l$force_out))), model$type, settings, seed
     )
     covs <- wise_lasso_covariates(selection$selected_covariates, vl, forced)
@@ -246,7 +262,7 @@ wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, 
       exclude_selected_vars(
         filter_vars_by_role(vl, role),
         outcome_name = outcome, weather_names = weather_vars,
-        interactions = character(0), fixedeffects = fe
+        interactions = interactions, fixedeffects = fe
       )$name
     }
     bad <- setdiff(cv$vars, unlist(lapply(roles, pool)))
@@ -256,7 +272,7 @@ wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, 
   }
   list(
     selected_model = wise_selected_model(
-      model$type, character(0), fe, method, covs, lasso, wise_cluster_var(colnames(sw))
+      model$type, interactions, fe, method, covs, lasso, wise_cluster_var(colnames(sw))
     ),
     selection_frequency = selection$selection_frequency
   )

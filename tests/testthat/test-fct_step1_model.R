@@ -339,3 +339,106 @@ test_that("the Model module's specification and Lasso match the core", {
     }
   )
 })
+
+test_that("interactions and the policy scenario of the spec give the Model tab's specification", {
+  fx <- model_fixture()
+  swx <- model_fixture_weather(fx$vl)
+  spec_model <- function(...) {
+    m <- wise_spec(model = list(
+      type = "linear", fixed_effects = c("year", "gaul1_code"),
+      covariates = list(vars = "hhsize"), ...
+    ))$model
+    wise_model_from_spec(m, "hh", fx$sw, fx$so, swx, fx$vl, 123L)$selected_model
+  }
+  # Without them: no interaction, as in earlier phases.
+  expect_identical(spec_model()$interactions, character(0))
+
+  app_model <- function(interactions = character(0), policies = NULL) {
+    out <- NULL
+    shiny::testServer(
+      mod_1_06_model_server,
+      args = list(
+        id = "m", variable_list = shiny::reactiveVal(fx$vl),
+        selected_surveys = shiny::reactiveVal(data.frame()), analysis_unit = shiny::reactiveVal("hh"),
+        selected_outcome = shiny::reactiveVal(fx$so), selected_weather = shiny::reactiveVal(swx),
+        survey_weather = shiny::reactiveVal(fx$sw)
+      ),
+      {
+        session$setInputs(
+          model_type = "Linear regression", interactions = interactions,
+          fixedeffects = c("year", "gaul1_code"), covariates = "User-defined", hhcov = "hhsize",
+          selected_policies = policies
+        )
+        session$flushReact()
+        out <<- selected_model()
+      }
+    )
+    out
+  }
+  # The fields the interaction touches (the spec orders fixed effects, and the
+  # module's standardise flag is a control the test does not set).
+  same <- function(a, b) {
+    f <- c("interactions", "hh_covariates", "area_covariates", "model_type", "covariate_selection")
+    expect_identical(a[f], b[f])
+  }
+  # A chosen moderator.
+  same(spec_model(interactions = "urban"), app_model("urban"))
+  expect_identical(spec_model(interactions = "urban")$interactions, "urban")
+  # A policy scenario locks its variable as an interaction.
+  same(spec_model(policy_vars = "A"), app_model(character(0), "A"))
+  expect_identical(spec_model(policy_vars = "A")$interactions, "electricity")
+  both <- spec_model(interactions = "urban", policy_vars = "A")
+  expect_setequal(both$interactions, c("urban", "electricity"))
+  # The moderator is not offered as a covariate too.
+  expect_error(
+    wise_model_from_spec(
+      wise_spec(model = list(
+        type = "linear", covariates = list(vars = c("hhsize", "urban")), interactions = "urban"
+      ))$model,
+      "hh", fx$sw, fx$so, swx, fx$vl, 123L
+    ),
+    "Covariate"
+  )
+  # Variables the data does not offer for the role are refused.
+  expect_error(
+    wise_model_from_spec(
+      wise_spec(model = list(type = "linear", interactions = "hhsize"))$model,
+      "hh", fx$sw, fx$so, swx, fx$vl, 123L
+    ),
+    "Interaction variable"
+  )
+  vl2 <- fx$vl[fx$vl$name != "ttime_health", ]
+  expect_error(
+    wise_model_from_spec(
+      wise_spec(model = list(type = "linear", policy_vars = "D"))$model,
+      "hh", fx$sw, fx$so, swx, vl2, 123L
+    ),
+    "Policy scenario"
+  )
+})
+
+test_that("the model_fit table keeps the values of the moderators", {
+  fx <- model_fixture()
+  swx <- model_fixture_weather(fx$vl)
+  sm <- wise_selected_model(
+    "Linear regression", "urban", c("year", "gaul1_code"), "User-defined",
+    list(hh = "hhsize"), cluster = "loc_id_panel"
+  )
+  mf <- wise_fit(fx$sw, NULL, fx$so, swx, sm, fx$vl, 123L)
+  tab <- model_fit_table(mf)
+  mod <- tab[tab$section == "effect_inputs" & tab$variable %in% "urban", ]
+  expect_setequal(mod$statistic, c("mod_min", "mod_max", "mod_mean", "mod_sd", "mod_n_distinct"))
+  z <- mf$train_data$urban
+  expect_equal(mod$value[mod$statistic == "mod_mean"], mean(z))
+  expect_equal(mod$value[mod$statistic == "mod_sd"], stats::sd(z))
+  expect_identical(mod$value[mod$statistic == "mod_n_distinct"], 2)
+  # The weather variable keeps its rows; a fit without moderators has none.
+  expect_true("x_mean" %in% tab$statistic[tab$variable %in% "tx"])
+  plain <- model_fit_table(wise_fit(
+    fx$sw, NULL, fx$so, swx,
+    wise_selected_model("Linear regression", character(0), c("year", "gaul1_code"), "User-defined",
+      list(hh = "hhsize"), cluster = "loc_id_panel"),
+    fx$vl, 123L
+  ))
+  expect_false(any(grepl("^mod_", plain$statistic)))
+})

@@ -22,10 +22,17 @@ WISEAPP_BATCH_SCHEMA_VERSION <- 1L
 #'
 #' @param spec_file Path to the grid YAML file (relative to the project).
 #' @param out_dir Results folder.
+#' @param keep_step2 Keep the stored Step 2 run of each simulation that has a
+#'   policy (hundreds of MB each, in the targets store) after the policy branches
+#'   have run. The default keeps them, so a new policy profile does not repeat
+#'   the simulation; `FALSE` deletes them at the end of the run and a later
+#'   policy-only change then needs the simulation target invalidated
+#'   (`targets::tar_invalidate(sim_tables)`). Runs of simulations that are no
+#'   longer in the grid are always deleted.
 #'
 #' @return A list of targets.
 #' @export
-wise_targets <- function(spec_file, out_dir = "results") {
+wise_targets <- function(spec_file, out_dir = "results", keep_step2 = TRUE) {
   .need_pkg("targets", "run a batch pipeline")
   t <- targets::tar_target_raw
   list(
@@ -69,8 +76,17 @@ wise_targets <- function(spec_file, out_dir = "results") {
     t("sim_tables", quote(wiseapp::wise_batch_sim(sim_specs)),
       pattern = quote(map(sim_specs)), iteration = "list", resources = .batch_sim_resources()
     ),
+    # Step 3: one run per policy_id, on the stored Step 2 run of its sim_id.
+    t("policy_specs", quote(wiseapp::wise_batch_unique(
+      grid, "policy", data_specs, data_frames, wx_frame_specs, wx_frames, fit_specs, fit_tables,
+      sim_specs, sim_tables
+    )), iteration = "list"),
+    t("policy_tables", quote(wiseapp::wise_batch_policy(policy_specs)),
+      pattern = quote(map(policy_specs)), iteration = "list", resources = .batch_sim_resources()
+    ),
     t("results", bquote(wiseapp::wise_batch_write(
-      .(out_dir), grid, data_tables, weather_tables, fit_tables, sim_tables
+      .(out_dir), grid, data_tables, weather_tables, fit_tables, sim_tables, policy_tables,
+      keep_step2 = .(keep_step2)
     )),
       format = "file"
     )
@@ -205,21 +221,24 @@ wise_batch_grid <- function(spec_file, connection_params = NULL) {
 #'   file of each item's data.
 #' @param frame_specs,frames For `"fit"` and `"sim"`: the frame items and their
 #'   files.
-#' @param fit_specs,fits For `"sim"`: the fit items and their branch results
-#'   (each holds the file of the fit).
+#' @param fit_specs,fits For `"sim"` and `"policy"`: the fit items and their
+#'   branch results (each holds the file of the fit).
+#' @param sim_specs,sims For `"policy"`: the simulation items and their branch
+#'   results (each holds the file of the stored Step 2 run).
 #' @return A list of items (`id`, `spec`, ...). Items hold only the spec
 #'   sections their stage depends on, so adding a model or simulation profile
 #'   leaves the items of the earlier stages unchanged.
 #' @keywords internal
 #' @export
-wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit", "sim"), data_specs = NULL,
-                              data_frames = NULL, frame_specs = NULL, frames = NULL,
-                              fit_specs = NULL, fits = NULL) {
+wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit", "sim", "policy"),
+                              data_specs = NULL, data_frames = NULL, frame_specs = NULL, frames = NULL,
+                              fit_specs = NULL, fits = NULL, sim_specs = NULL, sims = NULL) {
   stage <- match.arg(stage)
   runs <- grid$runs
   no_model <- function(spec) {
     spec$model <- NULL
     spec$sim <- NULL
+    spec$policy <- NULL
     spec
   }
   data_file <- function(data_id) {
@@ -254,6 +273,7 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
     items <- unname(Map(
       function(id, weather_id, data_id, spec) {
         spec$sim <- NULL
+        spec$policy <- NULL
         list(
           id = id, weather_id = weather_id, data_id = data_id, spec = spec,
           data_file = data_file(data_id), frame_file = frame_file(weather_id)
@@ -277,13 +297,39 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
         fit <- fits[[match(fit_id, vapply(fit_specs, `[[`, "", "id"))]]
         fit_file <- if (isTRUE(fit$ok)) fit$fit_file else NA_character_
         files <- list(data = data_file(data_id), frame = frame_file(weather_id), fit = fit_file)
+        spec$policy <- NULL
         list(
           id = id, fit_id = fit_id, weather_id = weather_id, data_id = data_id, spec = spec,
           data_file = files$data, frame_file = files$frame, fit_file = fit_file,
-          stamps = lapply(files, stamp)
+          stamps = lapply(files, stamp),
+          # The Step 2 run is stored for the policy branches that read it.
+          needs_step2 = any(!is.na(runs$policy_id[runs$sim_id %in% id]))
         )
       },
       runs$sim_id[keep], runs$fit_id[keep], runs$weather_id[keep], runs$data_id[keep], runs$spec[keep]
+    ))
+    return(if (length(items)) items else none)
+  }
+  if (identical(stage, "policy")) {
+    keep <- !is.na(runs$policy_id) & !duplicated(runs$policy_id)
+    stamp <- function(path) {
+      if (is.character(path) && length(path) == 1L && !is.na(path) && file.exists(path)) {
+        c(size = file.size(path), mtime = as.numeric(file.mtime(path)))
+      }
+    }
+    items <- unname(Map(
+      function(id, sim_id, fit_id, spec) {
+        sim <- sims[[match(sim_id, vapply(sim_specs, `[[`, "", "id"))]]
+        fit <- fits[[match(fit_id, vapply(fit_specs, `[[`, "", "id"))]]
+        sim_file <- if (isTRUE(sim$ok)) sim$sim_file else NA_character_
+        fit_file <- if (isTRUE(fit$ok)) fit$fit_file else NA_character_
+        list(
+          id = id, sim_id = sim_id, fit_id = fit_id, spec = spec,
+          sim_file = sim_file, fit_file = fit_file,
+          stamps = list(sim = stamp(sim_file), fit = stamp(fit_file))
+        )
+      },
+      runs$policy_id[keep], runs$sim_id[keep], runs$fit_id[keep], runs$spec[keep]
     ))
     return(if (length(items)) items else none)
   }
@@ -536,7 +582,10 @@ wise_batch_fit <- function(item) {
       code <- paste(spec$sample$countries, collapse = "+")
       add_id <- function(x) if (is.null(x)) NULL else cbind(fit_id = item$id, code = code, x)
       fit_file <- file.path(.batch_dir("fits"), paste0(item$id, ".qs2"))
-      qs2::qs_save(list(mf = step2_slim_model_fit(mf)), fit_file)
+      qs2::qs_save(
+        list(mf = step2_slim_model_fit(mf), model_vars = model_term_names(m$selected_model)),
+        fit_file
+      )
       list(
         ok = TRUE, id = item$id, fit_file = fit_file,
         tables = lapply(tables, add_id),
@@ -629,12 +678,25 @@ wise_batch_sim <- function(item, connection_params = NULL) {
       tables <- step2_batch_tables(result, skip_coef = input$skip_coef_draws, selected_weather = sw)
       code <- paste(spec$sample$countries, collapse = "+")
       add_id <- function(x) if (is.null(x)) NULL else cbind(sim_id = item$id, code = code, x)
+      # The policy branches start from this run (hundreds of MB; the constant
+      # household vectors are written once).
+      sim_file <- NA_character_
+      if (isTRUE(item$needs_step2)) {
+        sim_file <- file.path(.batch_dir("sims"), paste0(item$id, ".qs2"))
+        qs2::qs_save(
+          step2_share_constants(list(
+            hist_sim_result = result$hist_sim_result, new_scenarios = result$new_scenarios,
+            skip_coef = input$skip_coef_draws
+          )),
+          sim_file
+        )
+      }
       gc_max <- gc()
       failures <- vapply(result$failures %||% list(), function(f) {
         sprintf("%s: %s", f$key, f$error %||% "failed")
       }, character(1))
       list(
-        ok = TRUE, id = item$id, partial = failures,
+        ok = TRUE, id = item$id, partial = failures, sim_file = sim_file,
         tables = lapply(tables, add_id),
         provenance = data.frame(
           stage = "sim", id = item$id,
@@ -649,6 +711,105 @@ wise_batch_sim <- function(item, connection_params = NULL) {
       )
     },
     error = function(e) .batch_failure("sim", item$id, e)
+  )
+}
+
+
+#' Run Step 3 for one policy specification and build its tables
+#'
+#' The batch counterpart of pressing "Run simulation" in Step 3: the lever
+#' configurations of the policy section go through `wise_policy_configs()` and
+#' `wise_step3_input()` into the serial `step3_compute()` on the stored Step 2
+#' run (no workers), under the R default random number generator; then
+#' `step3_batch_tables()` builds the policy arm of `annual` and `summary`, the
+#' `decomposition` and `policy_measures`. The run itself is not kept.
+#'
+#' @param item A policy item from `wise_batch_unique()`.
+#' @return A list: `ok`, `id`, `tables`, `provenance` (one row), `partial`
+#'   (metrics whose views failed, as text); or a failure record.
+#' @keywords internal
+#' @export
+wise_batch_policy <- function(item) {
+  skipped <- function(message) {
+    list(ok = FALSE, stage = "policy", id = item$id, skipped = TRUE, message = message)
+  }
+  if (isTRUE(item$none)) {
+    return(skipped("No policy in the grid."))
+  }
+  if (is.na(item$sim_file)) {
+    return(skipped("The simulation failed."))
+  }
+  if (!file.exists(item$sim_file)) {
+    return(.batch_failure("policy", item$id, simpleError(paste(
+      "The stored Step 2 run is missing (keep_step2 = FALSE, or the file was removed).",
+      "Invalidate the simulation target (targets::tar_invalidate(sim_tables)) and run again."
+    ))))
+  }
+  if (is.na(item$fit_file) || !file.exists(item$fit_file)) {
+    return(skipped("The model fit failed."))
+  }
+  tryCatch(
+    {
+      t0 <- Sys.time()
+      invisible(gc(reset = TRUE))
+      spec <- item$spec
+      unit <- spec$sample$unit
+      stored <- step2_unshare_constants(qs2::qs_read(item$sim_file))
+      hs <- stored$hist_sim_result
+      ss <- stored$new_scenarios %||% list()
+      skip_coef <- isTRUE(stored$skip_coef)
+      fit <- qs2::qs_read(item$fit_file)
+      # The seeded policy draws follow the app, whose main process runs under
+      # the R default generator.
+      old_rng <- RNGkind()
+      on.exit(do.call(RNGkind, as.list(old_rng)), add = TRUE)
+      RNGkind("Mersenne-Twister", "Inversion", "Rejection")
+
+      svy <- ensure_outcome_column(hs$svy, hs$so)
+      levers <- wise_policy_configs(spec$policy, hs$so, unit, step3_sector_defaults(svy))
+      input <- wise_step3_input(
+        svy = svy, mf = fit$mf, sp_cfg = levers$sp, infra_cfg = levers$infra,
+        digital_cfg = levers$digital, labor_cfg = levers$labor, education_cfg = levers$education,
+        model_vars = fit$model_vars, analysis_unit = unit, skip_coef = skip_coef,
+        residuals = hs$residuals %||% "original", run_generation = 1L, seed = spec$seed
+      )
+      # Joined many-to-many by construction in the correction (as in the app).
+      run <- withCallingHandlers(
+        do.call(step3_compute, c(list(hs = hs, ss = ss), input)),
+        warning = function(w) {
+          if (grepl("many-to-many relationship", conditionMessage(w), fixed = TRUE)) {
+            invokeRestart("muffleWarning")
+          }
+        }
+      )
+      out <- step3_batch_tables(run, hs, ss, svy, levers, skip_coef, unit)
+      code <- paste(spec$sample$countries, collapse = "+")
+      add_id <- function(x) {
+        if (is.null(x) || !nrow(x)) {
+          return(NULL)
+        }
+        x$policy_id <- item$id
+        cbind(sim_id = item$sim_id, code = code, x[c("policy_id", setdiff(names(x), "policy_id"))])
+      }
+      partial <- out$partial
+      if (!identical(out$status$status, "ok")) {
+        partial <- c(partial, paste0("policy contrast unavailable: ", out$status$reason))
+      }
+      gc_max <- gc()
+      list(
+        ok = TRUE, id = item$id, partial = partial,
+        tables = lapply(out$tables, add_id),
+        provenance = data.frame(
+          stage = "policy", id = item$id, n_rows = nrow(svy),
+          n_surveys = NA_integer_, source_type = NA_character_, source_origin = NA_character_,
+          source_files = NA_character_, n_scenarios = length(ss), n_failed_keys = length(partial),
+          r_peak_mb = sum(gc_max[, ncol(gc_max)]),
+          seconds = as.numeric(difftime(Sys.time(), t0, units = "secs")),
+          stringsAsFactors = FALSE
+        )
+      )
+    },
+    error = function(e) .batch_failure("policy", item$id, e)
   )
 }
 
@@ -674,6 +835,16 @@ wise_batch_sim <- function(item, connection_params = NULL) {
     } else {
       paste(spec$model$fixed_effects, collapse = ",")
     },
+    model_interactions = if (is.null(spec$model$interactions)) {
+      NA_character_
+    } else {
+      paste(spec$model$interactions, collapse = ",")
+    },
+    model_policy_vars = if (is.null(spec$model$policy_vars)) {
+      NA_character_
+    } else {
+      paste(spec$model$policy_vars, collapse = ",")
+    },
     covariate_method = spec$model$covariates$method %||% NA_character_,
     covariates = if (is.null(spec$model)) NA_character_ else .spec_json(spec$model$covariates),
     sim_hist_from = spec$sim$hist_years[1] %||% NA_integer_,
@@ -687,6 +858,8 @@ wise_batch_sim <- function(item, connection_params = NULL) {
     } else {
       paste(spec$sim$baseline_survey, collapse = ",")
     },
+    policy_levers = if (is.null(spec$policy)) NA_character_ else paste(names(spec$policy), collapse = ","),
+    policy = if (is.null(spec$policy)) NA_character_ else .spec_json(spec$policy),
     stringsAsFactors = FALSE
   )
 }
@@ -726,12 +899,16 @@ wise_batch_sim <- function(item, connection_params = NULL) {
 #'
 #' @param out_dir Results folder.
 #' @param grid Result of `wise_batch_grid()`.
-#' @param data_tables,weather_tables,fit_tables,sim_tables Branch results.
+#' @param data_tables,weather_tables,fit_tables,sim_tables,policy_tables Branch
+#'   results.
+#' @param keep_step2 Keep the stored Step 2 runs of the simulations that have a
+#'   policy (see `wise_targets()`); runs of simulations that left the grid are
+#'   removed either way.
 #' @return `out_dir` (a `targets` file target).
 #' @keywords internal
 #' @export
 wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tables = list(),
-                             sim_tables = list()) {
+                             sim_tables = list(), policy_tables = list(), keep_step2 = TRUE) {
   .need_pkg("arrow", "write result tables")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   runs <- grid$runs
@@ -740,27 +917,41 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
     dplyr::bind_rows(lapply(ok(branches), function(b) b$tables[[name]]))
   }
 
+  # Stored Step 2 runs: drop those no policy of the grid reads (all of them
+  # unless they are kept).
+  wanted <- if (isTRUE(keep_step2)) unique(runs$sim_id[!is.na(runs$policy_id)]) else character(0)
+  stored <- list.files(.batch_dir("sims"), pattern = "\\.qs2$", full.names = TRUE)
+  unlink(stored[!sub("\\.qs2$", "", basename(stored)) %in% wanted], force = TRUE)
+
   .write_table(pick(data_tables, "variable_stats"), out_dir, "variable_stats")
   .write_table(pick(data_tables, "interview_dates"), out_dir, "interview_dates")
   .write_table(pick(weather_tables, "weather_stats"), out_dir, "weather_stats")
   for (name in c("model_terms", "model_fit", "model_vcov")) {
     .write_table(pick(fit_tables, name), out_dir, name)
   }
-  for (name in c("annual", "summary", "sim_weather")) {
-    .write_table(pick(sim_tables, name), out_dir, name)
+  # The baseline arm (policy_id NA) comes from the simulations, the policy arms
+  # from the policy runs.
+  for (name in c("annual", "summary")) {
+    .write_table(
+      dplyr::bind_rows(pick(sim_tables, name), pick(policy_tables, name)), out_dir, name
+    )
+  }
+  .write_table(pick(sim_tables, "sim_weather"), out_dir, "sim_weather")
+  for (name in c("decomposition", "policy_measures")) {
+    .write_table(pick(policy_tables, name), out_dir, name)
   }
 
   # Run catalogue and per-run specs.
   flat <- dplyr::bind_rows(lapply(runs$spec, .spec_flat))
   axes <- setdiff(names(runs), c(
-    "run_id", "data_id", "wxvar_ids", "weather_id", "fit_id", "sim_id", "resolved", "spec"
+    "run_id", "data_id", "wxvar_ids", "weather_id", "fit_id", "sim_id", "policy_id", "resolved", "spec"
   ))
   labels <- tibble::as_tibble(runs[axes])
   names(labels) <- paste0("axis_", axes)
   catalogue <- dplyr::bind_cols(
     tibble::as_tibble(runs[c("run_id", "data_id")]), labels,
     tibble::tibble(wxvar_ids = lapply(runs$wxvar_ids, unname)),
-    tibble::as_tibble(runs[c("weather_id", "fit_id", "sim_id")]),
+    tibble::as_tibble(runs[c("weather_id", "fit_id", "sim_id", "policy_id")]),
     flat,
     tibble::tibble(spec_json = vapply(runs$spec, .spec_json, ""))
   )
@@ -773,7 +964,8 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
 
   # Provenance and failures.
   prov <- dplyr::bind_rows(lapply(
-    c(ok(data_tables), ok(weather_tables), ok(fit_tables), ok(sim_tables)), function(b) b$provenance
+    c(ok(data_tables), ok(weather_tables), ok(fit_tables), ok(sim_tables), ok(policy_tables)),
+    function(b) b$provenance
   ))
   prov$wiseapp_version <- as.character(utils::packageVersion("wiseapp"))
   prov$completed_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
@@ -781,7 +973,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
 
   failed <- Filter(
     function(b) is.list(b) && !isTRUE(b$ok) && !isTRUE(b$skipped),
-    c(data_tables, weather_tables, fit_tables, sim_tables)
+    c(data_tables, weather_tables, fit_tables, sim_tables, policy_tables)
   )
   # A simulation that finished without some climate-model members or scenarios
   # keeps its tables and is listed as a partial failure.
@@ -791,7 +983,15 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
       message = paste(b$partial, collapse = "; ")
     )
   })
-  failed <- c(failed, partial)
+  # A policy run whose contrast is unavailable (binary outcomes) or whose views
+  # failed for some metrics keeps its tables and is listed the same way.
+  partial_policy <- lapply(Filter(function(b) isTRUE(b$ok) && length(b$partial), policy_tables), function(b) {
+    list(
+      ok = FALSE, stage = "policy", id = b$id, error_class = "partial_policy_failure",
+      message = paste(b$partial, collapse = "; ")
+    )
+  })
+  failed <- c(failed, partial, partial_policy)
   # Fit branches that share a failed weather frame report it once.
   failed <- failed[!duplicated(vapply(failed, function(b) paste(b$stage, b$id), ""))]
   failures <- dplyr::bind_rows(lapply(failed, function(b) {
@@ -800,6 +1000,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
       frame = runs$run_id[runs$weather_id == b$id],
       fit = runs$run_id[runs$fit_id %in% b$id],
       sim = runs$run_id[runs$sim_id %in% b$id],
+      policy = runs$run_id[runs$policy_id %in% b$id],
       runs$run_id[vapply(runs$wxvar_ids, function(x) b$id %in% x, logical(1))]
     )
     data.frame(
@@ -831,6 +1032,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
     finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
     n_runs = nrow(runs), n_data_sets = length(data_tables), n_weather_variables = length(weather_tables),
     n_fits = length(fit_tables), n_sims = sum(!vapply(sim_tables, function(b) identical(b$id, "none"), logical(1))),
+    n_policies = sum(!vapply(policy_tables, function(b) identical(b$id, "none"), logical(1))),
     n_failures = nrow(failures),
     tables = as.list(tables)
   )
