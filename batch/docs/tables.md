@@ -4,11 +4,13 @@ Status: Phase 0, 2026-10-19. Decisions D1-D4 taken; second consolidation
 round (11 result tables) proposed. Part of `review/batch_pipeline_plan.md`.
 Column lists are indicative; each phase fixes the exact schema from the core
 table builder it extracts. The schema of the Phase 1 tables (`variable_stats`,
-`interview_dates`, `weather_stats`), the Phase 2 tables and the Phase 3 tables
-(`annual`, `summary`, `sim_weather`) is fixed and documented column by column
-in `batch/docs/phase1_tables.md`, `phase2_tables.md` and `phase3_tables.md`;
-where it differs from section 3 the reference wins (summaries in the "Phase 1
-schema", "Phase 2 schema" and "Phase 3 schema" notes below).
+`interview_dates`, `weather_stats`), the Phase 2 tables, the Phase 3 tables
+(`annual`, `summary`, `sim_weather`) and the Phase 4 tables (the policy arm of
+`annual` and `summary`, `decomposition`, `policy_measures`) is fixed and
+documented column by column in `batch/docs/phase1_tables.md`, `phase2_tables.md`,
+`phase3_tables.md` and `phase4_tables.md`; where it differs from section 3 the
+reference wins (summaries in the "Phase 1 schema", "Phase 2 schema", "Phase 3
+schema" and "Phase 4 schema" notes below).
 
 ## 1. Scope rules (decided)
 
@@ -195,6 +197,33 @@ Phase 3 schema (implemented 2026-10-19; reference in
   and simulations (section 2).
 - The spec has no choice of climate models: every model of the projection
   files that covers the sample is a member, as in the app.
+
+Phase 4 schema (implemented 2026-10-20; reference in
+`batch/docs/phase4_tables.md`) - differences from the draft above:
+- `annual` and `summary` carry the policy arm under the `policy_id` of the run
+  (`NA` stays the baseline arm). `annual` adds the shock-responsive member-year
+  rows as metrics `shock_<column>` (activation, exposed share, transfer,
+  administration and total cost and the population weights of basis risk and
+  leakage). The policy `summary` sections are `policy_expected` (the paired
+  effect with the coefficient, inter-model, inter-annual and full-range bands, and
+  the baseline and policy levels), `policy_adverse` (baseline-anchored tails),
+  `policy_threshold`, `policy_adverse_dot`, `policy_headline` (the cards' text) and
+  `policy_incidence`; they are stored for every metric at the p10-p90 bands.
+- `decomposition` is long (one row per source, scenario, member, year, group and
+  channel) with `value`, `sum`, `weight` and `n_units`: the `compact` rows are the
+  channel sums and weights of the run, the `metric` rows the cumulative states
+  and contributions of one metric decomposition per metric, whole sample and by
+  baseline decile.
+- `policy_measures` is long with a `section`: `transfer`, `sp_effectiveness`,
+  `reach`, `components`, `treatment`, `input_diagnostics`, `cost_effectiveness`
+  (every metric), `shock_summary`, `shock_climate_cost`, `shock_affected_poor`.
+- The historical arm is `Historical` in every table; the Results pane labels it
+  with its years. Tables for a binary outcome have no policy rows (the app shows
+  no contrast).
+- Ids: `policy_id` (sim_id + the `policy` section; `NA` without one). Interactions
+  and policy-relevant variables are part of the model section (and so of
+  `fit_id`); the moderator values are in `model_fit` (`effect_inputs`, statistics
+  `mod_*`).
 
 ### 3.4 Run-level tables (all phases)
 

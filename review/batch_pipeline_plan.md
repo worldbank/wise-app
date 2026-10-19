@@ -1,6 +1,6 @@
 # Batch pipeline rebuild - plan
 
-Status: Phases 1 to 3 implemented (2026-10-19); Phases 4 and 5 planned.
+Status: Phases 1 to 4 implemented (2026-10-20); Phase 5 planned.
 Supersedes: `docs/batch_pipeline.md` (legacy) and the scripts in `batch/`.
 
 ## 1. Goal
@@ -513,6 +513,72 @@ Progress (2026-10-19): Phase 3 implemented with the scope below.
   results, diagnostics, decomposition (metric-aware), shock summary,
   cost-effectiveness.
 - Refactor `mod_3_01`-`mod_3_10` glue; parity tests.
+
+Progress (2026-10-20): Phase 4 implemented with the scope below.
+- Decisions (taken before the work): the Step 2 run of a simulation with a
+  policy is stored per `sim_id` as a qs2 file in the targets store and read by
+  the policy branches (deleted when the `sim_id` leaves the grid;
+  `wise_targets(keep_step2 =)` keeps or drops it after the run); interactions
+  and `policy_vars` are part of the model section, with the moderator values in
+  `model_fit` `effect_inputs`; one `policy_id` per policy profile (all levers
+  together); shock-responsive SP and cost-effectiveness are included; the
+  decomposition keeps the per-year channel sums and weights and the
+  metric-aware rows (long, per metric and channel), and every weather-year
+  basis and unit derives from them; Step 3 runs serially under the R default
+  generator with the seed of the Step 2 run; the policy branches share the
+  `sim` controller (one worker by default).
+- Shared core: `R/fct_step3_input.R` (lever configurations from control values,
+  `wise_step3_input()`, `wise_policy_configs()` for the spec) and
+  `R/fct_step3_tables.R` (the Results-pane views of a policy run as pure
+  functions, the diagnostics and cost-effectiveness helpers, and
+  `step3_batch_tables()`). `mod_3_01` to `mod_3_05` build their scenario with
+  the lever functions, `mod_3_06` the `step3_compute()` arguments and the
+  published policy frame, `mod_3_07` (`.wire_results_pane()`) takes its series,
+  threshold and paired-effect reactives from the view functions, `mod_3_08` and
+  `mod_3_10` call the effectiveness, input-summary and cost-effectiveness
+  helpers. Checked before and after the switch: the 25 lever scenarios of the
+  five modules for regular and shock-responsive SP, both units and both
+  currencies are `identical()`; the Step 3 module tests and the pane
+  characterisation tests pass unchanged.
+- Spec: a `policy` section (levers `sp`, `infra`, `digital`, `labor`,
+  `education`, each a flat list of control ids that starts from the controls'
+  initial values; a test compares `wise_default_policy()` with the rendered
+  controls), `model.interactions` and `model.policy_vars`, grid profile group
+  `policy` (a profile replaces the whole policy) and dotted lever paths as
+  axes, config import of the Step 3 controls (`step3-<lever>-<id>`), the Model tab
+  interactions and policy scenario, and `policy_id`. Section order is now
+  canonical.
+- Runner: stage `policy` (per `policy_id`) after `sim`; the sim branch writes the
+  Step 2 run when a policy needs it, the fit file also carries the model
+  variables; `wise_batch_policy()` builds the lever configurations, runs the
+  serial `step3_compute()` and `step3_batch_tables()`. Tables: the policy arm of
+  `annual` and `summary`, `decomposition`, `policy_measures`
+  (`batch/docs/phase4_tables.md`). Failures per policy; a binary outcome or a
+  view that failed for a metric is a `partial_policy_failure`.
+- Tests: `test-fct_step3_input.R` (lever configs, spec defaults against the
+  rendered controls, module versus spec route), `test-fct_step3_tables.R` (schema,
+  the Results pane driven by `shiny::testServer()` against the stored values for
+  two metrics, the compact channels), `test-fct_batch_spec.R` (policy and model
+  sections, grid, config import), `test-fct_step1_model.R` (interactions and
+  policy scenario against the Model tab, moderator rows), `test-batch-pipeline.R`
+  (regular and shock policies end to end, reuse, the stored Step 2 run).
+- Real data: `dev/batch_parity_bfa_policy.R` (BFA; regular and shock transfers)
+  against the module servers (Steps 1 to 3 in one test server). `--fixture` runs
+  the same comparison on the small test data folder: all checks pass (paired
+  effects and bands, annual effects, adverse years, headline cards, incidence,
+  cost-effectiveness, shock summary and rows, to 1e-10). The BFA run itself was
+  not possible in the session that implemented the phase (the data folder was
+  not reachable); see the report of that session for the status.
+- Findings: (1) several controls move after they render (trigger direction from
+  the response check, return period from the record length, `trigger_level`
+  fallback): batch does not apply them, a spec states the values; (2) the
+  Results line of a non-poverty metric is undefined, so the effectiveness and
+  reach tables use the outcome's own poverty line, else 3.00; (3) the app labels
+  the historical arm with its years, the tables use `Historical`; (4) the app's
+  interaction default (`urban`) is not the spec default (none), which keeps the
+  ids of earlier phases.
+- Not done: the Export-bundle comparison, `weather_effect_data()`, per-stage
+  controllers beyond `sim`, content stamps for the earlier stage items.
 
 ### Phase 5 - Post-processing and reproducibility package
 

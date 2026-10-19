@@ -45,9 +45,10 @@ when the data stage could join it; otherwise fixest's default variance applies
 and `model_fit` says so (`vcov`, `location_panel`). Models are fitted without
 survey weights. The random seed is the run's `seed`.
 
-Interactions and policy-relevant variables are not part of the Phase 2 spec
-(the policy phase adds them); the tables already carry interaction terms in
-the same columns when they exist.
+Interactions (`model.interactions`) and the policy scenario that locks some
+(`model.policy_vars`) were added in Phase 4; the tables carry the interaction
+terms in the same columns, and the moderator values are in `model_fit`
+(`effect_inputs`, below).
 
 ## model_terms
 
@@ -86,7 +87,7 @@ Long format; `section` says what a row describes.
 | `sample` | `n_estimation` | Rows of the estimation sample (after dropping incomplete cases). |
 | `spec` | `engine`, `model_family`, `requested_type`, `vcov`, `fixed_effects`, `covariate_selection`, `location_panel` (`text`) | What was fitted. `model_family` is `linear` or `logistic` as fitted, `requested_type` the model type asked for, `vcov` `clustered: loc_id_panel` or `default (IID)`, `location_panel` `joined` or `unavailable: <reason>`. |
 | `spec` | `fallback_model_family`, `fallback_vcv` (`text` = `requested -> used`, `detail` = reason) | A specification fallback the fitter applied (a logistic model fitted as linear; clustered errors fitted without clusters). Present only when it happened. |
-| `effect_inputs` | `x_min`, `x_max`, `x_mean`, `x_sd` (per continuous weather variable); `profile_eta` (binary outcomes) | What the effect charts need besides the coefficients and `model_vcov`: the model sample's range and mean of the weather variable (the continuous marginal-effect curve is drawn over it), its standard deviation (the per-+1-SD translation), and the median-risk linear predictor that converts a logistic effect to percentage points. Binned variables have none of the `x_` rows. |
+| `effect_inputs` | `x_min`, `x_max`, `x_mean`, `x_sd` (per continuous weather variable); `profile_eta` (binary outcomes) | What the effect charts need besides the coefficients and `model_vcov`: the model sample's range and mean of the weather variable (the continuous marginal-effect curve is drawn over it), its standard deviation (the per-+1-SD translation), and the median-risk linear predictor that converts a logistic effect to percentage points. Binned variables have none of the `x_` rows. Phase 4 adds, per moderator (interaction) in the model sample, `variable` = the moderator and the statistics `mod_min`, `mod_max`, `mod_mean`, `mod_sd`, `mod_n_distinct` for a numeric or binary moderator, or `mod_n_distinct` and the levels (`mod_levels`, in `text`) for a categorical one: the values at which the "who is affected" chart draws the moderated effect. |
 | `headline` | The card label (for example `Effect of Max temperature`, `Spec robustness`) | The At a glance cards: `text` the value (`+2.9%`), `detail` the note. App-identical. |
 
 Rebuilding the app's effect charts needs `model_terms` (coefficients and

@@ -98,9 +98,9 @@ The table closures of `batch/docs/tables.md` section 3.1 are built by
 |---|---|---|---|---|
 | `mod_1_06_model` | `model_type` | Spec | `model.type` (`linear`, `logistic`, `rif`; the engine follows from the type) | first of `model_type_choices()` for the outcome type |
 | `mod_1_06_model` | `fixedeffects` | Spec | `model.fixed_effects` | `year`, `gaul1_code` where valid fixed-effect variables |
-| `mod_1_06_model` | `interactions` | Spec | not in the spec yet (policy phase) | `urban` where available; batch uses none, an import warns |
+| `mod_1_06_model` | `interactions` | Spec | `model.interactions` (Phase 4) | the app starts at `urban` where available; the spec default is none (an import carries what the configuration holds) |
 | `mod_1_06_model` | `covariates` (method), `indcov`, `hhcov`, `areacov`, `firmcov` | Spec | `model.covariates.method` (`user`, `lasso`), `model.covariates.vars` (flat; the level of each follows from the variable list) | user-defined, none |
-| `mod_1_06_model` | `selected_policies` | Spec | not in the spec yet (policy phase) | none |
+| `mod_1_06_model` | `selected_policies` | Spec | `model.policy_vars` (Phase 4; keys `A` to `M` or labels) | none |
 | `mod_1_06_model` | `lasso_alpha`, `lasso_interactions` (the lambda rule), `lasso_nfolds`, `lasso_standardize`, `use_mice`, `mi_m`, `mi_maxit`, `stability_threshold` | Spec | `model.covariates.lasso.{alpha, lambda, nfolds, standardize, use_mice, mi_m, mi_maxit, stability_threshold}` | `wise_default_lasso()` |
 | `mod_1_06_model` | `force_in_<level>`, `force_out_<level>` | Spec | `model.covariates.lasso.{force_in, force_out}` (flat) | none |
 | `mod_1_07_results` | `rif_tau` | Display | `tau` dimension of Step 1 tables | - |
@@ -188,6 +188,47 @@ Glue: lever configs (`sp_cfg`, `infra_cfg`, ...) built from inputs in
 420-510) to `step3_compute()`; the SP preview passes `seed` and
 `hist_exposure` (`mod_3_01_sp.R` lines 1662-1684).
 
+Implementation notes (Phase 4):
+- The spec fields are the control ids, grouped by lever:
+  `policy.sp.*`, `policy.infra.*`, `policy.digital.*`, `policy.labor.*`,
+  `policy.education.*` (input ids in `STEP3_*_IDS`, `R/fct_step3_input.R`). A
+  lever that is present starts from the initial values of its controls
+  (`wise_default_policy()`, `R/fct_spec_defaults.R`; a test compares them with
+  the rendered controls); one that is absent is not part of the run.
+- `model.interactions` (the Model tab's interactions) and `model.policy_vars` (its
+  policy scenario) are in the model section; the moderator values go to
+  `model_fit` (`effect_inputs`, `mod_*`). Their app inputs are
+  `step1-model-interactions` and `step1-model-selected_policies`.
+- Config export ids: `step3-<lever>-<control id>` (`step3-sp-sp_type`, ...).
+- Fields that follow a rule on the data in the app and have no default in the
+  spec: `pmt_variable`, `pmt_cutoff`, `trigger_variable`, `trigger_value`,
+  `trigger_value_low`, `annual_cap`. `trigger_pov_line` follows the outcome's line.
+  The app also moves some controls after they render (the trigger direction to
+  the end the response check finds, the return period to the length the record
+  supports, `trigger_level` back to national when the survey lacks the level);
+  batch applies none of them, so a spec states the values.
+- Not read: `sp_reach` and `sp_shock_state` (the sidebar preview), which show but
+  do not set anything.
+
+Glue extracted in Phase 4 (module -> core, `R/fct_step3_input.R`,
+`R/fct_step3_tables.R`):
+
+| Glue | Core function | Module |
+|---|---|---|
+| Lever configurations from control values | `wise_sp_config()`, `wise_infra_config()`, `wise_digital_config()`, `wise_education_config()`, `wise_labor_config()` (+ `step3_sector_defaults()`, `step3_read_inputs()`) | `mod_3_01` to `mod_3_05` |
+| The `step3_compute()` arguments | `wise_step3_input()` | `mod_3_06` |
+| The published policy frame of a shock run | `step3_published_policy_svy()` | `mod_3_06` |
+| Series, annual rows and return-period rows of an arm, the threshold table with the tails, the paired effects | `step3_series()`, `step3_timeseries_rows()`, `step3_threshold_rows()`, `step3_threshold_table()`, `step3_paired_data()`, `step3_paired_summary()`, `step3_headline_paired_summary()`, `step3_paired_annual()`, `step3_paired_adverse_table()` | Results pane (`.wire_results_pane()`, `mod_3_07`) |
+| Cost and targeting effectiveness, the input summary | `step3_sp_effectiveness()`, `step3_input_summary_frame()` | `mod_3_08` |
+| Cost-effectiveness | `step3_cost_effectiveness()` | `mod_3_10` |
+| The tables of a run | `step3_batch_tables()` (with `step3_compact_decomposition()`, `step3_metric_decomposition_rows()`, `step3_shock_annual_rows()`) | - |
+| Batch config from the policy section | `wise_policy_configs()` | - |
+
+Not extracted: the decomposition tab's display reductions and charts
+(`mod_3_09`: the compact channels and the metric decomposition are stored and
+the reductions are the existing `.compact_future_*()` and `.policy_metric_*()`
+functions), the charts and reactables of `mod_3_07` to `mod_3_10`.
+
 ## 6. Seeds and RNG
 
 The session seed (`wise_current_seed()`, default `WISEAPP_DEFAULT_SEED` =
@@ -218,6 +259,13 @@ run.
 - Cache keys include the seed: the lasso memo key, the mod_1_05 weather load
   signature, `shared_aggregation_cache_key()` and the metric decomposition
   residual cache.
+
+Step 3 in batch (Phase 4): `wise_batch_policy()` sets the default generator
+(`RNGkind("Mersenne-Twister", "Inversion", "Rejection")`, restored on exit)
+before `step3_compute()`, so a worker started by `crew` (whatever kind its
+process uses) draws as the app's main process does; the seed is the spec's seed,
+the seed of the Step 2 run (`wise_seed(seed, "policy", lever)` derives the lever
+streams inside `step3_compute()`).
 
 Implications for batch:
 - A seeds axis is now meaningful: each seed varies fits, lasso, K-means bins,
