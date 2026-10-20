@@ -4501,7 +4501,7 @@
       "checksum": "dcc9bd5a0592ce762d0b6dc88db09110"
     },
     "inst/batch/check_reproducibility.R": {
-      "checksum": "302580f8b4c54f105f69de738b15f497"
+      "checksum": "b6f7f56e012a9d5571941e5b8534839d"
     },
     "inst/batch/README.md": {
       "checksum": "54029332ab4e45d233459120c387391e"
@@ -4546,10 +4546,10 @@
       "checksum": "a50516efe904cea2a451c815bb5ca2ba"
     },
     "R/fct_batch_spec.R": {
-      "checksum": "ef397bdc0f1534d0fe2f37aec73eb5f6"
+      "checksum": "a3da13e3bd93686b9218f2abdbb447dd"
     },
     "R/fct_batch_targets.R": {
-      "checksum": "d40b50f94ec02e2c2a3ddabb1cf13d9d"
+      "checksum": "b99e85b42ea97a6e0e9df6c7afafbdff"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
@@ -4690,7 +4690,7 @@
       "checksum": "ce9b783932171979858fba7d6ab46dd8"
     },
     "R/fct_step3_tables.R": {
-      "checksum": "e6c5cb47a4c8194fc37189033e6e6ac2"
+      "checksum": "237fd475ebd2f608a6042b5dd7f6dd4a"
     },
     "R/fct_surveystats.R": {
       "checksum": "8d264177f192808fc5c4f1bf4ac5163b"
