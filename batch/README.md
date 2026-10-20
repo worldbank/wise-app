@@ -440,4 +440,5 @@ data folder of the tests.
 | 2 | Model tables | done |
 | 3 | Simulation tables | done |
 | 4 | Policy tables | done |
-| 5 | Figures from tables, reproducibility package template | planned |
+| 5 | Reproducibility package template (renv pin steps, data digest in `manifest.json`, `check_reproducibility.R`) | done |
+| 5 | Figures from tables, spec-curve post-processing | not planned for now |

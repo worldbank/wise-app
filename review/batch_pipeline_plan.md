@@ -566,9 +566,10 @@ Progress (2026-10-20): Phase 4 implemented with the scope below.
   against the module servers (Steps 1 to 3 in one test server). `--fixture` runs
   the same comparison on the small test data folder: all checks pass (paired
   effects and bands, annual effects, adverse years, headline cards, incidence,
-  cost-effectiveness, shock summary and rows, to 1e-10). The BFA run itself was
-  not possible in the session that implemented the phase (the data folder was
-  not reachable); see the report of that session for the status.
+  cost-effectiveness, shock summary and rows, to 1e-10). The BFA run (data folder
+  `WISEAPP_DATA_PATH`) passes all checks to 1e-10 as well: 274 s wall time, 4.4 GB
+  peak resident memory for the whole script (module servers and batch in one
+  process; Step 3 runs 2.6 to 6.8 s each).
 - Findings: (1) several controls move after they render (trigger direction from
   the response check, return period from the record length, `trigger_level`
   fallback): batch does not apply them, a spec states the values; (2) the
@@ -582,9 +583,15 @@ Progress (2026-10-20): Phase 4 implemented with the scope below.
 
 ### Phase 5 - Post-processing and reproducibility package
 
-- Figure reproduction helpers from stored tables.
+- Figure reproduction helpers from stored tables (not done; ggplot static
+  output was the chosen format if taken up).
 - Reproducibility package template: pinned `wiseapp` version, `renv.lock`,
-  data source digest, spec files, `tar_make()` entry point, README.
+  data source digest, spec files, `tar_make()` entry point, README. Done:
+  `manifest.json` gains `data_files` (SHA-256 of the economies' `microdata/`
+  parquet files, local folders only; computed in `wise_batch_grid()`); the
+  template gains a Reproducibility section (renv init, GitHub ref pin) and
+  `check_reproducibility.R`, which compares the manifest with the machine. The
+  template ships no `renv.lock`: the user creates it for their project.
 - Optional: model and spec selection grids (legacy `02a`/`03a`) as
   post-processing on Step 1 tables.
 

@@ -186,7 +186,9 @@ wise_batch_template <- function(path) {
 #' @param spec_file Path to the grid YAML file.
 #' @param connection_params Connection (default: the environment's).
 #' @return A list: `runs` (the expanded, resolved grid), `source`
-#'   (connection label and metadata digest).
+#'   (connection label and metadata digest) and `data_files` (file names and
+#'   SHA-256 of the survey files of the runs' economies; `NULL` for sources
+#'   other than a local folder).
 #' @keywords internal
 #' @export
 wise_batch_grid <- function(spec_file, connection_params = NULL) {
@@ -205,6 +207,7 @@ wise_batch_grid <- function(spec_file, connection_params = NULL) {
       .provenance_source_label(cp),
       list(metadata_digest = digest::digest(md[c("survey_list", "variable_list", "cpi_ppp")], algo = "sha256"))
     ),
+    data_files = .batch_data_digest(cp$path, runs),
     started = Sys.time()
   )
 }
@@ -895,6 +898,29 @@ wise_batch_policy <- function(item) {
   if (length(out)) out[1L] else NA_character_
 }
 
+#' SHA-256 of the survey files of the run's economies
+#'
+#' Local data folders only: other sources return `NULL`. Hashes the parquet
+#' files under `microdata/` whose names start with an economy code of the runs.
+#' @noRd
+.batch_data_digest <- function(path, runs) {
+  if (!nzchar(path %||% "") || !dir.exists(file.path(path, "microdata"))) {
+    return(NULL)
+  }
+  codes <- unique(unlist(lapply(runs$spec, function(s) s$sample$countries)))
+  files <- list.files(file.path(path, "microdata"), pattern = "\\.parquet$", recursive = TRUE)
+  files <- files[grepl(paste0("^(", paste(codes, collapse = "|"), ")_"), basename(files))]
+  files <- sort(files)
+  if (!length(files)) {
+    return(NULL)
+  }
+  data.frame(
+    file = files,
+    sha256 = vapply(files, function(f) digest::digest(file = file.path(path, "microdata", f), algo = "sha256"), ""),
+    row.names = NULL
+  )
+}
+
 #' Write the results store
 #'
 #' @param out_dir Results folder.
@@ -1028,6 +1054,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
     duckdb_version = as.character(utils::packageVersion("duckdb")),
     renv_lock_sha256 = if (file.exists(renv_lock)) digest::digest(file = renv_lock, algo = "sha256") else NA_character_,
     data_source = grid$source,
+    data_files = grid$data_files,
     started_at = format(grid$started, "%Y-%m-%dT%H:%M:%S%z"),
     finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
     n_runs = nrow(runs), n_data_sets = length(data_tables), n_weather_variables = length(weather_tables),

@@ -132,6 +132,8 @@ test_that("the pipeline writes the store, reuses shared work and records failure
   expect_identical(manifest$n_runs, 2L)
   expect_setequal(unlist(manifest$tables), c("variable_stats", "interview_dates", "weather_stats"))
   expect_identical(manifest$data_source$type, "local")
+  expect_true(length(manifest$data_files) > 0L)
+  expect_match(manifest$data_files[[1]]$sha256, "^[0-9a-f]{64}$")
   expect_false(grepl(data, paste(readLines(file.path(out, "manifest.json")), collapse = ""), fixed = TRUE))
   expect_identical(nrow(arrow::read_parquet(file.path(out, "failures.parquet"))), 0L)
   prov <- arrow::read_parquet(file.path(out, "provenance.parquet"))
