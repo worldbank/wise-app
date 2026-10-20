@@ -1,6 +1,6 @@
 # Step 2 tables of the batch pipeline (`annual`, `summary`, `sim_weather`) and
 # the result views they share with the Results module
-# (R/fct_step2_tables.R; reference in batch/docs/phase3_tables.md).
+# (R/fct_step2_tables.R; reference in batch/docs/tables.md).
 
 library(shiny)
 

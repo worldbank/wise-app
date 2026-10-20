@@ -249,7 +249,7 @@ out_dir/
 ├── runs.parquet               # one row per leaf run: run_id, stage hashes, profile labels, flattened spec
 ├── specs/<run_id>.json        # full normalised spec per run (re-runnable, importable)
 ├── tables/                    # one parquet dataset per table, partitioned by country;
-│   ├── survey_summary/        # full list in batch/docs/tables.md section 3
+│   ├── survey_summary/        # full list in batch/docs/tables.md
 │   ├── model_terms/
 │   ├── annual/
 │   ├── summary/
@@ -267,7 +267,7 @@ Table rules:
   use that fit.
 - Raw values, not display-rounded (same rule as the app's CSV export).
 - Long format with stable column names documented in one table catalogue
-  (`batch/docs/tables.md`, generated from the core table builders).
+  (`batch/docs/tables.md`, one reference for all tables).
 - Schema version field in the manifest; table builders own their schema.
 
 ### 4.6 L5 - Post-processing (deferred)
@@ -369,10 +369,11 @@ Progress (2026-10-19): done as planned, with these differences.
   location panel join of `mod_1_02` stay in the module (Phase 2 moves the
   panel join when the model needs `loc_id_panel`).
 - Tables: `variable_stats`, `interview_dates`, `weather_stats`
-  (`R/fct_step1_tables.R`; reference in `batch/docs/phase1_tables.md`). The
+  (`R/fct_step1_tables.R`; reference in `batch/docs/tables.md`). The
   `weather_stats` builder calls the app's `build_weather_stats_table()`
   (survey rows). Schema deviations from the draft are listed in
-  `batch/docs/tables.md`. Decisions made while building: a location is
+  `batch/docs/tables.md` (the draft columns and the table decisions D1-D5 of
+  Phase 0 are in the git history of that file). Decisions made while building: a location is
   country + `loc_id` across waves (the panel locations repeat across waves in
   the real data); deciles use `outcome_summary_wide()`'s rule everywhere;
   `wxvar_id` excludes binning; rows with `n = 0` are kept.
@@ -501,7 +502,7 @@ Progress (2026-10-19): Phase 3 implemented with the scope below.
   climate models) against the module servers. Batch alone: 26 s for the whole
   pipeline, the Step 2 branch 18 s, R heap peak 1.8 GB, process peak
   resident set 2.6 GB; 5,670 `annual`, 505 `summary` and 48 `sim_weather` rows.
-  Results of the comparison: see `batch/docs/phase3_tables.md` notes and the
+  Results of the comparison: see the notes in `batch/docs/tables.md` and the
   report of the session.
 - Findings: (1) the ensemble band of `summary` is stored at p10-p90 although
   the pane starts at `none` (D3 names the band p10-p90; `none` has no spread);
@@ -567,7 +568,7 @@ Progress (2026-10-20): Phase 4 implemented with the scope below.
   variables; `wise_batch_policy()` builds the lever configurations, runs the
   serial `step3_compute()` and `step3_batch_tables()`. Tables: the policy arm of
   `annual` and `summary`, `decomposition`, `policy_measures`
-  (`batch/docs/phase4_tables.md`). Failures per policy; a binary outcome or a
+  (`batch/docs/tables.md`). Failures per policy; a binary outcome or a
   view that failed for a metric is a `partial_policy_failure`.
 - Tests: `test-fct_step3_input.R` (lever configs, spec defaults against the
   rendered controls, module versus spec route), `test-fct_step3_tables.R` (schema,

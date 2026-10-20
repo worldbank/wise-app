@@ -5,7 +5,7 @@
 # tables of one metric. The Results module (mod_2_02) calls them from its
 # reactives; batch calls the same functions and stores the results as the
 # tables `annual`, `summary` and `sim_weather` (reference in
-# batch/docs/phase3_tables.md). Shiny-free.
+# batch/docs/tables.md). Shiny-free.
 #
 # A "series" is a named list of aggregation tables of the selected metric: the
 # historical run first (named "Historical"), then one table per scenario, with
@@ -743,7 +743,7 @@ step2_annual_table <- function(agg) {
 }
 
 # Ensemble band the `summary` views are stored at: the 10th to 90th percentile
-# of the climate models (batch/docs/tables.md, D3). The Results pane starts
+# of the climate models (batch/docs/tables.md). The Results pane starts
 # at "none", which collapses the band to the median; a stored table needs the
 # spread.
 STEP2_SUMMARY_ENSEMBLE_BAND <- "p10_p90"

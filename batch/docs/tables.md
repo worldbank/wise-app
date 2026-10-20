@@ -1,333 +1,305 @@
-# Batch output tables - catalogue
+# Batch output tables - column reference
 
-Status: Phases 0 to 5 done (catalogue written 2026-10-19; decisions D1-D4
-taken; 11 result tables). Part of `review/batch_pipeline_plan.md`. Section 3
-lists the draft columns; each phase fixed the exact schema from the core
-table builder it extracted. The schema of the Phase 1 tables (`variable_stats`,
-`interview_dates`, `weather_stats`), the Phase 2 tables, the Phase 3 tables
-(`annual`, `summary`, `sim_weather`) and the Phase 4 tables (the policy arm of
-`annual` and `summary`, `decomposition`, `policy_measures`) is fixed and
-documented column by column in `batch/docs/phase1_tables.md`, `phase2_tables.md`,
-`phase3_tables.md` and `phase4_tables.md`; where it differs from section 3 the
-reference wins (summaries in the "Phase 1 schema", "Phase 2 schema", "Phase 3
-schema" and "Phase 4 schema" notes below).
+All tables of a batch run: 11 result tables and the run-level files. The user
+guide is `batch/README.md`; the design is `review/batch_pipeline_plan.md`.
 
-## 1. Scope rules (decided)
+## Conventions
 
-- **Aggregate results only.** No observation-level results: no household
-  predictions, residuals, policy-variable values per household or per-row
-  transfers.
-- **No maps and no map data.** H3 cells, location geometries, per-location
-  map values and legends are not stored.
-- **No underlying data.** Survey microdata, weather frames and Step 2/3
-  payloads stay in the `targets` store as intermediates and are never
-  published.
-- **App-identical values.** A statistic the app shows is computed by the same
-  core function the app uses, and parity tests compare them.
-- **Batch-only statistics** (section 5) are allowed when requested. They are
-  computed by package functions next to the app builders, with tests, and are
-  marked as batch-only in the column reference.
-- **Display options.** A choice that selects different results (for example
-  the metric) becomes a column. A choice that only transforms stored values
-  is stored at the app default and applied later with the app's own function.
-- **Store at the finest app grain, derive the rest.** Where the app collapses
-  an internal table into several views (weather-year bases, deciles,
-  headline), the internal table is stored and the views are rebuilt with the
-  app's functions.
+- One parquet dataset per table in `results/tables/<table>/`, partitioned by
+  `code`. Read with `arrow::open_dataset()`.
+- Values are raw (never rounded). Rows with no value hold `NA`.
+- Aggregates only: no household-level results, maps or microdata.
+- Each table carries the id of the stage it depends on (below). Join to
+  `results/runs.parquet` on that id for the settings and axis labels of the runs
+  that use it. Runs that share a stage share its rows.
+- A column marked **app** holds the value the app shows, computed by the app's
+  own function and checked by parity tests. **batch** marks a statistic that
+  only batch computes.
+- Common columns: `code` (country code; sorted codes joined by `+` for a pooled
+  two-economy sample), `scenario` (`Historical`, or `SSP3-7.0 / 2025-2035`),
+  `metric`, `member` (climate model, or `Historical`), `sim_year` (the weather
+  year the aggregate draws on, not a projection calendar year), `group` (`all`,
+  `decile_1` ... `decile_10`).
 
-## 2. Keys and common columns
+## Stage ids
 
-Every table carries the key of the stage it depends on, and nothing more
-specific. Labels come from joining `runs`.
+12 hex characters, each a hash of the spec sections the stage depends on.
 
-| Key | Identifies | Hash of spec sections |
+| Id | Hash of | Keys the tables |
 |---|---|---|
-| `data_id` | survey sample + outcome + statistics options | source, sample, outcome, stats |
-| `wxvar_id` | one weather variable construction | data_id + variable, reference period, temporal aggregation, transformation, historical years |
-| `fit_id` | weather profile + model | data_id + weather (incl. binning) + model + seed |
-| `sim_id` | + simulation settings | fit_id + sim |
-| `policy_id` | + one policy profile; `NA` for the baseline arm | sim_id + policy |
+| `data_id` | source, sample, outcome, statistics options | `variable_stats`, `interview_dates` |
+| `wxvar_id` | `data_id`, one weather variable's reference period, temporal aggregation, transformation, and the historical years (not the binning) | `weather_stats` |
+| `weather_id` | `data_id`, the whole weather section (the seed only for K-means bins) | the survey-weather frame (not published) |
+| `fit_id` | `data_id`, weather section, model section, seed | `model_terms`, `model_fit`, `model_vcov` |
+| `sim_id` | `fit_id`, the simulation settings that change results | `annual`, `summary`, `sim_weather` (baseline arm) |
+| `policy_id` | `sim_id`, the policy section; `NA` is the baseline arm | policy arm of `annual` and `summary`; `decomposition`, `policy_measures` |
+| `run_id` | the whole spec, seed included | `runs` |
 
-`wxvar_id` is finer than a weather profile: two profiles that bin the same
-variable differently share its descriptive statistics.
+## Step 1: survey and weather data
 
-Common columns where they apply: `code` (country code, or pool label),
-`wave` (survey wave label; `All` for pooled rows), `variable`, `metric`,
-`scenario` (`Historical` or SSP + period), `member` (climate model id),
-`sim_year`, `group` (`all`, `decile_1` ... `decile_10`, or a moderator
-level).
+### variable_stats
 
-Format: one parquet dataset per table, partitioned by `code`. Raw values, no
-display rounding.
+Key `data_id`. One row per scope (wave, `All`, pooled) x `var_group` x
+`variable` x `sample`. Builders: `variable_stats_table()` (`R/fct_step1_tables.R`).
 
-## 3. Published tables (proposed: 11)
-
-### 3.1 Step 1 - data (Phase 1)
-
-| # | Table | Key | Grain | Built from |
-|---|---|---|---|---|
-| 1 | `variable_stats` | `data_id` | code x wave (+ `All`) x var_group x variable x sample | App: `weighted_summary_long()` + `survey_missingness_long()` (the five `survey_summary_*` exports, `mod_1_02_surveystats.R:641,718`) and `outcome_summary_wide()` (`mod_1_03_outcome.R:216`). Batch-only: deciles for every variable, location samples, indicator variables (section 5). |
-| 2 | `interview_dates` | `data_id` | code x wave x month, plus one wave-total row (`month = NA`) | App: `summarise_interview_dates()` (`mod_1_02:103`). Batch-only on the total row: distinct interview dates, first and last date, average distinct dates per location. |
-| 3 | `weather_stats` | `wxvar_id` | code x wave x variable x source (survey, historical) x sample (all, within_loc) | App: `build_weather_stats_table()` (`mod_1_05_weatherstats.R:647`) for the survey rows; the historical comparison sample (same locations and calendar months over `hist_years`, `mod_1_05`) for the historical rows. Continuous (pre-binning) values only. Batch-only: within-location rows, distinct values per location. |
-
-`variable_stats` columns: `n`, `n_missing`, `pct_missing`, `n_unique`,
-`mean` (weighted), `unweighted_mean`, `sd`, `min`, `max`, `p10` ... `p90`,
-`p25`, `p75`, `share_one` (binary variables). `sample` is `all`,
-`with_loc`, `without_loc` or `within_loc` (location-demeaned values; mean and
-SD only). The wave-level survey identifiers (`survname`, `source`, `year`)
-are columns, which replaces the `surveys` table.
-
-`weather_stats` columns: `n`, `pct_missing`, `n_unique`, `n_unique_per_loc`,
-`mean`, `sd`, `min`, `max`, `p10` ... `p90`.
-
-Phase 1 schema (implemented 2026-10-19) - differences from the draft above:
-- `wave` is the survey year as text; `All` pools the waves of a country, and
-  with two countries an extra scope has `code` = `A+B`. Surveys of one country
-  and year are merged, as in the app tables; `survname` lists their names.
-- `variable_stats` has one row per variable group a variable belongs to
-  (`var_group`: `outcome`, `policy`, `hh`, `ind`, `area`, `firm`,
-  `indicator`), and adds `n_rows` and `n_missing` to the listed columns.
-- A location is a country and `loc_id`, shared by all waves; `within_loc`
-  deviates from the location mean over all waves.
-- `interview_dates` columns: `month`, `n`, and on the total row `n_dates`,
-  `first_date`, `last_date`, `avg_dates_per_loc`.
-- `weather_stats` adds `unweighted_mean`. Historical rows weight each
-  location-month cell by its household count; their `n` counts cells and
-  `pct_missing` is missing. `wxvar_id` hashes the reference period, temporal
-  aggregation and transformation (not the binning), so profiles that bin a
-  variable differently share its statistics.
-- Variables with no valid value in a scope keep their row (`n = 0`).
-
-Dropped from the first draft:
-- `surveys`: redundant; identifiers are columns of `variable_stats`.
-- `weather_distribution` and the binned distribution table: bin counts are
-  not stored. Bin edges are in the term labels of `model_terms` and in
-  `provenance`; the continuous deciles describe the distribution.
-- `weather_binscatter`: depends on the outcome and is a chart aid, not a
-  result.
-
-### 3.2 Step 1 - model (Phase 2)
-
-| # | Table | Key | Grain | Built from |
-|---|---|---|---|---|
-| 4 | `model_terms` | `fit_id` | model (fit1-3) x term x tau | `model_coefficients` export / `make_regtable_df()` (`mod_1_07_results.R:693,717`), with the per-term fit contribution (`echart_importance()`, `mod_1_08:192`) and the lasso selection frequency (`run_lasso_selection()`, `mod_1_06_model.R:842`) as columns. RIF rows cover every tau of `rif_grid`. |
-| 5 | `model_fit` | `fit_id` | model x tau x statistic | `model_fit_statistics` export + `additional_stats` (`mod_1_08_modelfit.R:227,248`), headline cards and focused table (`mod_1_07:734,839`), and the model-sample values that the effect curves need (below), as long rows with a `section` column. |
-| 6 | `model_vcov` | `fit_id` | term x term (fit3) | `vcov()` of fit3 with the app's `COEF_VCOV_SPEC`, restricted to the weather terms and their interactions. Small (at most a few dozen terms). |
-
-`weather_effects` is no longer stored. The app's effect charts are functions
-of these inputs:
-
-| Chart | Inputs (`echart_weather_effect_plot()`, `fct_results.R:1542`) | Stored in |
+| Column | Meaning | Source |
 |---|---|---|
-| Binned weather effects | bin coefficients and their CIs | `model_terms` |
-| Continuous marginal effect | weather coefficients (incl. polynomial and interaction terms), their covariance, the x range of the model sample (min, max), moderator values | `model_terms`, `model_vcov`, `model_fit` (section `effect_inputs`) |
-| Who is affected (moderated) | main and interaction coefficients and their covariance, moderator values (0/1, or mean and +/- 1 SD in the model sample) | `model_terms`, `model_vcov`, `model_fit` |
-| RIF effect by tau | coefficients by tau; for moderated or polynomial curves, the per-tau covariance of those terms | `model_terms`, `model_vcov` (one block per tau for RIF) |
-| Logistic pp effects | coefficients and the median-risk profile linear predictor (`profile_eta`) | `model_terms`, `model_fit` |
+| `wave` | Survey year as text (waves of one country and year are merged). `All` pools every wave of the country, or of both countries with `code` `A+B`. | app |
+| `year`, `survname` | Year of the wave (`NA` for `All`); survey name(s), joined by `+`. | app |
+| `var_group` | `outcome`, `policy` (variables the Step 3 levers act on), `ind`, `hh`, `firm`, `area` or `indicator`. A variable in two groups has a row in each. | batch |
+| `variable` | Variable name. | |
+| `sample` | `all`; `with_loc` (records with `loc_id` and, if present, `area_h3_7`); `without_loc`; `within_loc` (values minus the location mean over all waves; `n`, `mean`, `sd` only). | `all`: app; others: batch |
+| `n` | Records with a finite value and a finite positive weight. | app |
+| `n_rows`, `n_missing`, `n_unique` | Records in the scope and sample; records missing the variable; distinct non-missing values. | batch |
+| `pct_missing` | `100 * n_missing / n_rows`. | app |
+| `mean`, `unweighted_mean`, `sd`, `min`, `max` | Weighted mean (share of ones for a 0/1 variable), plain mean, weighted standard deviation, smallest and largest valid value. | app |
+| `p10` ... `p90`, `p25`, `p75` | Weighted quantiles (`collapse::fquantile`, type 7). For the outcome the deciles equal the app's outcome summary. | batch |
+| `share_one` | Weighted share of ones for a variable that is only 0 or 1; else `NA`. | batch |
 
-Phase 2 task: split the data step out of `echart_weather_effect_plot()`
-into a pure `weather_effect_data()` that takes these inputs. The app chart
-and batch post-processing then call the same function. The observed-weather
-rug is observation-level and is not reproduced.
+Indicators (`var_group = indicator`) are 0/1 variables from `stats.indicators`
+(variable, operator `<` or `>`, threshold). Default: `poor300`, `poor420`,
+`poor830` (`welfare` below 3.00, 4.20, 8.30) and `ttime_health_gt15`, `_gt30`,
+`_gt45`, `_gt60`. An indicator whose variable is not in the data is skipped.
+`stats.location_samples: false` leaves only `sample = all`.
 
-Check in Phase 2: whether the app draws effect curves for the ranger and
-xgboost engines. If it does (partial dependence, for example), those curves
-cannot come from coefficients, and their curve points go into `model_fit`.
+### interview_dates
 
-Phase 2 schema (implemented 2026-10-19; reference in
-`batch/docs/phase2_tables.md`) - differences from the draft above:
-- Engines: fixest (linear, logistic) and RIF. Ranger and xgboost, and with
-  them the curve-point question, wait for a later phase. Interactions and
-  policy-relevant variables are not in the spec yet.
-- `model_terms` has `is_weather`, `n_obs` and `translation` columns besides
-  the planned ones; `importance_share` is for specification 3 (the median
-  quantile for RIF). RIF rows cover every quantile and all three
-  specifications.
-- `model_fit` holds the sections `fit`, `sample`, `spec`, `effect_inputs`
-  (model-sample range, mean and SD of continuous weather variables, and
-  `profile_eta` for binary outcomes) and `headline` (the cards as text).
-  Fit statistics are raw numbers (`nobs`, `r2`, `ar2`, `wr2`; `pr2`, `aic`).
-  There are no moderator values yet (no interactions).
-- `model_vcov` stores the full matrix (both triangles) in long form, one block
-  per quantile for RIF, under the fit's own variance estimator.
-- `weather_effect_data()` is not extracted: it sits inside the 1,200-line
-  `echart_weather_effect_plot()` and is a chart refactor, not model glue. The
-  stored inputs are the ones that function reads. See the plan's Phase 2 note.
-- Ids: `weather_id` (data + the whole weather section, binning included; the
-  seed only for K-means) was added for the shared survey-weather frame.
-  `outcome.name` and the default model type are resolved at grid time (from
-  the survey columns), so `data_id` and `fit_id` encode them.
+Key `data_id`. One row per wave x interview month, plus one total row per wave
+(`month` is `NA`).
 
-### 3.3 Steps 2 and 3 - outcomes (Phases 3-4)
+| Column | Meaning | Source |
+|---|---|---|
+| `month` | Interview month, 1 to 12; `NA` on the total row. | app |
+| `n` | Records interviewed in the month; on the total row, records with an interview date. | app |
+| `n_dates`, `first_date`, `last_date`, `avg_dates_per_loc` | Total row only: distinct dates, earliest and latest date, mean distinct dates per location. | batch |
 
-One set of tables serves both steps. The baseline arm has `policy_id = NA`.
-Step 3 passes the Step 2 results through unchanged as its baseline arm
-(`step3_baseline_arm()`), so the baseline is stored once per `sim_id` and
-each policy adds only its own rows.
+### weather_stats
 
-| # | Table | Key | Grain | Built from |
-|---|---|---|---|---|
-| 7 | `annual` | `sim_id`, `policy_id` | arm x scenario x member x sim_year x metric | `aggregate_pipeline_tables_multi()` via `step2_display_aggregation_suite()` (`fct_aggregation.R`), `value_all` / `value_all_sd` unnested to one row per member. Columns `value`, `sd`, `var_within`, `var_across`, `weighted`; `F_agg_all` dropped (D2). Shock-responsive programmes add their per member-year rows (`policy_shock_annual` export, `mod_3_08_diagnostics.R:767`) as metrics `shock_activated`, `shock_exposed_share`, `shock_transfer_cost`, `shock_admin_cost`, and the population weights. |
-| 8 | `summary` | `sim_id`, `policy_id` | arm x scenario x metric x section x measure x group (x return period) | Views that need contrasts or coefficient gradients, at app defaults (D3): Step 2 headline (`step2_headline_df()`), thresholds and return periods (`build_threshold_table_df()`), ensemble bands (pointrange data), uncertainty sources (`echart_variance_contribution()` data), adverse support (`step2_adverse_dot_data()`), distributional incidence by baseline decile (`climate_distributional_incidence_data`, `mod_2_02_results.R:2247`); Step 3 headline (`step3_headline_df()`), threshold table, adverse support (`step3_adverse_dot_data()`), paired effects (`paired_effect_summary()`). Columns `estimate`, `lo`, `hi`. |
-| 9 | `sim_weather` | `sim_id` | scenario x member x variable x statistic | `simulation_weather_support_summary` export (`mod_2_03_diagnostics.R:481`) and the CMIP6 member list with periods. |
-| 10 | `decomposition` | `policy_id` | source x scenario x member x sim_year x group x channel (x metric) | The app's internal per-year tables: the compact decomposition (`channel_summary`, `decile_summary`: sums and weights of each channel by scenario, member, year and baseline decile; `fct_policy_metric_decompose.R:400-470`) and the metric-aware decomposition (`annual`, `decile_annual` of `.policy_metric_decomposition()`). Columns: channel sums and weights, so every average is exact. |
-| 11 | `policy_measures` | `policy_id` | section x measure x group (x scenario) | Small measure/value tables: transfer summary (`mod_3_08:521`), SP effectiveness (`mod_3_08:609`), reach (`policy_reach_summary()`), components (`.policy_component_table_raw()`), treatment matrix (`policy_treatment_matrix()`; row and column labels in `group`), input diagnostics (`policy_input_diagnostics()`; before and after means per lever variable), cost-effectiveness (`ce_table`, `ce_climate`, `ce_reach`, `mod_3_10_cost_effectiveness.R:295,395,497`). |
+Key `wxvar_id`. One row per wave (and `All`) x weather variable x `source` x
+`sample`. Values are continuous (after aggregation and transformation, before
+binning).
 
-Phase 3 schema (implemented 2026-10-19; reference in
-`batch/docs/phase3_tables.md`) - differences from the draft above:
-- `annual`, `summary` and `sim_weather` are published for the baseline arm
-  (`policy_id` is `NA`); the policy phase adds the policy arms and the shock
-  metrics. `annual` has the columns `value`, `sd`, `var_within`, `var_across`,
-  `weighted`; `var_within` and `var_across` describe the year and repeat on each
-  member row. `member` is the climate model; `sim_year` is the weather year the
-  aggregate draws on.
-- `summary` is a long table with `estimate`, `lo`, `hi`, `n`, `text` and the
-  sections `expected`, `adverse_year`, `adverse_dot`, `uncertainty`,
-  `headline` and `incidence`. The ensemble band is stored at p10-p90 (the
-  Results pane starts at `none`, which has no spread to keep); the coefficient
-  band is p10-p90 and the deviation is `none`. The `ensemble` spread between
-  climate models is in `lo`/`hi`. The distributional incidence has `metric` `NA`.
-- `sim_weather` holds the sections `scenario` (period and number of models),
-  `members` (the climate-model list) and `support` (the pooled weather-support
-  summary of the Diagnostics tab, per variable). The weather densities and
-  per-value weather are not stored.
-- Ids: `sim_id` (fit_id + the simulation settings; the residual rule does not
-  enter for RIF, and the scenarios do not enter without projection periods).
-  `data_id` is unchanged, so editing the statistics options still reruns fits
-  and simulations (section 2).
-- The spec has no choice of climate models: every model of the projection
-  files that covers the sample is a member, as in the app.
+| Column | Meaning | Source |
+|---|---|---|
+| `variable` | Weather variable. | |
+| `source` | `survey`: weather the sample was exposed to. `historical`: the same locations and calendar months over `weather.hist_years`, one value per location-month, weighted by households. | survey: app; historical: batch |
+| `sample` | `all` or `within_loc` (`n`, `mean`, `sd` only). | `within_loc`: batch |
+| `n` | Survey: records with a finite value and a positive weight. Historical: valid location-month cells. | app |
+| `pct_missing` | Survey records without a value after the weather merge; `NA` for historical. | app |
+| `n_unique`, `n_unique_per_loc` | Distinct values; mean distinct values per location. | batch |
+| `unweighted_mean`, `mean`, `sd`, `min`, `max`, `p10` ... `p90`, `p25`, `p75` | As in `variable_stats`. | survey: app; others: batch |
 
-Phase 4 schema (implemented 2026-10-20; reference in
-`batch/docs/phase4_tables.md`) - differences from the draft above:
-- `annual` and `summary` carry the policy arm under the `policy_id` of the run
-  (`NA` stays the baseline arm). `annual` adds the shock-responsive member-year
-  rows as metrics `shock_<column>` (activation, exposed share, transfer,
-  administration and total cost and the population weights of basis risk and
-  leakage). The policy `summary` sections are `policy_expected` (the paired
-  effect with the coefficient, inter-model, inter-annual and full-range bands, and
-  the baseline and policy levels), `policy_adverse` (baseline-anchored tails),
-  `policy_threshold`, `policy_adverse_dot`, `policy_headline` (the cards' text) and
-  `policy_incidence`; they are stored for every metric at the p10-p90 bands.
-- `decomposition` is long (one row per source, scenario, member, year, group and
-  channel) with `value`, `sum`, `weight` and `n_units`: the `compact` rows are the
-  channel sums and weights of the run, the `metric` rows the cumulative states
-  and contributions of one metric decomposition per metric, whole sample and by
-  baseline decile.
-- `policy_measures` is long with a `section`: `transfer`, `sp_effectiveness`,
-  `reach`, `components`, `treatment`, `input_diagnostics`, `cost_effectiveness`
-  (every metric), `shock_summary`, `shock_climate_cost`, `shock_affected_poor`.
-- The historical arm is `Historical` in every table; the Results pane labels it
-  with its years. Tables for a binary outcome have no policy rows (the app shows
-  no contrast).
-- Ids: `policy_id` (sim_id + the `policy` section; `NA` without one). Interactions
-  and policy-relevant variables are part of the model section (and so of
-  `fit_id`); the moderator values are in `model_fit` (`effect_inputs`, statistics
-  `mod_*`).
+Notes: records with an invalid weight count in `n_rows` and `pct_missing` but
+not in weighted statistics; rows with `n = 0` are kept (the app hides them); a
+location is a country and `loc_id`, shared by all waves.
 
-### 3.4 Run-level tables (all phases)
+## Step 1: model
 
-| Table | Contents |
+Key `fit_id`. A fit is the app's "Run model" for the run's sample, outcome and
+weather: three nested specifications on the same observations (`model` 1
+weather only; 2 plus fixed effects; 3 plus fixed effects and covariates, the
+one Steps 2 and 3 use). Linear and logistic models use fixest; the RIF model
+fits the nine quantiles `tau` 0.1 to 0.9. Standard errors are clustered at the
+location panel when the H3 files are in the data folder, else fixest's default
+applies (recorded in `model_fit`). Fits are unweighted. Builders:
+`R/fct_step1_model_tables.R`.
+
+### model_terms
+
+One row per `model` x term (x `tau` for RIF).
+
+| Column | Meaning | Source |
+|---|---|---|
+| `model` | 1, 2 or 3. | app |
+| `term` | Coefficient name as fixest reports it (`tx`, `I(I(tx^2))`, `tx(24, 27.4]`, `tx:urban`, `(Intercept)`). Fixed effects are absorbed. | app |
+| `tau` | Quantile (RIF); else `NA`. | app |
+| `is_weather` | Term involves a weather variable (main, bin, polynomial, interaction). | batch |
+| `estimate`, `std_error`, `statistic`, `p_value` | Coefficient, standard error, t or z statistic, p-value, on the model scale. | app |
+| `conf_low`, `conf_high` | 95% interval: estimate +/- 1.96 x SE (RIF: `broom::tidy()`). | app |
+| `n_obs` | Observations of the specification (of the quantile's fit for RIF). | app |
+| `importance_share` | Percent of the sum of squared standardised coefficients; model 3 only (RIF: median quantile). | app |
+| `lasso_freq` | Lasso selection frequency; model 3 with Lasso covariates only. | app |
+| `translation` | The At a glance translation of a weather term (for example `+2.9%` per +1 SD, or a bin contrast); model 3 (RIF: `tau` 0.5). | app |
+
+### model_fit
+
+Long form: `section`, `variable`, `model`, `tau`, `statistic`, `value` (number),
+`text`, `detail` (text rows).
+
+| `section` | `statistic` | Meaning |
+|---|---|---|
+| `fit` | `nobs`, `r2`, `ar2`, `wr2` (RIF per `tau`: `nobs`, `r2`, `wr2`); `nobs`, `pr2`, `aic` (binary outcome) | Goodness of fit per specification. `wr2` is `NA` without fixed effects. App (raw). |
+| `sample` | `n_estimation` | Rows of the estimation sample. |
+| `spec` | `engine`, `model_family`, `requested_type`, `vcov`, `fixed_effects`, `covariate_selection`, `location_panel` (`text`) | What was fitted. `vcov` is `clustered: loc_id_panel` or `default (IID)`; `location_panel` is `joined` or `unavailable: <reason>`. |
+| `spec` | `fallback_model_family`, `fallback_vcv` (`text` = `requested -> used`, `detail` = reason) | A fallback the fitter applied; present only when it happened. |
+| `effect_inputs` | `x_min`, `x_max`, `x_mean`, `x_sd` per continuous weather variable; `profile_eta` (binary outcomes); per moderator `mod_min`, `mod_max`, `mod_mean`, `mod_sd`, `mod_n_distinct` (numeric or binary) or `mod_n_distinct` and `mod_levels` (`text`, categorical) | What the effect charts need besides coefficients and `model_vcov`. Binned variables have no `x_` rows. |
+| `headline` | The card label (`Effect of Max temperature`, `Spec robustness`, ...) | The At a glance cards: `text` the value, `detail` the note. App. |
+
+### model_vcov
+
+Variance-covariance matrix of model 3, restricted to the weather terms, as a long
+full matrix (both triangles); one block per quantile for RIF. Columns: `tau`,
+`term_1`, `term_2`, `covariance` (under the fit's variance estimator; the
+diagonal is `std_error^2`). With `model_terms` and the `effect_inputs` rows it
+rebuilds the app's effect charts. The observed-weather rug is not stored.
+
+## Step 2: simulation
+
+Key `sim_id`. The app's "Run simulation": the baseline survey (default the
+latest wave of each economy) is predicted under every historical weather year
+(`sim.hist_years`) and, for each projection period and SSP, under the same years
+perturbed by each CMIP6 climate model (additive for temperature, multiplicative
+for rain and days). The poverty line is the outcome's own (3.00 a day if none).
+Builders: `R/fct_step2_tables.R`. Step 3 reuses these tables for the policy arm;
+`policy_id` is `NA` for the baseline arm.
+
+### annual
+
+One row per `scenario` x `metric` x `member` x `sim_year` (x `policy_id`).
+`metric` is `mean`, `median`, `total`, `headcount_ratio`, `gap`, `fgt2`,
+`gini`, and for a welfare outcome `prosperity_gap`, `avg_poverty` (a binary
+outcome has `mean` only). Every view that needs no contrast between scenarios
+(exceedance curves, distributions, trajectories, other bands) is a function of
+this table.
+
+| Column | Meaning |
 |---|---|
-| `runs` | One row per leaf run: all stage ids, profile labels (columns `axis_<axis name>`), the flattened spec (weather specification, policy lever settings) and the spec as JSON. |
-| `specs/<run_id>.json` | Full normalised spec per run. |
-| `provenance` | `wise_provenance()` record per stage id (data source digest, model signature, bin edges, timings). |
-| `failures` | Stage, stage id, affected run ids, error class, message. |
-| `manifest.json` | wiseapp version and git SHA, R and duckdb versions, `renv.lock` hash, schema version, start and end times. |
+| `policy_id` | `NA` for the baseline arm. |
+| `member` | Climate model as named in the projection files (`model_<n>` if none), or `Historical`. |
+| `value` | The member's annual aggregate in outcome units (back-transformed for log outcomes). |
+| `sd` | Delta-method standard deviation: coefficient uncertainty plus residual variance (residual only with `sim.coef_uncertainty: false`). |
+| `var_within`, `var_across` | Variance of the year's aggregate within a member and across members; repeated on each member row; `var_across` is 0 for the historical run. |
+| `weighted` | The aggregate uses survey weights. |
 
-### 3.5 Derived later, not stored
+The equal-model mean of a year is the mean of `value` over its member rows.
+Per-year coefficient gradients are not stored; views that need a contrast with
+coefficient uncertainty are in `summary`.
 
-Each is rebuilt by an app function from published tables. "Verify" marks a
-claim to confirm when the phase extracts the function.
+**Policy arm.** Same columns for the policy pipelines; the effect of a policy on
+a member-year is the policy `value` minus the baseline `value`. For a
+shock-responsive program the table also holds per member-year rows as metrics
+`shock_<column>` (with `sd`, `var_within`, `var_across`, `weighted` `NA`):
+`shock_activated` (1 if any household is paid), `shock_exposed_share`,
+`shock_transfer_cost`, `shock_admin_cost`, `shock_total_cost`,
+`shock_pop_tp`, `_fp`, `_fn`, `_tn` (population weight of locations paid or not
+against a loss event, `policy.sp.loss_event_pct`), `shock_spend_total`,
+`shock_spend_no_event`, `shock_loss_value`, `shock_paid_value`.
 
-| App output | Rebuilt from | App function |
+### summary
+
+Long form at the app defaults: outcome level, coefficient band p10-p90, ensemble
+band p10-p90 across climate models. Columns: `policy_id`, `scenario`, `metric`
+(`NA` for `incidence`), `section`, `measure`, `group`, `return_period` (`1:5`,
+`1:10`, `1:20`, `1:50`; `1:1` the median year, `4:5` ... `49:50` the favourable
+tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
+
+| `section` | `measure` / `group` | Meaning |
 |---|---|---|
-| Weather effect charts (`mod_1_07:920,936`) | `model_terms`, `model_vcov`, `model_fit` | `weather_effect_data()` (Phase 2 split of `echart_weather_effect_plot()`) |
-| RIF weather curve (`mod_3_09_decomposition.R:749`) | `model_terms` | `echart_rif_weather_curve()` |
-| Coefficient-stability chart, model specification table | `model_terms`, `runs` | coefficient plot builder, `make_regtable_specs_reactable()` |
-| Exceedance curves, annual distribution, model robustness | `annual` | exceedance builder; `model_robustness_data()` (`fct_sim_compare.R:1466`). Verify: exceedance reads only `value_all` and `value_all_sd`. |
-| Decomposition headline and by decile, all 4 weather-year bases (`mod_3_09:520,636`) | `decomposition` | `.compact_future_decomp()`, `.compact_future_decile_summary()` |
-| Step 3 incidence by decile | `decomposition` | `step3_incidence_by_decile()` (`fct_incidence.R:176`) |
-| Metric decomposition summaries and tails | `decomposition` (metric rows) | `.policy_metric_summary()`, `.policy_metric_tails()`. Verify: no coefficient gradients needed. |
-| Shock summary (activation frequency, cost distribution, basis risk, leakage) and shock charts | `annual` (shock metrics) | `sp_shock_summary()`, `echart_shock_*`. Verify: needs only the per member-year rows and spec values. |
-| Decomposition in % of baseline | `decomposition` | module's relative-units step |
-| Bands at other quantiles; deviation from mean or median year | `annual` | `resolve_band_q()`, `deviation_from_centre()`; only for views without contrasts (D2) |
+| `expected` | `expected` / `interannual`, `intermodel` | Equal-model mean (`estimate`) with the range of weather years within models (`lo`, `hi`, averaged across models) or of the model means. `n` = climate models. |
+| `adverse_year` | `adverse_year_outcome` / `coefficient`, `ensemble`, `pooled` | Outcome in an adverse year of the `return_period`; `lo`, `hi` the coefficient, ensemble and pooled bands. The historical run has the coefficient band only. `n` = weather years. |
+| `adverse_dot` | `Expected`, `Adverse 1-in-5` ... `1-in-50` / `ensemble` | Values behind the adverse-year dot plot, only the decision return periods the record supports. |
+| `uncertainty` | `var_coef`, `var_within`, `var_across` | Variance components (coefficient including residual; weather year within models; between models). |
+| `headline` | `Expected change`, `Adverse weather years`, `Signal vs noise`, `Year-to-year range`, `Simulation years` / `historical`, `focus`, `difference`, `range`, `count` | Headline cards for the focus scenario (the first future scenario, else historical). `text` holds the displayed value on the `focus` row. |
+| `incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean effect of the scenario on each fixed baseline decile, in outcome units; `n` = households. |
 
-### 3.6 Excluded
+**Policy arm** sections start with `policy_`; stored for every metric:
 
-| App output | Reason |
-|---|---|
-| Survey density map, outcome coverage map, weather maps, location coverage | maps |
-| Outcome distribution chart, continuous weather density, simulated weather input distribution | computed from microdata (D1) |
-| Weather bin counts and binscatter | consolidation (3.1) |
-| Residuals vs weather, predicted vs actual, residual panels (`mod_1_08`) | observation level |
-| Before/after histograms of policy variables (`mod_3_08:1173`) | observation level; means are in `policy_measures` |
-
-## 4. Decisions
-
-**D1 - Distributions computed from microdata: Exclude** (decided).
-
-**D2 - Coefficient gradients: drop** (decided). `value_all` holds the
-per-member values of each year, so unnesting it gives the member rows of
-`annual` at no extra cost. The column dropped is `F_agg_all`, the per-year
-gradient that the delta method uses for contrasts between scenarios or arms.
-Views that need a contrast with coefficient uncertainty are stored in
-`summary` at the app defaults.
-
-**D3 - Display options** (decided). Every metric is stored. Deviation and
-band are stored at the app defaults (`none`, `p10_p90`). The poverty line
-comes from the spec; extra lines are a spec axis.
-
-**D4 - Decomposition** (decided, refined). All four weather-year bases and
-both unit choices are derived from the per-year `decomposition` table (3.5),
-so no basis or unit is fixed at write time.
-
-**D5 - Decomposition by year** (answered). The app does not show or export
-it, but computes it: the compact decomposition holds channel sums and weights
-per scenario, member, year and baseline decile, and the metric decomposition
-returns `annual` and `decile_annual`. These are app-identical aggregates, not
-observations. Storing them gives the legacy `decile_decomposition_by_year`
-output and lets every app view be derived (D4).
-
-## 5. Batch-only statistics (requested)
-
-Carried over from the legacy scripts. Computed by package functions in the
-same file as the app builder they extend, and tested against the legacy
-definitions on a fixture.
-
-| Statistic | Table | Definition (legacy source) |
+| `section` | `measure` / `group` | Meaning |
 |---|---|---|
-| Location samples `with_loc`, `without_loc` | `variable_stats` (`sample`) | rows with `loc_id` and `area_h3_7` present, or either missing (`batch/legacy/R/batch_utils.R`, `weighted_survey_stats()`) |
-| Location-demeaned `within_loc` | `variable_stats`, `weather_stats` (`sample`) | `with_loc` rows, values demeaned within `loc_id` (weighted); mean and SD |
-| `n_unique_per_loc` | `weather_stats` | mean number of distinct values per `loc_id` |
-| Interview-date summary | `interview_dates` (total row) | distinct dates, first and last date, average distinct dates per `loc_id` |
-| Indicator variables | `variable_stats` (`var_group = indicator`) | binary variables defined in the spec, with the same statistics; mean = share. Default set: `poor300`, `poor420`, `poor830` (`welfare` below 3.00, 4.20, 8.30) and `ttime_health_gt15/30/45/60` (legacy `01b_policy_var_percentiles.R` thresholds) |
-| Deciles and quartiles for every variable | `variable_stats` | weighted `p10` ... `p90`, `p25`, `p75`, with the weighted quantile rule of `outcome_summary_wide()`, so the outcome rows equal the app's deciles |
+| `policy_expected` | `effect` / `intermodel`, `coefficient`, `interannual`, `range` | Expected effect (policy minus baseline, equal-model mean on matched support) with the p10-p90 band of the model means, of the paired coefficient uncertainty, of weather years within models, or the full range of the model means. |
+| `policy_expected` | `baseline`, `policy` / `level` | Matched endpoint levels. |
+| `policy_adverse` | `Adverse 1-in-5` ... `1-in-50` / `effect`, `baseline`, `policy` | Baseline-anchored adverse-year values; `return_period` = years; `text` = reason when unavailable. |
+| `policy_threshold` | `Single historical estimate`, `Equal-model mean`, `Coef P10/P90`, `Ensemble P10/P90`, `Pooled P10/P90` / `Baseline`, `Policy` | Return-period table for both arms with the bands. |
+| `policy_adverse_dot` | `Expected`, `Adverse 1-in-5` ... / `baseline`, `policy`, `effect` | Dot-plot values for both arms and their difference. |
+| `policy_headline` | card label / `card_<k>_value`, `card_<k>_note` | Headline cards; on `card_1_value`, `lo`, `hi` are the 95% interval of the effect. |
+| `policy_incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean policy effect per baseline decile for the weather-year basis in `return_period` (`mean`, `adverse_5`, `adverse_10`, `adverse_20`); `metric` `NA`. |
 
-Spec options: `stats.indicators` (name -> variable, operator, threshold) and
-`stats.location_samples` (default `true`).
+### sim_weather
 
-## 6. Comparison with the legacy outputs
+Key `sim_id`. Long form: `scenario` (projection scenarios; the historical run is
+the reference), `section`, `member`, `variable`, `statistic`, `value`, `text`.
 
-| Legacy output | New equivalent |
+| `section` | `statistic` | Meaning |
+|---|---|---|
+| `scenario` | `period_start`, `period_end`; `n_models`, `n_models_requested` | The projection period; models that ran and models requested (they differ when a model lacks coverage; see `failures.parquet`). |
+| `members` | `member` | One row per climate-model member (`value` = 1). |
+| `support` | `n_reference`, `n_scenario`, `robust_lo`, `robust_hi`, `outside_n`, `outside_share`, `warning`, `n_members`, `max_member_share`; `reference_label`, `warning_rule`, `is_binned` (`text`) | The weather-support summary of the Diagnostics tab per variable: historical and simulated value counts, the 1%-99% historical support, simulated values outside it (or in a bin the history never had), and `warning` = 1 when more than 5% are outside (the model extrapolates). |
+
+## Step 3: policy
+
+Keys `sim_id` and `policy_id`. The app's Step 3 "Run simulation": the lever
+settings change the covariates (or add a cash transfer) of the Step 2 baseline
+survey, and the policy effect is added to the stored baseline predictions of
+every member and weather year (the analytic correction of
+`apply_policy_delta_to_baseline()`). The baseline arm is the Step 2 result
+unchanged. A shock-responsive transfer is paid per prediction row from the
+trigger on the historical thresholds. The seed is the spec's seed, under R's
+default random number generator. A binary outcome or logistic model has no
+policy contrast (the app shows "unavailable"): such a run writes no policy rows
+and is listed in `failures.parquet` as `partial_policy_failure`. Builders:
+`R/fct_step3_tables.R`.
+
+### decomposition
+
+Long form, one row per `source` x `scenario` x `member` x `sim_year` x `group`
+x `channel`. Every average of the Decomposition tab (all weather-year bases, in
+absolute units or percent of baseline) is rebuilt from it with the app's
+functions.
+
+| Column | Meaning |
 |---|---|
-| `survey_stats.csv` (01), `policy_percentiles.csv` (01b) | `variable_stats` + `interview_dates` (all legacy columns carried, section 5) |
-| `weather_stats.csv` (02) | `weather_stats` (survey and historical sources; within-location rows) |
-| `model_coefficients`, `model_fit_stats` (03) | `model_terms`, `model_fit` (+ `model_vcov`) |
-| `_interactions_not_available.csv` | `failures` with error class `interaction_unavailable` |
-| `simulations/outcomes.parquet` (04) | `annual` (same design: one long table, baseline and policy rows together) |
-| `return_periods.csv` | `summary` (threshold and return-period rows) |
-| `weather_quantiles.csv`, `sim_metadata.csv` | `sim_weather` |
-| `decile_decomposition_by_year.parquet` | `decomposition` (D5) |
-| `policy_config.csv` | `runs` + `specs/` |
-| Spec-curve and model-selection scripts (02a, 03a) | Post-processing on `model_terms` / `model_fit` (Phase 5) |
+| `source` | `compact` (channel sums of the run) or `metric` (one metric-aware decomposition per metric). |
+| `metric` | Metric of a `metric` row; `NA` for `compact`. |
+| `group` | `all` or `decile_1` ... `decile_10` (fixed baseline welfare deciles, 1 the poorest). |
+| `channel` | `compact`: `delta_total`, `delta_main`, `delta_sp`, `delta_main_covar`, `delta_res`, `delta_res1`, `delta_res2`, `delta_sp_shock` (log-scale effects); `baseline_y_point`, `baseline_level`; `lvl_main`, `lvl_res1`, `lvl_res2`, `lvl_total`, `lvl_sp_shock` (effects in outcome units). `metric`: states `baseline`, `after_static_main`, `after_main`, `after_repositioning`, `policy` and contributions `main`, `sp_shock`, `repositioning`, `interaction`, `resilience`, `total`, in the metric's units. |
+| `value` | `compact`: `sum / weight` (`NA` when the weight is 0); `metric`: the metric value. |
+| `sum`, `weight` | Weighted sum and weight behind a `compact` value; `NA` for `metric`. Averages over years or members are weighted averages of these. |
+| `n_units` | `compact` decile rows: weighted population of the decile. `metric` rows: retained prediction rows. |
 
-## 7. Size estimate (per fit, BFA scale; `annual` and `summary` measured in Phase 3)
+Direct effect is `main`; `resilience` is `repositioning` plus `interaction`;
+`sp_shock` is the shock-responsive transfer. `main + sp_shock + repositioning +
+interaction = total = policy - baseline`.
 
-`annual`: about 4 scenarios x 10 members x 30 years x 9 metrics, roughly 11k
-rows per arm. Measured on BFA with one SSP, one period, 20 climate models and
-30 weather years: 5,670 rows (630 aggregates x 9 metrics); `summary` 505 rows;
-`sim_weather` 48 rows. `decomposition`: about 4 x 10 x 30 x 11 groups, roughly 13k
-rows per policy (channels as columns). `summary`: hundreds of rows. Step 1
-tables: low thousands of rows per `data_id`. A grid of 1,000 runs stays
-around 100 MB of parquet.
+### policy_measures
+
+Long form: `section`, `scenario`, `metric` (where the section has them),
+`measure` (a column of the app's table), `group` (the app's row label), `value`,
+`text` (a note or status).
+
+| `section` | Contents |
+|---|---|
+| `transfer` | Annual cost of the cash transfer over the represented recipients (administration and total when an administration share is set) and the annual transfer per recipient. Shock program: annual means over the historical years. |
+| `sp_effectiveness` | Annual cost per person, administration share, realised inclusion and exclusion error, coverage of the poor, leakage to the non-poor, adequacy for poor recipients. `group` = `money` or `percent`. A shock program describes a year in which every eligible household is paid. |
+| `reach` | Population reached by any lever: `share`, `people`, `households`. |
+| `components` | One row per lever touched: units affected, population, share, realised cost, households. `group` = the component. |
+| `treatment` | Eligibility-by-treatment matrix of the cash transfer: units, population, share and households per coverage status. |
+| `input_diagnostics` | Before and after summary of each covariate the policy changed (units changed, baseline and policy mean and spread). `group` = the variable. |
+| `cost_effectiveness` | Cash-transfer cost-effectiveness per `metric`, `scenario` and basis (`Average year` or `1-in-20 year`): `cost`, `amount` (net people lifted or annual value of the change), `value` (the ratio), `lo`, `hi` (95% interval of the average year), `poverty_line`, `admin_share`; `text` = `ok`, `not_applicable` or `unavailable`. Only when a cash transfer with spending is configured. |
+| `shock_summary` | Shock programs, by scenario: member-years, activation frequency, mean, median and 95th percentile annual cost, transfer and administration cost, false-positive and false-negative rate of the trigger, leakage share, cost variation, share of modelled loss offset, share of years the cap binds, and for an anticipatory design the false-alarm cost share and break-even multipliers. Scored with `policy.sp.loss_event_pct`. |
+| `shock_climate_cost` | The program's bill per scenario against history: activation frequency, mean and 95th percentile cost, change from the historical run. |
+| `shock_affected_poor` | Coverage (share of loss-event household-years of the baseline poor in which the household was paid) and adequacy (payments as a share of modelled loss) at the outcome's poverty line (else 3.00). |
+
+## Run-level files
+
+| File | Contents |
+|---|---|
+| `runs.parquet` | One row per run: `run_id`, the stage ids (`wxvar_ids` is a list), axis labels (`axis_<name>`), the flattened spec, `spec_json`. |
+| `specs/<run_id>.json` | Full normalised spec of each run; read with `wise_spec_read()`. |
+| `provenance.parquet` | One row per finished stage: `stage`, `id`, `n_rows`, `n_surveys`, `source_type`, `source_origin`, `source_files` (names and sizes), `location_panel`, `n_no_panel`, `n_scenarios`, `n_failed_keys`, `r_peak_mb`, `seconds`, `wiseapp_version`, `completed_at` (columns a stage does not have are `NA`). |
+| `failures.parquet` | `stage`, `id`, `run_ids` (comma-separated), `n_runs`, `error_class`, `message`. Empty when everything ran. Partial results have `error_class` `partial_simulation_failure` or `partial_policy_failure`. |
+| `manifest.json` | `schema_version`, `wiseapp_version`, `wiseapp_git_sha`, `r_version`, `duckdb_version`, `renv_lock_sha256`, `data_source`, `data_files` (SHA-256 of the survey files, local data), `started_at`, `finished_at`, counts, `tables`. Values that could not be recorded are `null`. |
+
+## Not stored
+
+Household-level frames and residuals, maps and map data, survey and weather
+densities, bin counts and binscatter, weather input distributions, per-year
+coefficient gradients, before/after histograms of policy variables, charts. App
+views that need only stored rows (effect charts, exceedance curves, decomposition
+views, shock summaries) are rebuilt from the tables with the app's functions.
+
+## Size
+
+Per fit at BFA scale: `annual` about 5,700 rows per arm (one SSP and period, 20
+climate models, 30 weather years, 9 metrics), `summary` hundreds, `sim_weather`
+about 50, `decomposition` about 13,000 per policy, Step 1 tables low thousands.
+A grid of 1,000 runs stays around 100 MB of parquet.

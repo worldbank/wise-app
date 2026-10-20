@@ -1,7 +1,7 @@
 # Step 1 model tables ----
 # Shiny-free builders for the three model tables of the batch pipeline
 # (`model_terms`, `model_fit`, `model_vcov`; reference in
-# batch/docs/phase2_tables.md) and for the translated effects that the Results
+# batch/docs/tables.md) and for the translated effects that the Results
 # tab and the tables share. The Results module (mod_1_07) calls
 # `step1_translations()` and `step1_focused_df()`; batch calls the same two and
 # adds the table builders. Values are raw (never rounded).
@@ -145,7 +145,7 @@ step1_focused_df <- function(mf, translations = step1_translations(mf),
 #' @param translations Result of `step1_translations()`.
 #' @param selection_frequency Named numeric vector of Lasso selection
 #'   frequencies (`NULL` unless the covariates came from the Lasso).
-#' @return A data frame (columns in `batch/docs/phase2_tables.md`), or `NULL`.
+#' @return A data frame (columns in `batch/docs/tables.md`), or `NULL`.
 #' @noRd
 model_terms_table <- function(mf, translations = step1_translations(mf),
                               selection_frequency = NULL) {
