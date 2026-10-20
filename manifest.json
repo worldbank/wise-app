@@ -4500,8 +4500,11 @@
     "inst/batch/_targets.R": {
       "checksum": "dcc9bd5a0592ce762d0b6dc88db09110"
     },
+    "inst/batch/check_reproducibility.R": {
+      "checksum": "302580f8b4c54f105f69de738b15f497"
+    },
     "inst/batch/README.md": {
-      "checksum": "1c22a1d548806b87a29de810875e37b1"
+      "checksum": "54029332ab4e45d233459120c387391e"
     },
     "inst/batch/run.R": {
       "checksum": "75c869fc7554dbb13413d1224e7cd13c"
@@ -4546,7 +4549,7 @@
       "checksum": "ef397bdc0f1534d0fe2f37aec73eb5f6"
     },
     "R/fct_batch_targets.R": {
-      "checksum": "4489a2215fd49337618ded7db0be3de6"
+      "checksum": "d40b50f94ec02e2c2a3ddabb1cf13d9d"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
