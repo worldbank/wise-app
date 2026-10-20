@@ -353,13 +353,14 @@ STEP3_POVERTY_METHODS <- c("headcount_ratio", "gap", "fgt2")
 
 #' Poverty line of the Step 3 Results pane
 #'
-#' The run's own line when it has one, else 3.00 per day (the initial value of
-#' the pane's control).
+#' The run's own line when it has one, else the outcome's line (what the
+#' baseline arm aggregates with; batch runs carry only this one), else 3.00 per
+#' day (the initial value of the pane's control).
 #' @param hs Step 2 historical result.
 #' @noRd
 step3_pov_line <- function(hs) {
   x <- suppressWarnings(as.numeric(hs$pov_line)[1L])
-  if (length(x) && is.finite(x) && x > 0) x else 3
+  if (length(x) && is.finite(x) && x > 0) x else step2_default_pov_line(hs$so)
 }
 
 #' The Results metric context of the Step 3 pane for one metric

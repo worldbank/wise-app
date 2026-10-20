@@ -442,3 +442,43 @@ test_that("the model_fit table keeps the values of the moderators", {
   ))
   expect_false(any(grepl("^mod_", plain$statistic)))
 })
+
+test_that("a derived policy variable carries the flags of its sources and can moderate", {
+  fx <- model_fixture()
+  src <- function(name, interact) {
+    data.frame(
+      name = name, label = name, type = "logical", units = "", id = 0, outcome = 0, hazard = 0,
+      ind = 0, hh = 1, firm = 0, area = 0, interact = interact, fe = 0
+    )
+  }
+  vl <- rbind(fx$vl, src("imp_wat_rec", 1), src("imp_san_rec", 1))
+  out <- add_derived_policy_vars_to_vl(vl)
+  row <- out[out$name == "imp_wat_san_rec", ]
+  expect_identical(row$type, "logical")
+  expect_equal(row$interact, 1)
+  expect_equal(row$hh, 1)
+  expect_equal(row$fe, 0)
+
+  vl$interact[vl$name == "imp_san_rec"] <- 0
+  row0 <- add_derived_policy_vars_to_vl(vl)
+  expect_equal(row0$interact[row0$name == "imp_wat_san_rec"], 0)
+
+  # The model specification accepts it on a frame that carries the column.
+  sw <- fx$sw
+  sw$imp_wat_rec <- rep(0:1, length.out = nrow(sw))
+  sw$imp_san_rec <- rep(c(0L, 1L, 1L), length.out = nrow(sw))
+  sw <- apply_policy_derivations(sw)
+  swx <- model_fixture_weather(out)
+  m <- wise_model_from_spec(
+    wise_spec(model = list(type = "linear", interactions = "imp_wat_san_rec"))$model,
+    "hh", sw, fx$so, swx, out, 123L
+  )$selected_model
+  expect_identical(m$interactions, "imp_wat_san_rec")
+  expect_error(
+    wise_model_from_spec(
+      wise_spec(model = list(type = "linear", interactions = "hhsize"))$model,
+      "hh", sw, fx$so, swx, out, 123L
+    ),
+    "Interaction variable"
+  )
+})

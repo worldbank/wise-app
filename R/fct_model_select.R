@@ -129,6 +129,20 @@ add_derived_policy_vars_to_vl <- function(vl) {
       new_row <- vl[NA_integer_, , drop = FALSE][1, , drop = FALSE]
       new_row$name <- vname
       if ("label" %in% names(new_row)) new_row$label <- spec$label %||% vname
+      # Flags of the sources: a derived row is a binary household variable
+      # like them, so role checks (`%in% 1L`) do not see NA.
+      src <- vl[vl$name %in% spec$sources, , drop = FALSE]
+      all_src <- nrow(src) == length(spec$sources)
+      for (flag in c("id", "outcome", "hazard", "ind", "hh", "firm", "area", "interact", "fe")) {
+        if (flag %in% names(new_row)) new_row[[flag]] <- 0L
+      }
+      if ("interact" %in% names(new_row)) {
+        new_row$interact <- as.integer(all_src && all(src$interact %in% 1L))
+      }
+      if ("type" %in% names(new_row)) {
+        types <- unique(src$type)
+        new_row$type <- if (all_src && length(types) == 1L && !is.na(types)) types else "logical"
+      }
       if (role %in% names(new_row)) new_row[[role]] <- 1L
       vl <- rbind(vl, new_row)
     }

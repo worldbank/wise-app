@@ -239,3 +239,10 @@ test_that("series, paired data and the tail table follow the pane's rules", {
   expect_identical(nrow(step3_paired_adverse_table(NULL)), 0L)
   expect_identical(nrow(step3_paired_summary(list())), 0L)
 })
+
+test_that("the Step 3 poverty line is the run's, else the outcome's, else 3", {
+  expect_equal(step3_pov_line(list(pov_line = 5, so = list(povline = 8.3))), 5)
+  expect_equal(step3_pov_line(list(so = data.frame(povline = 8.3))), 8.3)
+  expect_equal(step3_pov_line(list(so = data.frame(povline = NA_real_))), 3)
+  expect_equal(step3_pov_line(list()), 3)
+})
