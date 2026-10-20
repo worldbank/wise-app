@@ -758,6 +758,27 @@ test_that("policies run per policy_id on the stored Step 2 run, write the Step 3
   expect_identical(p["fit_tables", "skipped"], 1L)
   annual <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
   expect_identical(length(unique(annual$policy_id[!is.na(annual$policy_id)])), 3L)
+  # A transfer set from a welfare percentile reruns only its branch and records the amount used.
+  pct_profile <- paste0(
+    "{sp: {transfer_amount_mode: pctile, transfer_pctile: 10, transfer_n_payments: 6, ",
+    "targeting: exante_poor, targeting_threshold_pct: 30}}"
+  )
+  write_project(proj, make_policy_grid(c(policy_profiles, list(
+    cash100 = "{sp: {transfer_amount_usd: 100, targeting: exante_poor, targeting_threshold_pct: 30}}",
+    p10 = pct_profile
+  ))))
+  make_it(proj)
+  p <- policy_progress(proj)
+  expect_identical(p["policy_tables", "branches"], 4L)
+  expect_identical(p["policy_tables", "completed"], 1L)
+  meas <- arrow::open_dataset(file.path(out, "tables", "policy_measures")) |> dplyr::collect()
+  amt <- meas[meas$section == "transfer_amount", ]
+  expect_identical(length(unique(amt$policy_id)), 1L)
+  val <- stats::setNames(amt$value, amt$measure)
+  expect_identical(val[["percentile"]], 10)
+  expect_equal(val[["per_payment"]] * 6, val[["per_year"]])
+  expect_equal(val[["daily_value"]] * 365, val[["per_year"]])
+  expect_identical(unique(amt$text), "PPP")
   # Dropping the policies from the grid removes the stored Step 2 run.
   write_project(proj, make_policy_grid(list(none = "{}")))
   make_it(proj)

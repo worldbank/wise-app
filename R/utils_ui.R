@@ -468,7 +468,10 @@ policy_summary_card <- function(selected_policies = NULL,
   sp_label <- if (has_sp_change(sp)) {
     sp_sign <- .sp_currency_prefix(sp$currency)
     amount <- if (isTRUE(sp$transfer_amount_usd > 0)) {
-      paste0(sp_sign, format(sp$transfer_amount_usd, trim = TRUE, big.mark = ","), "/payment")
+      paste0(
+        sp_sign, format(round(sp$transfer_amount_usd, 2), trim = TRUE, big.mark = ","), "/payment",
+        if (identical(sp$transfer_amount_mode, "pctile")) paste0(" (P", sp$transfer_pctile, ")")
+      )
     } else {
       paste0(sp_sign, format(sp$budget_fixed, trim = TRUE, big.mark = ","), " budget")
     }

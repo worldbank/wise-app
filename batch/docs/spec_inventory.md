@@ -117,6 +117,14 @@ rendered controls); an absent lever is not part of the run. Results and
 Decomposition controls (`cmp_*`, `headline_*`, `decomp_units`) are display
 choices.
 
+`transfer_amount_usd` is the amount per payment in the outcome's currency (the
+id is historical). With `transfer_amount_mode: pctile` (regular program,
+`budget_mode: transfer_first`) it is replaced by `transfer_pctile` (1 to 99) of
+the baseline survey's weighted daily welfare x 365 / `transfer_n_payments`
+(`wise_sp_resolve_amount()`, read once from the survey the run uses; a batch run
+stops if the percentile is not available). Both fields are dropped from the
+normalised spec while the mode is `fixed`, so ids of existing specs hold.
+
 Fields the app fills from the data and the spec leaves to the user: `pmt_variable`,
 `pmt_cutoff`, `trigger_variable`, `trigger_value`, `trigger_value_low`,
 `annual_cap`. `trigger_pov_line` follows the outcome's line. The app also moves

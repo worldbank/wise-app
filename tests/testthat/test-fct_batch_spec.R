@@ -899,7 +899,8 @@ test_that("the policy section: absent or empty is no policy, a lever starts from
   expect_identical(names(s), c("infra", "sp"))
   d <- wise_default_policy()
   for (lv in c("sp", "infra")) {
-    for (f in names(d[[lv]])) expect_identical(s[[lv]][[f]], d[[lv]][[f]], info = paste(lv, f))
+    # The percentile fields are dropped while the amount is fixed (own test below).
+    for (f in setdiff(names(d[[lv]]), c("transfer_amount_mode", "transfer_pctile"))) expect_identical(s[[lv]][[f]], d[[lv]][[f]], info = paste(lv, f))
   }
   # The defaults are the initial values of the controls: universal targeting, a
   # return-period trigger, no change in access.
@@ -1085,4 +1086,47 @@ test_that("a configuration export carries every lever of Step 3", {
   f <- withr::local_tempfile(fileext = ".json")
   wise_spec_write(s, f)
   expect_identical(wise_spec_read(f), s)
+})
+
+test_that("a percentile amount is part of the policy id only when it is used", {
+  fixed <- pol_spec(list(sp = list(transfer_amount_usd = 50)))
+  expect_false(any(c("transfer_amount_mode", "transfer_pctile") %in% names(fixed$policy$sp)))
+  # A stale percentile does not move the ids.
+  stale <- pol_spec(list(sp = list(transfer_amount_usd = 50, transfer_pctile = 5)))
+  expect_identical(stale, fixed)
+  p10 <- pol_spec(list(sp = list(transfer_amount_mode = "pctile")))
+  p5 <- pol_spec(list(sp = list(transfer_amount_mode = "pctile", transfer_pctile = 5)))
+  expect_identical(p10$policy$sp$transfer_pctile, 10)
+  expect_false(identical(wise_spec_ids(p5)$policy_id, wise_spec_ids(p10)$policy_id))
+  expect_false(identical(wise_spec_ids(p10)$policy_id, wise_spec_ids(fixed)$policy_id))
+  expect_error(
+    pol_spec(list(sp = list(transfer_amount_mode = "pctile", transfer_pctile = 100))),
+    "transfer_pctile must be between 1 and 99"
+  )
+  expect_error(pol_spec(list(sp = list(transfer_amount_mode = "x"))), "transfer_amount_mode must be one of")
+  expect_error(
+    pol_spec(list(sp = list(transfer_amount_mode = "pctile", budget_mode = "budget_first"))),
+    "transfer_first"
+  )
+  expect_error(
+    pol_spec(list(sp = list(
+      transfer_amount_mode = "pctile", sp_type = "shock", trigger_variable = "tx"
+    ))),
+    "transfer_first"
+  )
+})
+
+test_that("a policy spec with a percentile amount resolves on the baseline survey", {
+  so <- list(units = "PPP")
+  s <- pol_spec(list(sp = list(
+    transfer_amount_mode = "pctile", transfer_pctile = 10, transfer_n_payments = 12
+  )))$policy
+  svy <- data.frame(welfare = seq(1, 20, length.out = 100), weight = 1)
+  cfg <- wise_policy_configs(s, so, "hh", svy = svy)$sp
+  expect_identical(cfg$amount_resolved$status, "ok")
+  expect_equal(cfg$transfer_amount_usd, cfg$amount_resolved$daily_value * 365 / 12)
+  expect_true(has_sp_change(cfg))
+  # Without a survey the amount stays unresolved; with an unusable one a batch run stops.
+  expect_identical(wise_policy_configs(s, so, "hh")$sp$transfer_amount_usd, 0)
+  expect_error(wise_policy_configs(s, so, "hh", svy = svy[1:5, ]), "percentile of the baseline survey")
 })

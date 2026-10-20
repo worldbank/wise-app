@@ -124,6 +124,29 @@ test_that("the lever modules return what the spec route builds from the same con
     expect_identical(from_spec$currency, from_module$currency)
   })
 
+  # A percentile amount: the module and the spec route read the same baseline survey.
+  svy <- data.frame(welfare = seq(1, 30, length.out = 200), weight = rep(c(1, 2), 100), hhsize = 4)
+  pct_values <- list(
+    sp_type = "regular", budget_mode = "transfer_first", targeting = "exante_poor",
+    targeting_threshold_pct = 40, transfer_amount_mode = "pctile", transfer_pctile = 5,
+    transfer_n_payments = 12, amount_basis = "per_household"
+  )
+  pct_spec <- wise_spec(model = list(), sim = list(), policy = list(sp = pct_values))
+  shiny::testServer(mod_3_01_sp_server, args = list(
+    selected_outcome = shiny::reactive(data.frame(name = "welfare", units = "PPP")),
+    analysis_unit = shiny::reactive("hh"), hist_sim = shiny::reactive(list(svy = svy)),
+    survey_weather = shiny::reactive(svy)
+  ), {
+    do.call(session$setInputs, pct_values)
+    from_module <- session$returned$sp_scenario()
+    from_spec <- wise_policy_configs(pct_spec$policy, so, "hh", svy = svy)$sp
+    expect_identical(from_module$amount_resolved$status, "ok")
+    expect_equal(from_module$transfer_amount_usd, from_spec$transfer_amount_usd)
+    expect_equal(from_module$amount_resolved, from_spec$amount_resolved)
+    expect_true(has_sp_change(from_module))
+    expect_match(output$transfer_amount_resolved, "P5 of daily welfare")
+  })
+
   # The access levers.
   infra <- list(elec_universal = TRUE, water_pct = 25, health_mode = "max", health_travel_max = 45)
   shiny::testServer(mod_3_02_infra_server, args = list(
@@ -185,4 +208,64 @@ test_that("the step 3 input list has the arguments step3_compute() takes", {
   )
   expect_identical(input$seed, 9L)
   expect_null(input$infra_cfg)
+})
+
+# A weighted percentile of `welfare` with linear interpolation of the cumulative
+# weight, as the legacy batch scripts took it (`.resolve_transfer_amount()`).
+legacy_percentile <- function(welfare, weight, p) {
+  o <- order(welfare)
+  welfare <- welfare[o]
+  weight <- weight[o]
+  cw <- cumsum(weight) / sum(weight)
+  idx <- which(cw >= p)[1L]
+  welfare[idx - 1L] + (p - cw[idx - 1L]) / (cw[idx] - cw[idx - 1L]) * (welfare[idx] - welfare[idx - 1L])
+}
+
+test_that("wise_sp_resolve_amount sets the amount from the weighted welfare percentile", {
+  set.seed(7)
+  svy <- data.frame(welfare = rlnorm(2000, 1, 0.6), weight = runif(2000, 1, 5), ppp2021 = 3)
+  sp <- wise_sp_config(list(transfer_amount_mode = "pctile", transfer_pctile = 10, transfer_n_payments = 12))
+  r <- wise_sp_resolve_amount(sp, svy)
+  expect_identical(r$amount_resolved$status, "ok")
+  expect_equal(
+    r$transfer_amount_usd,
+    unname(collapse::fquantile(svy$welfare, 0.1, w = svy$weight)) * 365 / 12
+  )
+  # The same distribution as the ex-ante poor cutoff of the targeting.
+  expect_equal(r$amount_resolved$daily_value, .sp_welfare_quantile(svy$welfare, svy$weight, 0.1))
+  # Close to the legacy estimator (they differ in the weighted interpolation).
+  legacy <- legacy_percentile(svy$welfare, svy$weight, 0.1) * 365 / 12
+  expect_equal(r$transfer_amount_usd, legacy, tolerance = 0.01)
+  expect_identical(r$amount_resolved$n_obs, 2000L)
+  # LCU: percentile of welfare in local currency units.
+  lcu <- wise_sp_resolve_amount(
+    wise_sp_config(
+      list(transfer_amount_mode = "pctile", transfer_pctile = 10, transfer_n_payments = 12),
+      currency = "LCU"
+    ),
+    svy
+  )
+  expect_equal(lcu$transfer_amount_usd, 3 * r$transfer_amount_usd)
+  # More payments, smaller payments, same year.
+  p6 <- wise_sp_resolve_amount(
+    wise_sp_config(list(transfer_amount_mode = "pctile", transfer_pctile = 10, transfer_n_payments = 6)), svy
+  )
+  expect_equal(p6$transfer_amount_usd * 6, r$transfer_amount_usd * 12)
+  # Unusable rows are skipped; too few leave the lever inactive.
+  svy$welfare[1:50] <- NA
+  expect_identical(wise_sp_resolve_amount(sp, svy)$amount_resolved$n_obs, 1950L)
+  few <- wise_sp_resolve_amount(sp, svy[1:9, ])
+  expect_identical(few$amount_resolved$status, "unavailable")
+  expect_identical(few$transfer_amount_usd, 0)
+  expect_false(has_sp_change(few))
+  # A fixed amount is untouched; a shock or budget-first program never uses a percentile.
+  fixed <- wise_sp_config(list(transfer_amount_usd = 25))
+  expect_identical(wise_sp_resolve_amount(fixed, svy), fixed)
+  expect_identical(
+    wise_sp_config(list(transfer_amount_mode = "pctile", sp_type = "shock"))$transfer_amount_mode, "fixed"
+  )
+  expect_identical(
+    wise_sp_config(list(transfer_amount_mode = "pctile", budget_mode = "budget_first"))$transfer_amount_mode,
+    "fixed"
+  )
 })

@@ -906,6 +906,14 @@ step3_batch_tables <- function(run, hs, ss, svy, levers, skip_coef, analysis_uni
   if (!is.null(d) && is.null(d$status)) {
     tr <- .policy_transfer_summary_rows(d)
     measures[[length(measures) + 1L]] <- .s3_measure_row("transfer", tr$Type, value = tr$Value)
+    ar <- sp$amount_resolved
+    if (is.list(ar) && identical(ar$status, "ok")) {
+      measures[[length(measures) + 1L]] <- .s3_measure_row(
+        "transfer_amount", c("percentile", "daily_value", "per_payment", "per_year", "n_obs"),
+        value = c(ar$pctile, ar$daily_value, ar$per_payment, ar$per_year, ar$n_obs),
+        text = ar$currency
+      )
+    }
     line_d <- {
       pl <- .sp_default_pov_line(so)
       if (is.na(pl)) pov_line else pl

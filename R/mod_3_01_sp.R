@@ -1270,19 +1270,72 @@ mod_3_01_sp_server <- function(id,
             ns("sp_type"), "'] != 'shock') || (input['", ns("sp_type"),
             "'] == 'shock' && input['", ns("budget_rule"), "'] != 'loss_share')"
           ),
-          tags$div(
-            class = "sp-inline-control",
-            tags$label(
-              class = "sp-inline-label",
-              `for` = ns("transfer_amount_usd"),
-              tags$i(class = "fa fa-dollar-sign me-1"),
-              paste0("Amount per transfer (", currency, ")")
-            ),
-            numericInput(
-              inputId = ns("transfer_amount_usd"),
+          # A regular program can set the amount from the baseline welfare
+          # distribution; a shock program always states it.
+          conditionalPanel(
+            condition = paste0("input['", ns("sp_type"), "'] != 'shock'"),
+            pill_toggle(
+              inputId = ns("transfer_amount_mode"),
               label = NULL,
-              value = 0, min = 0, step = 10
+              aria_label = "Amount set as",
+              choices = c("Fixed amount" = "fixed", "Welfare percentile" = "pctile"),
+              selected = "fixed"
             )
+          ),
+          conditionalPanel(
+            condition = paste0(
+              "input['", ns("sp_type"), "'] == 'shock' || input['",
+              ns("transfer_amount_mode"), "'] != 'pctile'"
+            ),
+            tags$div(
+              class = "sp-inline-control",
+              tags$label(
+                class = "sp-inline-label",
+                `for` = ns("transfer_amount_usd"),
+                tags$i(class = "fa fa-dollar-sign me-1"),
+                paste0("Amount per transfer (", currency, ")")
+              ),
+              numericInput(
+                inputId = ns("transfer_amount_usd"),
+                label = NULL,
+                value = 0, min = 0, step = 10
+              )
+            )
+          ),
+          conditionalPanel(
+            condition = paste0(
+              "input['", ns("sp_type"), "'] != 'shock' && input['",
+              ns("transfer_amount_mode"), "'] == 'pctile'"
+            ),
+            tags$div(
+              class = "sp-inline-control",
+              tags$label(
+                class = "sp-inline-label",
+                `for` = ns("transfer_pctile"),
+                tags$i(class = "fa fa-percent me-1"),
+                "Percentile of daily welfare",
+                info_popover(
+                  title = "Amount from a welfare percentile",
+                  tags$p(
+                    "Each payment is the chosen percentile of baseline daily welfare",
+                    "× 365 ÷ transfers per year, in the outcome's currency.",
+                    "The percentile is read from the Step 2 baseline survey with survey",
+                    "weights, the same distribution that defines ex-ante poor targeting."
+                  ),
+                  tags$p(
+                    "The amount is paid per household or per person as set under",
+                    "Amount basis. Per household, a larger household shares it among",
+                    "more members."
+                  )
+                )
+              ),
+              numericInput(
+                inputId = ns("transfer_pctile"),
+                label = NULL,
+                value = 10, min = 1, max = 99, step = 1
+              )
+            ),
+            tags$p(class = "text-muted small", textOutput(ns("transfer_amount_resolved")))
           )
         )
       )
@@ -1508,10 +1561,34 @@ mod_3_01_sp_server <- function(id,
     # One definition of the scenario, read by both the reach preview below and
     # the module's return API - the preview cannot drift from what is run.
     sp_scenario_spec <- reactive({
-      wise_sp_config(
+      sp <- wise_sp_config(
         step3_read_inputs(STEP3_SP_IDS, function(id) input[[id]]),
         currency = sp_currency(),
         analysis_unit = tryCatch(analysis_unit(), error = function(e) "hh")
+      )
+      if (!identical(sp$transfer_amount_mode, "pctile")) {
+        return(sp)
+      }
+      # A percentile amount is read once, from the frame the run will use
+      # (the Step 2 baseline round; every round before Step 2 has run).
+      hs <- tryCatch(hist_sim(), error = function(e) NULL)
+      svy <- if (!is.null(hs$svy)) hs$svy else tryCatch(survey_weather(), error = function(e) NULL)
+      wise_sp_resolve_amount(sp, svy)
+    })
+
+    output$transfer_amount_resolved <- renderText({
+      ar <- sp_scenario_spec()$amount_resolved
+      if (is.null(ar)) {
+        return("")
+      }
+      if (!identical(ar$status, "ok")) {
+        return("Percentile not available: the baseline survey has no usable welfare.")
+      }
+      prefix <- .sp_currency_prefix(ar$currency)
+      paste0(
+        "P", ar$pctile, " of daily welfare = ", prefix, format(round(ar$daily_value, 2), nsmall = 2),
+        " → ", prefix, format(round(ar$per_payment, 2), nsmall = 2, big.mark = ","),
+        " per payment, ", prefix, format(round(ar$per_year, 0), big.mark = ","), " per year"
       )
     })
 

@@ -198,7 +198,8 @@ wise_default_policy <- function() {
     sp = list(
       sp_type = "regular", budget_mode = "transfer_first", budget_fixed = 0,
       targeting = "universal", targeting_threshold_pct = 20, inclusion_error_pct = 10,
-      exclusion_error_pct = 10, error_concentration = 0, transfer_amount_usd = 0,
+      exclusion_error_pct = 10, error_concentration = 0, transfer_amount_mode = "fixed",
+      transfer_pctile = 10, transfer_amount_usd = 0,
       amount_basis = "per_household", admin_cost_pct = 0, transfer_n_payments = 6,
       trigger_type = "return_period", trigger_direction = "above",
       trigger_return_period_years = 10, trigger_metric = "weather", trigger_level = "national",

@@ -270,6 +270,7 @@ Long form: `section`, `scenario`, `metric` (where the section has them),
 |---|---|
 | `transfer` | Annual cost of the cash transfer over the represented recipients (administration and total when an administration share is set) and the annual transfer per recipient. Shock program: annual means over the historical years. |
 | `sp_effectiveness` | Annual cost per person, administration share, realised inclusion and exclusion error, coverage of the poor, leakage to the non-poor, adequacy for poor recipients. `group` = `money` or `percent`. A shock program describes a year in which every eligible household is paid. |
+| `transfer_amount` | Only when the cash transfer amount is set from a welfare percentile (`transfer_amount_mode: pctile`): `percentile`, `daily_value` (baseline daily welfare at the percentile), `per_payment`, `per_year`, `n_obs`; `text` = the currency (`PPP` or `LCU`). |
 | `reach` | Population reached by any lever: `share`, `people`, `households`. |
 | `components` | One row per lever touched: units affected, population, share, realised cost, households. `group` = the component. |
 | `treatment` | Eligibility-by-treatment matrix of the cash transfer: units, population, share and households per coverage status. |

@@ -122,6 +122,16 @@ Notes:
   `above`) and `trigger_return_period_years` (starts at 10), and give `pmt_variable`
   and `pmt_cutoff` for proxy targeting. The trigger poverty line follows the
   outcome's line (else 3.00).
+- **Cash transfer amount.** `transfer_amount_usd` is the amount per payment in the
+  outcome's currency (2021 PPP dollars, or local currency units for an LCU
+  outcome); the name is historical. For a regular program with
+  `budget_mode: transfer_first`, `transfer_amount_mode: pctile` with
+  `transfer_pctile: 10` sets it instead to the 10th weighted percentile of
+  baseline daily welfare x 365 / `transfer_n_payments`. The percentile is read
+  from the Step 2 baseline survey (the same distribution as the `exante_poor`
+  cutoff), once per run; `transfer_amount_usd` is then ignored. The amount used
+  is in `policy_measures` (section `transfer_amount`). A shock or budget-first
+  program cannot use it.
 - A binary outcome or logistic model has no policy contrast: the run writes no
   policy rows and `failures.parquet` lists a `partial_policy_failure`.
 

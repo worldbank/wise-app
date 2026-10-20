@@ -10,7 +10,8 @@
 STEP3_SP_IDS <- c(
   "sp_type", "budget_mode", "budget_fixed", "targeting", "targeting_threshold_pct",
   "pmt_variable", "pmt_cutoff", "inclusion_error_pct", "exclusion_error_pct",
-  "error_concentration", "transfer_amount_usd", "amount_basis", "admin_cost_pct",
+  "error_concentration", "transfer_amount_mode", "transfer_pctile", "transfer_amount_usd",
+  "amount_basis", "admin_cost_pct",
   "trigger_type", "trigger_variable", "trigger_direction", "trigger_value",
   "trigger_value_low", "trigger_return_period_years", "trigger_metric", "trigger_level",
   "trigger_pov_line", "payout_scope", "national_k_pct", "payments_per_activation",
@@ -76,8 +77,20 @@ wise_sp_config <- function(x, currency = "PPP", analysis_unit = "hh") {
     exclusion_error_pct = g("exclusion_error_pct") %||% 10,
     # 0 = errors fall on random units; larger = nearer the cutoff
     error_concentration = num(g("error_concentration") %||% 0),
-    # Transfer amount, in `currency` (outcome units)
+    # Transfer amount per payment, in `currency` (outcome units; the id is
+    # historical). A percentile of baseline welfare only sets the amount of a
+    # regular program paid per transfer; `wise_sp_resolve_amount()` turns it
+    # into `transfer_amount_usd`.
     currency = currency,
+    transfer_amount_mode =
+      if (!identical(sp_type_val, "shock") &&
+        identical(g("budget_mode") %||% "transfer_first", "transfer_first") &&
+        identical(g("transfer_amount_mode"), "pctile")) {
+        "pctile"
+      } else {
+        "fixed"
+      },
+    transfer_pctile = num(g("transfer_pctile") %||% 10),
     transfer_amount_usd = g("transfer_amount_usd") %||% 0,
     # Per-person basis only exists for household analysis units
     amount_basis = if (identical(analysis_unit, "hh")) {
@@ -147,6 +160,58 @@ wise_sp_config <- function(x, currency = "PPP", analysis_unit = "hh") {
     effect_multiplier = num(g("effect_multiplier") %||% 1),
     delay_loss_pct_per_week = num(g("delay_loss_pct_per_week") %||% 0)
   )
+}
+
+#' Resolve a percentile transfer amount
+#'
+#' With `transfer_amount_mode == "pctile"` the amount per payment is the
+#' weighted percentile of baseline daily welfare times 365 over the number of
+#' payments, in the outcome's currency. The percentile is taken on the `welfare`
+#' column of the baseline survey frame the policy is applied to, with the same
+#' weighted quantile as the `exante_poor` cutoff (`.sp_welfare_quantile()`); for
+#' an LCU outcome the welfare is first converted with `ppp2021`, the inverse of
+#' the conversion the transfer undergoes. The amount is written to
+#' `transfer_amount_usd`, so cost, cost-effectiveness, the preview and the run
+#' read one number. Call it once per run, in the main process, with the frame
+#' the run uses.
+#'
+#' @param sp Scenario list from `wise_sp_config()`.
+#' @param svy Baseline survey frame (`welfare`, `weight`, `ppp2021`).
+#' @return `sp` with `transfer_amount_usd` set and `amount_resolved` (`status`
+#'   `"ok"` or `"unavailable"`, `pctile`, `daily_value`, `per_payment`,
+#'   `per_year`, `n_obs`, `currency`). Unchanged for a fixed amount.
+#' @noRd
+wise_sp_resolve_amount <- function(sp, svy) {
+  if (!identical(sp$transfer_amount_mode, "pctile")) {
+    return(sp)
+  }
+  currency <- .sp_currency(sp$currency)
+  res <- list(
+    status = "unavailable", pctile = sp$transfer_pctile, daily_value = NA_real_,
+    per_payment = NA_real_, per_year = NA_real_, n_obs = 0L, currency = currency
+  )
+  if (is.data.frame(svy) && "welfare" %in% names(svy) && is.finite(sp$transfer_pctile)) {
+    w <- suppressWarnings(as.numeric(svy$welfare))
+    if (identical(currency, "LCU") && "ppp2021" %in% names(svy)) {
+      w <- w * suppressWarnings(as.numeric(svy$ppp2021))
+    }
+    wt <- if ("weight" %in% names(svy)) suppressWarnings(as.numeric(svy$weight))
+    ok <- is.finite(w)
+    if (!is.null(wt)) ok <- ok & is.finite(wt) & wt > 0
+    res$n_obs <- sum(ok)
+    if (res$n_obs >= 10L) {
+      daily <- .sp_welfare_quantile(w[ok], wt[ok], sp$transfer_pctile / 100)
+      if (is.finite(daily) && daily > 0) {
+        res$daily_value <- daily
+        res$per_year <- daily * 365
+        res$per_payment <- res$per_year / sp$transfer_n_payments
+        res$status <- "ok"
+      }
+    }
+  }
+  sp$transfer_amount_usd <- if (identical(res$status, "ok")) res$per_payment else 0
+  sp$amount_resolved <- res
+  sp
 }
 
 # One access lever: "universal" sets the change to 100 percent.

@@ -328,7 +328,7 @@
   )
 }
 .POLICY_CHAR <- c(
-  "sp_type", "budget_mode", "targeting", "pmt_variable", "amount_basis", "trigger_type",
+  "sp_type", "budget_mode", "targeting", "pmt_variable", "amount_basis", "transfer_amount_mode", "trigger_type",
   "trigger_variable", "trigger_direction", "trigger_metric", "trigger_level", "payout_scope",
   "dyn_geo", "budget_rule", "transfer_timing", "health_mode"
 )
@@ -337,6 +337,7 @@
 .POLICY_CHOICES <- list(
   sp_type = c("regular", "shock"), budget_mode = c("transfer_first", "budget_first"),
   targeting = c("universal", "exante_poor", "pmt"), amount_basis = c("per_household", "per_capita"),
+  transfer_amount_mode = c("fixed", "pctile"),
   trigger_type = c("weather", "return_period"), trigger_direction = c("above", "below", "either"),
   trigger_metric = c("weather", "loss", "poverty_rate", "poor_count"),
   trigger_level = c("national", "admin1", "admin2", "location"),
@@ -347,7 +348,7 @@
 # Allowed ranges of the numeric controls (the sliders and inputs of the modules).
 .POLICY_RANGES <- list(
   budget_fixed = c(0, Inf), targeting_threshold_pct = c(5, 60), inclusion_error_pct = c(0, 30),
-  exclusion_error_pct = c(0, 30), transfer_amount_usd = c(0, Inf), admin_cost_pct = c(0, 50),
+  exclusion_error_pct = c(0, 30), transfer_amount_usd = c(0, Inf), transfer_pctile = c(1, 99), admin_cost_pct = c(0, 50),
   transfer_n_payments = c(2, 24), trigger_return_period_years = c(1, Inf),
   national_k_pct = c(5, 100), payments_per_activation = c(1, 12), dyn_geo_pct = c(5, 100),
   dyn_welfare_pct = c(5, 60), dyn_incl_error_pct = c(0, 50), dyn_excl_error_pct = c(0, 50),
@@ -379,6 +380,11 @@
     } else {
       v
     }
+  }
+  # A fixed amount has no percentile: drop both fields so equal specs (and the
+  # ids of specs that predate the option) hash equal.
+  if (identical(lever, "sp") && identical(merged$transfer_amount_mode, "fixed")) {
+    merged[c("transfer_amount_mode", "transfer_pctile")] <- NULL
   }
   merged[order(names(merged))]
 }
@@ -450,6 +456,13 @@
       (is.null(sp$pmt_variable) || is.null(sp$pmt_cutoff))) {
       add("policy.sp: proxy targeting needs pmt_variable and pmt_cutoff.")
     }
+    if (identical(sp$transfer_amount_mode, "pctile") &&
+      (identical(sp$sp_type, "shock") || identical(sp$budget_mode, "budget_first"))) {
+      add(
+        "policy.sp: transfer_amount_mode pctile sets the amount of a regular program ",
+        "with budget_mode transfer_first; a shock program or a budget-first program has none."
+      )
+    }
     if (identical(sp$sp_type, "shock")) {
       problem <- .sp_shock_problem(wise_sp_config(sp))
       if (!is.null(problem)) add("policy.sp: ", problem)
@@ -462,7 +475,8 @@
 # is not part of the run). The labour sector targets need the observed shares of
 # the survey (`labor_defaults`); the trigger poverty line follows the outcome.
 #' @noRd
-wise_policy_configs <- function(policy, so = NULL, analysis_unit = "hh", labor_defaults = NULL) {
+wise_policy_configs <- function(policy, so = NULL, analysis_unit = "hh", labor_defaults = NULL,
+                                svy = NULL) {
   sp <- policy$sp
   if (!is.null(sp)) {
     # A shock program's trigger poverty line is prefilled from the outcome's own
@@ -472,6 +486,18 @@ wise_policy_configs <- function(policy, so = NULL, analysis_unit = "hh", labor_d
       sp$trigger_pov_line <- if (is.na(pl)) 3 else pl
     }
     sp <- wise_sp_config(sp, currency = .sp_currency(so[["units"]][1L]), analysis_unit = analysis_unit)
+    # A percentile amount comes from the baseline survey of the run; the app
+    # shows "not available" there, a batch run stops.
+    if (!is.null(svy)) {
+      sp <- wise_sp_resolve_amount(sp, svy)
+      if (identical(sp$amount_resolved$status, "unavailable")) {
+        stop(
+          "policy.sp: the welfare percentile of the baseline survey is not available ",
+          "(needs at least 10 weighted observations with positive welfare).",
+          call. = FALSE
+        )
+      }
+    }
   }
   list(
     sp = sp,

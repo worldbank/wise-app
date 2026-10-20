@@ -782,7 +782,7 @@ wise_batch_policy <- function(item) {
       RNGkind("Mersenne-Twister", "Inversion", "Rejection")
 
       svy <- ensure_outcome_column(hs$svy, hs$so)
-      levers <- wise_policy_configs(spec$policy, hs$so, unit, step3_sector_defaults(svy))
+      levers <- wise_policy_configs(spec$policy, hs$so, unit, step3_sector_defaults(svy), svy = svy)
       input <- wise_step3_input(
         svy = svy, mf = fit$mf, sp_cfg = levers$sp, infra_cfg = levers$infra,
         digital_cfg = levers$digital, labor_cfg = levers$labor, education_cfg = levers$education,
