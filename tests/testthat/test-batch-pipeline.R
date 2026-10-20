@@ -78,7 +78,7 @@ test_that("the pipeline writes the store, reuses shared work and records failure
     c(
       "data_id", "wave", "year", "survname", "var_group", "variable", "sample", "n", "n_rows",
       "n_missing", "pct_missing", "n_unique", "mean", "unweighted_mean", "sd", "min", "max",
-      paste0("p", seq(10, 90, 10)), "p25", "p75", "share_one"
+      paste0("p", seq(10, 90, 10)), "p25", "p75", "share_one", "gini"
     )
   )
   expect_setequal(unique(vs$data_id), g$data_id)
@@ -92,7 +92,7 @@ test_that("the pipeline writes the store, reuses shared work and records failure
     names(idt)[names(idt) != "code"],
     c(
       "data_id", "wave", "year", "survname", "month", "n", "n_dates", "first_date", "last_date",
-      "avg_dates_per_loc"
+      "n_locations", "avg_dates_per_loc"
     )
   )
   expect_s3_class(idt$first_date, "Date")
@@ -549,6 +549,46 @@ test_that("simulations run per sim_id, write the three Step 2 tables and are reu
   expect_identical(p["sim_tables", "completed"], 2L)
   expect_identical(p["data_frames", "skipped"], 1L)
   expect_identical(p["wx_frames", "skipped"], 1L)
+})
+
+test_that("a poverty line shares the data and the fit and sets the simulation's headcount line", {
+  skip_if_not_installed("qs2")
+  data <- withr::local_tempdir()
+  batch_fixture_tree(data, projections = TRUE)
+  proj <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_DATA_PATH = data)
+  write_project(proj, c(
+    make_sim_grid(covariates = list(none = "{method: user}")), "  poverty_line: [3, 8.3]"
+  ))
+  g <- wise_spec_expand(file.path(proj, "spec.yaml"))
+  expect_identical(nrow(g), 2L)
+  expect_identical(length(unique(g$data_id)), 1L)
+  expect_identical(length(unique(g$fit_id)), 1L)
+  expect_identical(length(unique(g$sim_id)), 2L)
+
+  make_it(proj)
+  out <- file.path(proj, "results")
+  expect_identical(nrow(arrow::read_parquet(file.path(out, "failures.parquet"))), 0L)
+  p <- sim_progress(proj)
+  expect_identical(p["data_frames", "branches"], 1L)
+  expect_identical(p["fit_tables", "branches"], 1L)
+  expect_identical(p["sim_tables", "branches"], 2L)
+
+  # The headcount of the higher line is higher in every member-year; the other
+  # metrics and the model do not change.
+  annual <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
+  by_run <- function(metric) {
+    x <- annual[annual$metric == metric, c("sim_id", "scenario", "member", "sim_year", "value")]
+    lo <- x[x$sim_id == g$sim_id[g$poverty_line == 3], ]
+    hi <- x[x$sim_id == g$sim_id[g$poverty_line == 8.3], ]
+    merge(lo, hi, by = c("scenario", "member", "sim_year"), suffixes = c("_lo", "_hi"))
+  }
+  hc <- by_run("headcount_ratio")
+  expect_true(nrow(hc) > 0L)
+  expect_true(all(hc$value_hi >= hc$value_lo))
+  expect_true(any(hc$value_hi > hc$value_lo))
+  mn <- by_run("mean")
+  expect_equal(mn$value_lo, mn$value_hi)
 })
 
 test_that("a simulation that cannot run is recorded and the other simulations still run", {

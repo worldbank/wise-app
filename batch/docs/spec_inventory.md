@@ -27,7 +27,7 @@ connection from the type.
 | `year_<code>` | `sample.years.<code>` | all available years |
 | `outcome` | `outcome.name` | first outcome of the filtered variable list |
 | `currency` | `outcome.currency` | `PPP` |
-| `poverty_line` | `outcome.poverty_line` | 3.00 PPP; `default_lcu_poverty_line()` for LCU (outcome `poor` only) |
+| `poverty_line` | `outcome.poverty_line` | 3.00 PPP; `default_lcu_poverty_line()` for LCU (outcome `poor`). Any other monetary outcome: the line of the Step 2 poverty metrics (`wise_outcome_run_line()`), in `sim_id`, not in `data_id` or `fit_id` |
 | `weather_variable_selector` | the names of the `weather.<var>` entries (at most 2) | first weather variable |
 | `<var>_relativePeriod` | `weather.<var>.ref_period` | `[1, 1]` |
 | `<var>_temporalAgg` | `weather.<var>.temporal_agg` | Sum for mm and days, else Mean |

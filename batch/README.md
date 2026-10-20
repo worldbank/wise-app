@@ -90,7 +90,7 @@ case-insensitive. A spec is checked when read.
 | top level | `seed` (123), `base` (path of an app configuration JSON to start from) |
 | `source` | `type` (`local`); credentials and paths come from the environment |
 | `sample` | `unit` (`hh`), `countries` (`BFA` if available, else the first), `years.<code>` (all) |
-| `outcome` | `name` (first outcome, `welfare`), `currency` (`PPP` or `LCU`), `poverty_line` (3.00 PPP) |
+| `outcome` | `name` (first outcome, `welfare`), `currency` (`PPP` or `LCU`), `poverty_line` (3.00 PPP; see the note below) |
 | `weather.<var>` | `ref_period` ([1, 1] months before the interview), `temporal_agg` (Sum for mm and days, else Mean), `transformation` (`None`), `form` (`Binned`), `n_bins` (5), `binning_method` (`Equal frequency`), `custom_breaks`, `polynomial` |
 | `weather` | `hist_years` ([1991, 2020]) |
 | `stats` | `indicators` (`poor300`, `poor420`, `poor830`, `ttime_health_gt15/30/45/60`), `location_samples` (true) |
@@ -132,6 +132,13 @@ Notes:
   cutoff), once per run; `transfer_amount_usd` is then ignored. The amount used
   is in `policy_measures` (section `transfer_amount`). A shock or budget-first
   program cannot use it.
+- **Poverty line.** For the `poor` outcome `outcome.poverty_line` defines the outcome, so it
+  changes the data and every stage after it. For any other outcome (`welfare`) the fit does not use
+  it: the line sets the simulation's poverty metrics (`headcount_ratio`, `gap`, `fgt2`, the
+  policy cost-effectiveness and trigger lines), the starting value of the app's Step 2 poverty-line
+  control. Runs that differ only in the line share the survey, weather and model fit and rerun the
+  simulation: use a `poverty_line` axis for several lines. Survey poverty rates at other lines come
+  from `stats.indicators`.
 - A binary outcome or logistic model has no policy contrast: the run writes no
   policy rows and `failures.parquet` lists a `partial_policy_failure`.
 

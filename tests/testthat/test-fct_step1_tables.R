@@ -126,6 +126,30 @@ test_that("outcome rows carry the outcome summary's deciles, per wave and pooled
   expect_identical(r$mean, unname(osw$mat["mean", "all"]))
 })
 
+test_that("the outcome's gini equals the pairwise definition and the app's aggregate", {
+  df <- batch_fixture_prepared()
+  tab <- vstats(df)
+  # Weighted Gini from mean absolute differences, written out.
+  brute_gini <- function(x, w) {
+    ok <- is.finite(x) & is.finite(w) & w > 0
+    x <- x[ok]
+    w <- w[ok]
+    sum(outer(w, w) * abs(outer(x, x, "-"))) / (2 * sum(w)^2 * (sum(w * x) / sum(w)))
+  }
+  for (wave in c("2018", "2019")) {
+    d <- df[df$year == wave, ]
+    r <- row_of(tab, variable = "welfare", sample = "all", wave = wave, var_group = "outcome")
+    expect_equal(r$gini, brute_gini(d$welfare, d$weight), info = wave)
+    ok <- is.finite(d$welfare) & is.finite(d$weight) & d$weight > 0
+    expect_equal(r$gini, resolve_agg_fn("gini")(d$welfare[ok], d$weight[ok], NULL), info = wave)
+  }
+  r <- row_of(tab, variable = "welfare", sample = "all", wave = "All", var_group = "outcome")
+  expect_equal(r$gini, brute_gini(df$welfare, df$weight))
+  # Only the outcome carries it.
+  expect_true(all(is.na(tab$gini[tab$var_group != "outcome"])))
+  expect_false(anyNA(tab$gini[tab$var_group == "outcome" & tab$sample == "all" & tab$variable == "welfare"]))
+})
+
 test_that("the Outcome module summary and variable_stats agree", {
   raw <- batch_fixture_survey_holes(batch_fixture_survey(years = 2018))
   vl <- batch_fixture_variable_list()
@@ -282,7 +306,12 @@ test_that("interview dates match the module's monthly counts and the date summar
     has <- !is.na(d$loc_id) & !is.na(d$area_h3_7)
     per_loc <- vapply(unique(d$loc_id[has]), function(l) length(unique(d$timestamp[has & d$loc_id == l])), 1L)
     expect_equal(r$avg_dates_per_loc, mean(per_loc))
+    # Locations of the wave: distinct loc_id of the records that have one,
+    # dated or not.
+    w <- df[df$year == wave & !is.na(df$loc_id) & !is.na(df$area_h3_7), ]
+    expect_identical(r$n_locations, length(unique(w$loc_id)))
   }
+  expect_true(all(is.na(tab$n_locations[!is.na(tab$month)])))
   expect_identical(sum(tab$n[!is.na(tab$month)]), sum(tot$n))
 })
 

@@ -274,6 +274,28 @@ wise_selected_outcome <- function(variable_list, df, outcome = NULL, currency = 
   list(info = info, so = build_selected_outcome(info, currency = cur, poverty_line = pl))
 }
 
+#' Selected outcome with the poverty line of the simulation metrics
+#'
+#' The app's poverty-line control of the Step 2 Results pane starts at the
+#' outcome's own line (3.00 a day if none). A spec's `outcome.poverty_line` sets
+#' that starting value for a monetary outcome other than `poor`, whose line
+#' defines the outcome itself (`wise_selected_outcome()`), so the headcount,
+#' gap, FGT2 and cash-transfer cost metrics of a run use it.
+#'
+#' @param so Selected outcome row from `wise_selected_outcome()`.
+#' @param outcome The spec's `outcome` section.
+#' @return `so`, with `povline` replaced when the spec gives a line.
+#' @noRd
+wise_outcome_run_line <- function(so, outcome) {
+  pl <- suppressWarnings(as.numeric(outcome$poverty_line)[1L])
+  name <- as.character(so$name[1])
+  if (is.na(pl) || identical(name, "poor") || !is_monetary_outcome(name, as.character(so$units[1]))) {
+    return(so)
+  }
+  so$povline <- pl
+  so
+}
+
 
 # Weather ----
 

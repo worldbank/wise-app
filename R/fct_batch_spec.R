@@ -842,12 +842,14 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
 #'
 #' Hashes of the spec sections each stage depends on. They key the tables and
 #' decide which work is shared between runs: `data_id` (source, sample,
-#' outcome, statistics options), `wxvar_id` (the data plus one weather
+#' outcome, statistics options; the poverty line only for the `poor` outcome),
+#' `wxvar_id` (the data plus one weather
 #' variable's reference period, temporal aggregation and transformation, and
 #' the historical years; one per variable), `weather_id` (the data plus the
 #' whole weather section, binning included: the survey-weather frame),
 #' `fit_id` (data, weather, model and seed; `NA` without a model section),
-#' `sim_id` (the fit and the simulation settings that change results; `NA`
+#' `sim_id` (the fit and the simulation settings that change results, and the
+#' poverty line of a non-`poor` outcome; `NA`
 #' without a `sim` section), `policy_id` (the simulation and the policy
 #' section; `NA` without one) and `run_id` (the whole spec, including the seed).
 #'
@@ -856,7 +858,13 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
 #'   `fit_id`, `sim_id`, `policy_id`, `run_id`.
 #' @export
 wise_spec_ids <- function(spec) {
-  data_id <- .spec_digest(spec[c("schema_version", "source", "sample", "outcome", "stats")])
+  # The poverty line defines the outcome only for `poor`. For any other outcome
+  # the data and the fit do not use it: it sets the line of the simulation
+  # metrics, so it enters `sim_id` instead.
+  line_in_data <- identical(spec$outcome$name, "poor")
+  data_spec <- spec[c("schema_version", "source", "sample", "outcome", "stats")]
+  if (!line_in_data) data_spec$outcome$poverty_line <- NULL
+  data_id <- .spec_digest(data_spec)
   vars <- wise_spec_weather_vars(spec$weather)
   # The descriptive statistics use the values before binning, so form and
   # binning do not enter: profiles that bin one variable differently share it.
@@ -882,7 +890,12 @@ wise_spec_ids <- function(spec) {
   sim_id <- if (is.null(spec$sim) || is.na(fit_id)) {
     NA_character_
   } else {
-    .spec_digest(list(fit_id = fit_id, sim = .sim_effective(spec)))
+    .spec_digest(c(
+      list(fit_id = fit_id, sim = .sim_effective(spec)),
+      if (!line_in_data && !is.null(spec$outcome$poverty_line)) {
+        list(poverty_line = spec$outcome$poverty_line)
+      }
+    ))
   }
   policy_id <- if (is.null(spec$policy) || is.na(sim_id)) {
     NA_character_

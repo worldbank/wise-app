@@ -149,6 +149,43 @@ test_that("stage ids are stable and depend only on their sections", {
   expect_false(identical(wise_spec_ids(agg)$wxvar_ids, wise_spec_ids(bins)$wxvar_ids))
 })
 
+test_that("the poverty line enters the data id only for the poor outcome", {
+  mk <- function(name, line) {
+    wise_spec(
+      outcome = list(name = name, poverty_line = line),
+      model = list(type = "linear"), sim = list()
+    )
+  }
+  # A welfare fit does not use the line: the data and the fit are shared and
+  # only the simulation (its metrics) differs.
+  a <- wise_spec_ids(mk("welfare", 3))
+  b <- wise_spec_ids(mk("welfare", 8.3))
+  expect_identical(a$data_id, b$data_id)
+  expect_identical(a$fit_id, b$fit_id)
+  expect_false(identical(a$sim_id, b$sim_id))
+  expect_false(identical(a$run_id, b$run_id))
+  # No line keeps the ids of a spec that never had one.
+  none <- wise_spec_ids(wise_spec(outcome = list(name = "welfare"), model = list(type = "linear"), sim = list()))
+  expect_identical(none$data_id, a$data_id)
+  # `poor` is defined by the line: it changes the data and everything after it.
+  p <- wise_spec_ids(mk("poor", 3))
+  q <- wise_spec_ids(mk("poor", 8.3))
+  expect_false(identical(p$data_id, q$data_id))
+  expect_false(identical(p$fit_id, q$fit_id))
+})
+
+test_that("a spec's poverty line sets the simulation's line for a monetary outcome", {
+  so <- function(name, units = "PPP", povline = 3) {
+    data.frame(name = name, units = units, povline = povline, stringsAsFactors = FALSE)
+  }
+  expect_identical(wise_outcome_run_line(so("welfare"), list(poverty_line = 8.3))$povline, 8.3)
+  expect_identical(wise_outcome_run_line(so("welfare", "LCU", NA_real_), list(poverty_line = 120))$povline, 120)
+  expect_identical(wise_outcome_run_line(so("welfare"), list(poverty_line = NULL))$povline, 3)
+  # `poor` keeps the line that defined it; other outcomes have none.
+  expect_identical(wise_outcome_run_line(so("poor", povline = 4.2), list(poverty_line = 8.3))$povline, 4.2)
+  expect_true(is.na(wise_outcome_run_line(so("hhsize", "n", NA_real_), list(poverty_line = 8.3))$povline))
+})
+
 test_that("a pinned spec keeps its hash across releases", {
   s <- wise_spec(
     sample = list(countries = "BFA", years = list(BFA = c(2018, 2021))),

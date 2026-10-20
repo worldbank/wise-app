@@ -192,9 +192,10 @@ WISEAPP_STAT_PROBS <- c(
 #' @param d Frame with the grouping column `.key`, `weight` and the variables.
 #' @param vars Character vector of numeric variable names.
 #' @param extras Logical; `FALSE` returns the moments only (within-location).
+#' @param gini_vars Variables that also get a weighted Gini (`gini` column).
 #' @return A data frame keyed by `key` and `variable`.
 #' @noRd
-.variable_stats_engine <- function(d, vars, extras = TRUE) {
+.variable_stats_engine <- function(d, vars, extras = TRUE, gini_vars = character(0)) {
   d <- d[!is.na(d$.key), , drop = FALSE]
   vars <- vars[vars %in% names(d)]
   if (!nrow(d) || !length(vars)) {
@@ -226,14 +227,34 @@ WISEAPP_STAT_PROBS <- c(
     x <- as.numeric(d[[v]])
     nu <- collapse::fndistinct(x, g = g, na.rm = TRUE)
     q <- .wtd_quantiles(x, d$weight, d$.key)
-    data.frame(
+    res <- data.frame(
       key = gkey, variable = v, n_unique = as.integer(nu),
       q[gkey, , drop = FALSE], row.names = NULL, check.names = FALSE,
       stringsAsFactors = FALSE
     )
+    if (v %in% gini_vars) res$gini <- .wtd_gini(x, d$weight, d$.key)[gkey]
+    res
   })
-  extra <- do.call(rbind, extra)
+  extra <- dplyr::bind_rows(extra)
   merge(out, extra, by = c("key", "variable"), all.x = TRUE, sort = FALSE)
+}
+
+#' Weighted Gini per group
+#'
+#' The app's `gini` aggregate (`resolve_agg_fn("gini")`, the one Step 2 reports)
+#' over records with a finite value and a finite positive weight.
+#'
+#' @param x Numeric values.
+#' @param w Weights.
+#' @param key Group key per row.
+#' @return Named numeric vector, one value per key (`NA` below two records).
+#' @noRd
+.wtd_gini <- function(x, w, key) {
+  gini <- resolve_agg_fn("gini")
+  ok <- is.finite(x) & is.finite(w) & w > 0 & !is.na(key)
+  idx <- split(which(ok), key[ok])
+  out <- vapply(idx, function(i) gini(x[i], w[i], NULL), numeric(1))
+  out[unique(key[!is.na(key)])]
 }
 
 #' Binary indicator columns from the spec
@@ -301,7 +322,7 @@ WISEAPP_STAT_PROBS <- c(
 #' One row per wave (and pooled `All` scope) x variable group x variable x
 #' sample. The `all` sample reproduces the app's survey and outcome summary
 #' tables; `with_loc`, `without_loc` and `within_loc`, the deciles for every
-#' variable and the indicator variables are batch-only.
+#' variable, the indicator variables and the outcome's `gini` are batch-only.
 #'
 #' @param df Survey frame with the outcome (`wise_outcome_data()`), with
 #'   `countryyear`.
@@ -329,6 +350,9 @@ variable_stats_table <- function(df, variable_list, outcome = NULL,
     length(x) > 0 && all(x %in% c(0, 1))
   }, logical(1))]
 
+  # A Gini only for the outcome variables that are not 0/1.
+  gini_vars <- setdiff(groups$variable[groups$var_group == "outcome"], binary)
+
   scopes <- .stat_scopes(df)
   samples <- list(all = rep(TRUE, nrow(df)))
   if (isTRUE(location_samples) && "loc_id" %in% names(df)) {
@@ -349,7 +373,7 @@ variable_stats_table <- function(df, variable_list, outcome = NULL,
     for (fam in scopes) {
       d <- base
       d$.key <- fam$key[rows]
-      res <- .variable_stats_engine(d, vars, extras = !identical(sname, "within_loc"))
+      res <- .variable_stats_engine(d, vars, extras = !identical(sname, "within_loc"), gini_vars = gini_vars)
       if (is.null(res)) next
       info <- fam$info
       res <- cbind(
@@ -364,11 +388,12 @@ variable_stats_table <- function(df, variable_list, outcome = NULL,
     return(NULL)
   }
   out$share_one <- ifelse(out$variable %in% binary & out$sample != "within_loc", out$mean, NA_real_)
+  if (!"gini" %in% names(out)) out$gini <- NA_real_
   out <- merge(groups, out, by = "variable", sort = FALSE)
   front <- c("code", "wave", "year", "survname", "var_group", "variable", "sample")
   stats_cols <- c(
     "n", "n_rows", "n_missing", "pct_missing", "n_unique", "mean", "unweighted_mean",
-    "sd", "min", "max", names(WISEAPP_STAT_PROBS), "share_one"
+    "sd", "min", "max", names(WISEAPP_STAT_PROBS), "share_one", "gini"
   )
   out <- out[, c(front, stats_cols), drop = FALSE]
   grp_order <- c("outcome", "policy", "hh", "ind", "area", "firm", "indicator")
@@ -386,8 +411,9 @@ variable_stats_table <- function(df, variable_list, outcome = NULL,
 #'
 #' One row per wave x interview month (the app's chart data from
 #' `summarise_interview_dates()`) and one wave-total row (`month = NA`) that
-#' adds the batch-only date summary: distinct dates, first and last date and
-#' the average number of distinct dates per location.
+#' adds the batch-only date summary: distinct dates, first and last date, the
+#' number of locations of the wave and the average number of distinct dates per
+#' location.
 #'
 #' @param df Survey frame with `countryyear` and `timestamp`.
 #' @return A data frame, or `NULL` when there are no dates.
@@ -415,7 +441,17 @@ interview_dates_table <- function(df) {
     last_date = as.Date(collapse::fmax(as.numeric(ts), g = g), origin = "1970-01-01"),
     stringsAsFactors = FALSE
   )
-  has <- .has_location(df) & ok
+  # Locations of the wave: distinct location keys among records that have one,
+  # whether or not they carry an interview date.
+  has_loc <- .has_location(df)
+  total$n_locations <- NA_integer_
+  if (any(has_loc)) {
+    gw <- collapse::GRP(df[has_loc, , drop = FALSE], by = "countryyear")
+    nl <- collapse::fndistinct(.location_key(df[has_loc, , drop = FALSE]), g = gw)
+    total$n_locations <- as.integer(nl[match(total$countryyear, as.character(gw$groups[[1]]))])
+    total$n_locations[is.na(total$n_locations)] <- 0L
+  }
+  has <- has_loc & ok
   total$avg_dates_per_loc <- NA_real_
   if (any(has)) {
     dl <- df[has, , drop = FALSE]
@@ -427,7 +463,8 @@ interview_dates_table <- function(df) {
   by_month <- data.frame(
     countryyear = monthly$countryyear, month = as.integer(monthly$month_num),
     n = as.integer(monthly$hh), n_dates = NA_integer_,
-    first_date = as.Date(NA), last_date = as.Date(NA), avg_dates_per_loc = NA_real_,
+    first_date = as.Date(NA), last_date = as.Date(NA), n_locations = NA_integer_,
+    avg_dates_per_loc = NA_real_,
     stringsAsFactors = FALSE
   )
   out <- rbind(by_month, total)

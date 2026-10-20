@@ -27,11 +27,11 @@ guide is `batch/README.md`; the design is `review/batch_pipeline_plan.md`.
 
 | Id | Hash of | Keys the tables |
 |---|---|---|
-| `data_id` | source, sample, outcome, statistics options | `variable_stats`, `interview_dates` |
+| `data_id` | source, sample, outcome (its poverty line only for `poor`), statistics options | `variable_stats`, `interview_dates` |
 | `wxvar_id` | `data_id`, one weather variable's reference period, temporal aggregation, transformation, and the historical years (not the binning) | `weather_stats` |
 | `weather_id` | `data_id`, the whole weather section (the seed only for K-means bins) | the survey-weather frame (not published) |
 | `fit_id` | `data_id`, weather section, model section, seed | `model_terms`, `model_fit`, `model_vcov` |
-| `sim_id` | `fit_id`, the simulation settings that change results | `annual`, `summary`, `sim_weather` (baseline arm) |
+| `sim_id` | `fit_id`, the simulation settings that change results, the poverty line of a non-`poor` outcome | `annual`, `summary`, `sim_weather` (baseline arm) |
 | `policy_id` | `sim_id`, the policy section; `NA` is the baseline arm | policy arm of `annual` and `summary`; `decomposition`, `policy_measures` |
 | `run_id` | the whole spec, seed included | `runs` |
 
@@ -55,6 +55,7 @@ Key `data_id`. One row per scope (wave, `All`, pooled) x `var_group` x
 | `mean`, `unweighted_mean`, `sd`, `min`, `max` | Weighted mean (share of ones for a 0/1 variable), plain mean, weighted standard deviation, smallest and largest valid value. | app |
 | `p10` ... `p90`, `p25`, `p75` | Weighted quantiles (`collapse::fquantile`, type 7). For the outcome the deciles equal the app's outcome summary. | batch |
 | `share_one` | Weighted share of ones for a variable that is only 0 or 1; else `NA`. | batch |
+| `gini` | Weighted Gini coefficient of an outcome variable that is not 0/1 (`var_group` `outcome`; the app's `gini` aggregate over records with a finite value and weight, by the `weight` column like the other statistics); else `NA`. Poverty rates at several lines are the `indicator` rows (`poor300`, `poor420`, `poor830`: `mean`). | batch |
 
 Indicators (`var_group = indicator`) are 0/1 variables from `stats.indicators`
 (variable, operator `<` or `>`, threshold). Default: `poor300`, `poor420`,
@@ -71,7 +72,7 @@ Key `data_id`. One row per wave x interview month, plus one total row per wave
 |---|---|---|
 | `month` | Interview month, 1 to 12; `NA` on the total row. | app |
 | `n` | Records interviewed in the month; on the total row, records with an interview date. | app |
-| `n_dates`, `first_date`, `last_date`, `avg_dates_per_loc` | Total row only: distinct dates, earliest and latest date, mean distinct dates per location. | batch |
+| `n_dates`, `first_date`, `last_date`, `n_locations`, `avg_dates_per_loc` | Total row only: distinct dates, earliest and latest date, distinct locations of the wave (records with a `loc_id` and, if present, `area_h3_7`; dated or not), mean distinct dates per location. | batch |
 
 ### weather_stats
 
@@ -149,7 +150,7 @@ Key `sim_id`. The app's "Run simulation": the baseline survey (default the
 latest wave of each economy) is predicted under every historical weather year
 (`sim.hist_years`) and, for each projection period and SSP, under the same years
 perturbed by each CMIP6 climate model (additive for temperature, multiplicative
-for rain and days). The poverty line is the outcome's own (3.00 a day if none).
+for rain and days). The poverty line is the spec's `outcome.poverty_line` (3.00 a day if none).
 Builders: `R/fct_step2_tables.R`. Step 3 reuses these tables for the policy arm;
 `policy_id` is `NA` for the baseline arm.
 

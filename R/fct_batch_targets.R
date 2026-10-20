@@ -304,7 +304,7 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
         files <- list(data = data_file(data_id), frame = frame_file(weather_id), fit = fit_file)
         list(
           id = id, fit_id = fit_id, weather_id = weather_id, data_id = data_id,
-          spec = sections(spec, "source", "sample", "sim", "seed"),
+          spec = sections(spec, "source", "sample", "outcome", "sim", "seed"),
           data_file = files$data, frame_file = files$frame, fit_file = fit_file,
           stamps = lapply(files, .batch_stamp),
           # The Step 2 run is stored for the policy branches that read it.
@@ -661,7 +661,7 @@ wise_batch_sim <- function(item, connection_params = NULL) {
       mf <- qs2::qs_read(item$fit_file)$mf
       sw <- w$selected_weather
       input <- wise_step2_input(
-        sw, d$outcome$so,
+        sw, wise_outcome_run_line(d$outcome$so, spec$outcome),
         svy = step2_baseline_svy(w$survey_weather, sim$baseline_survey),
         ss = .step2_filter_baseline_surveys(d$selected_surveys, sim$baseline_survey),
         mf = mf, cp = cp, hist_years = sim$hist_years, periods = sim$future_periods,
