@@ -12,7 +12,7 @@ This file provides guidance to coding agents (Kilo, Claude Code, Codex, etc.) wh
 
 - R package name: `wiseapp`
 - Framework: [Golem](https://thinkr-open.github.io/golem/) (production-ready Shiny scaffolding)
-- Version: 0.4.0 (`DESCRIPTION` and `inst/golem-config.yml` must match; `manifest.json` checksums follow)
+- Version: 0.5.0 (`DESCRIPTION` and `inst/golem-config.yml` must match; `manifest.json` checksums follow)
 - R version: 4.5.3 (configured by the local development environment); `DESCRIPTION` requires R >= 4.4.0
 - License: MIT
 
