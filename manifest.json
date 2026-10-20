@@ -1130,32 +1130,31 @@
         "Package": "qs2",
         "Type": "Package",
         "Title": "Efficient Serialization of R Objects",
-        "Version": "0.2.2",
-        "Date": "2026-06-02",
+        "Version": "0.3.1",
+        "Date": "2026-08-19",
         "Authors@R": "c(\n    person(\"Travers\", \"Ching\", email = \"traversc@gmail.com\", role = c(\"aut\", \"cre\", \"cph\")),\n    person(\"Yann\", \"Collet\", role = c(\"ctb\", \"cph\"), comment = \"Yann Collet is the author of the bundled zstd\"),\n    person(\"Facebook, Inc.\", role = \"cph\", comment = \"Facebook is the copyright holder of the bundled zstd code\"),\n    person(\"Reichardt\", \"Tino\", role = c(\"ctb\", \"cph\"), comment = \"Contributor/copyright holder of zstd bundled code\"),\n    person(\"Skibinski\", \"Przemyslaw\", role = c(\"ctb\", \"cph\"), comment = \"Contributor/copyright holder of zstd bundled code\"),\n    person(\"Mori\", \"Yuta\", role = c(\"ctb\", \"cph\"), comment = \"Contributor/copyright holder of zstd bundled code\"),\n    person(\"Francesc\", \"Alted\", role = c(\"ctb\", \"cph\"), comment = \"Shuffling routines derived from Blosc library\"))",
         "Maintainer": "Travers Ching <traversc@gmail.com>",
         "Description": "Streamlines and accelerates the process of saving and loading R objects, improving speed and compression compared to other methods. The package provides two compression formats: the 'qs2' format, which uses R serialization via the C API while optimizing compression and disk I/O, and the 'qdata' format, featuring custom serialization for slightly faster performance and better compression. Additionally, the 'qs2' format can be directly converted to the standard 'RDS' format, ensuring long-term compatibility with future versions of R.",
         "License": "GPL-3",
         "LazyData": "true",
         "Biarch": "true",
-        "Depends": "R (>= 3.5.0)",
-        "Imports": "Rcpp, RcppParallel, stringfish (>= 0.18.0)",
-        "LinkingTo": "Rcpp, RcppParallel",
+        "Depends": "R (>= 3.6.0)",
+        "Imports": "Rcpp, RcppParallel (>= 6.1.1), stringfish (>= 0.18.0)",
+        "LinkingTo": "Rcpp, RcppParallel (>= 6.1.1)",
         "Suggests": "knitr, rmarkdown, dplyr, data.table, stringi",
         "SystemRequirements": "GNU make, C++17",
         "Encoding": "UTF-8",
-        "RoxygenNote": "7.3.3",
         "VignetteBuilder": "knitr",
         "Copyright": "This package includes code from the 'zstd' library owned by\nFacebook, Inc. and created by Yann Collet; and code derived\nfrom the 'Blosc' library created and owned by Francesc Alted.",
         "URL": "https://github.com/qsbase/qs2",
         "BugReports": "https://github.com/qsbase/qs2/issues",
+        "Config/roxygen2/version": "8.0.0",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-06-03 07:00:39 UTC; ted",
+        "Packaged": "2026-08-20 20:02:43 UTC; ted",
         "Author": "Travers Ching [aut, cre, cph],\n  Yann Collet [ctb, cph] (Yann Collet is the author of the bundled zstd),\n  Facebook, Inc. [cph] (Facebook is the copyright holder of the bundled\n    zstd code),\n  Reichardt Tino [ctb, cph] (Contributor/copyright holder of zstd bundled\n    code),\n  Skibinski Przemyslaw [ctb, cph] (Contributor/copyright holder of zstd\n    bundled code),\n  Mori Yuta [ctb, cph] (Contributor/copyright holder of zstd bundled\n    code),\n  Francesc Alted [ctb, cph] (Shuffling routines derived from Blosc\n    library)",
         "Repository": "CRAN",
-        "Date/Publication": "2026-06-03 07:40:02 UTC",
-        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-06-03 12:23:46 UTC; unix",
-        "Archs": "qs2.so.dSYM"
+        "Date/Publication": "2026-08-21 14:00:07 UTC",
+        "Built": "R 4.5.3; aarch64-apple-darwin20; 2026-10-20 13:04:20 UTC; unix"
       }
     },
     "scales": {
@@ -2662,32 +2661,39 @@
         "Type": "Package",
         "Package": "nanonext",
         "Title": "Lightweight Toolkit for Messaging, Concurrency and the Web",
-        "Version": "1.10.2",
+        "Version": "1.10.3",
         "Authors@R": "c(\n    person(\"Charlie\", \"Gao\", , \"charlie.gao@posit.co\", role = c(\"aut\", \"cre\"),\n           comment = c(ORCID = \"0000-0002-0750-061X\")),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"),\n           comment = c(ROR = \"03wc8by49\")),\n    person(\"Hibiki AI Limited\", role = \"cph\"),\n    person(\"Staysail Systems, Inc.\", role = \"cph\",\n           comment = \"NNG library\"),\n    person(\"Capitar IT Group BV\", role = \"cph\",\n           comment = \"NNG library\"),\n    person(\"The Mbed TLS Contributors\", role = \"cph\",\n           comment = \"Mbed TLS library\"),\n    person(\"Pierre\", \"L'Ecuyer\", role = \"cph\",\n           comment = \"RngStreams library\"),\n    person(\"sakura authors\", role = \"cph\",\n           comment = \"Serialization hooks\"),\n    person(\"R Consortium\", role = \"fnd\",\n           comment = c(ROR = \"01z833950\"))\n  )",
         "Description": "R binding for NNG (Nanomsg Next Gen), a successor to ZeroMQ.\n    A toolkit for messaging, concurrency and the web. High-performance\n    socket messaging over in-process, IPC, TCP, WebSocket and secure TLS\n    transports implements 'Scalability Protocols', a standard for common\n    communications patterns including publish/subscribe, request/reply and\n    survey. A threaded concurrency framework with intuitive 'aio' objects\n    that resolve automatically upon completion of asynchronous operations,\n    and synchronisation primitives that allow R to wait on events\n    signalled by concurrent threads. A unified HTTP server hosting REST\n    endpoints, WebSocket connections and streaming on a single port, with\n    a built-in HTTP client.",
         "License": "MIT + file LICENSE",
         "URL": "https://nanonext.r-lib.org, https://github.com/r-lib/nanonext",
         "BugReports": "https://github.com/r-lib/nanonext/issues",
         "Depends": "R (>= 3.6)",
-        "Suggests": "later, litedown",
+        "Suggests": "later, litedown, yaml",
         "Enhances": "promises",
         "VignetteBuilder": "litedown",
         "Biarch": "true",
         "Config/build/compilation-database": "true",
         "Config/Needs/website": "tidyverse/tidytemplate",
         "Config/roxygen2/markdown": "TRUE",
-        "Config/roxygen2/version": "8.0.0",
+        "Config/roxygen2/version": "8.1.0",
         "Config/usethis/last-upkeep": "2026-07-11",
         "Encoding": "UTF-8",
         "SystemRequirements": "'libnng' >= 1.12 and 'libmbedtls' >= 3.0 (optional,\nbundled sources compiled otherwise)",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-08-02 22:34:46 UTC; cg334",
+        "Packaged": "2026-09-23 07:37:45 UTC; cg334",
         "Author": "Charlie Gao [aut, cre] (ORCID: <https://orcid.org/0000-0002-0750-061X>),\n  Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>),\n  Hibiki AI Limited [cph],\n  Staysail Systems, Inc. [cph] (NNG library),\n  Capitar IT Group BV [cph] (NNG library),\n  The Mbed TLS Contributors [cph] (Mbed TLS library),\n  Pierre L'Ecuyer [cph] (RngStreams library),\n  sakura authors [cph] (Serialization hooks),\n  R Consortium [fnd] (ROR: <https://ror.org/01z833950>)",
         "Maintainer": "Charlie Gao <charlie.gao@posit.co>",
         "Repository": "CRAN",
-        "Date/Publication": "2026-08-04 14:30:02 UTC",
-        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-08-04 17:42:10 UTC; unix",
-        "Archs": "nanonext.so.dSYM"
+        "Date/Publication": "2026-09-23 08:10:01 UTC",
+        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-09-23 09:43:20 UTC; unix",
+        "Archs": "nanonext.so.dSYM",
+        "RemoteType": "standard",
+        "RemoteRef": "nanonext",
+        "RemotePkgRef": "nanonext",
+        "RemoteRepos": "https://cran.rstudio.com",
+        "RemoteReposName": "CRAN",
+        "RemotePkgPlatform": "aarch64-apple-darwin20",
+        "RemoteSha": "1.10.3"
       }
     },
     "lattice": {
@@ -3015,25 +3021,32 @@
         "Package": "RcppParallel",
         "Type": "Package",
         "Title": "Parallel Programming Tools for 'Rcpp'",
-        "Version": "5.1.11-2",
-        "Authors@R": "c(\n    person(\"JJ\", \"Allaire\", role = c(\"aut\"), email = \"jj@rstudio.com\"),\n    person(\"Romain\", \"Francois\", role = c(\"aut\", \"cph\")),\n    person(\"Kevin\", \"Ushey\", role = c(\"aut\", \"cre\"), email = \"kevin@rstudio.com\"),\n    person(\"Gregory\", \"Vandenbrouck\", role = \"aut\"),\n    person(\"Marcus\", \"Geelnard\", role = c(\"aut\", \"cph\"),\n       comment = \"TinyThread library, https://tinythreadpp.bitsnbites.eu/\"),\n    person(\"Hamada S.\", \"Badr\",\n       email = \"badr@jhu.edu\",\n       role = c(\"ctb\"),\n       comment = c(ORCID = \"0000-0002-9808-2344\")),\n    person(family = \"Posit, PBC\", role = \"cph\"),\n    person(family = \"Intel\", role = c(\"aut\", \"cph\"),\n       comment = \"Intel TBB library, https://www.threadingbuildingblocks.org/\"),\n    person(family = \"Microsoft\", role = \"cph\")\n    )",
+        "Version": "6.2.1",
+        "Authors@R": "c(\n    person(\"Kevin\", \"Ushey\", role = c(\"aut\", \"cre\"), email = \"kevin@rstudio.com\",\n        comment = c(ORCID = \"0000-0003-2880-7407\")),\n    person(\"JJ\", \"Allaire\", role = c(\"aut\"), email = \"jj@rstudio.com\"),\n    person(\"Romain\", \"Francois\", role = c(\"aut\", \"cph\")),\n    person(\"Gregory\", \"Vandenbrouck\", role = \"aut\"),\n    person(\"Marcus\", \"Geelnard\", role = c(\"aut\", \"cph\"),\n       comment = \"TinyThread library, https://tinythreadpp.bitsnbites.eu/\"),\n    person(\"Hamada S.\", \"Badr\", email = \"badr@jhu.edu\", role = c(\"ctb\"),\n       comment = c(ORCID = \"0000-0002-9808-2344\")),\n    person(\"Dirk\", \"Eddelbuettel\", role = c(\"aut\"), email = \"edd@debian.org\",\n        comment = c(ORCID = \"0000-0001-6419-907X\")),\n    person(family = \"Intel\", role = c(\"aut\", \"cph\"), comment = \"oneTBB library\"),\n    person(family = \"UXL Foundation\", role = c(\"aut\", \"cph\"), comment = \"oneTBB library\"),\n    person(family = \"Microsoft\", role = \"cph\"),\n    person(family = \"Posit, PBC\", role = \"cph\")\n    )",
         "Description": "High level functions for parallel programming with 'Rcpp'.\n    For example, the 'parallelFor()' function can be used to convert the work of\n    a standard serial \"for\" loop into a parallel one and the 'parallelReduce()'\n    function can be used for accumulating aggregate or other values.",
-        "Depends": "R (>= 3.0.2)",
-        "Suggests": "Rcpp, RUnit, knitr, rmarkdown",
-        "SystemRequirements": "GNU make, Intel TBB, Windows: cmd.exe and\ncscript.exe, Solaris: g++ is required",
+        "Depends": "R (>= 3.6.0)",
+        "Suggests": "Rcpp, knitr, rmarkdown",
+        "SystemRequirements": "CMake (>= 3.5)",
         "License": "GPL (>= 3)",
         "URL": "https://rcppcore.github.io/RcppParallel/,\nhttps://github.com/RcppCore/RcppParallel",
         "BugReports": "https://github.com/RcppCore/RcppParallel/issues",
         "Biarch": "TRUE",
-        "RoxygenNote": "7.1.1",
+        "RoxygenNote": "7.3.3",
         "Encoding": "UTF-8",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-03-03 18:36:15 UTC; kevin",
+        "Packaged": "2026-08-26 18:00:02 UTC; kevin",
+        "Author": "Kevin Ushey [aut, cre] (ORCID: <https://orcid.org/0000-0003-2880-7407>),\n  JJ Allaire [aut],\n  Romain Francois [aut, cph],\n  Gregory Vandenbrouck [aut],\n  Marcus Geelnard [aut, cph] (TinyThread library,\n    https://tinythreadpp.bitsnbites.eu/),\n  Hamada S. Badr [ctb] (ORCID: <https://orcid.org/0000-0002-9808-2344>),\n  Dirk Eddelbuettel [aut] (ORCID:\n    <https://orcid.org/0000-0001-6419-907X>),\n  Intel [aut, cph] (oneTBB library),\n  UXL Foundation [aut, cph] (oneTBB library),\n  Microsoft [cph],\n  Posit, PBC [cph]",
         "Maintainer": "Kevin Ushey <kevin@rstudio.com>",
-        "Author": "JJ Allaire [aut],\n  Romain Francois [aut, cph],\n  Kevin Ushey [aut, cre],\n  Gregory Vandenbrouck [aut],\n  Marcus Geelnard [aut, cph] (TinyThread library,\n    https://tinythreadpp.bitsnbites.eu/),\n  Hamada S. Badr [ctb] (ORCID: <https://orcid.org/0000-0002-9808-2344>),\n  Posit, PBC [cph],\n  Intel [aut, cph] (Intel TBB library,\n    https://www.threadingbuildingblocks.org/),\n  Microsoft [cph]",
         "Repository": "CRAN",
-        "Date/Publication": "2026-03-05 12:20:09 UTC",
-        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-03-05 13:43:44 UTC; unix"
+        "Date/Publication": "2026-08-27 05:10:40 UTC",
+        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-08-27 08:55:26 UTC; unix",
+        "RemoteType": "standard",
+        "RemoteRef": "RcppParallel",
+        "RemotePkgRef": "RcppParallel",
+        "RemoteRepos": "https://cran.rstudio.com",
+        "RemoteReposName": "CRAN",
+        "RemotePkgPlatform": "aarch64-apple-darwin20",
+        "RemoteSha": "6.2.1"
       }
     },
     "stringfish": {
@@ -3042,9 +3055,9 @@
       "description": {
         "Package": "stringfish",
         "Title": "Alt String Implementation",
-        "Version": "0.19.0",
-        "Date": "2026-04-18",
-        "Authors@R": "c(\n    person(\"Travers\", \"Ching\", email = \"traversc@gmail.com\", role = c(\"aut\", \"cre\", \"cph\")),\n    person(\"Phillip\", \"Hazel\", role = c(\"ctb\"), comment = \"Bundled PCRE2 code\"),\n    person(\"Zoltan\", \"Herczeg\", role = c(\"ctb\", \"cph\"), comment = \"Bundled PCRE2 code\"),\n    person(\"University of Cambridge\", role = c(\"cph\"), comment = \"Bundled PCRE2 code\"),\n    person(\"Tilera Corporation\", role = c(\"cph\"), comment = \"Stack-less Just-In-Time compiler bundled with PCRE2\"),\n    person(\"Yann\", \"Collet\", role = c(\"ctb\", \"cph\"), comment = \"Yann Collet is the author of the bundled xxHash code\"))",
+        "Version": "0.19.2",
+        "Date": "2026-08-04",
+        "Authors@R": "c(\n    person(\"Travers\", \"Ching\", email = \"traversc@gmail.com\", role = c(\"aut\", \"cre\", \"cph\")),\n    person(\"Phillip\", \"Hazel\", role = c(\"ctb\"), comment = \"Bundled PCRE2 code\"),\n    person(\"Zoltan\", \"Herczeg\", role = c(\"ctb\", \"cph\"), comment = \"Bundled PCRE2 code\"),\n    person(\"University of Cambridge\", role = c(\"cph\"), comment = \"Bundled PCRE2 code\"),\n    person(\"Tilera Corporation\", role = c(\"cph\"), comment = \"Stack-less Just-In-Time compiler bundled with PCRE2\"),\n    person(\"Yann\", \"Collet\", role = c(\"ctb\", \"cph\"), comment = \"Yann Collet is the author of the bundled xxHash code\"),\n    person(\"Martin\", \"Leitner-Ankerl\", role = c(\"ctb\", \"cph\"), comment = \"Bundled ankerl::unordered_dense code\"))",
         "Maintainer": "Travers Ching <traversc@gmail.com>",
         "Description": "Provides an extendable, performant and multithreaded 'alt-string' implementation backed by 'C++' vectors and strings.",
         "License": "GPL-3",
@@ -3052,21 +3065,20 @@
         "Encoding": "UTF-8",
         "Depends": "R (>= 3.6.0)",
         "SystemRequirements": "GNU make, C++17",
-        "LinkingTo": "Rcpp (>= 0.12.18.3), RcppParallel (>= 5.1.4)",
+        "LinkingTo": "Rcpp (>= 0.12.18.3), RcppParallel (>= 6.1.1)",
         "Imports": "Rcpp, RcppParallel",
         "Suggests": "knitr, rmarkdown",
         "VignetteBuilder": "knitr",
-        "RoxygenNote": "7.3.3",
-        "Copyright": "Copyright for the bundled 'PCRE2' library is held by\nUniversity of Cambridge, Zoltan Herczeg and Tilera Corporation\n(Stack-less Just-In-Time compiler); Copyright for the bundled\n'xxHash' code is held by Yann Collet.",
+        "Copyright": "Copyright for the bundled 'PCRE2' library is held by\nUniversity of Cambridge, Zoltan Herczeg and Tilera Corporation\n(Stack-less Just-In-Time compiler); Copyright for the bundled\n'xxHash' code is held by Yann Collet; Copyright for the bundled\n'ankerl::unordered_dense' code is held by Martin\nLeitner-Ankerl.",
         "URL": "https://github.com/traversc/stringfish",
         "BugReports": "https://github.com/traversc/stringfish/issues",
+        "Config/roxygen2/version": "8.0.0",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-04-18 03:31:12 UTC; ted",
-        "Author": "Travers Ching [aut, cre, cph],\n  Phillip Hazel [ctb] (Bundled PCRE2 code),\n  Zoltan Herczeg [ctb, cph] (Bundled PCRE2 code),\n  University of Cambridge [cph] (Bundled PCRE2 code),\n  Tilera Corporation [cph] (Stack-less Just-In-Time compiler bundled with\n    PCRE2),\n  Yann Collet [ctb, cph] (Yann Collet is the author of the bundled xxHash\n    code)",
+        "Packaged": "2026-08-04 08:23:40 UTC; ted",
+        "Author": "Travers Ching [aut, cre, cph],\n  Phillip Hazel [ctb] (Bundled PCRE2 code),\n  Zoltan Herczeg [ctb, cph] (Bundled PCRE2 code),\n  University of Cambridge [cph] (Bundled PCRE2 code),\n  Tilera Corporation [cph] (Stack-less Just-In-Time compiler bundled with\n    PCRE2),\n  Yann Collet [ctb, cph] (Yann Collet is the author of the bundled xxHash\n    code),\n  Martin Leitner-Ankerl [ctb, cph] (Bundled ankerl::unordered_dense code)",
         "Repository": "CRAN",
-        "Date/Publication": "2026-04-21 11:00:03 UTC",
-        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-04-21 19:10:55 UTC; unix",
-        "Archs": "stringfish.so.dSYM"
+        "Date/Publication": "2026-08-04 10:30:17 UTC",
+        "Built": "R 4.5.3; aarch64-apple-darwin20; 2026-10-20 13:03:44 UTC; unix"
       }
     },
     "farver": {
@@ -4546,10 +4558,10 @@
       "checksum": "a50516efe904cea2a451c815bb5ca2ba"
     },
     "R/fct_batch_spec.R": {
-      "checksum": "c112c64984efbdca595a08f5cc99ff9b"
+      "checksum": "020b270bed6574ed77eb461c0fce6f69"
     },
     "R/fct_batch_targets.R": {
-      "checksum": "47eb42dd7f5ae2a818975e1b3cd6a969"
+      "checksum": "df3d885e347883bdbe72e10bfa0ba9c9"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
@@ -4585,7 +4597,7 @@
       "checksum": "469b0659e8a1ff68bbc1dbc585325faa"
     },
     "R/fct_model_select.R": {
-      "checksum": "eecd47930ae5c4e2d938e7d87919c666"
+      "checksum": "0c46cbc65a4fc6fc47c656eb930bf62b"
     },
     "R/fct_outcome.R": {
       "checksum": "e8c87187b4fe5027df7b2d13c2b93959"
@@ -4675,7 +4687,7 @@
       "checksum": "1389c571c67e852bf2ad8eab4c23b314"
     },
     "R/fct_step2_input.R": {
-      "checksum": "eb204b429a8791807b94e8b92a8ae10c"
+      "checksum": "12cc3c09968a1ef50ab10d51fd94edab"
     },
     "R/fct_step2_payload.R": {
       "checksum": "a0b09e843e838fbfa7eb9343ba23d0ea"
@@ -4690,7 +4702,7 @@
       "checksum": "01ef123a654bf3930e07235450ed71bd"
     },
     "R/fct_step3_tables.R": {
-      "checksum": "d78485efe77c5aee6a1ad69ef7aedac9"
+      "checksum": "857bb02e05baaae854f387b7974c1465"
     },
     "R/fct_surveystats.R": {
       "checksum": "8d264177f192808fc5c4f1bf4ac5163b"
@@ -4741,7 +4753,7 @@
       "checksum": "38470f5047f98fcaee239887a2c8798a"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "bdaaae5d892b610e4849edd6fb95c137"
+      "checksum": "caa24b8547e29f5ab109039bf4611b4e"
     },
     "R/mod_2_02_results.R": {
       "checksum": "007c40924f4bb99b0902f21cb2782174"
@@ -4804,7 +4816,7 @@
       "checksum": "e715b6a866363f28ad4d8af629e9bda0"
     },
     "R/utils_ui.R": {
-      "checksum": "60d321e85d2e69b0686644da69189a03"
+      "checksum": "aa86364d32e9bfd53239356907fe3367"
     },
     "src/RcppExports.cpp": {
       "checksum": "b5983a083dc1aea52d08f9c00d2378b7"
