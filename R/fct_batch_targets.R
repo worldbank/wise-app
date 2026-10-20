@@ -145,7 +145,8 @@ wise_batch_controller <- function(workers = 1L, cores = parallel::detectCores(),
 
 #' Copy the batch project template
 #'
-#' Copies `_targets.R`, `spec.yaml`, `run.R` and a README into a new folder.
+#' Copies `_targets.R`, `spec.yaml`, `run.R`, `check_reproducibility.R` and a
+#' README into a new folder.
 #'
 #' @param path Folder to create.
 #' @return `path`, invisibly.
@@ -201,13 +202,14 @@ wise_batch_grid <- function(spec_file, connection_params = NULL) {
   }
   md <- load_overview_metadata(cp)
   runs <- wise_spec_expand(spec_file, connection_params = cp, metadata = md)
+  digest_cache <- tryCatch(file.path(.batch_dir(), "data_digest.rds"), error = function(e) NULL)
   list(
     runs = runs,
     source = c(
       .provenance_source_label(cp),
       list(metadata_digest = digest::digest(md[c("survey_list", "variable_list", "cpi_ppp")], algo = "sha256"))
     ),
-    data_files = .batch_data_digest(cp$path, runs),
+    data_files = .batch_data_digest(cp$path, runs, cache_file = digest_cache),
     started = Sys.time()
   )
 }
@@ -238,12 +240,9 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
                               fit_specs = NULL, fits = NULL, sim_specs = NULL, sims = NULL) {
   stage <- match.arg(stage)
   runs <- grid$runs
-  no_model <- function(spec) {
-    spec$model <- NULL
-    spec$sim <- NULL
-    spec$policy <- NULL
-    spec
-  }
+  # The sections of the spec a stage reads: an item holds nothing else, so an
+  # edit elsewhere in the spec leaves its branch up to date.
+  sections <- function(spec, ...) spec[intersect(c(...), names(spec))]
   data_file <- function(data_id) {
     data_frames[match(data_id, vapply(data_specs, `[[`, "", "id"))]
   }
@@ -251,18 +250,28 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
     first <- !duplicated(runs$data_id)
     digest <- grid$source$metadata_digest
     return(unname(Map(
-      function(id, spec) list(id = id, spec = no_model(spec), metadata_digest = digest),
+      function(id, spec) {
+        list(
+          id = id, spec = sections(spec, "schema_version", "source", "sample", "outcome", "stats"),
+          metadata_digest = digest
+        )
+      },
       runs$data_id[first], runs$spec[first]
     )))
   }
   # A grid without models still needs one (inert) item: a target cannot
   # branch over an empty one.
   none <- list(list(id = "none", none = TRUE))
+  # The stamp (size and modification time) of each input file makes a branch
+  # rerun when the data, frame, fit or simulation it reads has been rebuilt.
   if (identical(stage, "frame")) {
     keep <- !is.na(runs$fit_id) & !duplicated(runs$weather_id)
     items <- unname(Map(
       function(id, data_id, spec) {
-        list(id = id, data_id = data_id, spec = no_model(spec), data_file = data_file(data_id))
+        list(
+          id = id, data_id = data_id, spec = sections(spec, "source", "weather", "seed"),
+          data_file = data_file(data_id), stamps = list(data = .batch_stamp(data_file(data_id)))
+        )
       },
       runs$weather_id[keep], runs$data_id[keep], runs$spec[keep]
     ))
@@ -275,11 +284,11 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
     keep <- !is.na(runs$fit_id) & !duplicated(runs$fit_id)
     items <- unname(Map(
       function(id, weather_id, data_id, spec) {
-        spec$sim <- NULL
-        spec$policy <- NULL
+        files <- list(data = data_file(data_id), frame = frame_file(weather_id))
         list(
-          id = id, weather_id = weather_id, data_id = data_id, spec = spec,
-          data_file = data_file(data_id), frame_file = frame_file(weather_id)
+          id = id, weather_id = weather_id, data_id = data_id,
+          spec = sections(spec, "sample", "model", "seed"),
+          data_file = files$data, frame_file = files$frame, stamps = lapply(files, .batch_stamp)
         )
       },
       runs$fit_id[keep], runs$weather_id[keep], runs$data_id[keep], runs$spec[keep]
@@ -288,23 +297,16 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
   }
   if (identical(stage, "sim")) {
     keep <- !is.na(runs$sim_id) & !duplicated(runs$sim_id)
-    # The stamp (size and modification time) of each input file makes a sim
-    # branch rerun when the data, frame or fit it reads has been rebuilt.
-    stamp <- function(path) {
-      if (is.character(path) && length(path) == 1L && !is.na(path) && file.exists(path)) {
-        c(size = file.size(path), mtime = as.numeric(file.mtime(path)))
-      }
-    }
     items <- unname(Map(
       function(id, fit_id, weather_id, data_id, spec) {
         fit <- fits[[match(fit_id, vapply(fit_specs, `[[`, "", "id"))]]
         fit_file <- if (isTRUE(fit$ok)) fit$fit_file else NA_character_
         files <- list(data = data_file(data_id), frame = frame_file(weather_id), fit = fit_file)
-        spec$policy <- NULL
         list(
-          id = id, fit_id = fit_id, weather_id = weather_id, data_id = data_id, spec = spec,
+          id = id, fit_id = fit_id, weather_id = weather_id, data_id = data_id,
+          spec = sections(spec, "source", "sample", "sim", "seed"),
           data_file = files$data, frame_file = files$frame, fit_file = fit_file,
-          stamps = lapply(files, stamp),
+          stamps = lapply(files, .batch_stamp),
           # The Step 2 run is stored for the policy branches that read it.
           needs_step2 = any(!is.na(runs$policy_id[runs$sim_id %in% id]))
         )
@@ -315,11 +317,6 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
   }
   if (identical(stage, "policy")) {
     keep <- !is.na(runs$policy_id) & !duplicated(runs$policy_id)
-    stamp <- function(path) {
-      if (is.character(path) && length(path) == 1L && !is.na(path) && file.exists(path)) {
-        c(size = file.size(path), mtime = as.numeric(file.mtime(path)))
-      }
-    }
     items <- unname(Map(
       function(id, sim_id, fit_id, spec) {
         sim <- sims[[match(sim_id, vapply(sim_specs, `[[`, "", "id"))]]
@@ -327,9 +324,10 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
         sim_file <- if (isTRUE(sim$ok)) sim$sim_file else NA_character_
         fit_file <- if (isTRUE(fit$ok)) fit$fit_file else NA_character_
         list(
-          id = id, sim_id = sim_id, fit_id = fit_id, spec = spec,
+          id = id, sim_id = sim_id, fit_id = fit_id,
+          spec = sections(spec, "sample", "policy", "seed"),
           sim_file = sim_file, fit_file = fit_file,
-          stamps = list(sim = stamp(sim_file), fit = stamp(fit_file))
+          stamps = list(sim = .batch_stamp(sim_file), fit = .batch_stamp(fit_file))
         )
       },
       runs$policy_id[keep], runs$sim_id[keep], runs$fit_id[keep], runs$spec[keep]
@@ -341,14 +339,28 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
     for (v in names(runs$wxvar_ids[[i]])) {
       id <- runs$wxvar_ids[[i]][[v]]
       if (is.null(items[[id]])) {
+        spec <- runs$spec[[i]]
         items[[id]] <- list(
-          id = id, variable = v, data_id = runs$data_id[i], spec = no_model(runs$spec[[i]]),
-          data_file = data_file(runs$data_id[i])
+          id = id, variable = v, data_id = runs$data_id[i],
+          spec = list(
+            source = spec$source, stats = spec$stats,
+            weather = c(spec$weather[v], list(hist_years = spec$weather$hist_years))
+          ),
+          data_file = data_file(runs$data_id[i]),
+          stamps = list(data = .batch_stamp(data_file(runs$data_id[i])))
         )
       }
     }
   }
   unname(items)
+}
+
+# Size and modification time of a file, `NULL` when there is none.
+#' @noRd
+.batch_stamp <- function(path) {
+  if (is.character(path) && length(path) == 1L && !is.na(path) && file.exists(path)) {
+    c(size = file.size(path), mtime = as.numeric(file.mtime(path)))
+  }
 }
 
 #' Prepare the survey data of one data set
@@ -472,6 +484,7 @@ wise_batch_weather <- function(item, connection_params = NULL) {
       wx$hist_years <- spec$weather$hist_years
       wx[[v]]$form <- "Continuous"
       sw <- wise_selected_weather(wx, d$variable_list)
+      # Continuous variables: the seed only matters for K-means bin breaks.
       w <- wise_load_weather(d$survey_data, d$selected_surveys, sw, hy, cp, WISEAPP_DEFAULT_SEED)
       tab <- weather_stats_table(
         w$survey_weather, sw[1, ], d$survey_data, w$hist_cells, hy, spec$stats$location_samples
@@ -696,7 +709,7 @@ wise_batch_sim <- function(item, connection_params = NULL) {
       }
       gc_max <- gc()
       failures <- vapply(result$failures %||% list(), function(f) {
-        sprintf("%s: %s", f$key, f$error %||% "failed")
+        sprintf("%s: %s", f$key, wise_user_error(f$error %||% "failed", "batch simulation member"))
       }, character(1))
       list(
         ok = TRUE, id = item$id, partial = failures, sim_file = sim_file,
@@ -872,11 +885,16 @@ wise_batch_policy <- function(item) {
 #' @noRd
 .write_table <- function(tab, out_dir, name) {
   dir <- file.path(out_dir, "tables", name)
-  unlink(dir, recursive = TRUE)
   if (is.null(tab) || !nrow(tab)) {
+    unlink(dir, recursive = TRUE)
     return(invisible(NULL))
   }
-  arrow::write_dataset(tab, dir, format = "parquet", partitioning = "code")
+  # Write beside the old dataset and swap, so a failed write keeps it.
+  tmp <- paste0(dir, ".new")
+  unlink(tmp, recursive = TRUE)
+  arrow::write_dataset(tab, tmp, format = "parquet", partitioning = "code")
+  unlink(dir, recursive = TRUE)
+  file.rename(tmp, dir)
   invisible(dir)
 }
 
@@ -902,8 +920,10 @@ wise_batch_policy <- function(item) {
 #'
 #' Local data folders only: other sources return `NULL`. Hashes the parquet
 #' files under `microdata/` whose names start with an economy code of the runs.
+#' With `cache_file`, a digest is reused while the size and modification time of
+#' its file are unchanged, so a rerun does not read the data again.
 #' @noRd
-.batch_data_digest <- function(path, runs) {
+.batch_data_digest <- function(path, runs, cache_file = NULL) {
   if (!nzchar(path %||% "") || !dir.exists(file.path(path, "microdata"))) {
     return(NULL)
   }
@@ -914,11 +934,26 @@ wise_batch_policy <- function(item) {
   if (!length(files)) {
     return(NULL)
   }
-  data.frame(
-    file = files,
-    sha256 = vapply(files, function(f) digest::digest(file = file.path(path, "microdata", f), algo = "sha256"), ""),
-    row.names = NULL
-  )
+  cache <- if (!is.null(cache_file) && file.exists(cache_file)) {
+    tryCatch(readRDS(cache_file), error = function(e) NULL)
+  }
+  full <- file.path(path, "microdata", files)
+  stamps <- paste(file.size(full), as.numeric(file.mtime(full)))
+  sha <- vapply(seq_along(files), function(i) {
+    hit <- cache[[files[i]]]
+    if (!is.null(hit) && identical(hit$stamp, stamps[i])) {
+      hit$sha256
+    } else {
+      digest::digest(file = full[i], algo = "sha256")
+    }
+  }, "")
+  if (!is.null(cache_file)) {
+    saveRDS(
+      stats::setNames(Map(function(s, h) list(stamp = s, sha256 = h), stamps, sha), files),
+      cache_file
+    )
+  }
+  data.frame(file = files, sha256 = sha, row.names = NULL)
 }
 
 #' Write the results store
@@ -942,6 +977,8 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
   pick <- function(branches, name) {
     dplyr::bind_rows(lapply(ok(branches), function(b) b$tables[[name]]))
   }
+  # A stage the grid does not use holds one inert "none" item.
+  n_items <- function(branches) sum(!vapply(branches, function(b) identical(b$id, "none"), logical(1)))
 
   # Stored Step 2 runs: drop those no policy of the grid reads (all of them
   # unless they are kept).
@@ -969,9 +1006,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
 
   # Run catalogue and per-run specs.
   flat <- dplyr::bind_rows(lapply(runs$spec, .spec_flat))
-  axes <- setdiff(names(runs), c(
-    "run_id", "data_id", "wxvar_ids", "weather_id", "fit_id", "sim_id", "policy_id", "resolved", "spec"
-  ))
+  axes <- setdiff(names(runs), .RESERVED_AXES)
   labels <- tibble::as_tibble(runs[axes])
   names(labels) <- paste0("axis_", axes)
   catalogue <- dplyr::bind_cols(
@@ -1058,8 +1093,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
     started_at = format(grid$started, "%Y-%m-%dT%H:%M:%S%z"),
     finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
     n_runs = nrow(runs), n_data_sets = length(data_tables), n_weather_variables = length(weather_tables),
-    n_fits = length(fit_tables), n_sims = sum(!vapply(sim_tables, function(b) identical(b$id, "none"), logical(1))),
-    n_policies = sum(!vapply(policy_tables, function(b) identical(b$id, "none"), logical(1))),
+    n_fits = n_items(fit_tables), n_sims = n_items(sim_tables), n_policies = n_items(policy_tables),
     n_failures = nrow(failures),
     tables = as.list(tables)
   )

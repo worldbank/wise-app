@@ -883,7 +883,7 @@ step3_batch_tables <- function(run, hs, ss, svy, levers, skip_coef, analysis_uni
       error = function(e) e
     )
     if (inherits(res, "error")) {
-      partial <- c(partial, sprintf("metric %s: %s", m, conditionMessage(res)))
+      partial <- c(partial, sprintf("metric %s: %s", m, wise_user_error(res, "batch policy metric")))
       next
     }
     summaries[[length(summaries) + 1L]] <- res$summary

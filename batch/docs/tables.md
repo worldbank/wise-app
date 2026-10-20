@@ -1,9 +1,9 @@
 # Batch output tables - catalogue
 
-Status: Phase 0, 2026-10-19. Decisions D1-D4 taken; second consolidation
-round (11 result tables) proposed. Part of `review/batch_pipeline_plan.md`.
-Column lists are indicative; each phase fixes the exact schema from the core
-table builder it extracts. The schema of the Phase 1 tables (`variable_stats`,
+Status: Phases 0 to 5 done (catalogue written 2026-10-19; decisions D1-D4
+taken; 11 result tables). Part of `review/batch_pipeline_plan.md`. Section 3
+lists the draft columns; each phase fixed the exact schema from the core
+table builder it extracted. The schema of the Phase 1 tables (`variable_stats`,
 `interview_dates`, `weather_stats`), the Phase 2 tables, the Phase 3 tables
 (`annual`, `summary`, `sim_weather`) and the Phase 4 tables (the policy arm of
 `annual` and `summary`, `decomposition`, `policy_measures`) is fixed and

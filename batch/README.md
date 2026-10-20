@@ -1,9 +1,9 @@
 # WISE-APP batch runs
 
-> **Status: Phase 4.** The run spec, the grid, the runner, the Step 1 data
+> **Status: Phase 5.** The run spec, the grid, the runner, the Step 1 data
 > tables (survey and weather statistics), the Step 1 model tables, the Step 2
-> simulation tables and the Step 3 policy tables work. Figures from the tables
-> and the reproducibility package follow in a later phase (see Status). The old
+> simulation tables, the Step 3 policy tables and the reproducibility template
+> work. Figures from the tables are not planned for now (see Status). The old
 > scripts are in `legacy/` for reference only; they are not maintained. Design:
 > `review/batch_pipeline_plan.md`. Tables: `batch/docs/tables.md` and, for the
 > tables that exist, `batch/docs/phase1_tables.md` (data),
@@ -361,7 +361,9 @@ same weather variable settings compute its statistics once; runs that differ
 only in the model share the weather frame and fit separately; runs that differ
 only in the simulation share the fit; runs that differ only in the policy share
 the simulation. Because the statistics options are part of `data_id`, changing
-them reruns the fits, the simulations and the policy runs too.
+them reruns the fits, the simulations and the policy runs too. A stage also
+reruns when a file it reads has been rebuilt (the check uses the size and
+modification time of the file).
 
 ## Output
 
@@ -372,7 +374,9 @@ results/
 ├── tables/             one parquet dataset per table, partitioned by country code
 ├── provenance.parquet  data source, row counts and timings per stage
 ├── failures.parquet    stages that failed, the runs they affect, the reason
-└── manifest.json       package, R and duckdb versions, data source digest, start and end times
+└── manifest.json       package version and commit, R and duckdb versions, hash of renv.lock,
+                        data source digest, SHA-256 of the survey files (local data), start and end
+                        times, counts of runs, stages and failures, table names
 ```
 
 Tables join to `runs` on their stage id.
@@ -397,6 +401,20 @@ year, or the stored `policy_expected` rows of `summary`.
 A stage that fails (a missing survey file, an outcome the surveys do not
 have) does not stop the others: it is listed in `failures.parquet` with the
 run ids it affects, and the runs that do not depend on it finish.
+
+Two limits. A failure the stage reports is stored as the stage's result, so
+`tar_make()` does not retry it; after fixing the cause (a network error, a
+missing file), invalidate the stage target (`targets::tar_invalidate(
+data_frames)`, `wx_frames`, `fit_tables`, `sim_tables` or `policy_tables`) and
+run again. A worker that crashes (typically out of memory in a Step 2 run)
+makes `targets` skip `results`, so no tables are written for that run; lower
+`WISEAPP_BATCH_SIM_WORKERS`, set `WISEAPP_BATCH_MEMORY_GB` and run
+`tar_make()` again: the branches that finished are kept and only the crashed
+ones rerun.
+
+The package, R and `duckdb` versions, the `renv.lock` hash and the survey-file
+digest in `manifest.json` are what `check_reproducibility.R` in the project
+template compares on another machine (see the README of the template).
 
 A few statistics are computed by batch only (not shown in the app): location
 samples, location-demeaned statistics, deciles for every variable, indicator

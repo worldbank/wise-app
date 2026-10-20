@@ -10,16 +10,17 @@ m <- jsonlite::read_json("results/manifest.json", simplifyVector = TRUE)
 data_path <- Sys.getenv("WISEAPP_DATA_PATH")
 
 now_sha <- function(f) if (file.exists(f)) digest::digest(file = f, algo = "sha256") else NA_character_
-now_git <- tryCatch(
-  utils::packageDescription("wiseapp")$RemoteSha %||% NA_character_,
-  error = function(e) NA_character_
-)
+# The same lookup the run used for the manifest.
+now_git <- tryCatch(wiseapp:::.git_sha(), error = function(e) NA_character_)
+
+# A value the run could not record is null in the manifest and absent here.
+rec <- function(x) as.character(x %||% NA_character_)
 
 checks <- data.frame(
   item = c("wiseapp version", "wiseapp commit", "R version", "duckdb version", "renv.lock"),
   recorded = c(
-    m$wiseapp_version, m$wiseapp_git_sha, m$r_version, m$duckdb_version,
-    m$renv_lock_sha256
+    rec(m$wiseapp_version), rec(m$wiseapp_git_sha), rec(m$r_version), rec(m$duckdb_version),
+    rec(m$renv_lock_sha256)
   ),
   current = c(
     as.character(utils::packageVersion("wiseapp")), now_git,

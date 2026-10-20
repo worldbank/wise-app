@@ -485,6 +485,26 @@ test_that("fit_id follows data, weather, model and seed", {
   expect_false(identical(st$fit_id, ids$fit_id))
 })
 
+test_that("validation catches inconsistent samples and grids", {
+  err <- function(...) conditionMessage(tryCatch(wise_spec(...), error = identity))
+  expect_match(
+    err(sample = list(countries = "BFA", years = list(MWI = 2019))),
+    "'MWI', which is not in sample.countries"
+  )
+  expect_match(err(sample = list(countries = "BFA", years = list(BFA = "x"))), "must be whole years")
+  expect_match(err(sim = list()), "needs a model section")
+  expect_match(err(model = list(), policy = list(sp = list())), "needs a sim section")
+  expect_error(
+    wise_spec_expand(list(axes = list(country = c("BFA", "MWI"), seed = c(1, 2, 3)), zip = list(c("country", "seed")))),
+    "equal lengths"
+  )
+  expect_error(wise_spec_expand(list(axes = list(run_id = c("a", "b")))), "reserved")
+  expect_error(
+    wise_spec_expand(list(axes = list(country = c("BFA", "MWI")), exclude = list(list(seed = 1)))),
+    "unknown axes"
+  )
+})
+
 test_that("model validation lists the problems", {
   err <- function(...) conditionMessage(tryCatch(wise_spec(model = list(...)), error = identity))
   expect_match(err(type = "Random forest"), "model.type must be one of")

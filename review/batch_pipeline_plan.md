@@ -299,6 +299,20 @@ of the tables:
    headless app (`dev/ui_drive.R` + config import + Export bundle) and through
    batch, then diffs the tables. It runs per release, not in CI.
 
+### 5.1 Known deviations from the app
+
+- Step 2 runs through the serial `step2_compute()` with the weather kept in
+  memory and no workers; the numbers are the app's, the scheduling is not.
+- The location panel (clustered inference) is optional: when the H3 files are
+  missing the fit uses fixest's default variance and `model_fit` and
+  `provenance.parquet` say so. The Survey stats tab shows no such note.
+- `weather_stats` uses `WISEAPP_DEFAULT_SEED`, not the spec seed. The variables
+  are continuous there, so the seed only labels the table.
+- Shock-responsive social protection: the rules the app fills in from the data
+  after the controls render (default trigger variable, response-check
+  direction, longest return period) are inputs of the spec (README, "The
+  policy").
+
 ## 6. Phases
 
 ### Phase 0 - Preparation (no app code changes)

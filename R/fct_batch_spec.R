@@ -1,9 +1,9 @@
 # Batch run spec ----
 # One canonical, plain-list description of a single run (`wise_spec()`), its
 # validation, its stage hashes, and the YAML grid that expands to many runs.
-# App defaults live in `wise_spec_defaults()` (fct_spec_defaults.R). Phases 1
-# to 3 cover the `source`, `sample`, `outcome`, `weather`, `stats`, `model`
-# and `sim` sections; the policy section arrives with its phase. Shiny-free.
+# App defaults live in `wise_spec_defaults()` (fct_spec_defaults.R). The spec
+# covers the `source`, `sample`, `outcome`, `weather`, `stats`, `model`, `sim`
+# and `policy` sections. Shiny-free.
 
 # Construction ----
 
@@ -506,7 +506,8 @@ wise_policy_configs <- function(policy, so = NULL, analysis_unit = "hh", labor_d
   s$unit <- as.character(s$unit)
   s$countries <- if (is.null(s$countries)) NULL else sort(unique(as.character(unlist(s$countries))))
   s$years <- if (length(s$years)) {
-    yrs <- lapply(s$years, function(y) sort(unique(as.integer(unlist(y)))))
+    # Keep a non-year as NA for the validation (sort() alone would drop it).
+    yrs <- lapply(s$years, function(y) sort(unique(suppressWarnings(as.integer(unlist(y)))), na.last = TRUE))
     yrs[order(names(yrs))]
   }
   spec$sample <- s
@@ -1038,8 +1039,10 @@ wise_spec_from_config <- function(config) {
   outcome = c("outcome", "name")
 )
 
-# Spec sections that later phases will add; named in errors.
-.FUTURE_SECTIONS <- character(0)
+# Names of the columns of the run table; an axis cannot use them.
+.RESERVED_AXES <- c(
+  "run_id", "data_id", "wxvar_ids", "weather_id", "fit_id", "sim_id", "policy_id", "resolved", "spec"
+)
 
 # Profile groups that set a part of a section rather than the section itself.
 .PROFILE_PATHS <- list(
@@ -1065,12 +1068,6 @@ wise_spec_from_config <- function(config) {
 # Apply one axis value to a spec (a list of raw sections, not yet normalised).
 #' @noRd
 .apply_axis <- function(spec, axis, value, profiles) {
-  if (axis %in% .FUTURE_SECTIONS) {
-    stop(
-      "Axis '", axis, "' belongs to a later phase; this version covers ",
-      paste(WISEAPP_SPEC_SECTIONS, collapse = ", "), " and seed.", call. = FALSE
-    )
-  }
   prof <- profiles[[axis]]
   if (!is.null(prof) && is.character(value) && length(value) == 1L) {
     if (!value %in% names(prof)) {
@@ -1147,13 +1144,6 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL,
   unknown <- setdiff(
     names(grid), c("base", "seed", WISEAPP_SPEC_SECTIONS, "profiles", "axes", "zip", "exclude")
   )
-  future <- intersect(unknown, .FUTURE_SECTIONS)
-  if (length(future)) {
-    stop(
-      "Grid section(s) '", paste(future, collapse = "', '"), "' belong to a later phase.",
-      call. = FALSE
-    )
-  }
   if (length(unknown)) stop("Unknown grid key(s): ", paste(unknown, collapse = ", "), call. = FALSE)
 
   base <- list()
@@ -1171,6 +1161,10 @@ wise_spec_expand <- function(grid, connection_params = NULL, metadata = NULL,
   profiles <- grid$profiles %||% list()
   axis_names <- names(axes)
   if (length(axes) && is.null(axis_names)) stop("axes must be a named list.", call. = FALSE)
+  reserved <- intersect(axis_names, .RESERVED_AXES)
+  if (length(reserved)) {
+    stop("Axis name(s) reserved for the run table: ", paste(reserved, collapse = ", "), call. = FALSE)
+  }
   values <- lapply(axes, function(a) if (is.list(a)) a else as.list(a))
 
   # Index combinations: zipped axes share one index.
