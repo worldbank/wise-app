@@ -8,6 +8,16 @@
   invisible(NULL)
 }
 
+# Tell the user which baseline households were left out for missing weather
+# or model data (`step2_baseline_complete()`). Silent when none were.
+.notify_baseline_dropped <- function(dropped) {
+  msg <- step2_dropped_note(dropped)
+  if (!is.null(msg)) {
+    shiny::showNotification(paste("Baseline:", msg), type = "warning", duration = NULL)
+  }
+  invisible(NULL)
+}
+
 #' 2_01_weathersim UI Function
 #'
 #' @description A shiny Module. Unified sidebar for configuring and running
@@ -604,11 +614,20 @@ mod_2_01_weathersim_server <- function(id,
 
     # Derived config reactives ----
 
-    # survey_weather filtered to the selected baseline rows.
-    # Used in place of survey_weather() inside observeEvent(run_sim).
-    baseline_svy <- reactive({
-      step2_baseline_svy(survey_weather(), input$baseline_survey %||% baseline_default())
-    })
+    # survey_weather filtered to the selected baseline rows and to the
+    # households the model can predict for (complete weather and model data).
+    # Returns list(svy, dropped); NULL, with a notification, when none is left.
+    baseline_run <- function(sw, so, mf) {
+      tryCatch(
+        step2_baseline_run(
+          survey_weather(), input$baseline_survey %||% baseline_default(), sw, mf, so
+        ),
+        error = function(e) {
+          shiny::showNotification(wise_user_error(e, "Simulation"), type = "error", duration = NULL)
+          NULL
+        }
+      )
+    }
 
     # Keep weather retrieval on the same code/year waves as the baseline
     # population. Retain every matching metadata row so same-year survey rounds
@@ -935,10 +954,12 @@ mod_2_01_weathersim_server <- function(id,
       sw <- selected_weather()
       so <- selected_outcome()
       sh <- selected_hist()
-      svy <- baseline_svy()
       ss <- baseline_surveys()
       req(ss)
       mf <- model_fit()
+      baseline <- baseline_run(sw, so, mf)
+      req(baseline)
+      svy <- baseline$svy
       cp <- connection_params()
       fut_periods <- future_periods()
       sf <- selected_fut()
@@ -1073,7 +1094,7 @@ mod_2_01_weathersim_server <- function(id,
             }
             result <- wise_step2_annotate(
               .wise_step2_async_read_manifest(manifest, job),
-              sw, unlist(sh$year_range), captured_baseline
+              sw, unlist(sh$year_range), captured_baseline, baseline$dropped
             )
              result$hist_sim_result$.sig <- job$dependency_signature
              committed <- .wise_step2_async_commit(job, function() {
@@ -1137,6 +1158,7 @@ mod_2_01_weathersim_server <- function(id,
                 "Climate scenario results are ready.", type = "message", duration = 3
               )
             }
+            .notify_baseline_dropped(baseline$dropped)
             .notify_data_quality(result$data_quality)
              invisible(TRUE)
            }),
@@ -1222,10 +1244,12 @@ mod_2_01_weathersim_server <- function(id,
         sw <- selected_weather()
         so <- selected_outcome()
         sh <- selected_hist()
-        svy <- baseline_svy()
         ss <- baseline_surveys()
         req(ss)
         mf <- model_fit()
+        baseline <- baseline_run(sw, so, mf)
+        req(baseline)
+        svy <- baseline$svy
         cp <- connection_params()
         fut_periods <- future_periods()
         sf <- selected_fut()
@@ -1285,7 +1309,8 @@ mod_2_01_weathersim_server <- function(id,
             result, sw, unlist(sh$year_range),
             step2_baseline_label(
               baseline_survey_choices(), input$baseline_survey %||% baseline_default()
-            )
+            ),
+            baseline$dropped
           )
           # INT-08: the immutable run signature travels with the result so
           # Step 3 can detect that it is consuming a superseded simulation.
@@ -1341,6 +1366,7 @@ mod_2_01_weathersim_server <- function(id,
             type = "message", duration = 3
           )
         }
+        .notify_baseline_dropped(baseline$dropped)
         .notify_data_quality(result$data_quality)
       },
       ignoreInit = TRUE

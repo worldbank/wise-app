@@ -151,6 +151,12 @@ latest wave of each economy) is predicted under every historical weather year
 (`sim.hist_years`) and, for each projection period and SSP, under the same years
 perturbed by each CMIP6 climate model (additive for temperature, multiplicative
 for rain and days). The poverty line is the spec's `outcome.poverty_line` (3.00 a day if none).
+The baseline holds only households with a value for every weather variable of the model
+and for the other variables of the final model (the households the model was fitted on);
+the others are left out of every Step 2 and Step 3 result and counted in
+`provenance.parquet` (`n_baseline_dropped`, `weight_share_dropped`). `weather_stats` still
+counts them as unmatched. Ids from before this rule do not
+match: `sim_id` includes a Step 2 input version.
 Builders: `R/fct_step2_tables.R`. Step 3 reuses these tables for the policy arm;
 `policy_id` is `NA` for the baseline arm.
 
@@ -287,7 +293,7 @@ Long form: `section`, `scenario`, `metric` (where the section has them),
 |---|---|
 | `runs.parquet` | One row per run: `run_id`, the stage ids (`wxvar_ids` is a list), axis labels (`axis_<name>`), the flattened spec, `spec_json`. |
 | `specs/<run_id>.json` | Full normalised spec of each run; read with `wise_spec_read()`. |
-| `provenance.parquet` | One row per finished stage: `stage`, `id`, `n_rows`, `n_surveys`, `source_type`, `source_origin`, `source_files` (names and sizes), `location_panel`, `n_no_panel`, `n_scenarios`, `n_failed_keys`, `r_peak_mb`, `seconds`, `wiseapp_version`, `completed_at` (columns a stage does not have are `NA`). |
+| `provenance.parquet` | One row per finished stage (a simulation row also records `n_baseline_dropped`, the baseline households left out for missing weather or model data, and `weight_share_dropped`, their share of the survey weight; weights of the others are not rescaled): `stage`, `id`, `n_rows`, `n_surveys`, `source_type`, `source_origin`, `source_files` (names and sizes), `location_panel`, `n_no_panel`, `n_scenarios`, `n_failed_keys`, `n_baseline_dropped`, `weight_share_dropped`, `r_peak_mb`, `seconds`, `wiseapp_version`, `completed_at` (columns a stage does not have are `NA`). |
 | `failures.parquet` | `stage`, `id`, `run_ids` (comma-separated), `n_runs`, `error_class`, `message`. Empty when everything ran. Partial results have `error_class` `partial_simulation_failure` or `partial_policy_failure`. |
 | `manifest.json` | `schema_version`, `wiseapp_version`, `wiseapp_git_sha`, `r_version`, `duckdb_version`, `renv_lock_sha256`, `data_source`, `data_files` (SHA-256 of the survey files, local data), `started_at`, `finished_at`, counts, `tables`. Values that could not be recorded are `null`. |
 

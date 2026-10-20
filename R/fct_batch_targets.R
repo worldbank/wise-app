@@ -660,9 +660,12 @@ wise_batch_sim <- function(item, connection_params = NULL) {
       cp <- connection_params %||% wise_batch_connection(spec$source)
       mf <- qs2::qs_read(item$fit_file)$mf
       sw <- w$selected_weather
+      so <- wise_outcome_run_line(d$outcome$so, spec$outcome)
+      # Households without weather or model data are left out, as in the app.
+      baseline <- step2_baseline_run(w$survey_weather, sim$baseline_survey, sw, mf, so)
       input <- wise_step2_input(
-        sw, wise_outcome_run_line(d$outcome$so, spec$outcome),
-        svy = step2_baseline_svy(w$survey_weather, sim$baseline_survey),
+        sw, so,
+        svy = baseline$svy,
         ss = .step2_filter_baseline_surveys(d$selected_surveys, sim$baseline_survey),
         mf = mf, cp = cp, hist_years = sim$hist_years, periods = sim$future_periods,
         ssps = sim$ssps, residuals = sim$residuals, coef_uncertainty = sim$coef_uncertainty,
@@ -689,7 +692,8 @@ wise_batch_sim <- function(item, connection_params = NULL) {
         out$result, sw, sim$hist_years,
         step2_baseline_label(
           step2_baseline_choices(w$survey_weather, d$selected_surveys), sim$baseline_survey
-        )
+        ),
+        baseline$dropped
       )
       tables <- step2_batch_tables(result, skip_coef = input$skip_coef_draws, selected_weather = sw)
       code <- paste(spec$sample$countries, collapse = "+")
@@ -720,7 +724,10 @@ wise_batch_sim <- function(item, connection_params = NULL) {
           n_surveys = nrow(d$selected_surveys),
           source_type = d$source$type, source_origin = d$source$origin,
           source_files = d$source$files, n_scenarios = length(result$new_scenarios),
-          n_failed_keys = length(failures), r_peak_mb = sum(gc_max[, ncol(gc_max)]),
+          n_failed_keys = length(failures),
+          n_baseline_dropped = baseline$dropped$n_dropped,
+          weight_share_dropped = baseline$dropped$weight_share_dropped,
+          r_peak_mb = sum(gc_max[, ncol(gc_max)]),
           seconds = as.numeric(difftime(Sys.time(), t0, units = "secs")),
           stringsAsFactors = FALSE
         )

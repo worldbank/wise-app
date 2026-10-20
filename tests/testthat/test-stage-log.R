@@ -86,7 +86,7 @@ test_that("Step 2 failure notifications go through wise_user_error (CR-SEC-08)",
   skip_if(!file.exists(src), "R/ source tree not available (installed package)")
   text <- readLines(src, warn = FALSE)
   expect_false(any(grepl("Simulation failed: \", conditionMessage", text, fixed = TRUE)))
-  expect_length(grep("wise_user_error(", text, fixed = TRUE), 3L)
+  expect_length(grep("wise_user_error(", text, fixed = TRUE), 4L)
 })
 
 # CR-SEC-08: user-facing failure messages go through wise_user_error() instead of

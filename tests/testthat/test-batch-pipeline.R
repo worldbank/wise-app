@@ -486,7 +486,7 @@ test_that("simulations run per sim_id, write the three Step 2 tables and are reu
   mf <- wise_fit(wx$survey_weather, wx$stored_breaks, so, sw, m$selected_model, md$variable_list, spec$seed)
   sim <- spec$sim
   input <- wise_step2_input(
-    sw, so, step2_baseline_svy(wx$survey_weather, sim$baseline_survey),
+    sw, so, step2_baseline_run(wx$survey_weather, sim$baseline_survey, sw, mf, so)$svy,
     .step2_filter_baseline_surveys(ss, sim$baseline_survey), mf, cp, sim$hist_years,
     sim$future_periods, sim$ssps, sim$residuals, sim$coef_uncertainty,
     stored_breaks = wx$stored_breaks, slim = TRUE

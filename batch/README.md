@@ -201,6 +201,9 @@ indicators); `tables.md` marks them.
   loads once per sample, a weather variable once, a model fit once, a Step 2 run
   once. The statistics options belong to `data_id`, so changing them reruns the
   fits, simulations and policies too.
+- `sim_id` (and so `policy_id`) includes a version of the Step 2 input. Results
+  from before baseline households with missing weather were left out (version 2)
+  have other ids and are rerun.
 - A stage reruns when its inputs change, including when a file it reads was
   rebuilt (size and modification time). Changing `spec.yaml` and running again
   recomputes only what the change touches.

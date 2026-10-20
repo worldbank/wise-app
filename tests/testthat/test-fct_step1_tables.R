@@ -446,3 +446,22 @@ test_that("weather statistics: batch-only rows follow their brute-force definiti
   nl <- weather_stats_table(core$survey_weather, sw[1, ], df, core$hist_cells, hy, location_samples = FALSE)
   expect_identical(unique(nl$sample), "all")
 })
+
+test_that("leaving households without weather out of the Step 2 baseline keeps them in weather_stats", {
+  mock_get_weather()
+  df <- batch_fixture_prepared()
+  sw <- wx_selected()
+  hy <- c(from = 2017L, to = 2019L)
+  core <- wise_load_weather(df, data.frame(), sw, hy, list(), 1L)
+  swd <- core$survey_weather
+  gap <- which(swd$year == "2018")[1:3]
+  swd$tx[gap] <- NA
+  before <- weather_stats_table(swd, sw[1, ], df, core$hist_cells, hy)
+  base <- step2_baseline_complete(swd, sw)
+  expect_gte(base$dropped$n_dropped, 3L)
+  expect_identical(nrow(base$svy), nrow(swd) - base$dropped$n_dropped)
+  expect_false(anyNA(base$svy$tx))
+  after <- weather_stats_table(swd, sw[1, ], df, core$hist_cells, hy)
+  expect_identical(after, before)
+  expect_gt(row_of(before, source = "survey", sample = "all", wave = "2018")$pct_missing, 0)
+})

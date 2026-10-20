@@ -838,6 +838,14 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
   substr(digest::digest(.spec_json(x), algo = "sha256", serialize = FALSE), 1L, 12L)
 }
 
+# Version of how the Step 2 baseline is built from the spec. It enters `sim_id`
+# so that a change of the baseline without a change of any spec field does not
+# reuse stored simulations. 2: households with missing weather or model data
+# are left out of the baseline (`step2_baseline_complete()`); 1 (not in the
+# hash) kept them.
+#' @noRd
+.STEP2_INPUT_VERSION <- 2L
+
 #' Stage ids of a spec
 #'
 #' Hashes of the spec sections each stage depends on. They key the tables and
@@ -891,7 +899,7 @@ wise_spec_ids <- function(spec) {
     NA_character_
   } else {
     .spec_digest(c(
-      list(fit_id = fit_id, sim = .sim_effective(spec)),
+      list(fit_id = fit_id, sim = .sim_effective(spec), step2_input = .STEP2_INPUT_VERSION),
       if (!line_in_data && !is.null(spec$outcome$poverty_line)) {
         list(poverty_line = spec$outcome$poverty_line)
       }

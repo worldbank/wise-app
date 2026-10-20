@@ -130,6 +130,88 @@ test_that("a finished run is described by its historical label and summary", {
   expect_identical(res$hist_sim_result$a, 1)
 })
 
+# Baseline without weather ----
+
+step2_gap_survey <- function() {
+  svy <- data.frame(
+    hhid = 1:8, code = "AAA", year = 2020L, survname = "SRV", loc_id = rep(c("L1", "L2"), 4),
+    int_month = 1L, urban = c(1, 0, 1, 0, 1, NA, 1, 0), temp = c(20, NA, 21, 22, 23, 24, NA, 25),
+    weight = c(1, 2, 1, 1, 1, 1, 4, 1), stringsAsFactors = FALSE
+  )
+  svy$temp_cont <- svy$temp
+  svy
+}
+step2_gap_fit <- function() {
+  fit <- step2_input_fit()
+  fit$weather_terms <- "temp"
+  fit$formulas <- list(formula3 = welfare ~ temp + I(temp^2) + urban | loc_id)
+  fit
+}
+
+test_that("households without weather or model data are left out of the baseline", {
+  svy <- step2_gap_survey()
+  sw <- step2_input_weather()
+  base <- step2_baseline_complete(svy, sw, step2_gap_fit(), step2_input_outcome())
+  # Rows 2 and 7 have no weather; row 6 has no value of the control `urban`.
+  expect_identical(base$svy$hhid, c(1L, 3L, 4L, 5L, 8L))
+  d <- base$dropped
+  expect_identical(c(d$n_total, d$n_dropped, d$n_dropped_weather), c(8L, 3L, 2L))
+  # Weights are kept as they are; the dropped share is reported.
+  expect_identical(base$svy$weight, svy$weight[c(1, 3, 4, 5, 8)])
+  expect_equal(d$weight_share_dropped, 7 / 12)
+  expect_true(all(c("temp", "temp_cont", "urban", "loc_id") %in% d$variables))
+  expect_identical(svy, step2_gap_survey())
+  # Without a model only the selected weather is checked; nothing dropped, same object.
+  expect_identical(step2_baseline_complete(step2_input_survey(), sw)$svy, step2_input_survey())
+  expect_identical(
+    step2_baseline_complete(svy, sw)$dropped$n_dropped, 2L
+  )
+  # The shared call: baseline waves first, then complete cases.
+  run <- step2_baseline_run(svy, "AAA|2020", sw, step2_gap_fit(), step2_input_outcome())
+  expect_identical(run$svy, base$svy)
+  expect_match(step2_dropped_note(d), "3 of 8 baseline households left out.*58.3% of the survey weight")
+  expect_null(step2_dropped_note(step2_baseline_complete(step2_input_survey(), sw)$dropped))
+  expect_null(step2_dropped_note(NULL))
+})
+
+test_that("a baseline with no complete household is an error", {
+  svy <- step2_gap_survey()
+  svy$temp <- NA_real_
+  expect_error(
+    step2_baseline_complete(svy, step2_input_weather(), step2_gap_fit()),
+    "No household of the baseline survey has complete weather"
+  )
+})
+
+test_that("the filtered baseline reaches the step 2 input and the run summary", {
+  fit <- step2_gap_fit()
+  base <- step2_baseline_run(step2_gap_survey(), character(0), step2_input_weather(), fit)
+  input <- wise_step2_input(
+    step2_input_weather(), step2_input_outcome(), base$svy, step2_input_surveys(),
+    fit, list(type = "local", path = "/data"), c(2000, 2002), list(), character(0)
+  )
+  expect_identical(input$svy$hhid, c(1L, 3L, 4L, 5L, 8L))
+  res <- wise_step2_annotate(
+    list(hist_sim_result = list(), total_runs = 9L), step2_input_weather(), c(1991, 2020), "A 2020",
+    base$dropped
+  )
+  expect_identical(res$hist_sim_result$sim_summary$baseline_dropped, base$dropped)
+})
+
+test_that("the Step 2 input version is part of sim_id", {
+  spec <- wise_spec(
+    outcome = list(name = "welfare"), weather = list(tx = list()), model = list(), sim = list()
+  )
+  ids <- wise_spec_ids(spec)
+  expect_false(is.na(ids$sim_id))
+  without_version <- .spec_digest(list(fit_id = ids$fit_id, sim = .sim_effective(spec)))
+  expect_false(identical(ids$sim_id, without_version))
+  expect_identical(
+    ids$sim_id,
+    .spec_digest(list(fit_id = ids$fit_id, sim = .sim_effective(spec), step2_input = .STEP2_INPUT_VERSION))
+  )
+})
+
 # Module parity ----
 
 # Drive the simulation module and return what it hands to the worker (async
