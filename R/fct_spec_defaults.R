@@ -238,11 +238,12 @@ wise_default_lasso <- function() {
 #' field names.
 #'
 #' @param units Scalar character; the variable's units.
+#' @param name Optional scalar character; the variable name.
 #' @return A named list: `ref_period`, `temporal_agg`, `transformation`,
 #'   `form`, `n_bins`, `binning_method`, `custom_breaks`, `polynomial`.
 #' @noRd
-wise_weather_var_defaults <- function(units) {
-  d <- weather_spec_defaults(units)
+wise_weather_var_defaults <- function(units, name = NULL) {
+  d <- weather_spec_defaults(units, name)
   list(
     ref_period = c(d$ref_start, d$ref_end),
     temporal_agg = d$temporal_agg,

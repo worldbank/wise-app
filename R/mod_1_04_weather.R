@@ -75,7 +75,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
         units <- as.character(var_info$units[1])
         display_label <- wise_label_short(as.character(var_info$label[1]))
         prefix <- paste0(v, "_")
-        defs <- wise_weather_var_defaults(units)
+        defs <- wise_weather_var_defaults(units, v)
 
         tagList(
           if (i > 1 && n_vars > 1) hr(),
@@ -107,7 +107,7 @@ mod_1_04_weather_server <- function(id, variable_list) {
                   ns(paste0(prefix, "temporalAgg")),
                   "Aggregation over reference period",
                   choices  = temporal_agg_choices(units),
-                  selected = temporal_agg_default(units)
+                  selected = temporal_agg_default(units, v)
                 )
               ),
               pill_toggle(

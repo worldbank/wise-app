@@ -65,6 +65,12 @@ test_that("temporal_agg_default returns Sum for mm", {
   expect_equal(temporal_agg_default("mm"), "Sum")
 })
 
+test_that("temporal_agg_default returns Max for rx5day and Mean for mm/day", {
+  expect_equal(temporal_agg_default("mm", "rx5day"), "Max")
+  expect_equal(temporal_agg_default("mm/day", "r"), "Mean")
+  expect_equal(temporal_agg_default("days", "r20"), "Sum")
+})
+
 test_that("temporal_agg_default returns Mean for °C", {
   expect_equal(temporal_agg_default("°C"), "Mean")
 })

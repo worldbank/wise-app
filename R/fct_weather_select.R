@@ -47,11 +47,15 @@ temporal_agg_choices <- function(units) {
 #' Default temporal aggregation for a weather variable
 #'
 #' @param units Scalar character string of the variable's units.
+#' @param name Optional scalar character; the variable name. Extreme-value
+#'   variables (`rx5day`) default to `"Max"` whatever their units.
 #'
-#' @return `"Sum"` for `"days"`/`"mm"` units, otherwise `"Mean"`.
+#' @return `"Max"` for `rx5day`, `"Sum"` for `"days"`/`"mm"` units, otherwise
+#'   `"Mean"`.
 #'
 #' @export
-temporal_agg_default <- function(units) {
+temporal_agg_default <- function(units, name = NULL) {
+  if (identical(name, "rx5day")) return("Max")
   if (!is.na(units) && units %in% c("days", "mm")) "Sum" else "Mean"
 }
 
@@ -96,17 +100,19 @@ transformation_default <- function(units) {
 #' propagation into `build_weather_spec()`.
 #'
 #' @param units Scalar character string of the variable's units.
+#' @param name Optional scalar character; the variable name (see
+#'   `temporal_agg_default()`).
 #'
 #' @return A named list with elements `ref_start`, `ref_end`, `temporal_agg`,
 #'   `transformation`, `cont_binned`, `num_bins`, `binning_method`,
 #'   `custom_breaks`, and `polynomial`.
 #'
 #' @export
-weather_spec_defaults <- function(units) {
+weather_spec_defaults <- function(units, name = NULL) {
   list(
     ref_start      = 1L,
     ref_end        = 1L,
-    temporal_agg   = temporal_agg_default(units),
+    temporal_agg   = temporal_agg_default(units, name),
     transformation = transformation_default(units),
     cont_binned    = "Binned",
     num_bins       = 5L,
@@ -193,7 +199,7 @@ build_weather_spec <- function(name,
                                binning_method = NULL,
                                custom_breaks = NULL,
                                polynomial = NULL) {
-  defs <- weather_spec_defaults(units)
+  defs <- weather_spec_defaults(units, name)
   ref_period <- ref_period %||% c(defs$ref_start, defs$ref_end)
   temporal_agg <- temporal_agg %||% defs$temporal_agg
   transformation <- transformation %||% defs$transformation

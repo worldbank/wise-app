@@ -813,7 +813,7 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
   for (v in sort(vars)) {
     units <- as.character(wvars$units[wvars$name == v][1])
     x <- .normalise_wx_var(spec$weather[[v]])
-    d <- wise_weather_var_defaults(units)
+    d <- wise_weather_var_defaults(units, v)
     x$temporal_agg <- x$temporal_agg %||% d$temporal_agg
     x$transformation <- x$transformation %||% d$transformation
     if (!x$temporal_agg %in% temporal_agg_choices(units)) {
