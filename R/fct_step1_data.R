@@ -192,9 +192,13 @@ wise_load_location_panel <- function(selected_surveys, connection_params) {
 # Statistics variable sets ----
 
 #' Policy-relevant variables shown in the survey statistics
+#'
+#' The variables of the policy levers (`policy_registry()`), without the labour
+#' levers, which have their own tab.
+#' @param variable_list Variable list (or `NULL` for the default levers).
 #' @noRd
-wise_policy_vars <- function() {
-  unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
+wise_policy_vars <- function(variable_list = NULL) {
+  unique(unlist(lapply(policy_definitions(variable_list), `[[`, "vars")))
 }
 
 #' Variables behind the survey summary tables
@@ -215,7 +219,7 @@ wise_stats_vars <- function(variable_list, df) {
       if (fc %in% names(variable_list)) variable_list$name[variable_list[[fc]] == 1] else character(0)
     }), use.names = FALSE)
   }
-  intersect(unique(c(targets, wise_policy_vars())), names(df))
+  intersect(unique(c(targets, wise_policy_vars(variable_list))), names(df))
 }
 
 

@@ -1358,6 +1358,8 @@ build_stats_table <- function(survey_data, variable_list, flag_col = NULL,
   if (is.null(vl)) {
     return(NULL)
   }
+  # `vars` may be a function of the variable list (e.g. `wise_policy_vars`)
+  if (is.function(vars)) vars <- vars(vl)
   base_value <- tryCatch(if (is.function(base)) base() else base,
     error = function(e) NULL
   )

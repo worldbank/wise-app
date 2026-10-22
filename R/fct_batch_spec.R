@@ -96,16 +96,18 @@
   if (length(hit)) hit else if (key %in% names(.MODEL_ALIASES)) .MODEL_ALIASES[[key]] else x
 }
 
-# Policy scenario keys of the Model tab (`A` to `M`), from keys or labels.
+# Policy scenario codes of the Model tab, from codes, earlier letter keys
+# (`A` to `M`) or labels. Codes the app does not know are kept: the data decides
+# whether the lever exists (`wise_spec_resolve()`).
 #' @noRd
 .match_policy_keys <- function(x) {
   x <- unique(as.character(unlist(x)))
   labels <- vapply(POLICY_DEFINITIONS, `[[`, "", "label")
   key <- vapply(x, function(v) {
-    if (v %in% names(POLICY_DEFINITIONS)) {
+    if (toupper(v) %in% names(POLICY_KEY_ALIASES) && nchar(v) == 1L) {
+      unname(POLICY_KEY_ALIASES[[toupper(v)]])
+    } else if (v %in% names(POLICY_DEFINITIONS)) {
       v
-    } else if (toupper(v) %in% names(POLICY_DEFINITIONS)) {
-      toupper(v)
     } else if (tolower(v) %in% tolower(labels)) {
       names(labels)[match(tolower(v), tolower(labels))]
     } else {
@@ -169,11 +171,12 @@
   }
   pv <- m$policy_vars
   if (length(pv) > 1L) add("model.policy_vars: the app selects at most one policy scenario.")
-  bad_pv <- setdiff(pv, names(POLICY_DEFINITIONS))
+  # open vocabulary: any well-formed lever code; the data decides if it exists
+  bad_pv <- pv[!grepl("^[a-z][a-z0-9_]*$", pv)]
   if (length(bad_pv)) {
     add(
-      "model.policy_vars must be policy scenario keys (", paste(names(POLICY_DEFINITIONS), collapse = ", "),
-      ") or their labels, not ", paste(bad_pv, collapse = ", "), "."
+      "model.policy_vars must be policy lever codes (e.g. ", paste(utils::head(names(POLICY_DEFINITIONS), 3L), collapse = ", "),
+      "), their earlier letter keys or labels, not ", paste(bad_pv, collapse = ", "), "."
     )
   }
   if (!is.null(m$type) && !m$type %in% names(WISEAPP_MODEL_TYPES)) {
@@ -317,15 +320,27 @@
 
 # Policy section ----
 
-.POLICY_LEVERS <- c("sp", "infra", "digital", "labor", "education")
+.POLICY_LEVERS <- c("sp", "infra", "digital", "labor", "education", "other")
+# Levers made of access levers, each controlled by a lever code. `other` holds
+# levers of any group without a module of its own.
+.ACCESS_LEVERS <- c("infra", "digital", "education", "other")
 # The input ids of each lever (defined with the Step 3 input glue, which loads
-# after this file).
+# after this file). For the access levers these are the ids of the default
+# levers; a lever of the variable list adds `<code>_universal` and `<code>_pct`
+# (see `.policy_field_ok()`).
 #' @noRd
 .policy_ids <- function() {
   list(
     sp = STEP3_SP_IDS, infra = STEP3_INFRA_IDS, digital = STEP3_DIGITAL_IDS,
-    labor = STEP3_LABOR_IDS, education = STEP3_EDUCATION_IDS
+    labor = STEP3_LABOR_IDS, education = STEP3_EDUCATION_IDS, other = STEP3_OTHER_IDS
   )
+}
+# Is `f` a field of lever `lever`? Access levers take any lever-code field: the
+# vocabulary is open and the data decides which codes exist (`wise_policy_configs()`).
+#' @noRd
+.policy_field_ok <- function(lever, f) {
+  f %in% .policy_ids()[[lever]] ||
+    (lever %in% .ACCESS_LEVERS && grepl("^[a-z][a-z0-9_]*_(universal|pct)$", f))
 }
 .POLICY_CHAR <- c(
   "sp_type", "budget_mode", "targeting", "pmt_variable", "amount_basis", "transfer_amount_mode", "trigger_type",
@@ -333,7 +348,7 @@
   "dyn_geo", "budget_rule", "transfer_timing", "health_mode"
 )
 #' @noRd
-.policy_lgl <- function() c("dyn_welfare", grep("_universal$", unlist(.policy_ids()), value = TRUE))
+.policy_is_lgl <- function(f) f == "dyn_welfare" | grepl("_universal$", f)
 .POLICY_CHOICES <- list(
   sp_type = c("regular", "shock"), budget_mode = c("transfer_first", "budget_first"),
   targeting = c("universal", "exante_poor", "pmt"), amount_basis = c("per_household", "per_capita"),
@@ -366,16 +381,18 @@
 #' @noRd
 .normalise_policy_lever <- function(lever, x) {
   merged <- wise_default_policy()[[lever]]
+  # specs written before the lever codes name the controls by old stems
+  if (lever %in% .ACCESS_LEVERS) x <- policy_normalise_stems(x)
   for (f in names(x)) {
     if (!is.null(x[[f]])) merged[f] <- list(x[[f]])
   }
   for (f in names(merged)) {
     v <- merged[[f]]
-    merged[[f]] <- if (f %in% .policy_lgl()) {
+    merged[[f]] <- if (.policy_is_lgl(f)) {
       as.logical(v)
     } else if (f %in% .POLICY_CHAR) {
       as.character(v)
-    } else if (f %in% .policy_ids()[[lever]]) {
+    } else if (.policy_field_ok(lever, f)) {
       suppressWarnings(as.numeric(v))
     } else {
       v
@@ -419,11 +436,12 @@
   for (lv in intersect(names(p), .POLICY_LEVERS)) {
     x <- p[[lv]]
     pre <- paste0("policy.", lv, ".")
-    extra <- setdiff(names(x), .policy_ids()[[lv]])
+    ok <- vapply(names(x), function(f) .policy_field_ok(lv, f), logical(1))
+    extra <- names(x)[!ok]
     if (length(extra)) add(pre, paste(extra, collapse = ", "), ": not a ", lv, " setting.")
-    for (f in intersect(names(x), .policy_ids()[[lv]])) {
+    for (f in names(x)[ok]) {
       v <- x[[f]]
-      if (f %in% .policy_lgl()) {
+      if (.policy_is_lgl(f)) {
         if (length(v) != 1L || is.na(v)) add(pre, f, " must be true or false.")
         next
       }
@@ -442,7 +460,11 @@
         next
       }
       ch <- .POLICY_CHOICES[[f]]
-      rng <- .POLICY_RANGES[[f]] %||% if (grepl("_pct$", f) && lv %in% c("infra", "digital", "education")) .POLICY_PCT_RANGE
+      # the range of a binary access lever; levers of the variable list that the
+      # app has no default for may be numeric levers (a percent change)
+      rng <- .POLICY_RANGES[[f]] %||% if (grepl("_pct$", f) && lv %in% .ACCESS_LEVERS) {
+        if (f %in% .policy_ids()[[lv]]) .POLICY_PCT_RANGE else c(-100, 100)
+      }
       if (!is.null(ch) && !v %in% ch) {
         add(pre, f, " must be one of: ", paste(ch, collapse = ", "), ".")
       } else if (!is.null(rng) && (v < rng[[1L]] || v > rng[[2L]])) {
@@ -476,7 +498,32 @@
 # the survey (`labor_defaults`); the trigger poverty line follows the outcome.
 #' @noRd
 wise_policy_configs <- function(policy, so = NULL, analysis_unit = "hh", labor_defaults = NULL,
-                                svy = NULL) {
+                                svy = NULL, registry = policy_registry(NULL)) {
+  # A lever code the data does not have (variable list without it) stops the run
+  # instead of being ignored; so does a lever listed in the wrong group.
+  for (lv in intersect(names(policy), .ACCESS_LEVERS)) {
+    x <- policy[[lv]]
+    dflt <- wise_default_policy()[[lv]]
+    # fields the user set: those with no default, or a value other than it
+    set <- names(x)[vapply(names(x), function(f) {
+      is.null(dflt[[f]]) || !isTRUE(all.equal(x[[f]], dflt[[f]]))
+    }, logical(1))]
+    ids <- setdiff(set, c("health_mode", "health_travel_pct", "health_travel_max"))
+    codes <- unique(sub("_(universal|pct)$", "", ids))
+    here <- registry$code[registry$slot == lv]
+    bad <- setdiff(codes, here)
+    if (length(bad)) {
+      elsewhere <- intersect(bad, registry$code)
+      stop(
+        "policy.", lv, ": ", paste(bad, collapse = ", "), if (length(elsewhere)) {
+          paste0(" (", paste(elsewhere, collapse = ", "), " belongs to another lever)")
+        } else {
+          " is not a policy lever in the variable list"
+        }, ".",
+        call. = FALSE
+      )
+    }
+  }
   sp <- policy$sp
   if (!is.null(sp)) {
     # A shock program's trigger poverty line is prefilled from the outcome's own
@@ -501,12 +548,18 @@ wise_policy_configs <- function(policy, so = NULL, analysis_unit = "hh", labor_d
   }
   list(
     sp = sp,
-    infra = if (!is.null(policy$infra)) wise_infra_config(policy$infra),
-    digital = if (!is.null(policy$digital)) wise_digital_config(policy$digital),
+    # levers of other groups run with the infrastructure scenario
+    infra = if (!is.null(policy$infra) || !is.null(policy$other)) {
+      step3_merge_access(
+        if (!is.null(policy$infra)) wise_infra_config(policy$infra, registry),
+        if (!is.null(policy$other)) wise_other_config(policy$other, registry)
+      )
+    },
+    digital = if (!is.null(policy$digital)) wise_digital_config(policy$digital, registry),
     labor = if (!is.null(policy$labor)) {
       wise_labor_config(policy$labor, labor_defaults %||% c(industry = 0, services = 0))
     },
-    education = if (!is.null(policy$education)) wise_education_config(policy$education)
+    education = if (!is.null(policy$education)) wise_education_config(policy$education, registry)
   )
 }
 
@@ -946,7 +999,7 @@ wise_spec_read <- function(file) {
   sample = "step1-sample-", outcome = "step1-outcome-", weather = "step1-weather-",
   model = "step1-model-", sim = "step2-weathersim-",
   sp = "step3-sp-", infra = "step3-infra-", digital = "step3-digital-",
-  labor = "step3-labor-", education = "step3-education-"
+  labor = "step3-labor-", education = "step3-education-", other = "step3-other-"
 )
 
 #' Translate an app configuration export into a run spec
@@ -1052,9 +1105,18 @@ wise_spec_from_config <- function(config) {
   # of its controls; its other controls take the defaults.
   policy <- list()
   for (lv in .POLICY_LEVERS) {
+    # Access levers: the controls of every lever code the export holds
+    # (under lever codes or the stems of earlier exports).
+    ids <- if (lv %in% .ACCESS_LEVERS) {
+      keys <- names(inp)[startsWith(names(inp), p[[lv]])]
+      ids <- substring(keys, nchar(p[[lv]]) + 1L)
+      ids[vapply(ids, function(f) .policy_field_ok(lv, f), logical(1))]
+    } else {
+      .policy_ids()[[lv]]
+    }
     vals <- Filter(
       Negate(is.null),
-      step3_read_inputs(.policy_ids()[[lv]], function(id) get(paste0(p[[lv]], id)))
+      step3_read_inputs(ids, function(id) get(paste0(p[[lv]], id)))
     )
     if (length(vals)) policy[[lv]] <- vals
   }

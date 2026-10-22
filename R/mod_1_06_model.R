@@ -187,12 +187,13 @@ mod_1_06_model_server <- function(id,
       req(input$model_type)
 
       vl <- valid_vl()
-      choices <- get_policy_choices()
+      defs <- policy_definitions(vl)
+      choices <- get_policy_choices(vl)
       avail <- if (!is.null(vl) && nrow(vl) > 0) {
-        all_policy_vars <- unique(unlist(lapply(POLICY_DEFINITIONS, `[[`, "vars")))
+        all_policy_vars <- unique(unlist(lapply(defs, `[[`, "vars")))
         present <- intersect(all_policy_vars, vl$name)
         choices[vapply(choices, function(k) {
-          any(POLICY_DEFINITIONS[[k]]$vars %in% present)
+          any(defs[[k]]$vars %in% present)
         }, logical(1))]
       } else {
         character(0)

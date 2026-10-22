@@ -457,14 +457,7 @@ policy_summary_card <- function(selected_policies = NULL,
                                 education_scenario = NULL) {
   policies <- selected_policies %||% character(0)
   policies <- policies[!is.na(policies) & nzchar(policies)]
-  labels <- vapply(policies, function(key) {
-    def <- POLICY_DEFINITIONS[[key]]
-    if (!is.null(def) && !is.null(def$label) && nzchar(def$label)) {
-      as.character(def$label)
-    } else {
-      key
-    }
-  }, character(1))
+  labels <- policy_label(policies)
 
   deref <- function(x) {
     if (is.function(x)) x <- tryCatch(x(), error = function(e) NULL)
@@ -498,11 +491,12 @@ policy_summary_card <- function(selected_policies = NULL,
   }
   active <- c(
     sp_label,
-    if (has_infra_change(infra)) "Infrastructure",
-    if (has_digital_change(digital)) "Digital inclusion",
+    if (has_infra_change(infra)) .access_active_labels(infra, "Infrastructure"),
+    if (has_digital_change(digital)) .access_active_labels(digital, "Digital inclusion"),
     if (has_labor_change(labor)) "Labor market",
-    if (has_education_change(education)) "Education"
+    if (has_education_change(education)) .access_active_labels(education, "Education")
   )
+  active <- unique(active)
   configured_count <- length(active)
   policy_pills <- if (configured_count > 0L) active else "None"
   rows <- list(list(

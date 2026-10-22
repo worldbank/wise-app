@@ -309,6 +309,17 @@ mod_3_06_policy_sim_server <- function(id,
           diagnostic_summary_out <- computed$diagnostic_summary
           decomp_sc <- pol_out$decomp_scenarios
 
+          if (length(computed$unavailable)) {
+            shiny::showNotification(
+              paste0(
+                "Not applied: ",
+                paste0(names(computed$unavailable), " (", computed$unavailable, ")", collapse = "; "),
+                "."
+              ),
+              type = "warning", duration = 10
+            )
+          }
+
           if (isTRUE(computed$no_effect)) {
             shiny::showNotification(
               paste(

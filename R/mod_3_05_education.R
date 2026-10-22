@@ -2,7 +2,9 @@
 #'
 #' @description A shiny Module. Education scenario configuration - allows the
 #'   user to define changes in educational attainment (primary, secondary and
-#'   post-secondary completion) to be applied in the policy simulation.
+#'   post-secondary completion) to be applied in the policy simulation. The
+#'   levers are those of the `education` group of the variable list
+#'   (`policy_registry()`); the controls are built in `mod_3_levers.R`.
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
@@ -10,13 +12,7 @@
 #'
 #' @importFrom shiny NS tagList
 mod_3_05_education_ui <- function(id) {
-  ns <- NS(id)
-  tagList(
-    uiOutput(ns("placeholder_ui")),
-    uiOutput(ns("primary_ui")),
-    uiOutput(ns("secondary_ui")),
-    uiOutput(ns("postsec_ui"))
-  )
+  mod_3_levers_ui(id)
 }
 
 #' 3_05_education Server Functions
@@ -43,125 +39,13 @@ mod_3_05_education_server <- function(id,
                                       survey_data = reactive(NULL),
                                       variable_list = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
-    ns <- session$ns
-
-    # Get model coefficients ----
-    # REACT-08: shared coefficient decomposition (utils_mod_1_helpers.R).
-    coeffs_rx <- model_coefficient_reactives(selected_model)
-    coeffs <- coeffs_rx$all
-
-    # Candidate variables for this category ----
-    education_patterns <- c("educ_com1_hh", "educ_com2_hh", "educ_com3_hh")
-
-    any_selected <- reactive({
-      any(tolower(education_patterns) %in% tolower(coeffs()))
-    })
-
-    # Education variables available in the selected survey
-    education_vars_available <- reactive({
-      svy <- survey_data()
-      if (is.null(svy)) {
-        return(character(0))
-      }
-      # Check which education variables are actually in the selected survey
-      intersect(education_patterns, names(svy))
-    })
-
-    output$placeholder_ui <- renderUI({
-      if (isTRUE(any_selected())) {
-        return(NULL)
-      }
-      # Only show placeholder if there are education variables in the survey
-      if (length(education_vars_available()) == 0) {
-        return(no_data_warning(
-          "No education variables found in the selected survey (or level of analysis)."
-        ))
-      }
-      # Show candidate variables for education if none are in the model
-      cand <- policy_candidate_info(variable_list(), education_patterns)
-      policy_placeholder_tag("education", cand)
-    })
-
-    # Helper: slider + universal access toggle ----
-    # Mirrors the same pattern used in mod_3_03_digital.R.
-
-    education_access_ui <- function(input_id, label, icon_class) {
-      tagList(
-        tags$label(
-          class = "control-label",
-          tags$i(class = paste("fa", icon_class, "me-1")),
-          label
-        ),
-        checkboxInput(
-          inputId = ns(paste0(input_id, "_universal")),
-          label   = "Universal",
-          value   = FALSE
-        ),
-        conditionalPanel(
-          condition = paste0("!input['", ns(paste0(input_id, "_universal")), "']"),
-          sliderInput(
-            inputId = ns(paste0(input_id, "_pct")),
-            label   = "Share of unserved gaining attainment (%)",
-            min     = -20,
-            max     = 100,
-            value   = 0,
-            step    = 5,
-            post    = "%"
-          ),
-          tags$small(
-            class = "text-muted d-block",
-            "Percentage of currently non-attaining households to give attainment ",
-            "(negative values remove attainment from currently-attaining households); ",
-            "not a percentage-point change in overall attainment."
-          )
-        ),
-        tags$hr(style = "margin: 8px 0;")
-      )
-    }
-
-    # Primary attainment ----
-
-    show_primary <- reactive({
-      .lever_in_model("educ_com1_hh", coeffs())
-    })
-
-    output$primary_ui <- renderUI({
-      req(show_primary())
-      education_access_ui("primary", "Primary completion", "fa-graduation-cap")
-    })
-
-    # Secondary attainment ----
-
-    show_secondary <- reactive({
-      .lever_in_model("educ_com2_hh", coeffs())
-    })
-
-    output$secondary_ui <- renderUI({
-      req(show_secondary())
-      education_access_ui("secondary", "Secondary completion", "fa-graduation-cap")
-    })
-
-    # Post-secondary attainment ----
-
-    show_postsec <- reactive({
-      .lever_in_model("educ_com3_hh", coeffs())
-    })
-
-    output$postsec_ui <- renderUI({
-      req(show_postsec())
-      education_access_ui("postsec", "Post-secondary completion", "fa-graduation-cap")
-    })
-
-    lapply(c("primary_ui", "secondary_ui", "postsec_ui"), function(out_id) {
-      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
-    })
-
-    # Return API ----
-
     list(
-      education_scenario = reactive({
-        wise_education_config(step3_read_inputs(STEP3_EDUCATION_IDS, function(id) input[[id]]))
-      })
+      education_scenario = mod_3_levers_server(
+        input, output, session,
+        slot = "education", category = "education",
+        selected_model = selected_model, survey_data = survey_data,
+        variable_list = variable_list
+      )
     )
   })
 }

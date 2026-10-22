@@ -54,6 +54,8 @@ Step 1's `survey_weather()` returns a household × weather data frame `svy` (one
 | Social protection | `.wiseapp_sp_transfer` (= `SP_TRANSFER_COL`) | numeric (daily $/hh), added | mod_3_01 |
 | Targeting / budget | `weight` (checked via literal column name match) | numeric | implicit |
 
+`imp_wat_san_rec` (improved water and sanitation) is derived upstream by wise-app-data as a three-valued AND of `imp_wat_rec` and `imp_san_rec`: 1 if both are 1, 0 if either is 0 (even when the other is missing), missing otherwise. The app derives it the same way (`apply_policy_derivations()`) only when the data directory does not publish the column; a published column is never overwritten. Before this rule the app returned missing whenever either source was missing.
+
 The constant `SP_TRANSFER_COL <- ".wiseapp_sp_transfer"` is defined at the top of `fct_policy_sim.R` (line 15). Many UI inputs in mod_3_02 / mod_3_03 are gated on the corresponding covariate appearing in the **selected Model 3 coefficients** — if a covariate isn't in the model, its slider is hidden because changing it would have no effect on predictions.
 
 ---
@@ -134,23 +136,31 @@ Cost reporting (realised spend, cost per beneficiary) is **not** currently surfa
 
 ### 4.1 UI inputs
 
-Each domain has the same two-control pattern via the helper `infra_access_ui()`:
+**Levers come from the variable list.** A variable with a non-blank `policy` code in `variable_list.csv` (column written by wise-app-data, with an optional `policy_group`) is a policy lever; `policy_registry()` (`R/fct_policy_registry.R`) builds the lever table from it. The lever code is the identity of a lever (scenario key, control id, spec field stem); variable names are data, so a renamed variable keeps working. **Type decides the control**: `logical` levers are binary access, `numeric` and `integer` levers are a percent change; only registered special behaviours (`health`, travel time; the coupled labour levers) differ, and adding one is a code change. The group decides the module: `infrastructure`, `digital`, `education`, `labor`, anything else (or blank) in "Other policies". A data directory without the `policy` columns (or with them all blank) gets the levers of the names the app used before.
 
-- `{var}_universal` — checkbox: set everyone with access
-- `{var}_pct` — slider in −20 … +100 % (only shown if `_universal` is unchecked)
+Each binary lever has the same two controls (`mod_3_levers.R`):
 
-The `{var}` slugs and the survey columns they target:
+- `{code}_universal` — checkbox: set everyone with access
+- `{code}_pct` — slider in −20 … +100 % (only shown if `_universal` is unchecked)
 
-| UI slug | Survey column |
+A numeric lever has `{code}_pct` only (percent change, −100 … +100 %).
+
+The default levers (code → survey column):
+
+| Lever code | Survey column |
 |---|---|
-| `elec` | `electricity` |
+| `electricity` | `electricity` |
 | `water` | `imp_wat_rec` |
 | `sanitation` | `imp_san_rec` |
 | `piped` | `piped` |
 | `piped_to_prem` | `piped_to_prem` |
-| `imp_wat_san` | `imp_wat_san_rec` |
+| `water_sanitation` | `imp_wat_san_rec` |
+| `internet`, `mobile` | `internet`, `cellphone` |
+| `educ_primary`, `educ_secondary`, `educ_postsec` | `educ_com1_hh`, `educ_com2_hh`, `educ_com3_hh` |
 
-Each pair is rendered **only if the corresponding column appears in the Model 3 coefficient table**, so the UI auto-hides interventions the model can't price.
+Earlier saved and batch specs name levers by letter keys (`A` to `M`) and control ids by old stems (`elec`, `imp_wat_san`, `primary`, `secondary`, `postsec`); both are translated to the codes when a spec is read (`policy_normalise_keys()`, `policy_normalise_stems()`).
+
+Each control is rendered **only if the corresponding column appears in the Model 3 coefficient table**, so the UI auto-hides interventions the model can't price; levers left out are listed with the reason (variable not in the survey, or not in the model).
 
 Health travel time has a different control:
 - `health_mode` — radio: `"pct"` (multiplicative change −100…+20 %) or `"max"` (cap, 15–240 min, default 60)
@@ -158,7 +168,7 @@ Health travel time has a different control:
 
 ### 4.2 Reactive output
 
-`infra_scenario()` returns a list with `*_universal` (logical) and `*_access_change_pct` (integer) for each domain, plus `health_mode`, `health_travel_pct`, `health_travel_max`.
+`infra_scenario()` returns a list with `{code}_universal` (logical) and `{code}_access_change_pct` (integer) for each binary lever, `{code}_value_change_pct` for each numeric lever, and `health_mode`, `health_travel_pct`, `health_travel_max`; `lever_vars` and `lever_groups` record each lever's variables and group. Levers of groups without a module of their own are merged into this list (`step3_merge_access()`).
 
 ### 4.3 Data modification — `.apply_binary_access(x, universal, change_pct)`
 

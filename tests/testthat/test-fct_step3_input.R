@@ -75,6 +75,7 @@ test_that("the spec defaults of the access levers are the initial values of thei
       selected_model = shown, survey_data = shiny::reactive(NULL), variable_list = shiny::reactive(NULL)
     ), {
       html <- paste(vapply(outputs, function(o) output[[o]]$html, ""), collapse = "\n")
+      expect_identical(outputs, "levers_ui")
       for (id in names(defaults)) {
         got <- ui_initial(html, id)
         expect_false(is.null(got), info = id)
@@ -83,11 +84,9 @@ test_that("the spec defaults of the access levers are the initial values of thei
     })
   }
   d <- wise_default_policy()
-  check(mod_3_02_infra_server, c(
-    "elec_ui", "water_ui", "sanitation_ui", "piped_ui", "piped_to_prem_ui", "imp_wat_san_ui", "health_ui"
-  ), d$infra)
-  check(mod_3_03_digital_server, c("internet_ui", "mobile_ui"), d$digital)
-  check(mod_3_05_education_server, c("primary_ui", "secondary_ui", "postsec_ui"), d$education)
+  check(mod_3_02_infra_server, "levers_ui", d$infra)
+  check(mod_3_03_digital_server, "levers_ui", d$digital)
+  check(mod_3_05_education_server, "levers_ui", d$education)
 })
 
 test_that("the lever modules return what the spec route builds from the same control values", {
@@ -148,7 +147,7 @@ test_that("the lever modules return what the spec route builds from the same con
   })
 
   # The access levers.
-  infra <- list(elec_universal = TRUE, water_pct = 25, health_mode = "max", health_travel_max = 45)
+  infra <- list(electricity_universal = TRUE, water_pct = 25, health_mode = "max", health_travel_max = 45)
   shiny::testServer(mod_3_02_infra_server, args = list(
     selected_model = shiny::reactive(list(hh_covariates = character(0))),
     survey_data = shiny::reactive(NULL), variable_list = shiny::reactive(NULL)
@@ -171,9 +170,9 @@ test_that("the lever modules return what the spec route builds from the same con
     selected_model = shiny::reactive(list(hh_covariates = character(0))),
     survey_data = shiny::reactive(NULL), variable_list = shiny::reactive(NULL)
   ), {
-    session$setInputs(primary_pct = 20, postsec_universal = TRUE)
+    session$setInputs(educ_primary_pct = 20, educ_postsec_universal = TRUE)
     spec <- wise_spec(model = list(), sim = list(), policy = list(
-      education = list(primary_pct = 20, postsec_universal = TRUE)
+      education = list(educ_primary_pct = 20, educ_postsec_universal = TRUE)
     ))
     expect_equal(wise_policy_configs(spec$policy, so)$education, session$returned$education_scenario())
   })

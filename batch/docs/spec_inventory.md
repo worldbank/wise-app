@@ -62,7 +62,7 @@ The table builders are `variable_stats_table()`, `interview_dates_table()` and
 | `model_type` | `model.type` (`linear`, `logistic`, `rif`; the engine follows) | first type offered for the outcome |
 | `fixedeffects` | `model.fixed_effects` | `year`, `gaul1_code` where valid |
 | `interactions` | `model.interactions` | none (the app starts at `urban`) |
-| `selected_policies` | `model.policy_vars` (keys `A` to `M` or labels; at most one) | none |
+| `selected_policies` | `model.policy_vars` (lever codes such as `electricity`, earlier keys `A` to `M`, or labels; at most one) | none |
 | `covariates`, `indcov`, `hhcov`, `areacov`, `firmcov` | `model.covariates.method` (`user`, `lasso`), `.vars` (flat list) | `user`, none |
 | `lasso_alpha`, `lasso_interactions` (the lambda rule), `lasso_nfolds`, `lasso_standardize`, `use_mice`, `mi_m`, `mi_maxit`, `stability_threshold` | `model.covariates.lasso.*` | `wise_default_lasso()` |
 | `force_in_<level>`, `force_out_<level>` | `model.covariates.lasso.force_in`, `.force_out` (flat) | none |
@@ -105,11 +105,18 @@ Glue (`R/fct_step2_input.R`, `R/fct_step2_tables.R`): the baseline helpers,
 `step2_variance_breakdown()`, ...) and the builders `step2_annual_table()`,
 `step2_summary_table()`, `step2_sim_weather_table()`.
 
-## 5. Step 3 - policy (`mod_3_01` to `mod_3_05`)
+## 5. Step 3 - policy (`mod_3_01` to `mod_3_05`, `mod_3_11`)
 
 The spec fields are the control ids, grouped by lever: `policy.sp.*`,
-`policy.infra.*`, `policy.digital.*`, `policy.labor.*`, `policy.education.*`
-(ids in `STEP3_*_IDS`, `R/fct_step3_input.R`). `policy.sp` covers the regular
+`policy.infra.*`, `policy.digital.*`, `policy.labor.*`, `policy.education.*`,
+`policy.other.*` (ids in `STEP3_*_IDS`, `R/fct_step3_input.R`). The access
+levers (`infra`, `digital`, `education`, `other`) are controlled by lever code,
+`<code>_universal` and `<code>_pct`: the codes are those of the `policy` column
+of the variable list (`policy_registry()`), so a lever added to the list needs
+no spec change beyond naming it; `other` holds levers whose group has no module
+of its own. A code the variable list does not have, or one named under the wrong
+lever, stops the run. Specs written with the earlier control stems (`elec`,
+`imp_wat_san`, `primary`, `secondary`, `postsec`) are read as the codes. `policy.sp` covers the regular
 program and, with `sp_type: shock`, the shock-responsive one (trigger, payout,
 budget and timing controls). A lever that is present starts from the initial
 values of its controls (`wise_default_policy()`; a test compares them with the

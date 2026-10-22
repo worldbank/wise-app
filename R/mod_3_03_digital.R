@@ -2,7 +2,9 @@
 #'
 #' @description A shiny Module. Digital inclusion scenario configuration -
 #'   allows the user to define changes in internet access and mobile phone
-#'   ownership to be applied in the policy simulation.
+#'   ownership to be applied in the policy simulation. The levers are those of
+#'   the `digital` group of the variable list (`policy_registry()`); the
+#'   controls are built in `mod_3_levers.R`.
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
@@ -10,12 +12,7 @@
 #'
 #' @importFrom shiny NS tagList
 mod_3_03_digital_ui <- function(id) {
-  ns <- NS(id)
-  tagList(
-    uiOutput(ns("placeholder_ui")),
-    uiOutput(ns("internet_ui")),
-    uiOutput(ns("mobile_ui"))
-  )
+  mod_3_levers_ui(id)
 }
 
 #' 3_03_digital Server Functions
@@ -27,11 +24,12 @@ mod_3_03_digital_ui <- function(id) {
 #' @param selected_model Reactive named list of the selected model's parameters
 #'   from Step 1. Used to determine which digital variables are in the model
 #'   and should be shown in the UI.
+#' @param survey_data Reactive survey data frame.
+#' @param variable_list Reactive variable list; its `policy` columns decide the levers.
 #'
 #' @return A named list of reactives:
 #'   \describe{
 #'     \item{digital_scenario}{Named list of digital inclusion scenario parameters.}
-#'     \item{selected_fut}{Reactive - placeholder for selected future period.}
 #'   }
 #'
 #' @noRd
@@ -40,114 +38,13 @@ mod_3_03_digital_server <- function(id,
                                     survey_data = reactive(NULL),
                                     variable_list = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
-    ns <- session$ns
-
-    # Get model coefficients ----
-    # REACT-08: shared coefficient decomposition (utils_mod_1_helpers.R).
-    coeffs_rx <- model_coefficient_reactives(selected_model)
-    coeffs <- coeffs_rx$all
-
-    # Candidate variables for this category ----
-    digital_patterns <- c("internet", "cellphone")
-
-    any_selected <- reactive({
-      any(tolower(digital_patterns) %in% tolower(coeffs()))
-    })
-
-    # Digital variables available in the selected survey
-    digital_vars_available <- reactive({
-      svy <- survey_data()
-      if (is.null(svy)) {
-        return(character(0))
-      }
-      # Check which digital variables are actually in the selected survey
-      intersect(digital_patterns, names(svy))
-    })
-
-    output$placeholder_ui <- renderUI({
-      if (isTRUE(any_selected())) {
-        return(NULL)
-      }
-      # Only show placeholder if there are digital variables in the survey
-      if (length(digital_vars_available()) == 0) {
-        return(no_data_warning(
-          "No digital inclusion variables found in the selected survey (or level of analysis)."
-        ))
-      }
-      # Show candidate variables for digital inclusion if none are in the model
-      cand <- policy_candidate_info(variable_list(), digital_patterns)
-      policy_placeholder_tag("digital inclusion", cand)
-    })
-
-    # Helper: slider + universal access toggle ----
-    # Mirrors the same pattern used in mod_3_02_infra.R.
-
-    digital_access_ui <- function(input_id, label, icon_class) {
-      tagList(
-        tags$label(
-          class = "control-label",
-          tags$i(class = paste("fa", icon_class, "me-1")),
-          label
-        ),
-        checkboxInput(
-          inputId = ns(paste0(input_id, "_universal")),
-          label   = "Universal",
-          value   = FALSE
-        ),
-        conditionalPanel(
-          condition = paste0("!input['", ns(paste0(input_id, "_universal")), "']"),
-          sliderInput(
-            inputId = ns(paste0(input_id, "_pct")),
-            label   = "Share of unserved gaining access (%)",
-            min     = -20,
-            max     = 100,
-            value   = 0,
-            step    = 5,
-            post    = "%"
-          ),
-          tags$small(
-            class = "text-muted d-block",
-            "Percentage of currently unserved households to give access ",
-            "(negative values remove access from currently-served households); ",
-            "not a percentage-point change in overall coverage."
-          )
-        ),
-        tags$hr(style = "margin: 8px 0;")
-      )
-    }
-
-    # Internet access ----
-
-    show_internet <- reactive({
-      .lever_in_model("internet", coeffs())
-    })
-
-    output$internet_ui <- renderUI({
-      req(show_internet())
-      digital_access_ui("internet", "Access to internet", "fa-wifi")
-    })
-
-    # Mobile phone ownership ----
-
-    show_mobile <- reactive({
-      .lever_in_model("cellphone", coeffs())
-    })
-
-    output$mobile_ui <- renderUI({
-      req(show_mobile())
-      digital_access_ui("mobile", "Mobile phone ownership", "fa-mobile-screen")
-    })
-
-    lapply(c("internet_ui", "mobile_ui"), function(out_id) {
-      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
-    })
-
-    # Return API ----
-
     list(
-      digital_scenario = reactive({
-        wise_digital_config(step3_read_inputs(STEP3_DIGITAL_IDS, function(id) input[[id]]))
-      })
+      digital_scenario = mod_3_levers_server(
+        input, output, session,
+        slot = "digital", category = "digital inclusion",
+        selected_model = selected_model, survey_data = survey_data,
+        variable_list = variable_list
+      )
     )
   })
 }

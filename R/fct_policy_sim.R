@@ -107,26 +107,75 @@ SP_ELIGIBLE_COL <- ".wiseapp_sp_eligible"
 #' @return Scalar logical.
 #' @export
 has_infra_change <- function(infra) {
-  if (!is.list(infra)) {
-    return(FALSE)
+  length(.access_cfg_moved_codes(infra)) > 0L
+}
+
+# The lever codes a scenario list (infra, digital, education) has moved. A lever
+# is a set of fields named by its code: `<code>_universal` and
+# `<code>_access_change_pct` (binary access), `<code>_value_change_pct` (percent
+# change of a numeric variable), or the `health_*` fields (travel time). Fields
+# are read by name, so a scenario needs no list of known levers.
+#' @noRd
+.access_cfg_moved_codes <- function(cfg) {
+  if (!is.list(cfg)) {
+    return(character(0))
   }
-  .access_moved(infra$elec_universal, infra$elec_access_change_pct) ||
-    .access_moved(infra$water_universal, infra$water_access_change_pct) ||
-    .access_moved(
-      infra$sanitation_universal,
-      infra$sanitation_access_change_pct
-    ) ||
-    .lever_moved(infra$health_travel_pct) ||
-    identical(infra$health_mode, "max") ||
-    .access_moved(infra$piped_universal, infra$piped_access_change_pct) ||
-    .access_moved(
-      infra$piped_to_prem_universal,
-      infra$piped_to_prem_access_change_pct
-    ) ||
-    .access_moved(
-      infra$imp_wat_san_universal,
-      infra$imp_wat_san_access_change_pct
-    )
+  nm <- names(cfg)
+  moved <- character(0)
+  for (f in nm[grepl("_universal$", nm)]) {
+    if (isTRUE(cfg[[f]])) moved <- c(moved, sub("_universal$", "", f))
+  }
+  for (f in nm[grepl("_(access|value)_change_pct$", nm)]) {
+    if (.lever_moved(cfg[[f]])) moved <- c(moved, sub("_(access|value)_change_pct$", "", f))
+  }
+  if (.lever_moved(cfg$health_travel_pct) || identical(cfg$health_mode, "max")) {
+    moved <- c(moved, "health")
+  }
+  # (a binary lever with the code `health` is found by its own fields above)
+  unique(.cfg_stem_code(moved))
+}
+
+# Earlier scenario lists name levers by old stems (`elec`, `primary`, ...).
+#' @noRd
+.cfg_stem_code <- function(stem) {
+  unname(ifelse(stem %in% names(POLICY_STEM_ALIASES), POLICY_STEM_ALIASES[stem], stem))
+}
+
+# Variables of the levers a scenario list carries, as a named list code -> vars.
+# `wise_access_config()` records them (`lever_vars`); a list without them (an
+# earlier shape) reads the levers from its field names and takes the variables of
+# the default levers.
+#' @noRd
+.cfg_lever_vars <- function(cfg) {
+  if (!is.list(cfg)) {
+    return(list())
+  }
+  lv <- cfg$lever_vars
+  lv <- if (is.list(lv)) lv else list()
+  nm <- names(cfg)
+  codes <- c(
+    sub("_universal$", "", nm[grepl("_universal$", nm)]),
+    sub("_(access|value)_change_pct$", "", nm[grepl("_(access|value)_change_pct$", nm)]),
+    if (any(c("health_mode", "health_travel_pct", "health_travel_max") %in% nm)) "health"
+  )
+  for (k in setdiff(unique(.cfg_stem_code(codes)), names(lv))) {
+    v <- POLICY_FALLBACK$var[POLICY_FALLBACK$code == k]
+    lv[[k]] <- if (length(v)) v else k
+  }
+  lv
+}
+
+# Field of a lever in a scenario list, under its code or an old stem.
+#' @noRd
+.cfg_field <- function(cfg, code, suffix) {
+  stems <- c(code, names(POLICY_STEM_ALIASES)[POLICY_STEM_ALIASES == code])
+  for (s in stems) {
+    f <- paste0(s, suffix)
+    if (f %in% names(cfg)) {
+      return(cfg[[f]])
+    }
+  }
+  NULL
 }
 
 #' Has the digital inclusion scenario been changed from its defaults?
@@ -134,17 +183,7 @@ has_infra_change <- function(infra) {
 #' @return Scalar logical.
 #' @export
 has_digital_change <- function(digital) {
-  if (!is.list(digital)) {
-    return(FALSE)
-  }
-  .access_moved(
-    digital$internet_universal,
-    digital$internet_access_change_pct
-  ) ||
-    .access_moved(
-      digital$mobile_universal,
-      digital$mobile_access_change_pct
-    )
+  length(.access_cfg_moved_codes(digital)) > 0L
 }
 
 #' Has the education scenario been changed from its defaults?
@@ -152,21 +191,7 @@ has_digital_change <- function(digital) {
 #' @return Scalar logical.
 #' @export
 has_education_change <- function(education) {
-  if (!is.list(education)) {
-    return(FALSE)
-  }
-  .access_moved(
-    education$primary_universal,
-    education$primary_access_change_pct
-  ) ||
-    .access_moved(
-      education$secondary_universal,
-      education$secondary_access_change_pct
-    ) ||
-    .access_moved(
-      education$postsec_universal,
-      education$postsec_access_change_pct
-    )
+  length(.access_cfg_moved_codes(education)) > 0L
 }
 
 #' Has the labor market scenario been changed from its defaults?
@@ -267,7 +292,10 @@ has_sp_change <- function(sp) {
     "employed", "selfemployed", "unemployed",
     "agriculture", "industry", "services"
   )
-  all_candidates <- unique(c(definition_vars, labor_vars))
+  cfg_vars <- unlist(lapply(
+    list(infra, digital, education), function(cfg) unlist(.cfg_lever_vars(cfg), use.names = FALSE)
+  ), use.names = FALSE)
+  all_candidates <- unique(c(definition_vars, labor_vars, cfg_vars))
 
   scenarios_supplied <- !all(vapply(
     list(infra, digital, labor, education), is.null, logical(1)
@@ -284,55 +312,10 @@ has_sp_change <- function(sp) {
   }
   candidates <- character()
 
-  if (!is.null(infra)) {
-    if (isTRUE(infra$elec_universal) || changed(infra$elec_access_change_pct)) {
-      candidates <- c(candidates, "electricity")
-    }
-    if (isTRUE(infra$water_universal) || changed(infra$water_access_change_pct)) {
-      candidates <- c(candidates, "imp_wat_rec")
-    }
-    if (isTRUE(infra$sanitation_universal) ||
-      changed(infra$sanitation_access_change_pct)) {
-      candidates <- c(candidates, "imp_san_rec")
-    }
-    if (changed(infra$health_travel_pct) ||
-      identical(infra$health_mode, "max")) {
-      candidates <- c(candidates, "ttime_health")
-    }
-    if (isTRUE(infra$piped_universal) || changed(infra$piped_access_change_pct)) {
-      candidates <- c(candidates, "piped")
-    }
-    if (isTRUE(infra$piped_to_prem_universal) ||
-      changed(infra$piped_to_prem_access_change_pct)) {
-      candidates <- c(candidates, "piped_to_prem")
-    }
-    if (isTRUE(infra$imp_wat_san_universal) ||
-      changed(infra$imp_wat_san_access_change_pct)) {
-      candidates <- c(candidates, "imp_wat_san_rec")
-    }
-  }
-  if (!is.null(digital)) {
-    if (isTRUE(digital$internet_universal) ||
-      changed(digital$internet_access_change_pct)) {
-      candidates <- c(candidates, "internet")
-    }
-    if (isTRUE(digital$mobile_universal) ||
-      changed(digital$mobile_access_change_pct)) {
-      candidates <- c(candidates, "cellphone")
-    }
-  }
-  if (!is.null(education)) {
-    if (isTRUE(education$primary_universal) ||
-      changed(education$primary_access_change_pct)) {
-      candidates <- c(candidates, "educ_com1_hh")
-    }
-    if (isTRUE(education$secondary_universal) ||
-      changed(education$secondary_access_change_pct)) {
-      candidates <- c(candidates, "educ_com2_hh")
-    }
-    if (isTRUE(education$postsec_universal) ||
-      changed(education$postsec_access_change_pct)) {
-      candidates <- c(candidates, "educ_com3_hh")
+  for (cfg in list(infra, digital, education)) {
+    lv <- .cfg_lever_vars(cfg)
+    for (code in .access_cfg_moved_codes(cfg)) {
+      candidates <- c(candidates, lv[[code]])
     }
   }
   if (!is.null(labor)) {
@@ -992,6 +975,66 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   x_out
 }
 
+# Percent change of a numeric lever variable: x * (1 + pct / 100).
+.apply_numeric_pct <- function(x, pct) {
+  if (is.null(pct) || length(pct) != 1L || is.na(pct) || pct == 0) {
+    return(x)
+  }
+  x * (1 + pct / 100)
+}
+
+# Apply the moved levers of one scenario list (infra, digital, education) to the
+# survey. A lever is handled by the fields it has: universal/access change
+# (binary access), a value change (percent change of a numeric variable), or the
+# health fields (travel time, the one special behaviour). Only variables in
+# `lever_cols` (the model's) are changed. Each binary lever draws from its own
+# stream, seeded by its variable, so toggling one lever never redraws another.
+#' @noRd
+.apply_access_levers <- function(svy, cfg, lever_cols, lever_seed) {
+  moved <- .access_cfg_moved_codes(cfg)
+  if (!length(moved)) {
+    return(svy)
+  }
+  lv <- .cfg_lever_vars(cfg)
+  for (code in moved) {
+    for (v in intersect(lv[[code]], lever_cols)) {
+      universal <- .cfg_field(cfg, code, "_universal")
+      access <- .cfg_field(cfg, code, "_access_change_pct")
+      value <- .cfg_field(cfg, code, "_value_change_pct")
+      if (identical(code, "health") && is.null(universal) && is.null(access) && is.null(value)) {
+        svy[[v]] <- .apply_health_travel(
+          svy[[v]], cfg$health_mode, cfg$health_travel_pct, cfg$health_travel_max
+        )
+      } else if (!is.null(value)) {
+        svy[[v]] <- .apply_numeric_pct(svy[[v]], value)
+      } else {
+        svy[[v]] <- withr::with_seed(
+          lever_seed(v), .apply_binary_access(svy[[v]], universal, access)
+        )
+      }
+    }
+  }
+  svy
+}
+
+# Levers a scenario list has moved whose variable cannot be applied: not in the
+# survey, or not in the model (`model_vars`). Named list code -> reason.
+#' @noRd
+.access_levers_unavailable <- function(cfg, survey_cols, model_vars = NULL) {
+  lv <- .cfg_lever_vars(cfg)
+  out <- character(0)
+  for (code in .access_cfg_moved_codes(cfg)) {
+    vars <- lv[[code]]
+    in_svy <- vars[vars %in% survey_cols]
+    if (!length(in_svy)) {
+      out[[code]] <- "variable not in the survey"
+    } else if (!is.null(model_vars) && !any(.lever_in_model(in_svy, model_vars))) {
+      out[[code]] <- "variable not in the model"
+    }
+  }
+  out
+}
+
 .apply_health_travel <- function(x, mode, pct, max_min) {
   if (identical(mode, "pct")) {
     if (is.null(pct) || is.na(pct) || pct == 0) {
@@ -1225,107 +1268,10 @@ apply_policy_to_svy <- function(svy,
       cols[.lever_in_model(cols, model_vars)]
     }
 
-    # Infrastructure: only apply if user has specified non-zero changes
-    if (!is.null(infra)) {
-      if (has_infra_change(infra)) {
-        if ("electricity" %in% lever_cols) {
-          svy$electricity <- withr::with_seed(lever_seed("electricity"), .apply_binary_access(
-            svy$electricity,
-            infra$elec_universal,
-            infra$elec_access_change_pct
-          ))
-        }
-        if ("imp_wat_rec" %in% lever_cols) {
-          svy$imp_wat_rec <- withr::with_seed(lever_seed("imp_wat_rec"), .apply_binary_access(
-            svy$imp_wat_rec,
-            infra$water_universal,
-            infra$water_access_change_pct
-          ))
-        }
-        if ("imp_san_rec" %in% lever_cols) {
-          svy$imp_san_rec <- withr::with_seed(lever_seed("imp_san_rec"), .apply_binary_access(
-            svy$imp_san_rec,
-            infra$sanitation_universal,
-            infra$sanitation_access_change_pct
-          ))
-        }
-        if ("piped" %in% lever_cols) {
-          svy$piped <- withr::with_seed(lever_seed("piped"), .apply_binary_access(
-            svy$piped,
-            infra$piped_universal,
-            infra$piped_access_change_pct
-          ))
-        }
-        if ("piped_to_prem" %in% lever_cols) {
-          svy$piped_to_prem <- withr::with_seed(lever_seed("piped_to_prem"), .apply_binary_access(
-            svy$piped_to_prem,
-            infra$piped_to_prem_universal,
-            infra$piped_to_prem_access_change_pct
-          ))
-        }
-        if ("imp_wat_san_rec" %in% lever_cols) {
-          svy$imp_wat_san_rec <- withr::with_seed(lever_seed("imp_wat_san_rec"), .apply_binary_access(
-            svy$imp_wat_san_rec,
-            infra$imp_wat_san_universal,
-            infra$imp_wat_san_access_change_pct
-          ))
-        }
-        if ("ttime_health" %in% lever_cols) {
-          svy$ttime_health <- .apply_health_travel(
-            svy$ttime_health,
-            infra$health_mode,
-            infra$health_travel_pct,
-            infra$health_travel_max
-          )
-        }
-      }
-    }
-
-    # Digital inclusion: only apply if user has specified non-zero changes
-    if (!is.null(digital)) {
-      if (has_digital_change(digital)) {
-        if ("internet" %in% lever_cols) {
-          svy$internet <- withr::with_seed(lever_seed("internet"), .apply_binary_access(
-            svy$internet,
-            digital$internet_universal,
-            digital$internet_access_change_pct
-          ))
-        }
-        if ("cellphone" %in% lever_cols) {
-          svy$cellphone <- withr::with_seed(lever_seed("cellphone"), .apply_binary_access(
-            svy$cellphone,
-            digital$mobile_universal,
-            digital$mobile_access_change_pct
-          ))
-        }
-      }
-    }
-
-    # Education: only apply if user has specified non-zero changes
-    if (!is.null(education)) {
-      if (has_education_change(education)) {
-        if ("educ_com1_hh" %in% lever_cols) {
-          svy$educ_com1_hh <- withr::with_seed(lever_seed("educ_com1_hh"), .apply_binary_access(
-            svy$educ_com1_hh,
-            education$primary_universal,
-            education$primary_access_change_pct
-          ))
-        }
-        if ("educ_com2_hh" %in% lever_cols) {
-          svy$educ_com2_hh <- withr::with_seed(lever_seed("educ_com2_hh"), .apply_binary_access(
-            svy$educ_com2_hh,
-            education$secondary_universal,
-            education$secondary_access_change_pct
-          ))
-        }
-        if ("educ_com3_hh" %in% lever_cols) {
-          svy$educ_com3_hh <- withr::with_seed(lever_seed("educ_com3_hh"), .apply_binary_access(
-            svy$educ_com3_hh,
-            education$postsec_universal,
-            education$postsec_access_change_pct
-          ))
-        }
-      }
+    # Infrastructure, digital inclusion, education (and levers of other
+    # groups, carried in the same lists): only levers the user has moved.
+    for (cfg in list(infra, digital, education)) {
+      svy <- .apply_access_levers(svy, cfg, lever_cols, lever_seed)
     }
 
     # Labour market: only apply if user has specified non-zero changes

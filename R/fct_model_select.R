@@ -5,100 +5,40 @@
 
 # Policy scenario definitions ----
 
-#' Predefined policy scenario definitions
+#' Policy scenario definitions
 #'
-#' Each entry maps a short key to a human-readable label and a character vector
-#' of variable names that the policy requires in the model.
+#' `POLICY_DEFINITIONS` (the lever table of a data directory without policy
+#' metadata) and `policy_definitions()` (from a variable list) live in
+#' `fct_policy_registry.R`. Each entry is keyed by lever code and holds a
+#' human-readable label and the variables the policy requires in the model.
 #'
-#' @export
-POLICY_DEFINITIONS <- list(
-  "A" = list(
-    label = "Energy / Electricity access",
-    vars  = c("electricity")
-  ),
-  "B" = list(
-    label = "Improved water access",
-    vars  = c("imp_wat_rec")
-  ),
-  "C" = list(
-    label = "Sanitation access",
-    vars  = c("imp_san_rec")
-  ),
-  "D" = list(
-    label = "Health access",
-    vars  = c("ttime_health")
-  ),
-  "E" = list(
-    label = "Internet access",
-    vars  = c("internet")
-  ),
-  "F" = list(
-    label = "Mobile phone access",
-    vars  = c("cellphone")
-  ),
-  "G" = list(
-    label = "Piped water access",
-    vars  = c("piped")
-  ),
-  "H" = list(
-    label = "Piped water access (on premises)",
-    vars  = c("piped_to_prem")
-  ),
-  "I" = list(
-    label = "Improved water and sanitation access",
-    vars = c("imp_wat_san_rec"),
-    # Derived: 1 iff both sources are 1, 0 if any source is 0, NA if any
-    # source is NA. Built by apply_policy_derivations() after data load.
-    derived = list(
-      imp_wat_san_rec = list(
-        label   = "Improved water and sanitation access",
-        sources = c("imp_wat_rec", "imp_san_rec"),
-        combine = "and_one",
-        role    = "hh"
-      )
-    )
-  ),
-  "K" = list(
-    label = "Educational attainment (primary)",
-    vars  = c("educ_com1_hh")
-  ),
-  "L" = list(
-    label = "Educational attainment (secondary)",
-    vars  = c("educ_com2_hh")
-  ),
-  "M" = list(
-    label = "Educational attainment (post-secondary)",
-    vars  = c("educ_com3_hh")
-  )
-)
+#' @name policy_definitions_doc
+#' @noRd
+NULL
 
 
-#' Apply derived columns from POLICY_DEFINITIONS to a survey data frame
+#' Apply derived columns (`POLICY_DERIVED`) to a survey data frame
 #'
-#' Walks every policy entry that has a `derived` spec and adds the derived
-#' columns to `df`. Currently supports `combine = "and_one"`: result is 1 iff
-#' all sources equal 1, 0 if any source is 0, and NA if any source is NA.
-#' Skips a derivation when its sources are not all present in `df`.
+#' Adds the derived columns to `df`. Currently supports `combine = "and_one"`, a
+#' three-valued AND: 1 if all sources are 1, 0 if any source is 0 (even when
+#' another is NA), and NA otherwise. Skips a derivation when its sources are not
+#' all present in `df`, and when the column already exists: a data directory
+#' that publishes the variable keeps its own values.
 #'
 #' @param df A data frame (typically the merged survey data).
 #'
 #' @return `df` with derived policy columns added.
 #' @export
 apply_policy_derivations <- function(df) {
-  for (key in names(POLICY_DEFINITIONS)) {
-    der <- POLICY_DEFINITIONS[[key]]$derived
-    if (is.null(der)) next
-    for (vname in names(der)) {
-      spec <- der[[vname]]
-      if (!all(spec$sources %in% names(df))) next
-      mat <- as.matrix(df[, spec$sources, drop = FALSE])
-      if (identical(spec$combine, "and_one")) {
-        any_na <- rowSums(is.na(mat)) > 0
-        df[[vname]] <- ifelse(
-          any_na, NA_integer_,
-          as.integer(rowSums(mat == 1) == ncol(mat))
-        )
-      }
+  for (vname in names(POLICY_DERIVED)) {
+    spec <- POLICY_DERIVED[[vname]]
+    if (vname %in% names(df)) next
+    if (!all(spec$sources %in% names(df))) next
+    mat <- as.matrix(df[, spec$sources, drop = FALSE])
+    if (identical(spec$combine, "and_one")) {
+      any_zero <- rowSums(mat == 0, na.rm = TRUE) > 0
+      all_one <- rowSums(mat == 1, na.rm = TRUE) == ncol(mat)
+      df[[vname]] <- ifelse(any_zero, 0L, ifelse(all_one, 1L, NA_integer_))
     }
   }
   df
@@ -107,9 +47,10 @@ apply_policy_derivations <- function(df) {
 
 #' Add metadata rows for derived policy variables to `variable_list`
 #'
-#' Adds a row for each derived variable defined in `POLICY_DEFINITIONS` so
+#' Adds a row for each derived variable defined in `POLICY_DERIVED` so
 #' that the rest of the app (labels, role-based filtering) can find it.
-#' Existing rows with the same `name` are left unchanged.
+#' Existing rows with the same `name` are left unchanged, so a data directory
+#' that publishes the variable keeps its own row.
 #'
 #' @param vl A data frame with at least `name` and `label` columns.
 #'
@@ -119,45 +60,46 @@ add_derived_policy_vars_to_vl <- function(vl) {
   if (is.null(vl) || nrow(vl) == 0) {
     return(vl)
   }
-  for (key in names(POLICY_DEFINITIONS)) {
-    der <- POLICY_DEFINITIONS[[key]]$derived
-    if (is.null(der)) next
-    for (vname in names(der)) {
-      if (vname %in% vl$name) next
-      spec <- der[[vname]]
-      role <- spec$role %||% "hh"
-      new_row <- vl[NA_integer_, , drop = FALSE][1, , drop = FALSE]
-      new_row$name <- vname
-      if ("label" %in% names(new_row)) new_row$label <- spec$label %||% vname
-      # Flags of the sources: a derived row is a binary household variable
-      # like them, so role checks (`%in% 1L`) do not see NA.
-      src <- vl[vl$name %in% spec$sources, , drop = FALSE]
-      all_src <- nrow(src) == length(spec$sources)
-      for (flag in c("id", "outcome", "hazard", "ind", "hh", "firm", "area", "interact", "fe")) {
-        if (flag %in% names(new_row)) new_row[[flag]] <- 0L
-      }
-      if ("interact" %in% names(new_row)) {
-        new_row$interact <- as.integer(all_src && all(src$interact %in% 1L))
-      }
-      if ("type" %in% names(new_row)) {
-        types <- unique(src$type)
-        new_row$type <- if (all_src && length(types) == 1L && !is.na(types)) types else "logical"
-      }
-      if (role %in% names(new_row)) new_row[[role]] <- 1L
-      vl <- rbind(vl, new_row)
+  for (vname in names(POLICY_DERIVED)) {
+    if (vname %in% vl$name) next
+    spec <- POLICY_DERIVED[[vname]]
+    role <- spec$role %||% "hh"
+    new_row <- vl[NA_integer_, , drop = FALSE][1, , drop = FALSE]
+    new_row$name <- vname
+    if ("label" %in% names(new_row)) new_row$label <- spec$label %||% vname
+    # Flags of the sources: a derived row is a binary household variable
+    # like them, so role checks (`%in% 1L`) do not see NA.
+    src <- vl[vl$name %in% spec$sources, , drop = FALSE]
+    all_src <- nrow(src) == length(spec$sources)
+    for (flag in c("id", "outcome", "hazard", "ind", "hh", "firm", "area", "interact", "fe")) {
+      if (flag %in% names(new_row)) new_row[[flag]] <- 0L
     }
+    if ("interact" %in% names(new_row)) {
+      new_row$interact <- as.integer(all_src && all(src$interact %in% 1L))
+    }
+    if ("type" %in% names(new_row)) {
+      types <- unique(src$type)
+      new_row$type <- if (all_src && length(types) == 1L && !is.na(types)) types else "logical"
+    }
+    if (role %in% names(new_row)) new_row[[role]] <- 1L
+    # A list that marks levers also marks the derived one.
+    if ("policy" %in% names(new_row) && any(nzchar(.policy_text(vl$policy, nrow(vl))))) {
+      new_row$policy <- spec$policy %||% ""
+      if ("policy_group" %in% names(new_row)) new_row$policy_group <- spec$policy_group %||% ""
+    }
+    vl <- rbind(vl, new_row)
   }
   vl
 }
 
 #' Named vector of policy choices for selectize input
-#' @return Named character vector (display label -> key).
+#' @param variable_list Variable list (or `NULL`): its `policy` column decides
+#'   the levers, see `policy_registry()`.
+#' @return Named character vector (display label -> lever code).
 #' @export
-get_policy_choices <- function() {
-  setNames(
-    names(POLICY_DEFINITIONS),
-    vapply(POLICY_DEFINITIONS, `[[`, character(1), "label")
-  )
+get_policy_choices <- function(variable_list = NULL) {
+  defs <- policy_definitions(variable_list)
+  setNames(names(defs), vapply(defs, `[[`, character(1), "label"))
 }
 
 #' Determine which variables are locked by selected policies, split by level
@@ -166,7 +108,8 @@ get_policy_choices <- function() {
 #' the current analysis level (ind/hh/firm/area). The locked variables are added
 #' to the model as interaction terms with the weather hazard.
 #'
-#' @param selected_policies Character vector of policy keys (e.g. \code{"A"}).
+#' @param selected_policies Character vector of lever codes (e.g.
+#'   \code{"electricity"}); earlier letter keys (\code{"A"}) are accepted.
 #' @param variable_list     Data frame with \code{name} column and role flags
 #'   \code{ind}, \code{hh}, \code{firm}, \code{area}.
 #'
@@ -185,8 +128,9 @@ get_policy_locked_vars <- function(selected_policies, variable_list = NULL) {
     return(empty)
   }
 
-  all_vars <- unique(unlist(lapply(selected_policies, function(k) {
-    POLICY_DEFINITIONS[[k]]$vars
+  defs <- policy_definitions(variable_list)
+  all_vars <- unique(unlist(lapply(policy_normalise_keys(selected_policies), function(k) {
+    defs[[k]]$vars
   })))
 
   vl <- variable_list[variable_list$name %in% all_vars, , drop = FALSE]

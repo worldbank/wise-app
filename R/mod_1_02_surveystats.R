@@ -185,7 +185,8 @@ mod_1_02_surveystats_server <- function(
     # entire display pipeline (missingness join, labels, N filter, sort,
     # renames, wrapping) so each table render is a row subset of a polished
     # frame. Exports slice the same frame, unrounded.
-    policy_vars <- wise_policy_vars()
+    # a function of the variable list: levers come from its `policy` column
+    policy_vars <- wise_policy_vars
 
     stats_base <- reactive({
       sd <- survey_data()

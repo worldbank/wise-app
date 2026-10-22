@@ -228,11 +228,9 @@ test_that("pipeline prerequisite controls render while their pages are hidden", 
     mod_2_01_weathersim.R = "baseline_survey_ui",
     mod_3_01_sp.R = c("sp_type_ui", "sp_budget_amount_ui", "sp_targeting_ui",
                       "pmt_variable_ui", "pmt_cutoff_ui", "sp_timing_ui"),
-    mod_3_02_infra.R = c("elec_ui", "water_ui", "sanitation_ui", "piped_ui",
-                         "piped_to_prem_ui", "imp_wat_san_ui", "health_ui"),
-    mod_3_03_digital.R = c("internet_ui", "mobile_ui"),
-    mod_3_04_labor.R = c("labor_emp_ui", "labor_sector_ui"),
-    mod_3_05_education.R = c("primary_ui", "secondary_ui", "postsec_ui")
+    # infrastructure, digital, education and other levers share one control output
+    mod_3_levers.R = "levers_ui",
+    mod_3_04_labor.R = c("labor_emp_ui", "labor_sector_ui")
   )
 
   skip_if_not(dir.exists(testthat::test_path("..", "..", "R")),

@@ -48,6 +48,12 @@ mod_3_scenario_ui <- function(id) {
           value = "Education",
           icon  = icon("graduation-cap"),
           mod_3_05_education_ui(ns("education"))
+        ),
+        bslib::accordion_panel(
+          title = "Other policies",
+          value = "Other policies",
+          icon  = icon("sliders"),
+          mod_3_11_other_ui(ns("other"))
         )
       ),
       hr(),
@@ -135,10 +141,7 @@ mod_3_scenario_server <- function(id,
         ))
       }
 
-      labels <- vapply(pols, function(k) {
-        def <- POLICY_DEFINITIONS[[k]]
-        if (is.null(def)) k else def$label
-      }, character(1))
+      labels <- policy_label(pols, policy_definitions(variable_list()))
 
       selection_summary_card(
         title = "Selected policy scenarios",
@@ -202,6 +205,18 @@ mod_3_scenario_server <- function(id,
       variable_list = variable_list
     )
 
+    # Levers of groups without a module of their own ----
+
+    s11 <- mod_3_11_other_server(
+      "other",
+      selected_model = selected_model,
+      survey_data = survey_data,
+      variable_list = variable_list
+    )
+
+    # They run with the infrastructure scenario (`step3_merge_access()`).
+    infra_all <- reactive(step3_merge_access(s2$infra_scenario(), s11$other_scenario()))
+
     # Merge the dynamically rendered manual button with the root pipeline
     # request. Initial action-button registration (0) is inert, and a request
     # is consumed once so clearing it cannot replay the run.
@@ -230,7 +245,7 @@ mod_3_scenario_server <- function(id,
       "policy_sim",
       survey_weather = survey_weather,
       sp_scenario = s1$sp_scenario,
-      infra_scenario = s2$infra_scenario,
+      infra_scenario = infra_all,
       digital_scenario = s3$digital_scenario,
       labor_scenario = s4$labor_scenario,
       education_scenario = s5$education_scenario,

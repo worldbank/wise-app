@@ -211,12 +211,13 @@ wise_default_policy <- function() {
       effect_multiplier = 1, delay_loss_pct_per_week = 0
     ),
     infra = c(
-      access(c("elec", "water", "sanitation", "piped", "piped_to_prem", "imp_wat_san")),
+      access(c("electricity", "water", "sanitation", "piped", "piped_to_prem", "water_sanitation")),
       list(health_mode = "pct", health_travel_pct = 0, health_travel_max = 60)
     ),
     digital = access(c("internet", "mobile")),
     labor = list(labor_emp = 0),
-    education = access(c("primary", "secondary", "postsec"))
+    education = access(c("educ_primary", "educ_secondary", "educ_postsec")),
+    other = list()
   )
 }
 

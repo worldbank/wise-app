@@ -415,14 +415,28 @@ test_that("the configuration input ids still exist in the module controls", {
   expect_match(s21, 'ns("fut_period_3")', fixed = TRUE)
   prefixes <- c(
     "step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-", "step2-weathersim-",
-    "step3-sp-", "step3-infra-", "step3-digital-", "step3-labor-", "step3-education-"
+    "step3-sp-", "step3-infra-", "step3-digital-", "step3-labor-", "step3-education-",
+    "step3-other-"
   )
   expect_identical(unname(.CONFIG_PREFIX), prefixes)
-  # Every Step 3 control of the spec is a control of its module.
+  # Every Step 3 control of the spec is a control of its module. The access
+  # levers are built from the registry in mod_3_levers.R: `<code>_universal`,
+  # `<code>_pct` and the health ids.
+  levers_src <- src("mod_3_levers.R")
+  expect_match(levers_src, 'paste0(code, "_universal")', fixed = TRUE)
+  expect_match(levers_src, 'paste0(code, "_pct")', fixed = TRUE)
+  for (id in c("health_mode", "health_travel_pct", "health_travel_max")) {
+    expect_match(levers_src, paste0('ns("', id, '")'), fixed = TRUE)
+  }
+  for (f in c("mod_3_02_infra.R", "mod_3_03_digital.R", "mod_3_05_education.R", "mod_3_11_other.R")) {
+    expect_match(src(f), "mod_3_levers_server(", fixed = TRUE)
+  }
+  expect_identical(
+    sort(c(STEP3_INFRA_IDS, STEP3_DIGITAL_IDS, STEP3_EDUCATION_IDS)),
+    sort(unlist(lapply(c("infra", "digital", "education"), step3_ids)))
+  )
   for (lever in list(
-    list("mod_3_01_sp.R", STEP3_SP_IDS), list("mod_3_02_infra.R", STEP3_INFRA_IDS),
-    list("mod_3_03_digital.R", STEP3_DIGITAL_IDS), list("mod_3_04_labor.R", STEP3_LABOR_IDS),
-    list("mod_3_05_education.R", STEP3_EDUCATION_IDS)
+    list("mod_3_01_sp.R", STEP3_SP_IDS), list("mod_3_04_labor.R", STEP3_LABOR_IDS)
   )) {
     code <- src(lever[[1L]])
     for (id in lever[[2L]]) {
@@ -437,7 +451,7 @@ test_that("the configuration input ids still exist in the module controls", {
     }
   }
   app3 <- src("mod_3_scenario.R")
-  for (m in c("sp", "infra", "digital", "labor", "education")) {
+  for (m in c("sp", "infra", "digital", "labor", "education", "other")) {
     expect_match(app3, paste0('"', m, '",'), fixed = TRUE)
   }
   expect_match(src("app_server.R"), 'mod_3_scenario_server\\(\\s+id = "step3"')
@@ -546,7 +560,9 @@ test_that("model validation lists the problems", {
   err <- function(...) conditionMessage(tryCatch(wise_spec(model = list(...)), error = identity))
   expect_match(err(type = "Random forest"), "model.type must be one of")
   expect_match(err(interactions = c("urban", "")), "model.interactions must be variable names")
-  expect_match(err(policy_vars = "x"), "model.policy_vars must be policy scenario keys")
+  expect_match(err(policy_vars = "X-1"), "model.policy_vars must be policy lever codes")
+  # an open vocabulary: a well-formed code passes here, the data decides if it exists
+  expect_identical(wise_spec(model = list(policy_vars = "clean_cooking"))$model$policy_vars, "clean_cooking")
   expect_match(err(policy_vars = c("A", "B")), "at most one policy scenario")
   expect_match(err(bogus = 1), "model.bogus: not a model setting")
   expect_match(err(covariates = list(method = "stepwise")), "method must be")
@@ -656,7 +672,8 @@ test_that("a configuration export carries the model settings", {
   cfg$inputs[["step1-model-selected_policies"]] <- "A"
   cfg$inputs[["step1-model-interactions"]] <- "electricity"
   m <- wise_spec_from_config(cfg)$model
-  expect_identical(m$policy_vars, "A")
+  # an earlier letter key is read as the lever code
+  expect_identical(m$policy_vars, "electricity")
   expect_identical(m$interactions, "electricity")
   # No interaction selected is no interaction.
   cfg$inputs[["step1-model-interactions"]] <- character(0)
@@ -673,10 +690,12 @@ test_that("interactions and the policy scenario are normalised and move only the
   expect_identical(wise_spec_ids(base)$fit_id, wise_spec_ids(none)$fit_id)
   a <- wise_spec(model = list(interactions = c("urban", "urban"), policy_vars = "a"))
   expect_identical(a$model$interactions, "urban")
-  expect_identical(a$model$policy_vars, "A")
+  expect_identical(a$model$policy_vars, "electricity")
   # A label names the scenario too.
   b <- wise_spec(model = list(policy_vars = "Energy / Electricity access"))
-  expect_identical(b$model$policy_vars, "A")
+  expect_identical(b$model$policy_vars, "electricity")
+  # letter key, code and label are one scenario
+  expect_identical(wise_spec(model = list(policy_vars = "A")), wise_spec(model = list(policy_vars = "electricity")))
   ia <- wise_spec_ids(a)
   ib <- wise_spec_ids(wise_spec(model = list(interactions = "urban")))
   expect_false(identical(ia$fit_id, wise_spec_ids(base)$fit_id))
@@ -943,8 +962,8 @@ test_that("the policy section: absent or empty is no policy, a lever starts from
   # return-period trigger, no change in access.
   expect_identical(s$sp$targeting, "universal")
   expect_identical(s$sp$trigger_type, "return_period")
-  expect_false(s$infra$elec_universal)
-  expect_identical(s$infra$elec_pct, 0)
+  expect_false(s$infra$electricity_universal)
+  expect_identical(s$infra$electricity_pct, 0)
   # Rule-based fields stay absent until given.
   expect_false(any(c("pmt_variable", "trigger_variable", "annual_cap", "trigger_pov_line") %in% names(s$sp)))
 })
@@ -984,7 +1003,7 @@ test_that("policy validation lists the problems", {
   expect_match(msg, "policy.sp.foo")
   expect_match(msg, "policy.sp.targeting_threshold_pct must be between 5 and 60")
   expect_match(msg, "policy.sp.error_concentration must be one of: 0, 5, 20")
-  expect_match(msg, "policy.infra.elec_pct must be between -20 and 100")
+  expect_match(msg, "policy.infra.electricity_pct must be between -20 and 100")
   expect_match(msg, "policy.infra.health_mode")
   expect_match(msg, "policy.labor.labor_emp")
   # A policy needs a simulation.
@@ -1019,10 +1038,10 @@ test_that("a policy spec resolves to the lever configurations of the modules", {
   expect_identical(cfg$sp$targeting, "exante_poor")
   expect_identical(cfg$sp$amount_basis, "per_capita")
   expect_identical(cfg$sp$currency, "PPP")
-  expect_identical(cfg$infra$elec_access_change_pct, 100L)
+  expect_identical(cfg$infra$electricity_access_change_pct, 100L)
   expect_identical(cfg$infra$water_access_change_pct, 25)
   expect_false(cfg$digital$internet_universal)
-  expect_identical(cfg$education$primary_access_change_pct, 10)
+  expect_identical(cfg$education$educ_primary_access_change_pct, 10)
   expect_null(cfg$labor$sector_manufacturing)
   expect_identical(cfg$labor$sector_services, 40)
   # A per-person amount only exists for household analysis.
@@ -1071,7 +1090,7 @@ test_that("a grid crosses policy profiles; the profile replaces the whole policy
   expect_length(unique(amounts$policy_id), 2L)
   # A top-level policy merges lever by lever into the base.
   top <- wise_spec_expand(list(model = list(), sim = list(), policy = list(infra = list(elec_pct = 5))))
-  expect_identical(top$spec[[1L]]$policy$infra$elec_pct, 5)
+  expect_identical(top$spec[[1L]]$policy$infra$electricity_pct, 5)
 })
 
 test_that("a configuration export carries every lever of Step 3", {
@@ -1105,11 +1124,12 @@ test_that("a configuration export carries every lever of Step 3", {
   expect_true(sp$dyn_welfare)
   expect_identical(sp$annual_cap, 2e6)
   expect_identical(sp$payments_per_activation, 3)
-  expect_true(s$policy$infra$elec_universal)
+  # an export of the earlier stems is read under the lever codes
+  expect_true(s$policy$infra$electricity_universal)
   expect_identical(s$policy$infra$health_travel_max, 45)
   expect_identical(s$policy$digital$internet_pct, 15)
   expect_identical(s$policy$labor$sector_manufacturing, 25)
-  expect_identical(s$policy$education$secondary_pct, 10)
+  expect_identical(s$policy$education$educ_secondary_pct, 10)
   # The lever the configuration omits is not part of the spec.
   one <- cfg
   one$inputs <- one$inputs[!grepl("^step3-(infra|digital|labor|education)", names(one$inputs))]
@@ -1166,4 +1186,61 @@ test_that("a policy spec with a percentile amount resolves on the baseline surve
   # Without a survey the amount stays unresolved; with an unusable one a batch run stops.
   expect_identical(wise_policy_configs(s, so, "hh")$sp$transfer_amount_usd, 0)
   expect_error(wise_policy_configs(s, so, "hh", svy = svy[1:5, ]), "percentile of the baseline survey")
+})
+
+test_that("policy levers of the variable list are an open vocabulary in a spec", {
+  vl <- data.frame(
+    name = c("elec_access", "clean_fuel", "income_idx"),
+    label = c("Electricity", "Clean fuel", "Income index"),
+    type = c("logical", "logical", "numeric"),
+    ind = 0L, hh = 1L, firm = 0L, area = 0L,
+    policy = c("electricity", "clean_cooking", "income"),
+    policy_group = c("infrastructure", "", "livelihoods"),
+    stringsAsFactors = FALSE
+  )
+  reg <- policy_registry(vl)
+  s <- pol_spec(list(
+    infra = list(electricity_pct = 30),
+    other = list(clean_cooking_universal = TRUE, income_pct = -50)
+  ))$policy
+  expect_true(s$other$clean_cooking_universal)
+  expect_identical(s$other$income_pct, -50)
+  # a lever the app has no default for keeps the wider percent range
+  expect_error(pol_spec(list(other = list(income_pct = 150))), "policy.other.income_pct must be between -100 and 100")
+  expect_error(pol_spec(list(other = list(clean_cooking_x = 1))), "not a other setting")
+  # one scenario for the lever list: levers of other groups run in the infra scenario
+  cfg <- wise_policy_configs(s, registry = reg)
+  expect_identical(cfg$infra$electricity_access_change_pct, 30)
+  expect_true(cfg$infra$clean_cooking_universal)
+  expect_identical(cfg$infra$income_value_change_pct, -50)
+  expect_identical(cfg$infra$lever_vars$income, "income_idx")
+  expect_null(cfg$digital)
+  # a code the variable list does not have stops the run; so does a code in the wrong group
+  expect_error(
+    wise_policy_configs(pol_spec(list(other = list(wifi_pct = 5)))$policy, registry = reg),
+    "wifi is not a policy lever in the variable list"
+  )
+  expect_error(
+    wise_policy_configs(pol_spec(list(infra = list(income_pct = 5)))$policy, registry = reg),
+    "income belongs to another lever"
+  )
+  # defaults of levers the list lacks are ignored, a changed one is an error
+  expect_error(
+    wise_policy_configs(pol_spec(list(digital = list(internet_pct = 5)))$policy, registry = reg),
+    "internet is not a policy lever"
+  )
+  expect_silent(wise_policy_configs(pol_spec(list(digital = list()))$policy, registry = reg))
+})
+
+test_that("a spec with earlier letter keys and stems means the same as one with lever codes", {
+  old <- pol_spec(list(infra = list(elec_pct = 30, imp_wat_san_universal = TRUE),
+                       education = list(primary_pct = 10)))
+  new <- pol_spec(list(infra = list(electricity_pct = 30, water_sanitation_universal = TRUE),
+                       education = list(educ_primary_pct = 10)))
+  expect_identical(old, new)
+  expect_identical(wise_spec_ids(old)$policy_id, wise_spec_ids(new)$policy_id)
+  expect_identical(
+    wise_spec(model = list(policy_vars = "I"))$model,
+    wise_spec(model = list(policy_vars = "water_sanitation"))$model
+  )
 })

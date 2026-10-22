@@ -21,16 +21,34 @@ STEP3_SP_IDS <- c(
   "forecast_far_pct", "effect_multiplier", "delay_loss_pct_per_week"
 )
 
-STEP3_INFRA_IDS <- c(
-  paste0(rep(c("elec", "water", "sanitation", "piped", "piped_to_prem", "imp_wat_san"), each = 2L),
-    c("_universal", "_pct")),
-  "health_mode", "health_travel_pct", "health_travel_max"
-)
-STEP3_DIGITAL_IDS <- c("internet_universal", "internet_pct", "mobile_universal", "mobile_pct")
-STEP3_EDUCATION_IDS <- c(
-  "primary_universal", "primary_pct", "secondary_universal", "secondary_pct",
-  "postsec_universal", "postsec_pct"
-)
+#' Control ids of the access levers of a slot
+#'
+#' Levers are controlled by their code: `<code>_universal` and `<code>_pct`
+#' (binary access), `<code>_pct` (percent change of a numeric variable), or the
+#' `health_*` ids (travel time). Slots are `infra`, `digital`, `education` and
+#' `other` (levers of any other group).
+#'
+#' @param slot One of the slots above.
+#' @param registry Lever registry (`policy_registry()`).
+#' @return Character vector of control ids.
+#' @noRd
+step3_ids <- function(slot, registry = policy_registry(NULL)) {
+  r <- registry[registry$slot == slot & registry$behaviour %in% c("binary", "pct", "health"), , drop = FALSE]
+  ids <- lapply(seq_len(nrow(r)), function(i) {
+    switch(r$behaviour[i],
+      binary = paste0(r$code[i], c("_universal", "_pct")),
+      pct = paste0(r$code[i], "_pct"),
+      health = c("health_mode", "health_travel_pct", "health_travel_max")
+    )
+  })
+  unique(as.character(unlist(ids)))
+}
+
+# Ids of the levers of a data directory without policy metadata.
+STEP3_INFRA_IDS <- step3_ids("infra")
+STEP3_DIGITAL_IDS <- step3_ids("digital")
+STEP3_EDUCATION_IDS <- step3_ids("education")
+STEP3_OTHER_IDS <- step3_ids("other")
 STEP3_LABOR_IDS <- c("labor_emp", "sector_manufacturing", "sector_services")
 
 # The values of the named controls, as a list with an entry (possibly `NULL`)
@@ -220,58 +238,111 @@ wise_sp_resolve_amount <- function(sp, svy) {
   if (isTRUE(x[[paste0(stem, "_universal")]])) 100L else x[[paste0(stem, "_pct")]] %||% 0L
 }
 
-#' Infrastructure scenario configuration
-#' @param x Named list of control values by input id (`STEP3_INFRA_IDS`).
+#' Access-lever scenario configuration of one slot
+#'
+#' The scenario list `apply_policy_to_svy()` takes as `infra`, `digital` or
+#' `education`, from the control values of the levers of the slot (by lever
+#' code, see `step3_ids()`). Binary levers give `<code>_universal` and
+#' `<code>_access_change_pct`, numeric levers `<code>_value_change_pct`, the
+#' health lever its three fields. `lever_vars` records each lever's variables.
+#' Control values under earlier stems (`elec`, `primary`, ...) are read as the
+#' lever's.
+#'
+#' @param x Named list of control values by input id.
+#' @param slot `infra`, `digital`, `education` or `other`.
+#' @param registry Lever registry (`policy_registry()`).
 #' @return The scenario list.
 #' @noRd
-wise_infra_config <- function(x) {
-  access <- function(stem, field = stem) {
-    out <- list(
-      isTRUE(x[[paste0(stem, "_universal")]]),
-      .step3_access_change(x, stem)
-    )
-    names(out) <- c(paste0(field, "_universal"), paste0(field, "_access_change_pct"))
-    out
+wise_access_config <- function(x, slot, registry = policy_registry(NULL)) {
+  x <- policy_normalise_stems(x)
+  r <- registry[registry$slot == slot & registry$behaviour %in% c("binary", "pct", "health"), , drop = FALSE]
+  out <- list()
+  for (i in seq_len(nrow(r))) {
+    code <- r$code[i]
+    out <- c(out, switch(r$behaviour[i],
+      # TRUE = set all to 1, FALSE = change by pct
+      binary = stats::setNames(
+        list(isTRUE(x[[paste0(code, "_universal")]]), .step3_access_change(x, code)),
+        paste0(code, c("_universal", "_access_change_pct"))
+      ),
+      pct = stats::setNames(
+        list(x[[paste0(code, "_pct")]] %||% 0L),
+        paste0(code, "_value_change_pct")
+      ),
+      # Health facility travel time
+      health = list(
+        health_mode = x[["health_mode"]] %||% "pct",
+        health_travel_pct = x[["health_travel_pct"]] %||% 0L,
+        health_travel_max = x[["health_travel_max"]] %||% 60L
+      )
+    ))
   }
-  c(
-    # Electricity: TRUE = set all to 1, FALSE = increase by pct
-    access("elec"), access("water"), access("sanitation"), access("piped"),
-    access("piped_to_prem"), access("imp_wat_san"),
-    # Health facility travel time
-    list(
-      health_mode = x[["health_mode"]] %||% "pct",
-      health_travel_pct = x[["health_travel_pct"]] %||% 0L,
-      health_travel_max = x[["health_travel_max"]] %||% 60L
-    )
-  )
+  out$lever_vars <- lapply(split(r$var, factor(r$code, levels = unique(r$code))), unique)
+  out$lever_groups <- as.list(stats::setNames(r$group, r$code)[!duplicated(r$code)])
+  out
 }
 
-#' Digital inclusion scenario configuration
-#' @param x Named list of control values by input id (`STEP3_DIGITAL_IDS`).
+#' Infrastructure, digital inclusion, education and other-group scenarios
+#' @param x Named list of control values by input id.
+#' @param registry Lever registry (`policy_registry()`).
 #' @return The scenario list.
 #' @noRd
-wise_digital_config <- function(x) {
-  list(
-    internet_universal = isTRUE(x[["internet_universal"]]),
-    internet_access_change_pct = .step3_access_change(x, "internet"),
-    mobile_universal = isTRUE(x[["mobile_universal"]]),
-    mobile_access_change_pct = .step3_access_change(x, "mobile")
-  )
+wise_infra_config <- function(x, registry = policy_registry(NULL)) {
+  wise_access_config(x, "infra", registry)
 }
 
-#' Education scenario configuration
-#' @param x Named list of control values by input id (`STEP3_EDUCATION_IDS`).
-#' @return The scenario list.
+#' @rdname wise_infra_config
 #' @noRd
-wise_education_config <- function(x) {
-  list(
-    primary_universal = isTRUE(x[["primary_universal"]]),
-    primary_access_change_pct = .step3_access_change(x, "primary"),
-    secondary_universal = isTRUE(x[["secondary_universal"]]),
-    secondary_access_change_pct = .step3_access_change(x, "secondary"),
-    postsec_universal = isTRUE(x[["postsec_universal"]]),
-    postsec_access_change_pct = .step3_access_change(x, "postsec")
+wise_digital_config <- function(x, registry = policy_registry(NULL)) {
+  wise_access_config(x, "digital", registry)
+}
+
+#' @rdname wise_infra_config
+#' @noRd
+wise_education_config <- function(x, registry = policy_registry(NULL)) {
+  wise_access_config(x, "education", registry)
+}
+
+#' @rdname wise_infra_config
+#' @noRd
+wise_other_config <- function(x, registry = policy_registry(NULL)) {
+  wise_access_config(x, "other", registry)
+}
+
+#' Merge access-lever scenario lists
+#'
+#' Levers of groups without a module of their own are controlled in the "other"
+#' module and run with the infrastructure scenario: the lists are merged, fields
+#' and `lever_vars` alike (fields are named by lever code, so they cannot clash).
+#'
+#' @param ... Scenario lists (`NULL` ignored).
+#' @return The merged list, or `NULL` when none is given.
+#' @noRd
+step3_merge_access <- function(...) {
+  cfgs <- Filter(is.list, list(...))
+  if (!length(cfgs)) {
+    return(NULL)
+  }
+  meta <- c("lever_vars", "lever_groups")
+  out <- do.call(c, lapply(cfgs, function(z) z[setdiff(names(z), meta)]))
+  for (m in meta) {
+    x <- do.call(c, lapply(cfgs, function(z) z[[m]]))
+    if (length(x)) out[[m]] <- x[!duplicated(names(x))]
+  }
+  out
+}
+
+# Labels of the groups with a moved lever in a scenario list, for the summary
+# card: the label of the slot's own module, or the group text of other levers.
+#' @noRd
+.access_active_labels <- function(cfg, default) {
+  codes <- .access_cfg_moved_codes(cfg)
+  groups <- vapply(codes, function(k) as.character(cfg$lever_groups[[k]] %||% ""), character(1))
+  slot_label <- c(infrastructure = "Infrastructure", digital = "Digital inclusion", education = "Education")
+  lab <- ifelse(groups %in% names(slot_label), unname(slot_label[groups]),
+    ifelse(!nzchar(groups), default, paste0(toupper(substring(groups, 1, 1)), gsub("_", " ", substring(groups, 2), fixed = TRUE)))
   )
+  unique(lab)
 }
 
 # Sector-slider defaults: the observed shares of the survey, rounded, so an

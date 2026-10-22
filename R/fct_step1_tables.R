@@ -305,7 +305,7 @@ WISEAPP_STAT_PROBS <- c(
   }
   groups <- list(
     outcome = unique(c(pick("outcome"), intersect(outcome, num))),
-    policy = intersect(wise_policy_vars(), num),
+    policy = intersect(wise_policy_vars(variable_list), num),
     ind = pick("ind"), hh = pick("hh"), firm = pick("firm"), area = pick("area"),
     indicator = indicator_vars
   )

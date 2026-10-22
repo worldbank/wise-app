@@ -16,6 +16,7 @@ test_that("default scenario is no change", {
     expect_identical(sc$internet_access_change_pct, 0L)
     expect_false(sc$mobile_universal)
     expect_identical(sc$mobile_access_change_pct, 0L)
+    expect_identical(sc$lever_vars$mobile, "cellphone")
   })
 })
 
@@ -35,12 +36,12 @@ test_that("slider values and universal toggles flow into the scenario", {
 
 test_that("a lever is only rendered when its variable is in the model", {
   shiny::testServer(mod_3_03_digital_server, args = digital_args("internet"), {
-    expect_match(output$internet_ui$html, "internet_universal", fixed = TRUE)
-    expect_error(output$mobile_ui, class = "shiny.silent.error")
+    expect_match(output$levers_ui$html, "internet_universal", fixed = TRUE)
+    expect_false(grepl("mobile_universal", output$levers_ui$html, fixed = TRUE))
   })
   shiny::testServer(mod_3_03_digital_server, args = digital_args("cellphone:Haz_t"), {
-    expect_match(output$mobile_ui$html, "mobile_universal", fixed = TRUE)
-    expect_error(output$internet_ui, class = "shiny.silent.error")
+    expect_match(output$levers_ui$html, "mobile_universal", fixed = TRUE)
+    expect_false(grepl("internet_universal", output$levers_ui$html, fixed = TRUE))
   })
 })
 

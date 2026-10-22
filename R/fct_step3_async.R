@@ -186,7 +186,9 @@ step3_baseline_arm <- function(hs, residuals = "original") {
 #' @param progress Function `(value, detail)` called at phase changes.
 #'
 #' @return List with `svy_mod`, `decomp_context`, `pol_out`, `baseline_out`,
-#'   `baseline_scenarios_out`, `diagnostic_summary` and `no_effect`.
+#'   `baseline_scenarios_out`, `diagnostic_summary`, `no_effect` and
+#'   `unavailable` (named character: moved levers that could not act, by code,
+#'   with the reason).
 #' @noRd
 step3_compute <- function(svy, hs, ss, mf,
                           sp_cfg = NULL, infra_cfg = NULL, digital_cfg = NULL,
@@ -218,6 +220,13 @@ step3_compute <- function(svy, hs, ss, mf,
     education = education_cfg,
     model_vars = model_vars
   )
+
+  # Levers that were moved but cannot act (variable not in the survey, or not in
+  # the model) are reported, not silently skipped.
+  unavailable <- unlist(lapply(
+    list(infra_cfg, digital_cfg, education_cfg),
+    .access_levers_unavailable, survey_cols = names(svy), model_vars = model_vars
+  ))
 
   # A social-protection-only scenario changes nothing but the cash transfer
   # column, which is deliberately excluded from the covariate deltas - so it is
@@ -329,7 +338,8 @@ step3_compute <- function(svy, hs, ss, mf,
     baseline_out = baseline_out,
     baseline_scenarios_out = baseline_scenarios_out,
     diagnostic_summary = diagnostic_summary,
-    no_effect = no_effect
+    no_effect = no_effect,
+    unavailable = unavailable
   )
 }
 

@@ -29,13 +29,18 @@ model: {}
 #   baseline_survey: [BFA|2021]                    # CODE|YEAR; default: latest wave
 
 # Step 3 policy (needs a simulation). Levers: sp (cash transfer, regular or
-# shock-responsive), infra, digital, labor, education. A lever starts from the
-# initial values of its controls in the app; a lever left out is not part of the
-# run. The setting names are the ids of the controls. A policy can also be
-# switched on an axis (see the commented profiles below).
+# shock-responsive), infra, digital, labor, education, other. A lever starts from
+# the initial values of its controls in the app; a lever left out is not part of
+# the run. The setting names are the ids of the controls; for infra, digital,
+# education and other they are `<code>_universal` and `<code>_pct`, where
+# <code> is the lever code of the variable list (column `policy`), e.g.
+# electricity, water, internet, educ_primary. `other` holds levers whose group
+# has no module of its own. Earlier stems (elec, imp_wat_san, primary, secondary,
+# postsec) are still read. A policy can also be switched on an axis (see the
+# commented profiles below).
 # policy:
 #   sp: {transfer_amount_usd: 60, targeting: exante_poor, targeting_threshold_pct: 30}
-#   infra: {elec_pct: 30}
+#   infra: {electricity_pct: 30}
 
 # Named settings that an axis can switch between. A weather profile lists the
 # weather variables (the names of the variable list, at most two).

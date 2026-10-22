@@ -599,7 +599,11 @@ wise_batch_fit <- function(item) {
       add_id <- function(x) if (is.null(x)) NULL else cbind(fit_id = item$id, code = code, x)
       fit_file <- file.path(.batch_dir("fits"), paste0(item$id, ".qs2"))
       qs2::qs_save(
-        list(mf = step2_slim_model_fit(mf), model_vars = model_term_names(m$selected_model)),
+        list(
+          mf = step2_slim_model_fit(mf), model_vars = model_term_names(m$selected_model),
+          # the policy levers of the variable list, for the policy stage
+          registry = policy_registry(d$variable_list)
+        ),
         fit_file
       )
       list(
@@ -789,7 +793,10 @@ wise_batch_policy <- function(item) {
       RNGkind("Mersenne-Twister", "Inversion", "Rejection")
 
       svy <- ensure_outcome_column(hs$svy, hs$so)
-      levers <- wise_policy_configs(spec$policy, hs$so, unit, step3_sector_defaults(svy), svy = svy)
+      levers <- wise_policy_configs(
+        spec$policy, hs$so, unit, step3_sector_defaults(svy), svy = svy,
+        registry = fit$registry %||% policy_registry(NULL)
+      )
       input <- wise_step3_input(
         svy = svy, mf = fit$mf, sp_cfg = levers$sp, infra_cfg = levers$infra,
         digital_cfg = levers$digital, labor_cfg = levers$labor, education_cfg = levers$education,
@@ -815,6 +822,11 @@ wise_batch_policy <- function(item) {
         cbind(sim_id = item$sim_id, code = code, x[c("policy_id", setdiff(names(x), "policy_id"))])
       }
       partial <- out$partial
+      if (length(run$unavailable)) {
+        partial <- c(partial, paste0(
+          "policy lever not applied: ", names(run$unavailable), " (", run$unavailable, ")"
+        ))
+      }
       if (!identical(out$status$status, "ok")) {
         partial <- c(partial, paste0("policy contrast unavailable: ", out$status$reason))
       }

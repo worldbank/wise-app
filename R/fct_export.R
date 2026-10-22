@@ -396,6 +396,38 @@ wise_config_apply <- function(config, session, existing = character(0)) {
   ))
 }
 
+#' Step 3 access-control ids of an earlier export as lever-code ids
+#'
+#' Controls of the infrastructure, digital, education and other modules are
+#' `step3-<module>-<code>_universal` / `_pct`; exports written before the lever
+#' codes used the old stems (`elec`, `imp_wat_san`, `primary`, `secondary`,
+#' `postsec`). Renames those so the controls are found, and reads an earlier
+#' letter key of the Model tab's policy scenario as the lever code.
+#'
+#' @param cfg Parsed configuration list.
+#' @return `cfg` with the renamed input ids.
+#' @noRd
+.config_lever_ids <- function(cfg) {
+  ids <- names(cfg$inputs)
+  if (is.null(ids)) {
+    return(cfg)
+  }
+  for (module in c("infra", "digital", "education", "other")) {
+    prefix <- paste0("step3-", module, "-")
+    hit <- startsWith(ids, prefix)
+    ids[hit] <- paste0(prefix, names(policy_normalise_stems(
+      stats::setNames(seq_len(sum(hit)), substring(ids[hit], nchar(prefix) + 1L))
+    )))
+  }
+  names(cfg$inputs) <- ids
+  # the policy scenario of the Model tab: letter keys (`A`) are lever codes now
+  sel <- "step1-model-selected_policies"
+  if (!is.null(cfg$inputs[[sel]])) {
+    cfg$inputs[[sel]] <- policy_normalise_keys(unlist(cfg$inputs[[sel]]))
+  }
+  cfg
+}
+
 #' Validate an imported configuration before anything is applied
 #'
 #' Rejects files that are not WISE-APP exports or that a newer configuration
@@ -1642,6 +1674,8 @@ export_menu_server <- function(input, output, session,
       set_import_status(list(class = "alert-danger", text = verdict$text))
       return(invisible(NULL))
     }
+    # exports of earlier versions name the access controls by old stems
+    cfg <- .config_lever_ids(cfg)
     staged_cfg(cfg)
     import_state$cancelled <- FALSE
     if (!pipeline_enabled) {

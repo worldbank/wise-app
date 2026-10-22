@@ -3,6 +3,8 @@
 #' @description A shiny Module. Access to infrastructure scenario
 #'   configuration - allows the user to define changes in infrastructure
 #'   access rates and travel times to be applied in the policy simulation.
+#'   The levers are those of the `infrastructure` group of the variable list
+#'   (`policy_registry()`); the controls are built in `mod_3_levers.R`.
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
@@ -10,17 +12,7 @@
 #'
 #' @importFrom shiny NS tagList
 mod_3_02_infra_ui <- function(id) {
-  ns <- NS(id)
-  tagList(
-    uiOutput(ns("placeholder_ui")),
-    uiOutput(ns("elec_ui")),
-    uiOutput(ns("water_ui")),
-    uiOutput(ns("sanitation_ui")),
-    uiOutput(ns("piped_ui")),
-    uiOutput(ns("piped_to_prem_ui")),
-    uiOutput(ns("imp_wat_san_ui")),
-    uiOutput(ns("health_ui"))
-  )
+  mod_3_levers_ui(id)
 }
 
 #' 3_02_infra Server Functions
@@ -32,11 +24,12 @@ mod_3_02_infra_ui <- function(id) {
 #' @param selected_model Reactive named list of the selected model's parameters from Step 1.
 #'   Used to determine which infrastructure variables are in the model and should be shown in
 #'   the UI.
+#' @param survey_data Reactive survey data frame.
+#' @param variable_list Reactive variable list; its `policy` columns decide the levers.
 #'
 #' @return A named list of reactives:
 #'   \describe{
 #'     \item{infra_scenario}{Named list of infrastructure scenario parameters.}
-#'     \item{hist_sim}{Reactive - placeholder for historical simulation results.}
 #'   }
 #'
 #' @noRd
@@ -45,222 +38,13 @@ mod_3_02_infra_server <- function(id,
                                   survey_data = reactive(NULL),
                                   variable_list = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
-    ns <- session$ns
-
-    # Get model coefficients ----
-    # REACT-08: shared coefficient decomposition (utils_mod_1_helpers.R).
-    coeffs_rx <- model_coefficient_reactives(selected_model)
-    coeffs <- coeffs_rx$all
-
-    # Candidate variables for this category ----
-    infra_patterns <- c(
-      "electricity", "imp_wat_rec", "imp_san_rec", "ttime_health", "piped", "piped_to_prem",
-      "imp_wat_san_rec"
-    )
-
-    any_selected <- reactive({
-      any(tolower(infra_patterns) %in% tolower(coeffs()))
-    })
-
-    # Infrastructure variables available in the selected survey
-    infra_vars_available <- reactive({
-      svy <- survey_data()
-      if (is.null(svy)) {
-        return(character(0))
-      }
-      # Check which infrastructure variables are actually in the selected survey
-      intersect(infra_patterns, names(svy))
-    })
-
-    output$placeholder_ui <- renderUI({
-      if (isTRUE(any_selected())) {
-        return(NULL)
-      }
-      # Only show placeholder if there are infrastructure variables in the survey
-      if (length(infra_vars_available()) == 0) {
-        return(no_data_warning(
-          "No infrastructure variables found in the selected survey (or level of analysis)."
-        ))
-      }
-      cand <- policy_candidate_info(variable_list(), infra_patterns)
-      policy_placeholder_tag("infrastructure", cand)
-    })
-
-    # Helper: slider + universal access toggle ----
-    # Renders a sliderInput with a checkbox for universal access.
-    # When universal access is checked the slider is hidden/ignored.
-
-    infra_access_ui <- function(input_id, label, icon_class = "fa-house") {
-      tagList(
-        tags$label(
-          class = "control-label",
-          tags$i(class = paste("fa", icon_class, "me-1")),
-          label
-        ),
-        checkboxInput(
-          inputId = ns(paste0(input_id, "_universal")),
-          label   = "Universal",
-          value   = FALSE
-        ),
-        conditionalPanel(
-          condition = paste0("!input['", ns(paste0(input_id, "_universal")), "']"),
-          sliderInput(
-            inputId = ns(paste0(input_id, "_pct")),
-            label   = "Share of unserved gaining access (%)",
-            min     = -20,
-            max     = 100,
-            value   = 0,
-            step    = 5,
-            post    = "%"
-          ),
-          tags$small(
-            class = "text-muted d-block",
-            "Percentage of currently unserved households to give access ",
-            "(negative values remove access from currently-served households); ",
-            "not a percentage-point change in overall coverage."
-          )
-        ),
-        tags$hr(style = "margin: 8px 0;")
-      )
-    }
-
-    # Electricity access ----
-
-    show_elec <- reactive({
-      .lever_in_model("electricity", coeffs())
-    })
-
-    output$elec_ui <- renderUI({
-      req(show_elec())
-      infra_access_ui("elec", "Access to electricity", "fa-bolt")
-    })
-
-    # Improved water access ----
-
-    show_water <- reactive({
-      .lever_in_model("imp_wat_rec", coeffs())
-    })
-
-    output$water_ui <- renderUI({
-      req(show_water())
-      infra_access_ui("water", "Access to improved water", "fa-droplet")
-    })
-
-    # Improved sanitation access ----
-
-    show_sanitation <- reactive({
-      .lever_in_model("imp_san_rec", coeffs())
-    })
-
-    output$sanitation_ui <- renderUI({
-      req(show_sanitation())
-      infra_access_ui("sanitation", "Access to improved sanitation", "fa-toilet")
-    })
-
-    # Piped water access ----
-
-    show_piped <- reactive({
-      .lever_in_model("piped", coeffs())
-    })
-
-    output$piped_ui <- renderUI({
-      req(show_piped())
-      infra_access_ui("piped", "Access to piped water", "fa-tint")
-    })
-
-    # Piped to premesis water access ----
-
-    show_piped_to_prem <- reactive({
-      .lever_in_model("piped_to_prem", coeffs())
-    })
-
-    output$piped_to_prem_ui <- renderUI({
-      req(show_piped_to_prem())
-      infra_access_ui("piped_to_prem", "Access to piped water (to premises)", "fa-tint")
-    })
-
-    # Improved water and sanitation access ----
-
-    show_imp_wat_san <- reactive({
-      .lever_in_model("imp_wat_san_rec", coeffs())
-    })
-
-    output$imp_wat_san_ui <- renderUI({
-      req(show_imp_wat_san())
-      infra_access_ui("imp_wat_san", "Access to improved water and sanitation", "fa-tint")
-    })
-
-    # Health facility access ----
-    # Two modes: reduce travel time by % OR cap at maximum minutes.
-
-    show_health <- reactive({
-      .lever_in_model("ttime_health", coeffs())
-    })
-
-    output$health_ui <- renderUI({
-      req(show_health())
-      tagList(
-        tags$label(
-          class = "control-label",
-          tags$i(class = "fa fa-hospital me-1"),
-          "Access to health facility"
-        ),
-        radioButtons(
-          inputId = ns("health_mode"),
-          label = shiny::tags$span(
-            class = "visually-hidden",
-            "Access to health facility"
-          ),
-          choices = c(
-            "Reduce travel time by (%)" = "pct",
-            "Set maximum travel time (min)" = "max"
-          ),
-          selected = "pct",
-          inline = TRUE
-        ),
-        conditionalPanel(
-          condition = paste0("input['", ns("health_mode"), "'] === 'pct'"),
-          sliderInput(
-            inputId = ns("health_travel_pct"),
-            label   = "Change travel time by (%)",
-            min     = -100,
-            max     = 20,
-            value   = 0,
-            step    = 5,
-            post    = "%"
-          )
-        ),
-        conditionalPanel(
-          condition = paste0("input['", ns("health_mode"), "'] === 'max'"),
-          sliderInput(
-            inputId = ns("health_travel_max"),
-            label   = "Maximum travel time (minutes)",
-            min     = 15,
-            max     = 240,
-            value   = 60,
-            step    = 15,
-            post    = " min"
-          )
-        )
-      )
-    })
-
-    lapply(
-      c(
-        "elec_ui", "water_ui", "sanitation_ui", "piped_ui",
-        "piped_to_prem_ui", "imp_wat_san_ui", "health_ui"
-      ),
-      function(out_id) {
-        shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
-      }
-    )
-
-    # Return API ----
-
     list(
-      infra_scenario = reactive({
-        wise_infra_config(step3_read_inputs(STEP3_INFRA_IDS, function(id) input[[id]]))
-      })
+      infra_scenario = mod_3_levers_server(
+        input, output, session,
+        slot = "infra", category = "infrastructure",
+        selected_model = selected_model, survey_data = survey_data,
+        variable_list = variable_list
+      )
     )
   })
 }
