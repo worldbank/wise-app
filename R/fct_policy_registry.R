@@ -80,6 +80,10 @@ POLICY_SPECIAL_BEHAVIOURS <- c(
   agriculture = "labor_sector", industry = "labor_sector", services = "labor_sector"
 )
 
+# What a lever code may look like (also the batch spec's rule for lever fields).
+#' @noRd
+POLICY_CODE_PATTERN <- "^[a-z][a-z0-9_]*$"
+
 # Groups with their own Step 3 module. Any other group, or none, is "other".
 #' @noRd
 POLICY_SLOTS <- c(
@@ -120,13 +124,18 @@ POLICY_DERIVED <- list(
 #' @param code Lever code(s).
 #' @param type Variable type(s): `logical`, `integer` or `numeric`.
 #' @return `health`, `labor_emp`, `labor_sector` (special), otherwise `binary`
-#'   (logical) or `pct` (numeric).
+#'   (logical), `pct` (numeric) or `none` (any other type: factor, character,
+#'   ...; the lever has no control and is not applied).
 #' @noRd
 policy_behaviour <- function(code, type) {
   special <- unname(POLICY_SPECIAL_BEHAVIOURS[code])
   # the travel-time control needs a number; a binary `health` lever is generic
   special[code == "health" & type == "logical"] <- NA_character_
-  ifelse(!is.na(special), special, ifelse(type %in% c("numeric", "integer"), "pct", "binary"))
+  generic <- ifelse(
+    type %in% c("numeric", "integer"), "pct",
+    ifelse(type %in% "logical", "binary", "none")
+  )
+  ifelse(!is.na(special), special, generic)
 }
 
 #' Slot (Step 3 module) of a lever group
@@ -165,6 +174,19 @@ policy_registry <- function(variable_list = NULL) {
     .policy_text(variable_list$policy, nrow(variable_list))
   } else {
     character(0)
+  }
+  # A code is an input id and a spec field: lower-case letters, digits and
+  # underscores, starting with a letter. Others are left out, not repaired.
+  bad <- nzchar(codes) & !grepl(POLICY_CODE_PATTERN, codes)
+  if (any(bad)) {
+    rlang::warn(
+      paste0(
+        "Policy lever code(s) ignored (use lower-case letters, digits and underscores): ",
+        paste(unique(codes[bad]), collapse = ", "), "."
+      ),
+      .frequency = "once", .frequency_id = paste(unique(codes[bad]), collapse = "|")
+    )
+    codes[bad] <- ""
   }
   if (!any(nzchar(codes))) {
     reg <- fb

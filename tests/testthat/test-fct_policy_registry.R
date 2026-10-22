@@ -237,3 +237,33 @@ test_that("the summary card names the group of a moved lever", {
   expect_identical(.access_active_labels(infra, "Infrastructure"), "Infrastructure")
   expect_identical(.access_active_labels(list(elec_access_change_pct = 5), "Infrastructure"), "Infrastructure")
 })
+
+test_that("a lever of a type without a control is not controlled", {
+  vl <- vl_levers()
+  vl$policy[vl$name == "agecat"] <- "age_group"
+  vl$policy_group[vl$name == "agecat"] <- "infrastructure"
+  reg <- policy_registry(vl)
+  expect_identical(reg$behaviour[reg$code == "age_group"], "none")
+  expect_false("age_group_universal" %in% step3_ids("infra", reg))
+  expect_false(any(grepl("^age_group", names(wise_access_config(list(), "infra", reg)))))
+})
+
+test_that("a lever on two variables has one control and keeps both variables", {
+  vl <- vl_levers(data.frame(
+    name = "elec_ind", label = "Electricity (person)", type = "logical", ind = 1L, hh = 0L,
+    firm = 0L, area = 0L, policy = "electricity", policy_group = "infrastructure",
+    stringsAsFactors = FALSE
+  ))
+  reg <- policy_registry(vl)
+  cfg <- wise_access_config(list(electricity_universal = TRUE), "infra", reg)
+  expect_identical(sum(names(cfg) == "electricity_universal"), 1L)
+  expect_setequal(cfg$lever_vars$electricity, c("elec_access", "elec_ind"))
+})
+
+test_that("lever codes that cannot be input ids are ignored with a warning", {
+  vl <- vl_levers()
+  vl$policy[vl$name == "agecat"] <- "Foo-Bar"
+  expect_warning(reg <- policy_registry(vl), "Foo-Bar")
+  expect_false("Foo-Bar" %in% reg$code)
+  expect_setequal(reg$code, c("electricity", "internet", "income", "clean_cooking", "health"))
+})

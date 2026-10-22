@@ -257,7 +257,8 @@ wise_access_config <- function(x, slot, registry = policy_registry(NULL)) {
   x <- policy_normalise_stems(x)
   r <- registry[registry$slot == slot & registry$behaviour %in% c("binary", "pct", "health"), , drop = FALSE]
   out <- list()
-  for (i in seq_len(nrow(r))) {
+  # one control per lever, however many variables (levels) the lever has
+  for (i in which(!duplicated(r$code))) {
     code <- r$code[i]
     out <- c(out, switch(r$behaviour[i],
       # TRUE = set all to 1, FALSE = change by pct

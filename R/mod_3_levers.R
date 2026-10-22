@@ -167,6 +167,8 @@ mod_3_levers_server <- function(input, output, session, slot, category,
     if (nrow(m) == 0L && nrow(in_model()) == 0L) {
       return(NULL)
     }
+    # one control per lever, however many variables (levels) the lever has
+    m <- m[!duplicated(m$code), , drop = FALSE]
     controls <- lapply(seq_len(nrow(m)), function(i) {
       switch(m$behaviour[i],
         binary = .lever_access_ui(ns, m$code[i], m$control_label[i], m$icon[i], slot),
@@ -188,14 +190,21 @@ mod_3_levers_server <- function(input, output, session, slot, category,
     r <- slot_levers()
     off <- r[!r$code %in% m$code, , drop = FALSE]
     svy <- survey_data()
-    note <- if (nrow(off) > 0L) {
-      reason <- vapply(off$var, function(v) {
-        if (!is.null(svy) && !v %in% names(svy)) "variable not in the selected survey" else "variable not in the Step 1 model"
-      }, character(1))
+    off <- off[!duplicated(off$code), , drop = FALSE]
+    reason <- vapply(off$var, function(v) {
+      if (!is.null(svy) && !v %in% names(svy)) "variable not in the selected survey" else "variable not in the Step 1 model"
+    }, character(1))
+    # levers of a type with no control (factor, character, ...)
+    r_all <- registry()
+    unsupported <- r_all[r_all$slot == slot & r_all$behaviour == "none", , drop = FALSE]
+    unsupported <- unsupported[!duplicated(unsupported$code), , drop = FALSE]
+    labels <- c(off$control_label, unsupported$control_label)
+    reasons <- c(reason, rep("variable type not supported", nrow(unsupported)))
+    note <- if (length(labels) > 0L) {
       tags$small(
         class = "text-muted d-block",
         "Not available: ",
-        paste0(off$control_label, " (", reason, ")", collapse = "; ")
+        paste0(labels, " (", reasons, ")", collapse = "; ")
       )
     }
     tagList(controls, note)
