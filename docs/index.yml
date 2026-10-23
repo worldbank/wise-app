@@ -381,7 +381,7 @@ pages:
       - "Step 3 > Results, Diagnostics, Decomposition and Cost-effectiveness: the policy and baseline series side by side, the before-and-after summary of the changed variables, the channels and the cost per outcome gained."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model"
     code: ["R/fct_policy_sim.R", "R/fct_policy_registry.R", "R/fct_step3_input.R", "R/fct_step3_async.R", "R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_policy_sim_compare.R"]
-    verified_against: "5c55e61"
+    verified_against: "bfebf54"
   - id: "policy-levers"
     file: "41_policy_levers.md"
     title: "Policy levers: access, percent change, travel time and labour market"
