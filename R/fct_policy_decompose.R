@@ -852,6 +852,13 @@
       }
     }
     ctx$coef_names <- names(ctx$coefs)
+    # Cholesky factor of the coefficient covariance, for the policy arm's
+    # factor loading (DOC-12); only when coefficient uncertainty runs
+    ctx$coef_L <- if (isTRUE(skip_coef) || is.null(fit) || is.null(ctx$coefs)) {
+      NULL
+    } else {
+      tryCatch(compute_chol_vcov(fit)$L, error = function(e) NULL)
+    }
     ctx$ols_term_map <- setNames(lapply(names(deltas), function(v) {
       hit <- .policy_lever_terms(v, ctx$coef_names, svy_baseline[[v]])
       if (length(hit)) hit[[1L]] else NULL

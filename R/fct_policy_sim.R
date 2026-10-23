@@ -207,6 +207,15 @@ has_labor_change <- function(labor) {
     .sector_target_set(labor$sector_services)
 }
 
+# Rows of the working population: employed, or self-employed when the file
+# keeps the two apart. `selfemployed` is optional.
+#' @noRd
+.labor_working <- function(svy) {
+  working <- svy$employed %in% 1L
+  if ("selfemployed" %in% names(svy)) working <- working | svy$selfemployed %in% 1L
+  working
+}
+
 #' Observed sector shares of the working population
 #'
 #' Initial values for the labour lever's sector sliders, so an untouched
@@ -218,12 +227,11 @@ has_labor_change <- function(labor) {
 #'   percentages, or NULL when the shares cannot be computed.
 #' @keywords internal
 .labor_sector_shares <- function(svy) {
-  need <- c("employed", "selfemployed", "agriculture", "industry", "services")
+  need <- c("employed", "agriculture", "industry", "services")
   if (!is.data.frame(svy) || !all(need %in% names(svy))) {
     return(NULL)
   }
-  working <- (svy$employed == 1L | svy$selfemployed == 1L) &
-    !is.na(svy$employed) & !is.na(svy$selfemployed)
+  working <- .labor_working(svy)
   w <- if ("weight" %in% names(svy)) {
     suppressWarnings(as.numeric(svy$weight))
   } else {
@@ -1058,6 +1066,39 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
   out
 }
 
+# Labour levers a scenario has moved whose variables cannot act: not in the
+# survey, or not in the model (`model_vars`). Named character code -> reason,
+# like `.access_levers_unavailable()`.
+#' @noRd
+.labor_levers_unavailable <- function(labor, survey_cols, model_vars = NULL) {
+  out <- character(0)
+  if (!is.list(labor)) {
+    return(out)
+  }
+  why <- function(need) {
+    absent <- setdiff(need, survey_cols)
+    if (length(absent)) {
+      return(paste0(paste(absent, collapse = ", "), " not in the survey"))
+    }
+    if (!is.null(model_vars)) {
+      off <- need[!.lever_in_model(need, model_vars)]
+      if (length(off)) {
+        return(paste0(paste(off, collapse = ", "), " not in the model"))
+      }
+    }
+    NULL
+  }
+  if (.lever_moved(labor$employment_change_pp)) {
+    r <- why(c("employed", "unemployed"))
+    if (!is.null(r)) out[["employment"]] <- r
+  }
+  if (.sector_target_set(labor$sector_manufacturing) || .sector_target_set(labor$sector_services)) {
+    r <- why(c("employed", "agriculture", "industry", "services"))
+    if (!is.null(r)) out[["sectors"]] <- r
+  }
+  out
+}
+
 .apply_health_travel <- function(x, mode, pct, max_min) {
   if (identical(mode, "pct")) {
     if (is.null(pct) || is.na(pct) || pct == 0) {
@@ -1293,14 +1334,21 @@ apply_policy_to_svy <- function(svy,
     if (!is.null(labor)) {
       if (has_labor_change(labor)) {
         # Employment rate change (percentage points): unemployed -> employed/selfemployed
-        # Requires all three employment status columns to be present
+        # Requires the employed and unemployed columns; selfemployed is optional
+        # (it splits the new jobs when present)
         emp_change <- (labor$employment_change_pp %||% 0) / 100
-        if (emp_change != 0 && all(c("employed", "selfemployed", "unemployed") %in%
+        has_self <- "selfemployed" %in% lever_cols
+        if (emp_change != 0 && all(c("employed", "unemployed") %in%
           lever_cols)) withr::with_seed(lever_seed("labor_employment"), {
-          # Find unemployed individuals and current ratio of employed/selfemployed
+          # Find unemployed individuals and the current ratio of self-employed
+          # among the employed. In survey data `selfemployed` is a subset of
+          # `employed`; a file that keeps them apart (employed = wage work) is
+          # read that way.
           unemp_idx <- which(svy$unemployed == 1L & !is.na(svy$unemployed))
           employed_idx <- which(svy$employed == 1L & !is.na(svy$employed))
-          selfemp_idx <- which(svy$selfemployed == 1L & !is.na(svy$selfemployed))
+          selfemp_idx <- if (has_self) which(svy$selfemployed == 1L & !is.na(svy$selfemployed)) else integer(0)
+          self_in_employed <- length(selfemp_idx) > 0L && all(svy$employed[selfemp_idx] %in% 1L)
+          all_employed_idx <- union(employed_idx, selfemp_idx)
 
           # emp_change is the target shift in employment rate (as a fraction of
           # total N), so multiply by nrow(svy) to get the number of workers to
@@ -1311,41 +1359,34 @@ apply_policy_to_svy <- function(svy,
           emp_w <- .sp_error_weights(svy)
 
           if (emp_change > 0 && length(unemp_idx) > 0) {
-            # Calculate ratio of employed vs selfemployed among currently employed
-            n_employed <- length(employed_idx)
-            n_selfemp <- length(selfemp_idx)
-            total_employed <- n_employed + n_selfemp
-            ratio_employed <- if (total_employed > 0) {
-              n_employed / total_employed
+            # Share of the currently employed who are self-employed
+            ratio_self <- if (length(all_employed_idx) > 0) {
+              length(selfemp_idx) / length(all_employed_idx)
             } else {
-              0.5
+              0
             }
 
             n_flip <- min(round(n_total * emp_change), length(unemp_idx))
             if (n_flip > 0) {
               flip_idx <- .pick_rows(unemp_idx, n_flip, sum(emp_w) * emp_change, emp_w)
-              n_to_employed <- round(length(flip_idx) * ratio_employed)
-              n_to_selfemp <- length(flip_idx) - n_to_employed
-
-              if (n_to_employed > 0) {
-                flip_employed <- flip_idx[seq_len(n_to_employed)]
-                svy$unemployed[flip_employed] <- 0L
-                svy$employed[flip_employed] <- 1L
-              }
+              n_to_selfemp <- round(length(flip_idx) * ratio_self)
+              svy$unemployed[flip_idx] <- 0L
+              svy$employed[flip_idx] <- 1L
+              if (has_self) svy$selfemployed[flip_idx] <- 0L
               if (n_to_selfemp > 0) {
-                flip_selfemp <- flip_idx[seq(n_to_employed + 1, length(flip_idx))]
-                svy$unemployed[flip_selfemp] <- 0L
+                flip_selfemp <- flip_idx[seq_len(n_to_selfemp)]
                 svy$selfemployed[flip_selfemp] <- 1L
+                # a file that keeps the two apart counts these as self-employed only
+                if (!self_in_employed) svy$employed[flip_selfemp] <- 0L
               }
             }
-          } else if (emp_change < 0 && length(c(employed_idx, selfemp_idx)) > 0) {
-            # Decrease employment: flip some employed/selfemployed to unemployed
-            employed_all <- c(employed_idx, selfemp_idx)
-            n_flip <- min(round(n_total * abs(emp_change)), length(employed_all))
+          } else if (emp_change < 0 && length(all_employed_idx) > 0) {
+            # Decrease employment: flip some of the employed to unemployed
+            n_flip <- min(round(n_total * abs(emp_change)), length(all_employed_idx))
             if (n_flip > 0) {
-              flip_idx <- .pick_rows(employed_all, n_flip, sum(emp_w) * abs(emp_change), emp_w)
+              flip_idx <- .pick_rows(all_employed_idx, n_flip, sum(emp_w) * abs(emp_change), emp_w)
               svy$employed[flip_idx] <- 0L
-              svy$selfemployed[flip_idx] <- 0L
+              if (has_self) svy$selfemployed[flip_idx] <- 0L
               svy$unemployed[flip_idx] <- 1L
             }
           }
@@ -1357,10 +1398,9 @@ apply_policy_to_svy <- function(svy,
         # keeps that sector's current count.
         sector_set <- .sector_target_set(labor$sector_manufacturing) ||
           .sector_target_set(labor$sector_services)
-        if (sector_set && all(c("employed", "selfemployed", "agriculture", "industry", "services") %in%
+        if (sector_set && all(c("employed", "agriculture", "industry", "services") %in%
             lever_cols)) withr::with_seed(lever_seed("labor_sector"), {
-          working <- (svy$employed == 1L | svy$selfemployed == 1L) &
-            !is.na(svy$employed) & !is.na(svy$selfemployed)
+          working <- .labor_working(svy)
 
           if (any(working)) {
             working_idx <- which(working)
@@ -1594,12 +1634,11 @@ apply_policy_to_svy <- function(svy,
 #'
 #' Limitations of this v1:
 #'   \itemize{
-#'     \item \code{F_loading} is not updated to reflect the policy-modified
-#'           design matrix. SE bands therefore reflect baseline-X coefficient
-#'           uncertainty, not policy-X. For the central value this is exact;
-#'           for SE bands it's a small approximation that is exact when no
-#'           covariate moves and acceptable for typical policy modifications.
-#'           Recomputing \code{F_loading} per pipeline is a follow-up.
+#'     \item For the linear model \code{F_loading} of the policy arm is the
+#'           baseline loading plus the gradient of the correction, with the
+#'           policy coefficients as extra columns (\code{.policy_arm_loading()}).
+#'           The quantile model keeps the baseline loading, so its SE bands
+#'           do not include the policy coefficients.
 #'     \item Exact retained prediction-row exposure mapping is required. Invalid
 #'           mappings fail the entire run; no period-mean fallback is used.
 #'   }

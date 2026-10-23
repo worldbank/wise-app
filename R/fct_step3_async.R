@@ -223,10 +223,13 @@ step3_compute <- function(svy, hs, ss, mf,
 
   # Levers that were moved but cannot act (variable not in the survey, or not in
   # the model) are reported, not silently skipped.
-  unavailable <- unlist(lapply(
-    list(infra_cfg, digital_cfg, education_cfg),
-    .access_levers_unavailable, survey_cols = names(svy), model_vars = model_vars
-  ))
+  unavailable <- c(
+    unlist(lapply(
+      list(infra_cfg, digital_cfg, education_cfg),
+      .access_levers_unavailable, survey_cols = names(svy), model_vars = model_vars
+    )),
+    .labor_levers_unavailable(labor_cfg, names(svy), model_vars)
+  )
 
   # A social-protection-only scenario changes nothing but the cash transfer
   # column, which is deliberately excluded from the covariate deltas - so it is

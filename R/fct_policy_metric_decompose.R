@@ -96,6 +96,9 @@
     interaction_included = base$has_interactions,
     tau_i_pre = context$tau_i_pre, tau_i_post = context$tau_i_post,
     shock = shock,
+    loading_terms = if (identical(context$engine, "fixest") && !is.null(context$coef_L)) {
+      .policy_loading_terms(context)
+    },
     correction_version = "row_aligned_annual_v1"
   ), parent = emptyenv())
   lockEnvironment(prepared, bindings = TRUE)
@@ -439,6 +442,9 @@
         (year_id - 1L) * 11L + decile_code + 1L, length(years) * 11L)
     }
   }
+  # DOC-12: the policy arm's coefficient uncertainty includes the policy terms
+  policy_loading <- .policy_arm_loading(pipeline, prepared, exposure, chunk_size)
+  if (!is.null(policy_loading)) out$F_loading <- policy_loading
   if (!is.null(cell_stats)) {
     channel_stats <- rowsum(cell_stats[, seq_along(stat_names), drop = FALSE],
       rep(seq_along(years), each = 11L))

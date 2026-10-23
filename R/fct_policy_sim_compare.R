@@ -2113,7 +2113,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-        "Central estimates summarize each model's weather years at the selected return period, then take the equal-weight mean across climate models for baseline and policy. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled). Policy bands reuse the baseline coefficient covariance, so they do not include estimation uncertainty of the policy variables' own coefficients."
+        "Central estimates summarize each model's weather years at the selected return period, then take the equal-weight mean across climate models for baseline and policy. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled). For the quantile model, policy bands reuse the baseline coefficient covariance and do not include estimation uncertainty of the policy variables' own coefficients."
       )
     ),
   )

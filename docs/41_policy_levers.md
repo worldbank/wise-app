@@ -72,10 +72,10 @@ A cap leaves units already below the cap unchanged.
 
 ### 4. Employment status
 
-The user enters a change $\delta$ in the employment rate, in percentage points, between $-20$ and $+20$. Let $N$ be the number of rows in the survey, $N_u$ the number of unemployed rows, $N_e$ the employed rows and $N_s$ the self-employed rows.
+The user enters a change $\delta$ in the employment rate, in percentage points, between $-20$ and $+20$. Let $N$ be the number of rows in the survey, $N_u$ the number of unemployed rows, $N_w$ the number of working rows and $N_s$ the number of self-employed rows. In the survey files self-employment is a subset of employment, so $N_w$ is the number of employed rows; in a file that keeps the two apart, $N_w$ is their sum. The lever needs the employed and unemployed variables in the model. The self-employment variable is optional and only splits the new jobs.
 
-- **Positive $\delta$.** $n = \min\big(\text{round}(N\ \delta/100),\ N_u\big)$ unemployed rows are drawn at random and become working. A share $N_e/(N_e+N_s)$ of them become employed and the rest self-employed, which keeps the current mix of the two. If nobody works, the split is one half.
-- **Negative $\delta$.** $n = \min\big(\text{round}(N\ |\delta|/100),\ N_e+N_s\big)$ rows are drawn at random from the employed and self-employed and become unemployed.
+- **Positive $\delta$.** $n = \min\big(\text{round}(N\ \delta/100),\ N_u\big)$ unemployed rows are drawn at random and become employed. When the self-employment variable is in the model, a share $N_s/N_w$ of them also become self-employed, which keeps the current mix; without it, none is marked.
+- **Negative $\delta$.** $n = \min\big(\text{round}(N\ |\delta|/100),\ N_w\big)$ rows are drawn at random from the working rows and become unemployed.
 
 $$n = \min\Big(\text{round}\big(N\ |\delta|/100\big),\ \text{size of the pool the rows are drawn from}\Big) \qquad \text{(4.1)}$$
 
@@ -85,7 +85,7 @@ The change is a share of all rows of the survey (of the total survey weight, whe
 
 The user sets target shares for industry and for services, as percentages of working units. Agriculture is the remainder, $100 - s_{\text{ind}} - s_{\text{ser}}$ and not below zero. The sliders start at the observed shares of the survey. A target that was not changed from the observed share is left unset and keeps the current count of its sector.
 
-Let $N_w$ be the number of working rows (employed or self-employed) and $n_k$ the current number in sector $k$. The target counts are
+Let $N_w$ be the number of working rows (the employed) and $n_k$ the current number in sector $k$. The target counts are
 
 $$n_{\text{ind}}^{*} = \text{round}\big(N_w \min(s_{\text{ind}}/100, 1)\big), \quad n_{\text{ser}}^{*} = \min\big(\text{round}(N_w\ s_{\text{ser}}/100),\ N_w - n_{\text{ind}}^{*}\big), \quad n_{\text{agr}}^{*} = N_w - n_{\text{ind}}^{*} - n_{\text{ser}}^{*} \qquad \text{(5.1)}$$
 
@@ -94,7 +94,7 @@ A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ ha
 ## Interpretation
 
 - A lever changes the survey variable. The effect on welfare is the fitted coefficient times that change ([40_policy_framework](40_policy_framework.md)). A lever with a large change in the survey but a small or absent coefficient has a small or zero effect.
-- The labour-market levers are changes in composition of the file, not a model of how jobs are created. The employment lever moves rows between statuses. It does not alter earnings except through the coefficients.
+- The labour-market levers are changes in composition of the file, not a model of how jobs are created. The employment lever moves rows between statuses. It does not alter earnings except through the coefficients. The sector variables are defined only for the employed, so a model that includes them is fitted on employed people and cannot also estimate employment status; the employment and sector levers therefore need separate models.
 - A percentage of non-users is applied to the weighted group when the survey has non-constant weights, so the share of the population moved is the share entered. The Diagnostics tab reports the weighted share reached.
 
 ## Assumptions
@@ -116,7 +116,7 @@ A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ ha
 
 - Step 3 > Infrastructure, Digital inclusion, Education and Other policies: each lever has a Universal checkbox and a slider for the percentage change. The sliders run from $-20$ to $+100$ per cent for binary levers and from $-100$ to $+100$ per cent for numeric levers. Health access has a percentage change from $-100$ to $+20$ per cent or a cap of 15 to 240 minutes.
 - Step 3 > Labour market: a slider for the change in employment (percentage points, $-20$ to $+20$) and two sliders for the sector shares of industry and services.
-- A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect ([20_model_specification](20_model_specification.md)).
+- A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. A moved lever whose variables are not in the survey or the model is reported when the policy runs (employment needs employed and unemployed; the sector shares need employed and the three sectors), and in a batch run as a partial policy failure. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect ([20_model_specification](20_model_specification.md)).
 
 User guide: [Policy levers](https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers).
 
@@ -138,5 +138,6 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 | Numeric percentage change | (2.1) | `R/fct_policy_sim.R` `.apply_numeric_pct()` |
 | Travel time | (3.1) | `R/fct_policy_sim.R` `.apply_health_travel()` |
 | Employment status | (4.1) | `R/fct_policy_sim.R` `apply_policy_to_svy()` |
-| Sector reallocation | (5.1) | `R/fct_policy_sim.R` `apply_policy_to_svy()`, `.labor_sector_shares()` |
+| Sector reallocation | (5.1) | `R/fct_policy_sim.R` `apply_policy_to_svy()`, `.labor_sector_shares()`, `.labor_working()` |
+| Labour levers that cannot act | Setup | `R/fct_policy_sim.R` `.labor_levers_unavailable()`; `R/fct_step3_async.R` |
 | Controls and ranges | In the app | `R/mod_3_levers.R` |

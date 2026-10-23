@@ -372,6 +372,7 @@ pages:
       - {tag: "(2.2)", section: "2. The policy arm"}
       - {tag: "(2.3)", section: "2. The policy arm"}
       - {tag: "(3.1)", section: "3. The correction is evaluated for each prediction row"}
+      - {tag: "(5.1)", section: "5. Uncertainty of the policy arm"}
       - {tag: "(6.1)", section: "6. Share of the climate loss offset"}
     symbols: ["D", "Delta", "T", "y", "W", "tau", "omega"]
     ui:
@@ -402,7 +403,7 @@ pages:
     ui:
       - "Step 3 > Infrastructure, Digital inclusion, Education and Other policies: each lever has a Universal checkbox and a slider for the percentage change. The sliders run from -20 to +100 per cent for binary levers and from -100 to +100 per cent for numeric levers. Health access has a percentage change from -100 to +20 per cent or a cap of 15 to 240 minutes."
       - "Step 3 > Labour market: a slider for the change in employment (percentage points, -20 to +20) and two sliders for the sector shares of industry and services."
-      - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect (20_model_specification)."
+      - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. A moved lever whose variables are not in the survey or the model is reported when the policy runs (employment needs employed and unemployed; the sector shares need employed and the three sectors), and in a batch run as a partial policy failure. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect (20_model_specification)."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers"
     code: ["R/fct_policy_registry.R", "R/fct_policy_sim.R", "R/mod_3_levers.R", "R/fct_step3_input.R"]
     verified_against: "e8be204"

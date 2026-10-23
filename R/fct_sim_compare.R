@@ -233,6 +233,12 @@ paired_model_year_effects <- function(baseline_tbl, policy_tbl) {
       i_p <- match(id, p_ids)
       f_b <- if (is.matrix(b_f) && nrow(b_f) >= i_b) b_f[i_b, ] else NULL
       f_p <- if (is.matrix(p_f) && nrow(p_f) >= i_p) p_f[i_p, ] else NULL
+      # The policy arm can carry extra coefficient columns (the policy
+      # variables' own coefficients, DOC-12); the baseline does not depend on
+      # them
+      if (!is.null(f_b) && !is.null(f_p) && length(f_p) > length(f_b)) {
+        f_b <- c(f_b, numeric(length(f_p) - length(f_b)))
+      }
       sd_effect <- if (!is.null(f_b) && !is.null(f_p) &&
         length(f_b) == length(f_p)) {
         sqrt(sum((f_p - f_b)^2, na.rm = TRUE))

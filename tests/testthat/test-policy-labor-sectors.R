@@ -101,3 +101,79 @@ test_that("labour module reports sector targets only once moved", {
     }
   )
 })
+
+# Survey layout of the GMD files: selfemployed is a subset of employed and is
+# missing for people outside employment.
+make_subset_fixture <- function(n = 2000L, seed = 8L) {
+  set.seed(seed)
+  status <- sample(c("wage", "self", "unemployed", "notinlf"), n,
+                   replace = TRUE, prob = c(0.25, 0.3, 0.1, 0.35))
+  emp <- status %in% c("wage", "self")
+  sector <- sample(c("agriculture", "industry", "services"), n, replace = TRUE)
+  data.frame(
+    welfare = stats::runif(n, 1, 5),
+    weight = 1,
+    employed = as.integer(emp),
+    unemployed = as.integer(status == "unemployed"),
+    selfemployed = ifelse(emp, as.integer(status == "self"), NA_integer_),
+    agriculture = ifelse(emp, as.integer(sector == "agriculture"), NA_integer_),
+    industry = ifelse(emp, as.integer(sector == "industry"), NA_integer_),
+    services = ifelse(emp, as.integer(sector == "services"), NA_integer_)
+  )
+}
+
+test_that("the employment lever needs employed and unemployed only", {
+  svy <- make_subset_fixture()
+  # selfemployed and the sectors are not in the model
+  out <- apply_policy_to_svy(
+    svy, labor = list(employment_change_pp = 5),
+    model_vars = c("employed", "unemployed"), seed = 1L
+  )
+  moved <- svy$unemployed == 1L & out$unemployed == 0L
+  expect_gt(sum(moved), 0)
+  expect_true(all(out$employed[moved] == 1L))
+  expect_identical(out$selfemployed, svy$selfemployed)
+  # without `unemployed` the lever cannot act
+  none <- apply_policy_to_svy(
+    svy, labor = list(employment_change_pp = 5),
+    model_vars = c("employed", "selfemployed"), seed = 1L
+  )
+  expect_identical(none$employed, svy$employed)
+})
+
+test_that("new jobs keep selfemployed a subset of employed, in the observed share", {
+  svy <- make_subset_fixture()
+  out <- apply_policy_to_svy(
+    svy, labor = list(employment_change_pp = 5),
+    model_vars = c("employed", "selfemployed", "unemployed"), seed = 1L
+  )
+  moved <- svy$unemployed == 1L & out$unemployed == 0L
+  expect_true(all(out$employed[moved] == 1L))
+  expect_true(all(out$selfemployed[moved] %in% c(0L, 1L)))
+  # no one is self-employed without being employed
+  expect_true(all(out$employed[out$selfemployed %in% 1L] == 1L))
+  expected <- mean(svy$selfemployed[svy$employed == 1L])
+  expect_equal(mean(out$selfemployed[moved]), expected, tolerance = 0.08)
+})
+
+test_that("the sector lever runs without selfemployed", {
+  svy <- make_subset_fixture()
+  mv <- c("employed", "agriculture", "industry", "services")
+  out <- apply_policy_to_svy(svy, labor = list(sector_manufacturing = 50), model_vars = mv, seed = 1L)
+  working <- svy$employed == 1L
+  expect_equal(mean(out$industry[working]), 0.5, tolerance = 0.01)
+  expect_identical(is.na(out$industry), is.na(svy$industry))
+  expect_false(is.null(.labor_sector_shares(svy[setdiff(names(svy), "selfemployed")])))
+})
+
+test_that("labour levers that cannot act are reported", {
+  labor <- list(employment_change_pp = 2, sector_manufacturing = 40)
+  expect_length(.labor_levers_unavailable(labor, names(make_subset_fixture()), labor_vars), 0L)
+  r <- .labor_levers_unavailable(labor, names(make_subset_fixture()), c("selfemployed", "industry"))
+  expect_match(r[["employment"]], "employed, unemployed not in the model")
+  expect_match(r[["sectors"]], "employed, agriculture, services not in the model")
+  r2 <- .labor_levers_unavailable(labor, c("welfare", "employed"), NULL)
+  expect_match(r2[["employment"]], "unemployed not in the survey")
+  # an unmoved lever is not reported
+  expect_length(.labor_levers_unavailable(list(employment_change_pp = 0), "x", "y"), 0L)
+})

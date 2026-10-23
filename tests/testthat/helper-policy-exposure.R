@@ -1,4 +1,5 @@
-# Shared by test-policy-exposure-mapping.R and test-weather-continuous-companion.R
+# Shared by test-policy-exposure-mapping.R, test-weather-continuous-companion.R,
+# test-policy-central-kernel.R and test-fct_policy_loading.R
 
 test_policy_exposure_fixture <- function() {
   survey <- data.frame(
@@ -37,4 +38,20 @@ test_policy_exposure_fixture <- function() {
   ))
   list(survey = survey, weather = weather, train = train,
        prepared = prepared, cache = cache)
+}
+
+.policy_test_attach_exposure <- function(pipeline, baseline, weather_values) {
+  ids <- pipeline$svy_row_id
+  keys <- c("code", "year", "survname", "loc_id", "int_month")
+  table <- baseline[ids, keys, drop = FALSE]
+  for (name in names(weather_values)) table[[name]] <- weather_values[[name]]
+  table$timestamp <- as.Date(sprintf(
+    "%d-%02d-01", pipeline$sim_year, table$int_month
+  ))
+  pipeline$weather_exposure <- c(
+    list(status = "ok", table = table, row_index = seq_along(ids),
+         prediction_row_id = seq_along(ids)),
+    pipeline[c("svy_row_id", "sim_year", "weight", "id_vec")]
+  )
+  pipeline
 }

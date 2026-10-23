@@ -81,10 +81,14 @@ The outcome may be in logs or in levels. The policy arm uses the same Model 3 co
 
 ### 5. Uncertainty of the policy arm
 
-The central values of the policy series are exact given Eq. (2.1). The uncertainty bands are those of the baseline. The factor loading of the baseline arm, which carries the coefficient uncertainty ([33_uncertainty](33_uncertainty.md)), is reused for the policy arm and is not rebuilt from the modified design matrix. Two things follow.
+The central values of the policy series are exact given Eq. (2.1). The coefficient uncertainty of the baseline arm is carried by a factor loading $F_i$ ([33_uncertainty](33_uncertainty.md)), the gradient of the prediction with respect to the coefficients that the band covers. For the linear model the correction $\Delta y_i$ is linear in the coefficients: the policy coefficients times the lever changes, and the weather-by-policy interactions times the weather of the row. Its gradient is added to the baseline loading to give the policy arm's loading:
 
-- The bands on the policy series reflect uncertainty in the coefficients that the baseline loading covers: the weather coefficients and their interactions, or all coefficients if the user asked for uncertainty on all covariates in Step 2.
-- The coefficients on the policy variables enter the correction as fixed numbers. Their sampling error is not in the bands unless the Step 2 setting includes all covariates, and then only through the baseline loading.
+$$F_i^{\text{pol}} = F_i + \nabla_{\beta}\,\Delta y_i \qquad \text{(5.1)}$$
+
+The coefficients of the policy variables are outside the block of weather coefficients and their interactions that the baseline loading covers (unless the Step 2 setting propagates all covariates). They are added as extra columns in the Cholesky basis of the covered block plus the policy coefficients. The leading block of that basis is the baseline's own, so the baseline arm is unchanged, and the covariance between the policy coefficients and the weather coefficients is kept. Two things follow.
+
+- The bands on the policy series and on the effect include the sampling error of the policy coefficients and of the interactions at the weather of the row. A run without a covariate lever (for example a cash transfer only) has the baseline loading, because the cash transfer is a fixed amount.
+- For the quantile model the policy arm still reuses the baseline loading, so its bands do not include the sampling error of the policy coefficients.
 
 The band on the effect of the policy is the band of the paired contrast of [33_uncertainty](33_uncertainty.md): the coefficient error that the two arms share cancels, so only the part that differs between arms remains. The cash transfer is a fixed amount and carries no coefficient error.
 
@@ -143,6 +147,7 @@ User guide: [Policy variables must be in the Step 1 model](https://github.com/wo
 | Covariate changes | (1.1) | `R/fct_policy_decompose.R` `.compute_policy_deltas()` |
 | Policy arm from the baseline pipelines | (2.1), (2.3) | `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()`; `R/fct_policy_metric_decompose.R` `.apply_policy_annual_pipeline()` |
 | Run orchestration | Section 2 | `R/fct_step3_async.R` `step3_compute()`; `R/fct_step3_input.R` `wise_step3_input()` |
+| Factor loading of the policy arm | (5.1) | `R/fct_policy_loading.R` `.policy_arm_loading()`, `.policy_loading_terms()`, `.policy_loading_rows()` |
 | Correction per prediction row | (2.2), (3.1) | `R/fct_policy_metric_decompose.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()`, `.validate_policy_annual_exposure()` |
 | Supported models and outcomes | Section 4 | `R/fct_policy_sim_compare.R` `.policy_endpoint_status()`; `R/fct_policy_metric_decompose.R` `.policy_annual_channel_status()` |
 | Run with no effect | Section 2 | `R/fct_policy_sim.R` `.scenario_has_effect()` |
