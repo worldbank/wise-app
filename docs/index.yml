@@ -405,7 +405,7 @@ pages:
       - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers"
     code: ["R/fct_policy_registry.R", "R/fct_policy_sim.R", "R/mod_3_levers.R", "R/fct_step3_input.R"]
-    verified_against: "8592a9d"
+    verified_against: "213ef99"
   - id: "social-protection"
     file: "42_social_protection.md"
     title: "Regular cash transfers: targeting, amount, cost and reach"
@@ -433,7 +433,7 @@ pages:
       - "Step 3 > Diagnostics: total cost, cost per recipient, coverage, leakage, adequacy and realised errors."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers"
     code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_sp_effectiveness.R", "R/fct_policy_metric_decompose.R", "R/mod_3_01_sp.R"]
-    verified_against: "8592a9d"
+    verified_against: "213ef99"
   - id: "shock-sp"
     file: "43_shock_responsive_sp.md"
     title: "Shock-responsive cash transfers: triggers, payments and basis risk"
