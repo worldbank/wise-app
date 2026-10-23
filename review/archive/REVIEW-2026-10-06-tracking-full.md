@@ -454,3 +454,7 @@ Decision log, DOC-10 (2026-10-23): main effect includes the weather channels at 
 | DOC-07 | L | S | ☐ | From the docs/ revision (2026-10-23). The climate baseline (climatology) window runs from the first to the last simulation date, not necessarily whole calendar years, so if interview months do not cover the year some calendar months have one year fewer. Define the baseline as whole calendar years of the historical window (`docs/31_climate_scenarios.md` section 1). |
 
 Decision log, DOC-07 (2026-10-23): CMIP6 baseline = whole calendar years of the window. Synthetic fixture (window February 1991 to November 2020, January 1991 at 50, other months 20 then 25): change factor of January 8.9655 before, 8.0 after. BFA before/after: owed.
+
+| DOC-13 | L | S | ◐ | From the docs/ revision (2026-10-23). The Diagnostics reach chart already shows the weighted share per lever; a note now says the draws are by count (batch 1). Weighted draws are open. The access levers and the employment lever draw rows by count, not by survey weight, so the weighted share of the population moved can differ from the slider value. Offer weighted draws or show the weighted share moved in the Diagnostics tab (`docs/41_policy_levers.md` sections 1 and 4). |
+
+Decision log, DOC-13 (2026-10-23): access and employment levers draw by weight. Synthetic: 30% access slider moved 30.0% of the weight (600 of 2,000 rows by count before, with a different weighted share); 4 pp employment change moved 4.0% of the weight. BFA before/after: owed.

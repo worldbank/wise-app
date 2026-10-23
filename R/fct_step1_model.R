@@ -225,7 +225,11 @@ wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, 
 
   # Moderators of the weather effect: those chosen, and those a policy scenario
   # locks (the Model tab adds them to the selection).
-  ixn_valid <- filter_vars_by_role(vl, "interact", extra_filter = list(type = "numeric"))$name
+  # Outcome-flagged variables qualify, except the outcome of this run.
+  ixn_valid <- setdiff(
+    filter_vars_by_role(vl, "interact", extra_filter = list(type = "numeric"))$name,
+    outcome
+  )
   locked <- unique(unlist(get_policy_locked_vars(model$policy_vars, vl), use.names = FALSE))
   defs <- policy_definitions(vl)
   no_policy_var <- vapply(model$policy_vars, function(k) {

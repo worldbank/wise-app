@@ -44,7 +44,7 @@ A lever acts if three things hold: the variable is in the survey, the variable i
 
 ## Method
 
-Let $N_0$ and $N_1$ be the numbers of survey units with value 0 and 1 for a binary variable, not counting missing values. All counts below are counts of survey rows, not sums of weights. With survey weights, the weighted share of changed units can differ from the share entered.
+Let $N_0$ and $N_1$ be the numbers of survey units with value 0 and 1 for a binary variable, not counting missing values. The binary access and employment levers are drawn by weight when the survey has non-constant weights: rows are taken in random order until the cumulative survey weight is closest to the weight the share asks for, so the weighted share moved matches the share entered to within one row's weight. Without usable weights the draw is by rows, with the counts below. The sector lever works with counts of rows.
 
 ### 1. Binary access
 
@@ -52,7 +52,7 @@ The user sets either the universal option or a percentage $p$ with $-20 \le p \l
 
 $$D_i^{\text{pol}} = \begin{cases} 1 & \text{universal, for every unit with a value} \\\\ \text{1 for } n_+ \text{ units drawn at random from those with } D_i = 0 & p > 0 \\\\ \text{0 for } n_- \text{ units drawn at random from those with } D_i = 1 & p < 0 \end{cases} \qquad \text{(1.1)}$$
 
-with $n_+ = \text{round}(N_0\ p/100)$ and $n_- = \text{round}(N_1\ |p|/100)$. A missing value stays missing. Units outside the affected group do not change. The draw uses the lever's own seeded stream ([40_policy_framework](40_policy_framework.md)).
+with $n_+ = \text{round}(N_0\ p/100)$ and $n_- = \text{round}(N_1\ |p|/100)$ rows (with weights, rows whose weight is closest to $p/100$ of the weight of the group). A missing value stays missing. Units outside the affected group do not change. The draw uses the lever's own seeded stream ([40_policy_framework](40_policy_framework.md)).
 
 ### 2. Numeric variable
 
@@ -79,7 +79,7 @@ The user enters a change $\delta$ in the employment rate, in percentage points, 
 
 $$n = \min\Big(\text{round}\big(N\ |\delta|/100\big),\ \text{size of the pool the rows are drawn from}\Big) \qquad \text{(4.1)}$$
 
-The change is a share of all rows of the survey, so it is a change in percentage points of the employment rate of the rows in the file.
+The change is a share of all rows of the survey (of the total survey weight, when the weights are not constant), so it is a change in percentage points of the employment rate.
 
 ### 5. Sector of work
 
@@ -95,7 +95,7 @@ A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ ha
 
 - A lever changes the survey variable. The effect on welfare is the fitted coefficient times that change ([40_policy_framework](40_policy_framework.md)). A lever with a large change in the survey but a small or absent coefficient has a small or zero effect.
 - The labour-market levers are changes in composition of the file, not a model of how jobs are created. The employment lever moves rows between statuses. It does not alter earnings except through the coefficients.
-- A percentage of non-users is applied to the sample as drawn. With heterogeneous weights, the share of the population moved is a weighted average of the rows drawn.
+- A percentage of non-users is applied to the weighted group when the survey has non-constant weights, so the share of the population moved is the share entered. The Diagnostics tab reports the weighted share reached.
 
 ## Assumptions
 
@@ -108,7 +108,7 @@ A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ ha
 
 - Take-up, quality of service and the cost of any lever other than the cash transfer.
 - Targeting of access by need, income or place.
-- Weighted draws: counts are of rows, and the survey weights do not enter the selection of units.
+- Weighted draws for the sector lever: its targets are counts of working rows, and the survey weights do not enter the selection of workers.
 - Interaction terms between two levers.
 - Whether the change in a variable is feasible. A universal option sets all units to 1 whatever the real constraints.
 

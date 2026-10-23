@@ -942,13 +942,35 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
 }
 
 
+# Random subset of rows ----
+#
+# Draws rows of `idx` in a random order. Without usable weights `w` (NULL) it
+# takes `n` rows, the same `sample.int()` call as before weighted draws. With
+# weights it takes the first rows whose cumulative weight is closest to
+# `target`, so the weighted share moved matches the share asked for to within
+# one row's weight (DOC-13; the same rule as the SP targeting errors, P0-8).
+# `prob` makes some rows likelier to be drawn.
+.pick_rows <- function(idx, n, target, w = NULL, prob = NULL) {
+  if (is.null(w)) {
+    k <- min(n, length(idx))
+    return(idx[sample.int(length(idx), k, prob = prob)])
+  }
+  ord <- idx[sample.int(length(idx), prob = prob)]
+  cum <- cumsum(w[ord])
+  j <- which.min(abs(cum - target))
+  k <- if (target <= abs(cum[j] - target)) 0L else j
+  ord[seq_len(k)]
+}
+
+
 # Binary access flip helper ----
 #
 # Treats `change_pct` as the share of currently-without-access observations to
 # flip to access (positive) or share of with-access to flip to no-access
-# (negative).  `universal = TRUE` sets everyone to 1.
+# (negative).  `universal = TRUE` sets everyone to 1. With survey weights `w`
+# the share is of the weighted group (DOC-13); without, of the rows.
 
-.apply_binary_access <- function(x, universal, change_pct) {
+.apply_binary_access <- function(x, universal, change_pct, w = NULL) {
   if (isTRUE(universal)) {
     return(ifelse(is.na(x), NA_integer_, 1L))
   }
@@ -961,14 +983,14 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
     idx0 <- which(x_out == 0L & !is.na(x_out))
     n_flip <- round(length(idx0) * change_pct / 100)
     if (n_flip > 0 && length(idx0) > 0) {
-      flip <- idx0[sample.int(length(idx0), min(n_flip, length(idx0)))]
+      flip <- .pick_rows(idx0, n_flip, sum(w[idx0]) * change_pct / 100, w)
       x_out[flip] <- 1L
     }
   } else {
     idx1 <- which(x_out == 1L & !is.na(x_out))
     n_flip <- round(length(idx1) * abs(change_pct) / 100)
     if (n_flip > 0 && length(idx1) > 0) {
-      flip <- idx1[sample.int(length(idx1), min(n_flip, length(idx1)))]
+      flip <- .pick_rows(idx1, n_flip, sum(w[idx1]) * abs(change_pct) / 100, w)
       x_out[flip] <- 0L
     }
   }
@@ -996,6 +1018,7 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
     return(svy)
   }
   lv <- .cfg_lever_vars(cfg)
+  w <- .sp_error_weights(svy)
   for (code in moved) {
     for (v in intersect(lv[[code]], lever_cols)) {
       universal <- .cfg_field(cfg, code, "_universal")
@@ -1009,7 +1032,7 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
         svy[[v]] <- .apply_numeric_pct(svy[[v]], value)
       } else {
         svy[[v]] <- withr::with_seed(
-          lever_seed(v), .apply_binary_access(svy[[v]], universal, access)
+          lever_seed(v), .apply_binary_access(svy[[v]], universal, access, w)
         )
       }
     }
@@ -1188,16 +1211,8 @@ policy_placeholder_tag <- function(category_label, candidate_df) {
       exp(-conc * d)
     }
     pick <- function(idx, rate) {
-      if (is.null(err_w)) {
-        k <- min(round(length(idx) * rate), length(idx))
-        return(idx[sample.int(length(idx), k, prob = prob_for(idx))])
-      }
-      target <- sum(err_w[idx]) * rate
-      ord <- idx[sample.int(length(idx), prob = prob_for(idx))]
-      cum <- cumsum(err_w[ord])
-      j <- which.min(abs(cum - target))
-      k <- if (target <= abs(cum[j] - target)) 0L else j
-      ord[seq_len(k)]
+      .pick_rows(idx, round(length(idx) * rate), sum(err_w[idx]) * rate,
+        err_w, prob_for(idx))
     }
     if (length(non_elig) > 0 && incl_rate > 0) {
       eligible[pick(non_elig, incl_rate)] <- TRUE
@@ -1291,6 +1306,9 @@ apply_policy_to_svy <- function(svy,
           # total N), so multiply by nrow(svy) to get the number of workers to
           # flip - giving a true percentage-point change in employment rate.
           n_total <- nrow(svy)
+          # With survey weights the change is a share of the weighted population
+          # (DOC-13); without usable weights it is of the rows
+          emp_w <- .sp_error_weights(svy)
 
           if (emp_change > 0 && length(unemp_idx) > 0) {
             # Calculate ratio of employed vs selfemployed among currently employed
@@ -1305,7 +1323,7 @@ apply_policy_to_svy <- function(svy,
 
             n_flip <- min(round(n_total * emp_change), length(unemp_idx))
             if (n_flip > 0) {
-              flip_idx <- unemp_idx[sample.int(length(unemp_idx), n_flip)]
+              flip_idx <- .pick_rows(unemp_idx, n_flip, sum(emp_w) * emp_change, emp_w)
               n_to_employed <- round(length(flip_idx) * ratio_employed)
               n_to_selfemp <- length(flip_idx) - n_to_employed
 
@@ -1325,7 +1343,7 @@ apply_policy_to_svy <- function(svy,
             employed_all <- c(employed_idx, selfemp_idx)
             n_flip <- min(round(n_total * abs(emp_change)), length(employed_all))
             if (n_flip > 0) {
-              flip_idx <- employed_all[sample.int(length(employed_all), n_flip)]
+              flip_idx <- .pick_rows(employed_all, n_flip, sum(emp_w) * abs(emp_change), emp_w)
               svy$employed[flip_idx] <- 0L
               svy$selfemployed[flip_idx] <- 0L
               svy$unemployed[flip_idx] <- 1L

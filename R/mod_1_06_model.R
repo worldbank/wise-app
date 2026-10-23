@@ -96,10 +96,13 @@ mod_1_06_model_server <- function(id,
     firm_vars <- reactive(filter_vars_by_role(valid_vl(), "firm"))
 
     # Interaction vars: flagged for interaction AND not numeric (avoids
-    # overfitting - numeric vars should be binned first)
-    interact_vars <- reactive(
-      filter_vars_by_role(valid_vl(), "interact", extra_filter = list(type = "numeric"))
-    )
+    # overfitting - numeric vars should be binned first). Outcome-flagged
+    # variables qualify (for example the labour status variables), except the
+    # outcome of this run.
+    interact_vars <- reactive({
+      x <- filter_vars_by_role(valid_vl(), "interact", extra_filter = list(type = "numeric"))
+      x[!x$name %in% selected_outcome()$name, , drop = FALSE]
+    })
 
     # Settings summary banner ----
 
