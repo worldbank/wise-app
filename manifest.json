@@ -4744,7 +4744,7 @@
       "checksum": "8a87c92c95a64108a7d4eb58cb61ba24"
     },
     "R/mod_1_05_weatherstats.R": {
-      "checksum": "8f866566bd15054d470c160298dcd7bc"
+      "checksum": "9c165a104df79e663b57d3f5eaca7677"
     },
     "R/mod_1_06_model.R": {
       "checksum": "9736c8e42f2887fb50af7e04374d4e29"
@@ -4762,7 +4762,7 @@
       "checksum": "caa24b8547e29f5ab109039bf4611b4e"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "1aa3fe2c7b6e622e3eae23854019f915"
+      "checksum": "031b23bef14d6d044c0be1f5a6deb3ff"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "cfc0c89b78ac7b8e9dd0943873b7b013"
