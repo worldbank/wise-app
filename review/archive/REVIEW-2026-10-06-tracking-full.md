@@ -462,3 +462,5 @@ Decision log, DOC-13 (2026-10-23): access and employment levers draw by weight. 
 | DOC-06 | L | M | ☐ | From the docs/ revision (2026-10-23). The stability Lasso (`run_lasso_selection()`) ignores survey weights and uses random cross-validation folds that split location panels. Consider weights and folds grouped by `loc_id_panel` (`docs/20_model_specification.md` section 5). |
 
 Decision log, DOC-06 (2026-10-23): stability Lasso folds grouped by `loc_id_panel`; weights not used (unweighted estimation). BFA selection before/after: owed.
+
+BFA numbers for DOC-10, DOC-13, DOC-07 and DOC-06 (2026-10-23): see the Log entry of that date in the tracker (electricity main effect 0.6601 -> 0.2318 -> 0.2358; lasso terms 30 -> 25).
