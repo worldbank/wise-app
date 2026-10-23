@@ -1143,7 +1143,7 @@ test_that("results content UI mounts chart outputs and the reactable CSV button"
   expect_match(html, "results-uncertainty_sources_plot", fixed = TRUE)
   expect_match(html, "results-summary_threshold_table", fixed = TRUE)
   # Client-side CSV button bound to the reactable widget id.
-  expect_match(html, "Reactable.downloadDataCSV", fixed = TRUE)
+  expect_match(html, "wise-csv-btn", fixed = TRUE)
   expect_match(html, "climate_outcome_thresholds.csv", fixed = TRUE)
   expect_false(grepl("threshold_csv", html, fixed = TRUE))
 })

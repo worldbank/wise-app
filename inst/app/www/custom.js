@@ -346,3 +346,43 @@
     sync(this);
   });
 })();
+
+
+// Handlers that used to be inline (onclick="...", <script>), moved here so the
+// page can run under a CSP without 'unsafe-inline' for scripts (CR-SEC-09).
+(function () {
+  // Close button of a config flyout: click its toggle.
+  // CSV button of a reactable table: Reactable.downloadDataCSV(table, file).
+  document.addEventListener('click', function (e) {
+    var close = e.target.closest('[data-flyout-close]');
+    if (close) {
+      var toggle = document.getElementById(close.getAttribute('data-flyout-close'));
+      if (toggle) toggle.click();
+      return;
+    }
+    var csv = e.target.closest('[data-csv-table]');
+    if (csv && window.Reactable) {
+      window.Reactable.downloadDataCSV(
+        csv.getAttribute('data-csv-table'), csv.getAttribute('data-csv-file')
+      );
+    }
+  });
+
+  // Selectize inputs inside .wise-lock-selectize are set by the app (for
+  // example by the selected policy scenario) and cannot be edited. The
+  // selectize is initialised after the input is bound, so lock it when it
+  // appears.
+  var pending = null;
+  function lockAll() {
+    pending = null;
+    document.querySelectorAll('.wise-lock-selectize select').forEach(function (el) {
+      if (el.selectize && !el.dataset.wiseLocked) {
+        el.selectize.lock();
+        el.dataset.wiseLocked = '1';
+      }
+    });
+  }
+  new MutationObserver(function () {
+    if (pending === null) pending = setTimeout(lockAll, 50);
+  }).observe(document.documentElement, { childList: true, subtree: true });
+})();

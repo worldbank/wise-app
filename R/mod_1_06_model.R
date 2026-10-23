@@ -304,21 +304,22 @@ mod_1_06_model_server <- function(id,
               }, character(1)
             ))
             tagList(
-              shiny::selectizeInput(
-                ns("interactions"),
-                label = shiny::tagList("Interaction with ", wise_math("Haz_{kt}")),
-                choices = choices_locked,
-                selected = all_locked,
-                multiple = TRUE,
-                options = list(
-                  maxItems = length(all_locked),
-                  plugins  = list("remove_button")
+              # custom.js locks the selectize inside .wise-lock-selectize once it
+              # is initialised (no inline script)
+              tags$div(
+                class = "wise-lock-selectize",
+                shiny::selectizeInput(
+                  ns("interactions"),
+                  label = shiny::tagList("Interaction with ", wise_math("Haz_{kt}")),
+                  choices = choices_locked,
+                  selected = all_locked,
+                  multiple = TRUE,
+                  options = list(
+                    maxItems = length(all_locked),
+                    plugins  = list("remove_button")
+                  )
                 )
               ),
-              tags$script(shiny::HTML(sprintf(
-                "setTimeout(function(){var el=$('#%s');if(el.length&&el[0].selectize)el[0].selectize.lock();},200);",
-                ns("interactions")
-              ))),
               tags$small(
                 class = "text-muted",
                 style = "display:block;margin-top:-10px;margin-bottom:8px;",

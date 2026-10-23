@@ -693,7 +693,8 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
           type = "button",
           class = "btn-close",
           `aria-label` = "Close",
-          onclick = sprintf("document.getElementById('%s').click();", toggle_id)
+          # Handled by a delegated listener in custom.js (no inline handler)
+          `data-flyout-close` = toggle_id
         )
       ),
       ...
@@ -959,11 +960,10 @@ wise_reactable_csv_button <- function(table_id, filename) {
   shiny::tags$button(
     type = "button",
     class = "wise-csv-btn",
-    onclick = sprintf(
-      "Reactable.downloadDataCSV(%s, %s)",
-      jsonlite::toJSON(table_id, auto_unbox = TRUE),
-      jsonlite::toJSON(paste0(filename, ".csv"), auto_unbox = TRUE)
-    ),
+    # Handled by a delegated listener in custom.js, which calls
+    # Reactable.downloadDataCSV(table, file) (no inline handler)
+    `data-csv-table` = table_id,
+    `data-csv-file` = paste0(filename, ".csv"),
     # R2-A11Y-05: name the table so the buttons are distinguishable; the
     # visible text stays at the start of the name (WCAG 2.5.3).
     `aria-label` = paste0("Download CSV: ", gsub("[_-]+", " ", filename)),

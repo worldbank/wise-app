@@ -247,15 +247,11 @@ test_that("wave_toggle_slider builds radio group with toggle-slider classes", {
 test_that("wise_reactable_csv_button wires the client-side export call", {
   btn <- wise_reactable_csv_button("ss-hh_stats", "survey_summary_hh")
   html <- as.character(shiny::HTML(as.character(btn)))
-  # The browser decodes &quot; in the onclick attribute back to quotes, so
-  # the executed call is Reactable.downloadDataCSV("ss-hh_stats", "...csv").
-  expect_match(
-    html,
-    paste0(
-      'Reactable.downloadDataCSV(&quot;ss-hh_stats&quot;, ',
-      '&quot;survey_summary_hh.csv&quot;)'
-    ),
-    fixed = TRUE
-  )
+  # custom.js turns the data attributes into
+  # Reactable.downloadDataCSV("ss-hh_stats", "...csv"); there is no inline
+  # handler (CR-SEC-09).
+  expect_match(html, 'data-csv-table="ss-hh_stats"', fixed = TRUE)
+  expect_match(html, 'data-csv-file="survey_summary_hh.csv"', fixed = TRUE)
+  expect_false(grepl("onclick", html, fixed = TRUE))
   expect_match(html, "wise-csv-btn", fixed = TRUE)
 })

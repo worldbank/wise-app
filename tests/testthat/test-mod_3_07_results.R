@@ -382,7 +382,7 @@ test_that(".results_pane_ui renders aggregation panel and results sections", {
   # The threshold table's CSV affordance is a client-side reactable CSV
   # button bound to the table id (guidelines §6); the R-side download
   # handler it replaced is gone.
-  expect_match(html, "Reactable.downloadDataCSV", fixed = TRUE)
+  expect_match(html, "wise-csv-btn", fixed = TRUE)
   expect_match(html, "policy_outcome_thresholds.csv", fixed = TRUE)
   expect_false(grepl("threshold_csv", html, fixed = TRUE))
 })

@@ -147,7 +147,7 @@ test_that("diagnostics UI mounts chart outputs without the support table", {
   expect_match(html, "diagnostics-model_robustness_plot", fixed = TRUE)
   expect_match(html, "diagnostics-timeseries_plot", fixed = TRUE)
   expect_false(grepl("diagnostics-weather_support_table", html, fixed = TRUE))
-  expect_false(grepl("Reactable.downloadDataCSV", html, fixed = TRUE))
+  expect_false(grepl("wise-csv-btn", html, fixed = TRUE))
 })
 
 # R2-PERF-12: switching the weather variable must not re-resolve scenario weather.
