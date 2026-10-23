@@ -11,11 +11,9 @@
 
 .sp_ce_short_label <- function(measure) {
   if (grepl("^Cost per person", measure)) {
-    "Cost per person lifted"
+    "Cost per person-year lifted"
   } else if (grepl("^Poverty gap", measure)) {
     "Poverty gap closed per $1"
-  } else if (grepl("^Welfare gain", measure)) {
-    "Welfare gain per $1"
   } else {
     measure
   }
@@ -113,9 +111,11 @@
       }
     )
   }
+  # A metric without a per-dollar reading gets the cost card only; the tab says why.
+  has_ratio <- grepl("^(Cost per person|Poverty gap)", r$measure[[1L]])
   Filter(Negate(is.null), list(
-    ratio_card("Average year", "average year"),
-    ratio_card("1-in-20 year", "adverse 1-in-20 year"),
+    if (has_ratio) ratio_card("Average year", "average year"),
+    if (has_ratio) ratio_card("1-in-20 year", "adverse 1-in-20 year"),
     cost_card
   ))
 }
@@ -210,7 +210,8 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
   dots <- lapply(names(basis_colour)[names(basis_colour) %in% rows$basis], function(b) {
     idx <- which(rows$basis == b)
     list(
-      name = b, type = "scatter", symbolSize = 12, z = 3,
+      name = if (b == "Average year") b else paste(b, "(no interval)"),
+      type = "scatter", symbolSize = 12, z = 3,
       itemStyle = list(color = unname(basis_colour[[b]])),
       data = lapply(idx, function(i) {
         item <- list(value = list(rows$value[[i]], rows$label[[i]]), tip = rows$tip[[i]])
@@ -230,8 +231,13 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
     axisLine = list(lineStyle = list(color = .wise_grid)),
     axisTick = list(show = FALSE), splitLine = wise_esplit_line()
   )
+  # A cost per person has an upper bound that explodes as the effect nears
+  # zero: a log axis when the values span more than a decade (it shows no ticks
+  # on a narrower range). A gain per $1 can have a negative lower bound.
+  span <- range(c(rows$value, rows$lo, rows$hi), finite = TRUE)
+  wide <- per_person && span[[1L]] > 0 && span[[2L]] / span[[1L]] > 10
   e$x$opts$xAxis <- list(
-    type = "value", min = 0,
+    type = if (wide) "log" else "value", scale = !wide,
     axisLabel = wise_eaxis_label(formatter = paste0(if (per_person) prefix else "", "{value}")),
     splitLine = wise_esplit_line()
   )
@@ -250,7 +256,7 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
 # Grouped bars of money per scenario. `measures` is a named list of numeric
 # vectors; labels abbreviate to K, M and B.
 .diag_grouped_money_chart <- function(scenarios, measures, colours, prefix = "$",
-                                      height = "320px", bottom = 12,
+                                      height = "320px", bottom = 12, stack = FALSE,
                                       y_label = paste0("Annual cost (", trimws(prefix), ")")) {
   keep <- vapply(measures, function(x) any(is.finite(x)), logical(1))
   if (!length(scenarios) || !any(keep)) {
@@ -272,17 +278,18 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
   e$x$opts$series <- lapply(seq_along(measures), function(i) {
     list(
       name = names(measures)[[i]], type = "bar", barMaxWidth = 38,
+      stack = if (stack) "cost",
       data = lapply(measures[[i]], function(v) {
         list(value = if (is.finite(v)) v else NULL, itemStyle = list(color = unname(colours[[i]])))
       }),
       label = list(
-        show = TRUE, position = "top", color = .wise_charcoal, fontSize = 12,
+        show = !stack, position = "top", color = .wise_charcoal, fontSize = 12,
         formatter = htmlwidgets::JS(sprintf("function(p) { return (%s)(p.value); }", abbrev))
       )
     )
   })
   e$x$opts$xAxis <- list(
-    type = "category", data = scenarios,
+    type = "category", data = as.list(scenarios),
     axisLabel = wise_eaxis_label(interval = 0L, width = 240, overflow = "break"),
     axisLine = list(lineStyle = list(color = .wise_grid)),
     axisTick = list(alignWithLabel = TRUE), splitLine = wise_esplit_line(show = FALSE)
@@ -312,39 +319,50 @@ echart_sp_ce_ratio <- function(res, currency = "PPP") {
   wise_echart_theme(e)
 }
 
-#' What the transfer costs: annual cost per scenario
+#' What the transfer costs: where the average-year cost goes
 #'
-#' The average-year cost and, for a program whose cost depends on the weather
-#' (shock-responsive), the cost in the adverse 1-in-20 year. A regular program
-#' costs the same every year and gets one bar.
+#' Annual cost in an average year, split into transfers to the poor, leakage to
+#' the non-poor and administration. Without a leakage share (no poverty line)
+#' the transfer is one block. A regular program costs the same in every scenario
+#' and gets one bar; the adverse-year cost is on the headline card.
 #'
 #' @param res Result of `sp_cost_effectiveness()`.
 #' @param currency `"PPP"` or `"LCU"`.
+#' @param admin Administration share of cost.
+#' @param leakage Share of transfer spending that reaches the non-poor, or `NA`.
+#'   For a shock program this is the share when payments are made.
 #' @return An `echarts4r` widget.
 #' @keywords internal
-echart_sp_ce_cost <- function(res, currency = "PPP") {
+echart_sp_ce_cost <- function(res, currency = "PPP", admin = 0, leakage = NA_real_) {
   if (!is.data.frame(res) || !nrow(res)) {
     return(echart_blank("No cost to show.", height = "160px"))
   }
   scen <- unique(res$scenario)
-  pick <- function(basis) {
-    vapply(scen, function(s) {
-      v <- res$cost[res$scenario == s & res$basis == basis]
-      if (length(v)) v[[1L]] else NA_real_
-    }, numeric(1), USE.NAMES = FALSE)
+  avg <- vapply(scen, function(s) {
+    v <- res$cost[res$scenario == s & res$basis == "Average year"]
+    if (length(v)) v[[1L]] else NA_real_
+  }, numeric(1), USE.NAMES = FALSE)
+  if (length(avg) > 1L && all(abs(avg - avg[[1L]]) <= 1e-6 * max(1, abs(avg[[1L]])), na.rm = TRUE)) {
+    scen <- "Every scenario"
+    avg <- avg[[1L]]
   }
-  avg <- pick("Average year")
-  tail <- pick("1-in-20 year")
-  varies <- any(is.finite(tail) & is.finite(avg) &
-    abs(tail - avg) > 1e-6 * pmax(1, abs(avg)))
-  measures <- if (varies) {
-    list("Average year" = avg, "Adverse 1-in-20 year" = tail)
+  admin <- if (is.finite(admin)) admin else 0
+  transfer <- avg * (1 - admin)
+  measures <- if (is.finite(leakage)) {
+    list(
+      "Transfers to the poor" = transfer * (1 - leakage),
+      "Leakage to the non-poor" = transfer * leakage,
+      "Administration" = avg * admin
+    )
   } else {
-    list("Annual cost" = avg)
+    list("Transfers" = transfer, "Administration" = avg * admin)
   }
+  colours <- c(.wise_blue, if (is.finite(leakage)) .wise_policy, .wise_slate)
+  nonzero <- vapply(measures, function(x) any(x > 0, na.rm = TRUE), logical(1))
+  measures <- measures[nonzero]
+  colours <- colours[nonzero]
   .diag_grouped_money_chart(
-    scen, measures, c(.wise_blue, .wise_policy),
-    prefix = .sp_currency_prefix(currency)
+    scen, measures, colours, prefix = .sp_currency_prefix(currency), stack = TRUE
   )
 }
 

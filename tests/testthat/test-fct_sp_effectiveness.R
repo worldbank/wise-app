@@ -73,7 +73,7 @@ test_that("near-zero, wrong-signed and unbounded effects never give an extreme r
   expect_identical(missing$status, c("ok", "unavailable"))
 })
 
-test_that("money metrics give a gain per $1, and unsupported metrics say so", {
+test_that("the poverty gap gives a gain per $1, and other metrics say they have none", {
   one <- function(method, effect, ...) {
     sp_cost_effectiveness(
       data.frame(scenario = "S", effect_avg = effect, effect_avg_sd = NA_real_, effect_tail = effect),
@@ -85,16 +85,13 @@ test_that("money metrics give a gain per $1, and unsupported metrics say so", {
   gap <- one("gap", -0.01, poverty_line = 3)
   expect_equal(gap$amount[[1L]], 0.01 * 3 * 1e6 * 365)
   expect_equal(gap$value[[1L]], 0.01 * 3 * 1e6 * 365 / 4e6)
-  # Mean welfare per day and the population sum
-  mean_res <- one("mean", 0.1, level_unit = "$ per day")
-  expect_equal(mean_res$value[[1L]], 0.1 * 1e6 * 365 / 4e6)
-  total <- one("total", 1e5, level_unit = "$ per day")
-  expect_equal(total$value[[1L]], 1e5 * 365 / 4e6)
-  # A worse metric is not applicable
-  expect_identical(one("mean", -0.1, level_unit = "$ per day")$status[[1L]], "not_applicable")
-  # Not money per day, or a metric without a per-dollar reading
-  expect_identical(one("mean", 0.1, level_unit = "index")$status[[1L]], "not_applicable")
-  expect_match(one("gini", -0.01)$note[[1L]], "no per-dollar reading")
+  # A worse gap is not applicable
+  expect_identical(one("gap", 0.01, poverty_line = 3)$status[[1L]], "not_applicable")
+  # Welfare mean and sum are set by the transfer itself: no per-dollar reading
+  for (m in c("mean", "total", "gini")) {
+    expect_identical(one(m, 0.1)$status[[1L]], "not_applicable")
+    expect_match(one(m, 0.1)$note[[1L]], "no per-dollar reading")
+  }
   # Without a poverty line the poverty figures are not available
   expect_identical(one("gap", -0.01)$status[[1L]], "unavailable")
   expect_identical(one("headcount_ratio", -0.01, poverty_line = NA)$status[[1L]], "unavailable")
@@ -112,13 +109,13 @@ test_that("the cost-effectiveness display prints one string per figure", {
     pop = 1e6, poverty_line = 3)
   d <- .sp_ce_display(res, "PPP")
   expect_equal(nrow(d), 4L)
-  expect_identical(d[["Cost per person lifted out of poverty (net)"]][[1L]], "$200.00")
+  expect_identical(d[["Cost per person-year lifted out of poverty (net)"]][[1L]], "$200.00")
   expect_identical(d[["Net people lifted"]][[1L]], "20,000")
-  expect_identical(d[["Annual cost"]][[1L]], "$4,000,000.00")
+  expect_identical(d[["Annual cost"]][[1L]], "$4,000,000")
   expect_match(d[["95% interval"]][[1L]], "^\\$[0-9,.]+ to \\$[0-9,.]+$")
   expect_identical(d[["95% interval"]][[2L]], "")
   na <- sp_cost_effectiveness(ce_effects(), ce_costs(), "headcount_ratio", pop = 1e6)
-  expect_true(all(.sp_ce_display(na, "LCU")[["Cost per person lifted out of poverty (net)"]] == "Not available"))
+  expect_true(all(.sp_ce_display(na, "LCU")[["Cost per person-year lifted out of poverty (net)"]] == "Not available"))
   expect_equal(nrow(.sp_ce_display(NULL)), 0L)
 })
 

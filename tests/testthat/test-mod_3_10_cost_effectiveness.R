@@ -23,8 +23,7 @@ ce_args <- function(sp = ce_sp(), method = "headcount_ratio", effect = -0.05, ..
     baseline_svy = shiny::reactiveVal(f$base),
     policy_svy = shiny::reactiveVal(f$pol),
     metric_context = shiny::reactiveVal(list(
-      method = method, label = "Poverty rate", availability = "ok",
-      level_unit = "$ per day"
+      method = method, label = "Poverty rate", availability = "ok"
     )),
     effect_summary = shiny::reactiveVal(data.frame(
       scenario = "Hist", value = effect, coef_sd = 0.01
@@ -212,8 +211,8 @@ test_that("the tab leads with cards and charts and keeps the table behind a togg
     expect_match(body, "ce_cost_plot")
     expect_match(body, "View cost-effectiveness data")
     cards <- as.character(output$ce_cards_ui$html)
-    expect_match(cards, "Cost per person lifted, average year")
-    expect_match(cards, "Cost per person lifted, adverse 1-in-20 year")
+    expect_match(cards, "Cost per person-year lifted, average year")
+    expect_match(cards, "Cost per person-year lifted, adverse 1-in-20 year")
     expect_s3_class(ce_ratio_chart(), "echarts4r")
     expect_s3_class(ce_cost_chart(), "echarts4r")
     # The table names the adverse year as Results does

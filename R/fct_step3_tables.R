@@ -481,7 +481,8 @@ step3_input_summary_frame <- function(d) {
 #' @param analysis_unit Analysis unit.
 #' @param poverty_line Poverty line of the metric, or `NULL`.
 #' @return A list with `status`; for `"ok"` also `res`, `currency`, `admin`,
-#'   `shock`, `method`, `label`, `line` and `uses_line`.
+#'   `shock`, `leakage` (share of transfer spending reaching the non-poor, `NA`
+#'   without a poverty line), `method`, `label`, `line` and `uses_line`.
 #' @noRd
 step3_cost_effectiveness <- function(sp, infra, digital, labor, education, metric_context,
                                      effect_summary, decomp, shock_summary, annual_effects,
@@ -502,7 +503,7 @@ step3_cost_effectiveness <- function(sp, infra, digital, labor, education, metri
   currency <- .sp_currency(sp$currency)
   admin <- .sp_admin_share(sp)
   shock <- identical(sp$sp_type, "shock")
-  effects <- sp_effect_by_scenario(eff, decomp$return_period)
+  effects <- sp_effect_by_scenario(eff, tails = decomp$return_period)
 
   costs <- if (shock) {
     ae <- annual_effects
@@ -526,11 +527,19 @@ step3_cost_effectiveness <- function(sp, infra, digital, labor, education, metri
   res <- sp_cost_effectiveness(
     effects, costs, mc$method,
     pop = .sp_ce_population(baseline_svy, au),
-    poverty_line = line, level_unit = mc$level_unit, sp_only = !other_levers
+    poverty_line = line, sp_only = !other_levers
   )
+  # Share of transfer spending reaching the non-poor, for the cost split.
+  leakage <- tryCatch({
+    m <- step3_sp_effectiveness(
+      list(analysis_unit = au, transfer_currency = currency, admin_share = admin),
+      sp, baseline_svy, policy_svy, shock_summary, poverty_line
+    )$metrics
+    as.numeric(m$value[startsWith(m$metric, "Leakage to the non-poor")])[1L]
+  }, error = function(e) NA_real_)
   list(
     status = "ok", res = res, currency = currency, admin = admin, shock = shock,
-    method = mc$method, label = mc$label, line = line,
+    leakage = leakage, method = mc$method, label = mc$label, line = line,
     uses_line = mc$method %in% c("headcount_ratio", "gap")
   )
 }

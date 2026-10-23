@@ -169,33 +169,51 @@ mod_3_10_cost_effectiveness_server <- function(id,
       }
       n_rows <- nrow(.sp_ce_plot_rows(x$res, x$currency))
       per_person <- identical(x$method, "headcount_ratio")
+      # Only the poverty rate and gap have a per-dollar reading; say so once.
+      has_ratio <- x$method %in% c("headcount_ratio", "gap")
       shiny::tagList(
         shiny::uiOutput(ns("ce_cards_ui")),
-        shiny::h6(
-          if (per_person) "What does it buy? Cost per person lifted (lower is better)" else
-            "What does it buy? Return per $1 of cost (higher is better)",
-          style = .diag_subheading_style
-        ),
-        wise_chart_output(
-          ns("ce_ratio_plot"),
-          "Cost-effectiveness ratio by scenario and weather year, with 95% intervals for the average year",
-          height = paste0(max(160, 100 + 40 * n_rows), "px")
-        ),
-        shiny::uiOutput(ns("ce_ratio_note_ui")),
+        if (has_ratio) {
+          shiny::tagList(
+            shiny::h6(
+              if (per_person) "What does it buy? Cost per person-year lifted out of poverty (lower is better)" else
+                "What does it buy? Poverty gap closed per $1 of cost (higher is better)",
+              style = .diag_subheading_style
+            ),
+            wise_chart_output(
+              ns("ce_ratio_plot"),
+              "Cost-effectiveness ratio by scenario and weather year, with 95% intervals for the average year",
+              height = paste0(max(160, 100 + 40 * n_rows), "px")
+            ),
+            shiny::uiOutput(ns("ce_ratio_note_ui"))
+          )
+        } else {
+          shiny::tags$p(
+            class = "diagnostic-note",
+            paste0(
+              "The Results metric (", x$label, ") has no per-dollar reading: the ",
+              "transfer is added to welfare, so a gain per $1 would only restate ",
+              "the cost. Choose Poverty rate or Poverty gap in Results to see ",
+              "what the transfer buys."
+            )
+          )
+        },
         shiny::h6("What does it cost?", style = .diag_subheading_style),
         wise_chart_output(
           ns("ce_cost_plot"), "Annual cost of the cash transfer by scenario",
           height = "320px"
         ),
-        shiny::tags$details(
-          class = "decomposition-data-details",
-          shiny::tags$summary("View cost-effectiveness data"),
-          shiny::div(
-            class = "wise-reactable-controls",
-            wise_reactable_csv_button(ns("ce_table"), "policy_cost_effectiveness")
-          ),
-          reactable::reactableOutput(ns("ce_table"))
-        )
+        if (has_ratio) {
+          shiny::tags$details(
+            class = "decomposition-data-details",
+            shiny::tags$summary("View cost-effectiveness data"),
+            shiny::div(
+              class = "wise-reactable-controls",
+              wise_reactable_csv_button(ns("ce_table"), "policy_cost_effectiveness")
+            ),
+            reactable::reactableOutput(ns("ce_table"))
+          )
+        }
       )
     })
     outputOptions(output, "ce_body_ui", suspendWhenHidden = FALSE)
@@ -239,7 +257,7 @@ mod_3_10_cost_effectiveness_server <- function(id,
     }
     ce_cost_chart <- function() {
       x <- ce()
-      if (!identical(x$status, "ok")) NULL else echart_sp_ce_cost(x$res, x$currency)
+      if (!identical(x$status, "ok")) NULL else echart_sp_ce_cost(x$res, x$currency, x$admin, x$leakage)
     }
     output$ce_ratio_plot <- echarts4r::renderEcharts4r({
       ch <- ce_ratio_chart()
@@ -467,7 +485,7 @@ mod_3_10_cost_effectiveness_server <- function(id,
       label = "Cost-effectiveness ratio by scenario",
       step = 3L,
       fun = ce_ratio_chart,
-      description = "Cost per person lifted or return per $1 of cost, with 95% intervals for the average year.",
+      description = "Cost per person-year lifted or poverty gap closed per $1 of cost, with 95% intervals for the average year.",
       width = 9, height = 5,
       stale = stale
     )

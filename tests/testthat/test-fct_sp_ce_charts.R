@@ -12,18 +12,18 @@ ce_chart_res <- function(method = "headcount_ratio", tail_cost = 9e6) {
       scenario = c("Historical", "SSP"), cost_avg = cost_avg,
       cost_tail = if (is.null(tail_cost)) cost_avg else rep(tail_cost, 2L)
     ),
-    method, pop = 1e6, poverty_line = 3, level_unit = "$ per day"
+    method, pop = 1e6, poverty_line = 3
   )
 }
 
 test_that("the cards show the ratio in both weather years and the annual cost", {
   cards <- .sp_ce_cards(ce_chart_res(), "PPP", "Historical")
   expect_length(cards, 3L)
-  expect_identical(cards[[1L]]$label, "Cost per person lifted, average year")
+  expect_identical(cards[[1L]]$label, "Cost per person-year lifted, average year")
   expect_identical(cards[[1L]]$value, "$200.00")
   expect_match(cards[[1L]]$note, "Net people lifted: 20K")
   expect_match(cards[[1L]]$note, "95% interval")
-  expect_identical(cards[[2L]]$label, "Cost per person lifted, adverse 1-in-20 year")
+  expect_identical(cards[[2L]]$label, "Cost per person-year lifted, adverse 1-in-20 year")
   expect_match(cards[[2L]]$note, "Net people lifted: 30K")
   expect_identical(cards[[3L]]$value, "$4M")
   expect_match(cards[[3L]]$note, "Adverse 1-in-20 year: \\$9M")
@@ -49,7 +49,7 @@ test_that("the ratio chart draws one dot per readable row and a whisker for inte
   ch <- echart_sp_ce_ratio(res, "PPP")
   expect_s3_class(ch, "echarts4r")
   names <- vapply(ch$x$opts$series, `[[`, "", "name")
-  expect_setequal(names, c("95% interval", "Average year", "Adverse 1-in-20 year"))
+  expect_setequal(names, c("95% interval", "Average year", "Adverse 1-in-20 year (no interval)"))
   whisker <- ch$x$opts$series[[match("95% interval", names)]]
   # Only the average-year rows carry an interval
   expect_length(whisker$data, 2L)
@@ -75,13 +75,22 @@ test_that("a cost per person whose interval reaches zero is a hollow dot", {
   expect_false("95% interval" %in% vapply(ch$x$opts$series, `[[`, "", "name"))
 })
 
-test_that("the cost chart has one bar for a regular program and two when cost varies", {
-  expect_length(echart_sp_ce_cost(ce_chart_res(tail_cost = NULL))$x$opts$series, 1L)
-  varying <- echart_sp_ce_cost(ce_chart_res())
-  expect_length(varying$x$opts$series, 2L)
-  expect_identical(varying$x$opts$xAxis$data, c("Historical", "SSP"))
+test_that("the cost chart splits the average-year cost and shows one bar for a regular program", {
+  same <- echart_sp_ce_cost(ce_chart_res(), admin = 0.1, leakage = 0.25)
+  # Costs differ (4M, 5M): one stacked bar per scenario
+  expect_identical(same$x$opts$xAxis$data, list("Historical", "SSP"))
+  names_ <- vapply(same$x$opts$series, `[[`, "", "name")
+  expect_identical(names_, c("Transfers to the poor", "Leakage to the non-poor", "Administration"))
+  expect_equal(vapply(same$x$opts$series, function(s) s$data[[1L]]$value, 0), c(2.7e6, 0.9e6, 0.4e6))
+  expect_true(all(vapply(same$x$opts$series, function(s) identical(s$stack, "cost"), NA)))
   # Series data must serialise as arrays, not named objects
-  expect_null(names(varying$x$opts$series[[1L]]$data))
+  expect_null(names(same$x$opts$series[[1L]]$data))
+  # Equal cost in every scenario collapses to one bar; no admin or leakage share
+  res <- ce_chart_res()
+  res$cost <- 4e6
+  one <- echart_sp_ce_cost(res)
+  expect_identical(one$x$opts$xAxis$data, list("Every scenario"))
+  expect_identical(vapply(one$x$opts$series, `[[`, "", "name"), "Transfers")
   expect_s3_class(echart_sp_ce_cost(NULL), "echarts4r")
 })
 

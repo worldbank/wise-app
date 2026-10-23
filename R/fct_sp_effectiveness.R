@@ -271,9 +271,9 @@ sp_effect_by_scenario <- function(paired_summary, tails = NULL, return_period = 
 #'     built, so a household that falls into poverty offsets one that leaves it.
 #'   \item Poverty gap: the reduction in the aggregate gap in money terms
 #'     (`-effect * line * pop * 365`) per unit of cost.
-#'   \item Mean and population sum of a money outcome per day: the welfare
-#'     change in money terms per unit of cost.
-#'   \item Anything else has no per-dollar reading.
+#'   \item Anything else has no per-dollar reading. The mean and sum of welfare
+#'     are not scored: the transfer is added to welfare, so the gain per $1 is
+#'     about one minus the administration share whatever the targeting.
 #' }
 #' A ratio is never an extreme number: a poverty-rate effect under `min_effect`
 #' of the population, an effect with the wrong sign, or a year without spending
@@ -286,13 +286,10 @@ sp_effect_by_scenario <- function(paired_summary, tails = NULL, return_period = 
 #' @param effects Result of `sp_effect_by_scenario()`.
 #' @param costs Data frame (`scenario`, `cost_avg`, `cost_tail`): annual cost in
 #'   the entry currency per scenario.
-#' @param method Results aggregation method (`"headcount_ratio"`, `"gap"`,
-#'   `"mean"`, `"total"`, ...).
+#' @param method Results aggregation method (`"headcount_ratio"`, `"gap"`, ...).
 #' @param pop People represented (sum of survey weights).
 #' @param poverty_line Results poverty line in the entry currency per day, or
 #'   `NULL`; poverty-based figures are `"unavailable"` without it.
-#' @param level_unit Unit of the metric's level (`metric_metadata()$level_unit`),
-#'   to confirm a money-per-day outcome for `"mean"` and `"total"`.
 #' @param sp_only Whether the cash transfer is the only lever with an effect. If
 #'   not, the effect cannot be credited to the transfer and every row is
 #'   `"not_applicable"`.
@@ -304,8 +301,7 @@ sp_effect_by_scenario <- function(paired_summary, tails = NULL, return_period = 
 #'   `"not_applicable"` or `"unavailable"`) and `note`.
 #' @keywords internal
 sp_cost_effectiveness <- function(effects, costs, method, pop, poverty_line = NULL,
-                                  level_unit = NULL, sp_only = TRUE,
-                                  min_effect = SP_CE_MIN_EFFECT) {
+                                  sp_only = TRUE, min_effect = SP_CE_MIN_EFFECT) {
   cols <- c(
     "scenario", "basis", "measure", "cost", "amount", "amount_kind", "value",
     "lo", "hi", "interval", "status", "note"
@@ -321,45 +317,31 @@ sp_cost_effectiveness <- function(effects, costs, method, pop, poverty_line = NU
   pop <- suppressWarnings(as.numeric(pop))[1L]
   line <- suppressWarnings(as.numeric(poverty_line))[1L]
   has_line <- is.finite(line) && line > 0
-  per_day <- grepl("per day$", as.character(level_unit %||% ""))[1L]
   z <- stats::qnorm(0.975)
 
   measure <- switch(method,
-    headcount_ratio = "Cost per person lifted out of poverty (net)",
+    headcount_ratio = "Cost per person-year lifted out of poverty (net)",
     gap = "Poverty gap closed per $1 of cost",
-    mean = "Welfare gain per $1 of cost",
-    total = "Welfare gain per $1 of cost",
     "No per-dollar reading"
   )
   per_person <- identical(method, "headcount_ratio")
-  # Annual value of a change `e` of the metric, in the entry currency.
-  money <- function(e) {
-    switch(method,
-      gap = -e * line * pop * 365,
-      mean = e * pop * 365,
-      total = e * 365,
-      NA_real_
-    )
-  }
+  # Annual value of a change `e` of the poverty gap, in the entry currency.
+  money <- function(e) -e * line * pop * 365
   # Why a method has no usable reading, or NULL when it has one.
-  method_problem <- if (!method %in% c("headcount_ratio", "gap", "mean", "total")) {
+  method_problem <- if (!method %in% c("headcount_ratio", "gap")) {
     list(status = "not_applicable", note = paste(
-      "This metric has no per-dollar reading. Choose the poverty rate, poverty",
-      "gap, mean or population sum in Results."
+      "This metric has no per-dollar reading. Choose the poverty rate or",
+      "poverty gap in Results."
     ))
   } else if (!is.finite(pop) || pop <= 0) {
     list(status = "unavailable", note = "The represented population is not available.")
-  } else if (method %in% c("headcount_ratio", "gap") && !has_line) {
+  } else if (!has_line) {
     list(status = "unavailable", note = "Needs a positive poverty line.")
-  } else if (method %in% c("mean", "total") && !per_day) {
-    list(status = "not_applicable", note = paste(
-      "The outcome is not a money value per day, so a per-dollar reading is",
-      "not defined."
-    ))
   } else if (!isTRUE(sp_only)) {
     list(status = "not_applicable", note = paste(
       "The policy effect includes levers other than the cash transfer, so it",
-      "cannot be credited to the transfer's cost."
+      "cannot be credited to the transfer's cost. Run Step 3 with the cash",
+      "transfer alone to score it."
     ))
   }
 
@@ -478,7 +460,7 @@ sp_cost_effectiveness <- function(effects, costs, method, pop, poverty_line = NU
   }
   out <- data.frame(
     Scenario = res$scenario, `Weather year` = .sp_ce_basis_label(res$basis),
-    `Annual cost` = money(res$cost), Change = change, Result = result,
+    `Annual cost` = fmt_num(res$cost, digits = 0, prefix = prefix, na = "Not available"), Change = change, Result = result,
     `95% interval` = interval, Note = res$note,
     check.names = FALSE, stringsAsFactors = FALSE
   )
