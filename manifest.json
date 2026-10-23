@@ -4498,7 +4498,7 @@
       "checksum": "cb7c36426bcdffc75cb79fc0947205ea"
     },
     "inst/app/www/custom.js": {
-      "checksum": "9fe3c7829297ab911a100689920ace6e"
+      "checksum": "0f0cb149c09a185bae25084b81a846fe"
     },
     "inst/app/www/favicon.png": {
       "checksum": "7375aa747c52ad9545b733a059fab9db"
@@ -4573,10 +4573,10 @@
       "checksum": "cd06c46cdf55c864e90a22976bf7cb9e"
     },
     "R/fct_fit_model.R": {
-      "checksum": "ba981be480c28d9b5391c23749ed6fa9"
+      "checksum": "9a5d09bf464c07c2ce7b6f3285bb0638"
     },
     "R/fct_get_weather.R": {
-      "checksum": "d914a6b6f123424b89dd218ff7ed483b"
+      "checksum": "515b457d304d32d2219eba134f5bb4bf"
     },
     "R/fct_hexmap.R": {
       "checksum": "70cfbfbd01fac72dc0b0679bf4906381"
@@ -4747,7 +4747,7 @@
       "checksum": "9c165a104df79e663b57d3f5eaca7677"
     },
     "R/mod_1_06_model.R": {
-      "checksum": "9736c8e42f2887fb50af7e04374d4e29"
+      "checksum": "2463ed0ec9c2939fefe2b6d299a81f20"
     },
     "R/mod_1_07_results.R": {
       "checksum": "139ed8bbe8bbcd3bb99f17c39a8c4ec0"
@@ -4828,7 +4828,7 @@
       "checksum": "e715b6a866363f28ad4d8af629e9bda0"
     },
     "R/utils_ui.R": {
-      "checksum": "85a43b5a91f97f5d5a295337e6836a7f"
+      "checksum": "95586930fc2105aaff6d79920a52071c"
     },
     "src/RcppExports.cpp": {
       "checksum": "b5983a083dc1aea52d08f9c00d2378b7"
