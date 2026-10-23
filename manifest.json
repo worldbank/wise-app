@@ -2234,9 +2234,9 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "Matrix",
-        "Version": "1.7-4",
+        "Version": "1.7-5",
         "VersionNote": "do also bump src/version.h, inst/include/Matrix/version.h",
-        "Date": "2025-08-27",
+        "Date": "2026-03-20",
         "Priority": "recommended",
         "Title": "Sparse and Dense Matrix Classes and Methods",
         "Description": "A rich hierarchy of sparse and dense matrix classes,\n\tincluding general, symmetric, triangular, and diagonal matrices\n\twith numeric, logical, or pattern entries.  Efficient methods for\n\toperating on such matrices, often wrapping the 'BLAS', 'LAPACK',\n\tand 'SuiteSparse' libraries.",
@@ -2254,12 +2254,20 @@
         "BuildResaveData": "no",
         "Encoding": "UTF-8",
         "NeedsCompilation": "yes",
-        "Packaged": "2025-08-27 10:17:11 UTC; maechler",
+        "Packaged": "2026-03-20 19:40:14 UTC; maechler",
         "Author": "Douglas Bates [aut] (ORCID: <https://orcid.org/0000-0001-8316-9503>),\n  Martin Maechler [aut, cre] (ORCID:\n    <https://orcid.org/0000-0002-8685-9910>),\n  Mikael Jagan [aut] (ORCID: <https://orcid.org/0000-0002-3542-2938>),\n  Timothy A. Davis [ctb] (ORCID: <https://orcid.org/0000-0001-7614-6899>,\n    SuiteSparse libraries, collaborators listed in\n    dir(system.file(\"doc\", \"SuiteSparse\", package=\"Matrix\"),\n    pattern=\"License\", full.names=TRUE, recursive=TRUE)),\n  George Karypis [ctb] (ORCID: <https://orcid.org/0000-0003-2753-1437>,\n    METIS library, Copyright: Regents of the University of Minnesota),\n  Jason Riedy [ctb] (ORCID: <https://orcid.org/0000-0002-4345-4200>, GNU\n    Octave's condest() and onenormest(), Copyright: Regents of the\n    University of California),\n  Jens Oehlschlägel [ctb] (initial nearPD()),\n  R Core Team [ctb] (ROR: <https://ror.org/02zz1nj61>, base R's matrix\n    implementation)",
         "Maintainer": "Martin Maechler <mmaechler+Matrix@gmail.com>",
         "Repository": "CRAN",
-        "Date/Publication": "2025-08-28 11:50:02 UTC",
-        "Built": "R 4.5.3; aarch64-apple-darwin20; 2026-03-12 02:04:52 UTC; unix"
+        "Date/Publication": "2026-03-21 14:40:03 UTC",
+        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-03-22 20:58:55 UTC; unix",
+        "Archs": "Matrix.so.dSYM",
+        "RemoteType": "standard",
+        "RemoteRef": "Matrix",
+        "RemotePkgRef": "Matrix",
+        "RemoteRepos": "https://cran.rstudio.com",
+        "RemoteReposName": "CRAN",
+        "RemotePkgPlatform": "aarch64-apple-darwin20",
+        "RemoteSha": "1.7-5"
       }
     },
     "foreach": {
@@ -4119,7 +4127,8 @@
         "Maintainer": "Brian Ripley <Brian.Ripley@R-project.org>",
         "Repository": "CRAN",
         "Date/Publication": "2025-02-28 17:44:52 UTC",
-        "Built": "R 4.5.3; aarch64-apple-darwin20; 2026-03-12 02:04:47 UTC; unix"
+        "Built": "R 4.5.0; aarch64-apple-darwin20; 2025-03-31 21:42:43 UTC; unix",
+        "Archs": "MASS.so.dSYM"
       }
     },
     "ordinal": {
@@ -4549,7 +4558,7 @@
       "checksum": "a50516efe904cea2a451c815bb5ca2ba"
     },
     "R/fct_batch_spec.R": {
-      "checksum": "3834066597ca4b73d7e4d3f7a54cddf5"
+      "checksum": "1547b1ae1b7548d2564b713633ae0236"
     },
     "R/fct_batch_targets.R": {
       "checksum": "dec43795e39601e8b126bf21530f1105"
@@ -4609,7 +4618,7 @@
       "checksum": "681ce792b86e3fde2e469f42b94513bb"
     },
     "R/fct_policy_registry.R": {
-      "checksum": "ca42667a2f80db9daec7b3635e6e385f"
+      "checksum": "09df31072a9bed5044a0f356bb54c278"
     },
     "R/fct_policy_sim_compare.R": {
       "checksum": "d38b75bb33577abc4697986d644e1e5e"
@@ -4648,16 +4657,16 @@
       "checksum": "ad824ee903e413f39691af348f567f2a"
     },
     "R/fct_sp_ce_charts.R": {
-      "checksum": "f412943c3b34978029faa6af202b98ab"
+      "checksum": "68e0c46fb2d04d034c3f786825cb0929"
     },
     "R/fct_sp_effectiveness.R": {
-      "checksum": "643e5c99550cec9a432a74ab0357ba22"
+      "checksum": "d7b3ef55accd7cf578427ab0c474e482"
     },
     "R/fct_sp_shock.R": {
       "checksum": "141489944077ec410367dc7d12f424e0"
     },
     "R/fct_spec_defaults.R": {
-      "checksum": "2036a4ccf36608d4ef950c237a582755"
+      "checksum": "b57b829fafbef3f0da01cd801494a1f4"
     },
     "R/fct_step1_data.R": {
       "checksum": "1e45db57a6ce5569e5988dc86c6419d7"
@@ -4693,10 +4702,10 @@
       "checksum": "72835faa276e6bc81671fa359ebfa78a"
     },
     "R/fct_step3_input.R": {
-      "checksum": "82513ea9f19392ff34452bd58746d6c9"
+      "checksum": "fef145ecdfef4f0d3c15b3bdca09622d"
     },
     "R/fct_step3_tables.R": {
-      "checksum": "857bb02e05baaae854f387b7974c1465"
+      "checksum": "1b5f9406f23307fc376baffc9639e156"
     },
     "R/fct_surveystats.R": {
       "checksum": "66ecfa36930eaf32c3b27d9b78ec1985"
@@ -4708,7 +4717,7 @@
       "checksum": "5e4cb0fabebe10657b35e198fd41782e"
     },
     "R/fct_weather_select.R": {
-      "checksum": "1c5b1e8c5bbeb525756cde4ce4cda9ab"
+      "checksum": "439a5fe6d57cb85b701b800429aff9a2"
     },
     "R/fct_weatherstats.R": {
       "checksum": "e1be5164c088d619d466c6938cfc642e"
@@ -4729,7 +4738,7 @@
       "checksum": "f09ab5bed39010fef8c61e4456743738"
     },
     "R/mod_1_04_weather.R": {
-      "checksum": "75f2b73c0f89400fd1e7e461acc7598b"
+      "checksum": "7e8f5fcd6cc9828d244d7009f6891d14"
     },
     "R/mod_1_05_weatherstats.R": {
       "checksum": "84560905613f2f07ebef5aa877561f26"
@@ -4786,13 +4795,13 @@
       "checksum": "5af8502a5d70d8b6c02391d1a763e364"
     },
     "R/mod_3_10_cost_effectiveness.R": {
-      "checksum": "f5e8b0f51a4fe9dec065adb09c888df3"
+      "checksum": "6bfd2f3c94ee165ab0dec6c7d90bd7b3"
     },
     "R/mod_3_11_other.R": {
       "checksum": "b65e494ff3fcbb2c0b0069305da36d2f"
     },
     "R/mod_3_levers.R": {
-      "checksum": "13325f03869c3031506ef110603f2d17"
+      "checksum": "6985152f77b7d3ae2f074d9fc258c068"
     },
     "R/mod_3_scenario.R": {
       "checksum": "9670b1eddd070d947ed5a24dab132c33"
