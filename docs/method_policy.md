@@ -2,7 +2,7 @@
 
 This document explains how the user's choices in Module 3 (Step 3 — Policy Scenarios) translate into per-household modifications of the survey-weather data frame, and how that modified frame feeds the simulation and decomposition pipelines.
 
-The flow is engine-agnostic: the same `apply_policy_to_svy()` transformation runs for both the linear (`fixest`) and RIF engines. Where the engines differ in how they consume the modified survey, this doc cross-references [`method_lin.md`](method_lin.md) §2.5 and [`method_rif.md`](method_rif.md) §2.5.
+The flow is engine-agnostic: the same `apply_policy_to_svy()` transformation runs for both the linear (`fixest`) and RIF engines. Where the engines differ in how they consume the modified survey, this doc cross-references [`21_model_linear.md`](21_model_linear.md) §2.5 and [`22_model_rif.md`](22_model_rif.md) §2.5.
 
 ---
 
@@ -124,9 +124,9 @@ The weighted-divisor logic ensures the *population-level* annual spend `sum(tran
 
 ### 3.5 How the transfer enters predictions
 
-For the **linear engine**, the transfer is added post-prediction in level scale (`fct_simulations.R` ~lines 549–569). When `so$transform == "log"`, the boost is re-logged: `y_point <- log(exp(y_point) + sp_vec)`. See [`method_lin.md`](method_lin.md) §2.5.
+For the **linear engine**, the transfer is added post-prediction in level scale (`fct_simulations.R` ~lines 549–569). When `so$transform == "log"`, the boost is re-logged: `y_point <- log(exp(y_point) + sp_vec)`. See [`21_model_linear.md`](21_model_linear.md) §2.5.
 
-For the **RIF engine in policy mode**, the level-scale SP block is **skipped** because `δ_sp` is already inside the policy correction's `delta_total` (added in log scale via `.compute_rif_channels()`). See [`method_rif.md`](method_rif.md) §2.5.
+For the **RIF engine in policy mode**, the level-scale SP block is **skipped** because `δ_sp` is already inside the policy correction's `delta_total` (added in log scale via `.compute_rif_channels()`). See [`22_model_rif.md`](22_model_rif.md) §2.5.
 
 Cost reporting (realised spend, cost per beneficiary) is **not** currently surfaced in the UI — only the simulated welfare effects are.
 
@@ -302,8 +302,8 @@ The output schema matches Step 2's `run_full_simulation()`: `hist_sim` nests its
 
 For any survey column the model uses as a regressor, `apply_policy_to_svy()`'s flips show up directly in the design matrix at prediction time:
 
-- **Linear engine**: `fixest::predict(model, newdata = survey_wd_sim, type = "response")` evaluates the full linear predictor at the policy values. Main effects (`β_v · x_policy_v`) and interactions (`β_{w:v} · w · x_policy_v`) both activate automatically. See [`method_lin.md`](method_lin.md) §2.5.
-- **RIF engine**: `predict_rif()` is called *at baseline covariates* (`svy_for_predict = svy_baseline` when `is_rif_policy`), and the full channel decomposition is then added explicitly via `.compute_rif_policy_correction()` returning `delta_total = δ_sp + δ_main_covar + δ_res1 + δ_res2`. See [`method_rif.md`](method_rif.md) §2.5.
+- **Linear engine**: `fixest::predict(model, newdata = survey_wd_sim, type = "response")` evaluates the full linear predictor at the policy values. Main effects (`β_v · x_policy_v`) and interactions (`β_{w:v} · w · x_policy_v`) both activate automatically. See [`21_model_linear.md`](21_model_linear.md) §2.5.
+- **RIF engine**: `predict_rif()` is called *at baseline covariates* (`svy_for_predict = svy_baseline` when `is_rif_policy`), and the full channel decomposition is then added explicitly via `.compute_rif_policy_correction()` returning `delta_total = δ_sp + δ_main_covar + δ_res1 + δ_res2`. See [`22_model_rif.md`](22_model_rif.md) §2.5.
 
 ### 8.2 SP cash channel
 
@@ -318,9 +318,9 @@ This is mathematically equivalent to `δ_sp = log(exp(y) + SP_cash) − y`, whic
 
 ### 8.3 Uncertainty propagation
 
-Policy modifications affect the design matrix `X_policy`, which feeds the factor loading `F_loading = X_policy %*% L` (linear) or the interpolated per-τ blend (RIF). Coefficient uncertainty therefore propagates through the policy survey exactly as it does through the baseline survey — see [`method_uncertainty.md`](method_uncertainty.md) §1.1 and §5 (paired contrasts).
+Policy modifications affect the design matrix `X_policy`, which feeds the factor loading `F_loading = X_policy %*% L` (linear) or the interpolated per-τ blend (RIF). Coefficient uncertainty therefore propagates through the policy survey exactly as it does through the baseline survey — see [`33_uncertainty.md`](33_uncertainty.md) §1.1 and §5 (paired contrasts).
 
-**Additive-decomposition active mask.** Under the default coefficient-uncertainty mode (§1.1.1 of `method_uncertainty.md`), `apply_policy_delta_to_baseline()` rebuilds the active mask after `apply_policy_to_svy()` runs: `active_terms = weather_terms ∪ detect_modified_cols(svy_policy, train_data)`. The detected columns are exactly those the policy flipped (e.g. `electricity`, `internet`, `employed`, `imp_wat_rec`), so the policy arm's `F_loading` keeps coefficients on (weather + policy-modified + their interactions) and drops everything else. The mask is stripped first to avoid inheriting Module 2's weather-only mask. The legacy full-β propagation is restored when the Step-2 "Include uncertainty on all covariates" toggle is set.
+**Additive-decomposition active mask.** Under the default coefficient-uncertainty mode (Section 5 of `33_uncertainty.md`), `apply_policy_delta_to_baseline()` rebuilds the active mask after `apply_policy_to_svy()` runs: `active_terms = weather_terms ∪ detect_modified_cols(svy_policy, train_data)`. The detected columns are exactly those the policy flipped (e.g. `electricity`, `internet`, `employed`, `imp_wat_rec`), so the policy arm's `F_loading` keeps coefficients on (weather + policy-modified + their interactions) and drops everything else. The mask is stripped first to avoid inheriting Module 2's weather-only mask. The legacy full-β propagation is restored when the Step-2 "Include uncertainty on all covariates" toggle is set.
 
 The SP transfer itself is treated as deterministic (no SE) — `apply_policy_to_svy()` writes a fixed daily amount per household.
 
@@ -330,8 +330,8 @@ The SP transfer itself is treated as deterministic (no SE) — `apply_policy_to_
 
 `decompose_policy_effect()` (`fct_policy_decompose.R` ~line 454) dispatches on engine:
 
-- **Linear** → `.decompose_ols()` computes `δ_sp`, `δ_main_covar = Σ β_v · Δv`, `δ_res2 = Σ β_{w:v} · w · Δv`, and `δ_res1 = 0`. See [`method_lin.md`](method_lin.md) §2.7.
-- **RIF** → `.decompose_rif()` delegates to `.compute_rif_channels()`, the same helper the simulation correction calls. The decomposition table and the simulation `y_point` therefore reconcile exactly in model scale. See [`method_rif.md`](method_rif.md) §2.5.
+- **Linear** → `.decompose_ols()` computes `δ_sp`, `δ_main_covar = Σ β_v · Δv`, `δ_res2 = Σ β_{w:v} · w · Δv`, and `δ_res1 = 0`. See [`21_model_linear.md`](21_model_linear.md) §2.7.
+- **RIF** → `.decompose_rif()` delegates to `.compute_rif_channels()`, the same helper the simulation correction calls. The decomposition table and the simulation `y_point` therefore reconcile exactly in model scale. See [`22_model_rif.md`](22_model_rif.md) §2.5.
 
 `.compute_policy_deltas(svy_baseline, svy_policy, outcome, weather_cols)` builds the per-household `Δv = x_policy − x_baseline` vectors that both `δ_main_covar` and `δ_res2` consume. It compares the two frames column-by-column, so any covariate touched by `apply_policy_to_svy()` (binary flips, sector reallocations, health travel time scaling) shows up as a non-zero `Δv` for the affected rows.
 

@@ -18,7 +18,7 @@ All Critical and High findings are done in code, except where noted below. Done:
 | B6 | Performance | 7 |
 | B7 | Medium/Low bugs | 0 |
 | B8 | Accessibility | 6 |
-| B9 | Code quality and docs | 4 |
+| B9 | Code quality and docs | 13 |
 
 Closed as won't fix or deferred (full rows in the archive addendum; reopen only on the stated trigger): R2-OPS-05 (stay on DuckDB 1.5.6), CR-SEC-02 (no further DuckDB lockdown), CR-SEC-07 metadata profile (shared pool, guidelines §0), R2-SEC-07 (persistent prepared-weather cache off), CR-PERF-15 (keep `load_all()` in `app.R`), R2-PERF-10 / CR-PERF-02 (weather cache keys; reopen if remote slice reads dominate), CR-PERF-03 (prediction speedup), OPT-05 (aggregation remainders), R2-PERF-13 / R2-PERF-09 / CR-PERF-05, CR-PERF-07 (model_fit size; reopen if a large-country session shows high RSS), CR-CQ-07 (one integer `year` type; needs an engine parity gate).
 
@@ -107,6 +107,15 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 | CR-CQ-04 | M | M | ☐ | Define outputs once at module level (58 are defined inside observers). |
 | CR-CQ-01 | M | L | ☐ | Move static builders out; split the three giant server functions. |
 | CR-CQ-02 | M | L | ☐ | Shared Results-pane module for Steps 2 and 3. |
+| DOC-01 | L | S | ☐ | From the docs/ revision (2026-10-23). Survey weights are used as supplied and are not converted between household and person level, and the choice is not documented in the app. Decide whether Steps 2 and 3 aggregates should weight households by size, and state the convention in the UI. |
+| DOC-02 | L | S | ☐ | From the docs/ revision (2026-10-23). Warn at the Sample or Survey stats stage when a survey has only coarse geography (area-level locations) or no interview month, because weather coefficients then rest on little within-cell variation (`docs/01_framework.md` section 3). |
+| DOC-03 | M | M | ☐ | From the archived reviewer response (`review/archive/reviewer_response.md`), proposals not implemented: (1) let the user enter a causal effect (with source and interval) for a policy lever instead of the fitted coefficient, and disable the resilience channel unless a weather-interacted effect is entered; (2) per-run share of households whose quantile position moves by more than one decile; (3) stratum-level round-to-round rank stability for the RIF model. Add a UI split between "weather impacts estimated from your data" and "policy impacts supplied from evidence" if (1) is built. |
+| DOC-04 | L | S | ☐ | From the docs/ revision (2026-10-23). The Weather control offers "Standardized anomaly" for the 6-month SPI and SPEI, but `get_weather()` skips the transformation for them (`skip_vars = c("spi6", "spei6")`). Relabel the option as "None (already standardised)" or hide it for these variables (`docs/12_weather_measures.md` section 2). |
+| DOC-05 | L | S | ☐ | From the docs/ revision (2026-10-23). Bin cut points are computed from every selected location in all months that match any survey's interview month, unweighted, not from the interviewed households (`.compute_breaks()`, `docs/12_weather_measures.md` section 3). Show the reference sample in the Weather stats tab, or restrict it to the location-months actually interviewed. |
+| DOC-06 | L | M | ☐ | From the docs/ revision (2026-10-23). The stability Lasso (`run_lasso_selection()`) ignores survey weights and uses random cross-validation folds that split location panels. Consider weights and folds grouped by `loc_id_panel` (`docs/20_model_specification.md` section 5). |
+| DOC-07 | L | S | ☐ | From the docs/ revision (2026-10-23). The climate baseline (climatology) window runs from the first to the last simulation date, not necessarily whole calendar years, so if interview months do not cover the year some calendar months have one year fewer. Define the baseline as whole calendar years of the historical window (`docs/31_climate_scenarios.md` section 1). |
+| DOC-08 | L | S | ☐ | From the docs/ revision (2026-10-23). The prosperity gap uses a fixed threshold of 28 that is not converted for an outcome in local currency. Add a note to the prosperity-gap card when the outcome is in local currency, or convert the threshold (`docs/32_metrics.md` section 1). |
+| DOC-09 | L | S | ☐ | From the docs/ revision (2026-10-23). Show the number of climate-model members per scenario in the Step 2 Results header, since the inter-model band and return periods depend on it (`docs/32_metrics.md` section 3). |
 
 Ordering note from the report: delete dead code before splitting files; one PR per file with characterisation tests.
 

@@ -151,8 +151,8 @@ test_that("delta-method headcount with smoothing returns finite SE", {
 
 test_that("avg_poverty SE matches MC for the days-needed-to-earn-$1 metric", {
   # avg_poverty is mean(1 / welfare) over valid rows — "days needed to earn
-  # $1" — not the conditional mean among the poor (method_uncertainty.md
-  # §3.7). Gradient: h_i = -1/(n_ok * mu_i) unweighted and
+  # $1" — not the conditional mean among the poor (docs/33_uncertainty.md
+  # section 3). Gradient: h_i = -1/(n_ok * mu_i) unweighted and
   # -w_i / (W_ok * mu_i) weighted; strictly negative for every valid
   # household because raising welfare lowers days-to-$1, zero otherwise.
   pipe <- make_pipeline()
