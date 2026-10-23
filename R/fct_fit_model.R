@@ -287,6 +287,17 @@ ENGINE_REGISTRY <- list(
   fold_of[match(cluster, groups)]
 }
 
+# glmnet 5.0 deprecates passing `thresh` to glmnet() and wants
+# `control = list(thresh = )`; older versions only know `thresh`.
+.glmnet_set_tol <- function(args, tol) {
+  if ("control" %in% names(formals(glmnet::glmnet))) {
+    args$control <- utils::modifyList(args$control %||% list(), list(thresh = tol))
+  } else {
+    args$thresh <- tol
+  }
+  args
+}
+
 #' Run stability LASSO variable selection
 #'
 #' @param df data.frame with analysis variables
@@ -549,7 +560,7 @@ run_lasso_selection <- function(
       standardize = isTRUE(standardize),
       penalty.factor = penalty
     )
-    if (!is.null(glmnet_tol)) cv_args_base$thresh <- glmnet_tol
+    if (!is.null(glmnet_tol)) cv_args_base <- .glmnet_set_tol(cv_args_base, glmnet_tol)
 
     selection_results <- lapply(seq_len(m), function(i) {
       withr::with_seed(wise_seed(parallel_seed, "lasso", "complete", i), {
@@ -627,7 +638,7 @@ run_lasso_selection <- function(
           penalty.factor = penalty
         )
         if (!is.null(foldid)) cv_args$foldid <- foldid
-        if (!is.null(glmnet_tol)) cv_args$thresh <- glmnet_tol
+        if (!is.null(glmnet_tol)) cv_args <- .glmnet_set_tol(cv_args, glmnet_tol)
 
         cvfit <- do.call(glmnet::cv.glmnet, cv_args)
 

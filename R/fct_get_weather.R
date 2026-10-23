@@ -1810,7 +1810,13 @@ get_weather <- function(
 
     cmip6_res <- tryCatch(
       .h3_resolution(cmip6_hist_raw_lazy, con, "CMIP6 historical"),
-      error = function(e) h3_harmonised$target_res
+      error = function(e) {
+        # CR-BUG-17: say so instead of silently assuming the target resolution
+        warning("[wiseapp] CMIP6 H3 resolution could not be read (",
+          conditionMessage(e), "); assuming the observed-weather resolution ",
+          h3_harmonised$target_res, ".", call. = FALSE)
+        h3_harmonised$target_res
+      }
     )
 
     # Determine the join resolution between CMIP6 and microdata.
