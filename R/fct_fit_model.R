@@ -272,6 +272,21 @@ ENGINE_REGISTRY <- list(
   if (is_vec) as.numeric(res) else res
 }
 
+# Fold ids that keep every cluster in one fold. Rows with a missing cluster
+# are their own clusters. With fewer clusters than folds, each cluster is a
+# fold (at least 2 clusters are needed, else rows are assigned to folds).
+.cluster_foldid <- function(cluster, nfolds) {
+  cluster <- as.character(cluster)
+  cluster[is.na(cluster)] <- paste0(".row", which(is.na(cluster)))
+  groups <- unique(cluster)
+  if (length(groups) < 2L) {
+    return(sample(rep(seq_len(nfolds), length.out = length(cluster))))
+  }
+  k <- min(nfolds, length(groups))
+  fold_of <- sample(rep(seq_len(k), length.out = length(groups)))
+  fold_of[match(cluster, groups)]
+}
+
 #' Run stability LASSO variable selection
 #'
 #' @param df data.frame with analysis variables
@@ -298,6 +313,11 @@ ENGINE_REGISTRY <- list(
 #' @param parallel_seed integer; base seed for reproducible selection
 #' @param cv_selection character; fold assignment mode for CV ("default" or "random")
 #' @param glmnet_tol numeric; convergence tolerance passed to glmnet (thresh)
+#' @param cv_cluster character or NULL; name of a column of `df` (the survey
+#'   location, `loc_id_panel`, in Step 1). With `cv_selection = "random"` whole
+#'   clusters are assigned to folds, so the held-out fold never shares a
+#'   location with the training folds, as the cluster-robust final model
+#'   assumes. NULL, or a column that is absent, assigns rows to folds.
 #'
 #' @return list(selected_covariates, selection_frequency)
 #' @export
@@ -320,7 +340,8 @@ run_lasso_selection <- function(
   stability_threshold = 0.5,
   parallel_seed = WISEAPP_DEFAULT_SEED,
   cv_selection = c("random", "default"),
-  glmnet_tol = 1e-4
+  glmnet_tol = 1e-4,
+  cv_cluster = NULL
 ) {
   df <- as.data.frame(df)
   parallel_seed <- as.integer(parallel_seed %||% WISEAPP_DEFAULT_SEED)[1L]
@@ -491,6 +512,15 @@ run_lasso_selection <- function(
 
   has_na <- anyNA(df[, candidate_vars, drop = FALSE])
   nfolds_i <- max(2L, as.integer(nfolds))
+  cluster_id <- if (!is.null(cv_cluster) && cv_cluster %in% names(df)) df[[cv_cluster]] else NULL
+  # Random fold assignment for one repetition (DOC-06): by cluster when a
+  # cluster column is given, else by row
+  draw_foldid <- function() {
+    if (is.null(cluster_id)) {
+      return(sample(rep(seq_len(nfolds_i), length.out = nrow(df))))
+    }
+    .cluster_foldid(cluster_id, nfolds_i)
+  }
 
   # 7. Fast path: no NAs in candidates (always true after complete-case filter) ----
   #
@@ -525,7 +555,7 @@ run_lasso_selection <- function(
       withr::with_seed(wise_seed(parallel_seed, "lasso", "complete", i), {
         cv_args <- cv_args_base
         if (identical(cv_selection, "random")) {
-          cv_args$foldid <- sample(rep(seq_len(nfolds_i), length.out = nrow(X_full)))
+          cv_args$foldid <- draw_foldid()
         }
         cvfit <- do.call(glmnet::cv.glmnet, cv_args)
         coefs <- stats::coef(cvfit, s = lambda_choice)
@@ -584,7 +614,7 @@ run_lasso_selection <- function(
 
         foldid <- NULL
         if (identical(cv_selection, "random")) {
-          foldid <- sample(rep(seq_len(nfolds_i), length.out = nrow(X_full)))
+          foldid <- draw_foldid()
         }
 
         cv_args <- list(

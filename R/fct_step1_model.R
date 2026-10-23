@@ -118,7 +118,8 @@ wise_lasso_selection <- function(df, selected_outcome, weather_vars, fe_vars, in
     stability_threshold = settings$stability_threshold,
     parallel_seed = seed,
     cv_selection = "random",
-    glmnet_tol = 1e-4
+    glmnet_tol = 1e-4,
+    cv_cluster = wise_cluster_var(names(df))
   )
 }
 

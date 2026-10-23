@@ -458,3 +458,7 @@ Decision log, DOC-07 (2026-10-23): CMIP6 baseline = whole calendar years of the 
 | DOC-13 | L | S | ◐ | From the docs/ revision (2026-10-23). The Diagnostics reach chart already shows the weighted share per lever; a note now says the draws are by count (batch 1). Weighted draws are open. The access levers and the employment lever draw rows by count, not by survey weight, so the weighted share of the population moved can differ from the slider value. Offer weighted draws or show the weighted share moved in the Diagnostics tab (`docs/41_policy_levers.md` sections 1 and 4). |
 
 Decision log, DOC-13 (2026-10-23): access and employment levers draw by weight. Synthetic: 30% access slider moved 30.0% of the weight (600 of 2,000 rows by count before, with a different weighted share); 4 pp employment change moved 4.0% of the weight. BFA before/after: owed.
+
+| DOC-06 | L | M | ☐ | From the docs/ revision (2026-10-23). The stability Lasso (`run_lasso_selection()`) ignores survey weights and uses random cross-validation folds that split location panels. Consider weights and folds grouped by `loc_id_panel` (`docs/20_model_specification.md` section 5). |
+
+Decision log, DOC-06 (2026-10-23): stability Lasso folds grouped by `loc_id_panel`; weights not used (unweighted estimation). BFA selection before/after: owed.

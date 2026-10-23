@@ -68,3 +68,46 @@ test_that("LASSO selection conditions on fixed effects (R2-BUG-08)", {
   expect_true("x_true" %in% sel$selected_covariates)
   expect_false("x_proxy" %in% sel$selected_covariates)
 })
+
+test_that(".cluster_foldid keeps each cluster in one fold (DOC-06)", {
+  set.seed(1)
+  cl <- sample(sprintf("c%02d", 1:40), 500, replace = TRUE)
+  fold <- .cluster_foldid(cl, 10L)
+  expect_length(fold, 500L)
+  expect_true(all(tapply(fold, cl, function(f) length(unique(f))) == 1L))
+  expect_setequal(unique(fold), 1:10)
+  # fewer clusters than folds: one fold per cluster
+  expect_setequal(unique(.cluster_foldid(rep(c("a", "b", "c"), 10), 10L)), 1:3)
+  # missing clusters are their own clusters
+  fold_na <- .cluster_foldid(c("a", NA, NA, "b"), 2L)
+  expect_length(fold_na, 4L)
+})
+
+test_that("LASSO selection accepts cluster-grouped folds (DOC-06)", {
+  set.seed(606)
+  n <- 1500L
+  loc <- sample.int(75, n, replace = TRUE)
+  x_true <- stats::rnorm(n)
+  x_noise <- stats::rnorm(n)
+  weather <- stats::rnorm(n)
+  y <- 0.8 * x_true + 0.3 * weather + stats::rnorm(n)
+  df <- data.frame(welfare = y, weather = weather, loc_id_panel = loc,
+    x_true = x_true, x_noise = x_noise)
+  vl <- data.frame(
+    name = c("welfare", "weather", "loc_id_panel", "x_true", "x_noise"),
+    ind = 0, hh = c(0, 0, 0, 1, 1), area = 0, firm = 0,
+    outcome = c(1, 0, 0, 0, 0)
+  )
+  sel <- run_lasso_selection(
+    df, list(name = "welfare", type = "numeric"),
+    weather_vars = "weather", valid_vl = vl, nfolds = 5, mi_m = 3,
+    cv_cluster = "loc_id_panel"
+  )
+  expect_true("x_true" %in% sel$selected_covariates)
+  again <- run_lasso_selection(
+    df, list(name = "welfare", type = "numeric"),
+    weather_vars = "weather", valid_vl = vl, nfolds = 5, mi_m = 3,
+    cv_cluster = "loc_id_panel"
+  )
+  expect_identical(sel$selection_frequency, again$selection_frequency)
+})
