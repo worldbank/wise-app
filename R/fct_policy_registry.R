@@ -171,7 +171,7 @@ policy_slot <- function(group) {
 policy_registry <- function(variable_list = NULL) {
   fb <- POLICY_FALLBACK
   codes <- if (is.data.frame(variable_list) && nrow(variable_list)) {
-    .policy_text(variable_list$policy, nrow(variable_list))
+    .policy_text(variable_list[["policy"]], nrow(variable_list))
   } else {
     character(0)
   }
@@ -211,7 +211,7 @@ policy_registry <- function(variable_list = NULL) {
       label = ifelse(is.na(known), label, fb$label[known]),
       control_label = ifelse(is.na(known), label, fb$control_label[known]),
       icon = ifelse(is.na(known), "fa-sliders", fb$icon[known]),
-      group = .policy_text(vl$policy_group, n),
+      group = .policy_text(vl[["policy_group"]], n),
       type = if ("type" %in% names(vl)) as.character(vl$type) else "logical",
       level = level,
       stringsAsFactors = FALSE

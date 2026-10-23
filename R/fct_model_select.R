@@ -83,7 +83,7 @@ add_derived_policy_vars_to_vl <- function(vl) {
     }
     if (role %in% names(new_row)) new_row[[role]] <- 1L
     # A list that marks levers also marks the derived one.
-    if ("policy" %in% names(new_row) && any(nzchar(.policy_text(vl$policy, nrow(vl))))) {
+    if ("policy" %in% names(new_row) && any(nzchar(.policy_text(vl[["policy"]], nrow(vl))))) {
       new_row$policy <- spec$policy %||% ""
       if ("policy_group" %in% names(new_row)) new_row$policy_group <- spec$policy_group %||% ""
     }
