@@ -701,7 +701,9 @@ mod_1_05_weatherstats_server <- function(
                   dist_output,
                   shiny::helpText(
                     "Continuous distribution the bins were derived from.",
-                    .bin_reference_text(stored_breaks()),
+                    info_popover(
+                      p(.bin_reference_text(stored_breaks()))
+                    ),
                     style = "font-size: 12px; margin: 0;"
                   ),
                   wise_chart_output(
