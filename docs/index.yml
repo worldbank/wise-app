@@ -354,7 +354,7 @@ pages:
       - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
     code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
-    verified_against: "74c273b"
+    verified_against: "d4fcbf1"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"
@@ -382,7 +382,7 @@ pages:
       - "Step 3 > Results, Diagnostics, Decomposition and Cost-effectiveness: the policy and baseline series side by side, the before-and-after summary of the changed variables, the channels and the cost per outcome gained."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model"
     code: ["R/fct_policy_sim.R", "R/fct_policy_registry.R", "R/fct_step3_input.R", "R/fct_step3_async.R", "R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_policy_sim_compare.R"]
-    verified_against: "74c273b"
+    verified_against: "d4fcbf1"
   - id: "policy-levers"
     file: "41_policy_levers.md"
     title: "Policy levers: access, percent change, travel time and labour market"
