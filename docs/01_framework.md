@@ -44,11 +44,11 @@ The estimands are **stress tests**, not forecasts. Step 2 does not predict the w
 
 The design holds the population fixed and lets weather vary. Let $\mathcal{B}$ be the baseline survey sample, with units $i = 1,\dots,N$ and weights $\omega_i$. Their characteristics, fixed effects and (for the linear model) fitted residuals do not change across simulations. Only the weather changes. For a simulation year $r$, scenario $s$ and member $m$:
 
-$$y_i^{*(r,s,m)} = \hat f\big(W_i^{(r,s,m)},\ M_i,\ X_i;\ \hat\beta,\hat\theta,\hat\gamma,\hat\delta,\hat\alpha,\hat\lambda\big) + \hat\varepsilon_i \tag{2.1}$$
+$$y_i^{*(r,s,m)} = \hat f\big(W_i^{(r,s,m)},\ M_i,\ X_i;\ \hat\beta,\hat\theta,\hat\gamma,\hat\delta,\hat\alpha,\hat\lambda\big) + \hat\varepsilon_i \qquad \text{(2.1)}$$
 
 where $\hat f$ is the fitted prediction function of the chosen model and $\hat\varepsilon_i$ is the residual term chosen by the residual rule: the household's own residual, a resampled one, or none (see [30_simulation](30_simulation.md)). The quantile model uses no residual. It adds the predicted weather change to the household's observed baseline outcome instead (see [22_model_rif](22_model_rif.md)). The population statistic is
 
-$$T^{(r,s,m)} = \mathcal{A}\Big(\big\{(Y_i^{*(r,s,m)},\ \omega_i)\big\}_{i \in \mathcal{B}}\Big), \qquad Y_i^{*(r,s,m)} = \exp\big(y_i^{*(r,s,m)}\big) \tag{2.2}$$
+$$T^{(r,s,m)} = \mathcal{A}\Big(\big\lbrace (Y_i^{*(r,s,m)},\ \omega_i)\big\rbrace _{i \in \mathcal{B}}\Big), \qquad Y_i^{*(r,s,m)} = \exp\big(y_i^{*(r,s,m)}\big) \qquad \text{(2.2)}$$
 
 Eq. (2.2) is written for a log outcome. A binary outcome has no back-transform.
 
@@ -58,7 +58,7 @@ Because $\mathcal{B}$ is the same in every simulated year, the spread of $T^{(r,
 
 Step 1 estimates Eq. (2.1) of [00_notation](00_notation.md) with area and time fixed effects. After the fixed effects are removed, the weather coefficients are identified from how much weather in a given interview differs from the typical weather in the same area and survey round. Whether weather enters as a level, an anomaly from the local normal, a standardised anomaly or bins, the identifying variation is the within-cell variation. The identifying condition is:
 
-$$\mathbb{E}\big[\varepsilon_i \mid W_i,\ M_i,\ X_i,\ g(i),\ t(i)\big] = 0 \tag{3.1}$$
+$$\mathbb{E}\big[\varepsilon_i \mid W_i,\ M_i,\ X_i,\ g(i),\ t(i)\big] = 0 \qquad \text{(3.1)}$$
 
 In words: within an area and survey round, which households happened to be interviewed in a hotter or wetter month is unrelated to anything else that drives welfare. This is a design-based argument, not a test. It is plausible for weather because weather is not chosen by households, and it relies on the fixed effects to remove place-specific and round-specific confounders such as climate zone, market access and a national shock in the survey year.
 
@@ -75,7 +75,7 @@ Policy variables $D_i$ (access to electricity, to a health facility, to a mobile
 
 Step 3 uses them anyway, as scenario arithmetic. For the linear model, changing policy variables from $D_i$ to $D_i^{\text{pol}}$ shifts the prediction by
 
-$$\Delta y_i = \hat\delta_D^{\prime}\,\Delta D_i + \hat\gamma_D^{\prime}\big(W_i^{(r,s,m)} \otimes \Delta D_i\big), \qquad \Delta D_i = D_i^{\text{pol}} - D_i \tag{4.1}$$
+$$\Delta y_i = \hat\delta_D^{\prime}\ \Delta D_i + \hat\gamma_D^{\prime}\big(W_i^{(r,s,m)} \otimes \Delta D_i\big), \qquad \Delta D_i = D_i^{\text{pol}} - D_i \qquad \text{(4.1)}$$
 
 where the first term is the level shift and the second term is the change in weather sensitivity, both read from the fitted model. A cash transfer is added to the welfare level directly, instead of acting through a coefficient (see [42_social_protection](42_social_protection.md)). Eq. (4.1) is the linear-engine form of the decomposition into direct and resilience effects in [44_decomposition](44_decomposition.md).
 

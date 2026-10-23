@@ -30,15 +30,15 @@ For a metric $T$ computed on household welfare $Y_i = \exp(y_i)$, the delta meth
 
 Let $\hat\Sigma$ be the coefficient covariance of Model 3, clustered by location panel ([20_model_specification](20_model_specification.md)), and $L$ the lower-triangular matrix with $LL^{\prime}=\hat\Sigma$. For household $i$ with non-fixed-effect design row $x_i$, the **factor loading** is $F_i = x_i^{\prime}L$. If the coefficients were perturbed by $z \sim N(0,I)$, the prediction would move by $F_i z$, and
 
-$$\mathrm{Var}(F_i z) = x_i^{\prime}\hat\Sigma\,x_i \tag{1.1}$$
+$$\mathrm{Var}(F_i z) = x_i^{\prime}\hat\Sigma\ x_i \qquad \text{(1.1)}$$
 
 which is the usual variance of a linear prediction. The app does not draw $z$. It uses $F$ in the closed form below.
 
 ### 2. Delta method for a metric
 
-The metric changes with the prediction of household $i$ through the gradient $h_i = (\partial T/\partial Y_i)\,\kappa_i$. Define the gradient of $T$ with respect to the coefficients and the variance:
+The metric changes with the prediction of household $i$ through the gradient $h_i = (\partial T/\partial Y_i)\ \kappa_i$. Define the gradient of $T$ with respect to the coefficients and the variance:
 
-$$F_{\text{agg}} = F^{\prime}h, \qquad \mathrm{Var}(T) \approx \underbrace{\|F_{\text{agg}}\|^2}_{\text{coefficients}} + \underbrace{\sigma_\varepsilon^2\textstyle\sum_i h_i^2}_{\text{residuals}} \tag{2.1}$$
+$$F_{\text{agg}} = F^{\prime}h, \qquad \mathrm{Var}(T) \approx \underbrace{\Vert F_{\text{agg}}\Vert ^2}_{\text{coefficients}} + \underbrace{\sigma_\varepsilon^2\textstyle\sum_i h_i^2}_{\text{residuals}} \qquad \text{(2.1)}$$
 
 The residual term is present only for the "resample" and "normal" rules, with $\sigma^2_\varepsilon$ the variance of the estimation residuals. For the "original" and "none" rules it is zero, because a household's own residual is a fixed shift. The standard deviation is $\mathrm{SD}(T)=\sqrt{\mathrm{Var}(T)}$. Households whose welfare, weight or loading row is not finite are left out of both the gradient and $F$, and counted.
 
@@ -46,19 +46,19 @@ The residual term is present only for the "resample" and "normal" rules, with $\
 
 | Metric | Gradient $h_i$ |
 |---|---|
-| Mean | $\tilde\omega_i\,\kappa_i$ |
-| Total | $\omega_i\,\kappa_i$ |
-| Poverty gap | $-\tilde\omega_i\,\kappa_i\,\mathbb{1}[Y_i<z]/z$ |
-| Poverty severity | $-2\,\tilde\omega_i\,\kappa_i\,\max(z-Y_i,0)/z^2$ |
-| Poverty rate | $-\tilde\omega_i\,\kappa_i\,\phi\big((z-Y_i)/b\big)/b$ |
-| Median | $k_i\,\kappa_i\big/\sum_j k_j$, with $k_i=\tilde\omega_i\,\phi\big((\hat m-Y_i)/b_m\big)/b_m$ |
-| Gini | $\tilde\omega_i\,\kappa_i\,(2F_i-1-G)/\bar Y$ |
-| Prosperity gap | $-\tilde\omega_i\,\kappa_i\,(28/Y_i^{2})\,\mathbb{1}[0<Y_i<28]$ |
-| Average poverty | $-\tilde\omega_i\,\kappa_i/Y_i^{2}$ over households with $Y_i>0$ |
+| Mean | $\tilde\omega_i\ \kappa_i$ |
+| Total | $\omega_i\ \kappa_i$ |
+| Poverty gap | $-\tilde\omega_i\ \kappa_i\ \mathbf{1}[Y_i<z]/z$ |
+| Poverty severity | $-2\ \tilde\omega_i\ \kappa_i\ \max(z-Y_i,0)/z^2$ |
+| Poverty rate | $-\tilde\omega_i\ \kappa_i\ \phi\big((z-Y_i)/b\big)/b$ |
+| Median | $k_i\ \kappa_i\big/\sum_j k_j$, with $k_i=\tilde\omega_i\ \phi\big((\hat m-Y_i)/b_m\big)/b_m$ |
+| Gini | $\tilde\omega_i\ \kappa_i\ (2F_i-1-G)/\bar Y$ |
+| Prosperity gap | $-\tilde\omega_i\ \kappa_i\ (28/Y_i^{2})\ \mathbf{1}[0<Y_i<28]$ |
+| Average poverty | $-\tilde\omega_i\ \kappa_i/Y_i^{2}$ over households with $Y_i>0$ |
 
 Notes on the table:
 
-- The poverty rate has a jump at the line, so the indicator is replaced by a normal distribution function $\Phi((z-Y)/b)$, whose derivative gives the gradient. The bandwidth is $b=\max\{0.05\,z,\ \mathrm{median}_i(\kappa_i\|F_i\|)\}$: at least 5 per cent of the line, and at least the typical prediction uncertainty of a household. A narrower bandwidth would miss households that cross the line when coefficients change.
+- The poverty rate has a jump at the line, so the indicator is replaced by a normal distribution function $\Phi((z-Y)/b)$, whose derivative gives the gradient. The bandwidth is $b=\max\lbrace 0.05\ z,\ \mathrm{median}_i(\kappa_i\Vert F_i\Vert )\rbrace $: at least 5 per cent of the line, and at least the typical prediction uncertainty of a household. A narrower bandwidth would miss households that cross the line when coefficients change.
 - The median is the solution of a smoothed equation $\sum_i\tilde\omega_i\Phi((m-Y_i)/b_m)=1/2$. The gradient follows by implicit differentiation. The bandwidth $b_m$ is Silverman's rule of thumb for the welfare values. If the density at the median is not positive, the gradient is set to zero, and the coefficient SD of the median is then zero.
 - The Gini gradient holds the ranking of households fixed. It is the derivative that applies when a coefficient change moves welfare levels and leaves the order of households unchanged. A common proportional change of all welfare leaves $G$ unchanged, and the gradient reflects this.
 - The prosperity gap and average poverty do not depend on the poverty line.
@@ -69,9 +69,9 @@ Given the standard deviation, the band for quantiles $q_{lo}, q_{hi}$ (by defaul
 
 | Metric | Scale | Band |
 |---|---|---|
-| Poverty rate, gap, severity | logit | $\Lambda\big(\mathrm{logit}(T) + z_q\,\mathrm{SD}/[T(1-T)]\big)$ |
-| Median, average poverty | log | $\exp\big(\log T + z_q\,\mathrm{SD}/T\big)$ |
-| Mean, total, Gini, prosperity gap | identity | $T + z_q\,\mathrm{SD}$ |
+| Poverty rate, gap, severity | logit | $\Lambda\big(\mathrm{logit}(T) + z_q\ \mathrm{SD}/[T(1-T)]\big)$ |
+| Median, average poverty | log | $\exp\big(\log T + z_q\ \mathrm{SD}/T\big)$ |
+| Mean, total, Gini, prosperity gap | identity | $T + z_q\ \mathrm{SD}$ |
 
 where $z_q=\Phi^{-1}(q)$ and $\Lambda$ is the logistic function. If the SD is zero or missing, the band collapses to the point estimate. If $T$ lies on the boundary of its support (a rate of 0 or 1), the symmetric band on the original scale is used.
 
@@ -90,7 +90,7 @@ The restricted variance is not guaranteed to be smaller than the full one, becau
 
 For the quantile model, $\hat\Sigma_k$ and $L_k$ come from the equation of each quantile $\tau_k$ ([22_model_rif](22_model_rif.md)). The loading of household $i$ is the interpolation between the two grid points around its position $\tau_i$ (Eq. (3.1) in [22_model_rif](22_model_rif.md)):
 
-$$F_i = (1-w_i)\,x_i^{*\prime}L_k + w_i\,x_i^{*\prime}L_{k+1} \tag{6.1}$$
+$$F_i = (1-w_i)\ x_i^{*\prime}L_k + w_i\ x_i^{*\prime}L_{k+1} \qquad \text{(6.1)}$$
 
 with $x_i^{*}$ the design row under the scenario. Households outside the grid take the loading of the boundary quantile, with no extra penalty. The nine equations are treated as independent. There is no residual variance.
 
@@ -98,9 +98,9 @@ with $x_i^{*}$ the design row under the scenario. Households outside the grid ta
 
 For simulation year $r$ and $M$ climate-model members, with member values $T^{m}$:
 
-$$\sigma^2_{\text{within}} = \frac1M\sum_m\big(\mathrm{Var}_{\text{coef}}^{m} + \mathrm{Var}_{\text{resid}}^{m}\big), \qquad \sigma^2_{\text{across}} = \mathrm{Var}_m\big(T^{m}\big), \qquad \sigma^2_{\text{pool}} = \sigma^2_{\text{within}} + \sigma^2_{\text{across}} \tag{7.1}$$
+$$\sigma^2_{\text{within}} = \frac1M\sum_m\big(\mathrm{Var}_{\text{coef}}^{m} + \mathrm{Var}_{\text{resid}}^{m}\big), \qquad \sigma^2_{\text{across}} = \mathrm{Var}_m\big(T^{m}\big), \qquad \sigma^2_{\text{pool}} = \sigma^2_{\text{within}} + \sigma^2_{\text{across}} \qquad \text{(7.1)}$$
 
-This is the law of total variance. The analytic pooled band is $\bar T \pm z_q\,\sigma_{\text{pool}}$, and the empirical model band takes quantiles of the member values. With one member, $\sigma^2_{\text{across}}=0$.
+This is the law of total variance. The analytic pooled band is $\bar T \pm z_q\ \sigma_{\text{pool}}$, and the empirical model band takes quantiles of the member values. With one member, $\sigma^2_{\text{across}}=0$.
 
 In the return-period table, the pooled standard deviation combines the median coefficient SD across members at the return period with the variance across members of the return-period value ([32_metrics](32_metrics.md)). Inter-annual variation is already inside each annual value and is not added again.
 
@@ -108,7 +108,7 @@ In the return-period table, the pooled standard deviation combines the median co
 
 When two results use the same coefficients, their errors are correlated. The standard deviation of a difference is
 
-$$\mathrm{SD}\big(T^{s}-T^{\text{ref}}\big) = \big\|F_{\text{agg}}^{s} - F_{\text{agg}}^{\text{ref}}\big\| \tag{8.1}$$
+$$\mathrm{SD}\big(T^{s}-T^{\text{ref}}\big) = \big\Vert F_{\text{agg}}^{s} - F_{\text{agg}}^{\text{ref}}\big\Vert  \qquad \text{(8.1)}$$
 
 and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference of year-averaged values, the gradients are first averaged over the years, because the coefficient error is shared by all years and does not shrink with their number. Where a result is shown as a difference from the historical mean, the reference gradient is the average of the historical gradients, and any residual variance of the scenario is kept. The same rule gives the interval of the policy effect in Step 3, where both arms use the same loading ([40_policy_framework](40_policy_framework.md)).
 

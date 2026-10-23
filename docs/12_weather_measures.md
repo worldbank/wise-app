@@ -33,7 +33,7 @@ Let $x_{\ell h}$ denote the monthly location weather of variable $v$ (Eq. (3.1) 
 
 With a reference period from $a$ to $b$ months before the interview ($0 \le a \le b \le 12$), the aggregated value is
 
-$$\tilde x_{\ell h} = \mathcal{G}\big(\{\, x_{\ell,\,h-k} : k = a,\dots,b,\ x_{\ell,h-k}\ \text{observed} \,\}\big) \tag{1.1}$$
+$$\tilde x_{\ell h} = \mathcal{G}\big(\lbrace \  x_{\ell,\ h-k} : k = a,\dots,b,\ x_{\ell,h-k}\ \text{observed} \ \rbrace \big) \qquad \text{(1.1)}$$
 
 where $\mathcal{G}$ is the mean, median, minimum, maximum or sum. The month $k=0$ is the interview month itself. The window is counted in calendar months, so a month missing from the weather record leaves a gap in the window instead of pulling in an older month. Months with no observation are skipped. If $a=b$, the window holds one month and no aggregation is applied. A unit's regressor is $\tilde x_{\ell h_i}$.
 
@@ -41,11 +41,11 @@ where $\mathcal{G}$ is the mean, median, minimum, maximum or sum. The month $k=0
 
 A transformation compares $\tilde x_{\ell h}$ with the local **normal** for the same calendar month. The normal uses the aggregated series of Eq. (1.1) over 1991 to 2020. For location $\ell$ and calendar month $\mu$:
 
-$$\bar x_{\ell\mu} = \frac{1}{|\mathcal{T}_\mu|}\sum_{h \in \mathcal{T}_\mu} \tilde x_{\ell h}, \qquad s_{\ell\mu}^2 = \frac{1}{|\mathcal{T}_\mu|-1}\sum_{h \in \mathcal{T}_\mu}\big(\tilde x_{\ell h}-\bar x_{\ell\mu}\big)^2 \tag{2.1}$$
+$$\bar x_{\ell\mu} = \frac{1}{|\mathcal{T}_\mu|}\sum_{h \in \mathcal{T}_\mu} \tilde x_{\ell h}, \qquad s_{\ell\mu}^2 = \frac{1}{|\mathcal{T}_\mu|-1}\sum_{h \in \mathcal{T}_\mu}\big(\tilde x_{\ell h}-\bar x_{\ell\mu}\big)^2 \qquad \text{(2.1)}$$
 
 where $\mathcal{T}_\mu$ is the set of months of 1991 to 2020 with calendar month $\mu$ and an observed value. The calendar month $\mu$ is the month of $h$, that is, the interview month, and not the months inside the window. The two transformations are
 
-$$\text{deviation: } \tilde x_{\ell h} - \bar x_{\ell\mu}, \qquad \text{standardised anomaly: } \frac{\tilde x_{\ell h} - \bar x_{\ell\mu}}{s_{\ell\mu}} \tag{2.2}$$
+$$\text{deviation: } \tilde x_{\ell h} - \bar x_{\ell\mu}, \qquad \text{standardised anomaly: } \frac{\tilde x_{\ell h} - \bar x_{\ell\mu}}{s_{\ell\mu}} \qquad \text{(2.2)}$$
 
 The standardised anomaly is missing where $s_{\ell\mu}=0$, for example for rainfall in a month that is always dry. The app warns about the number of such location-months. The six-month standardised precipitation index and the six-month standardised precipitation-evapotranspiration index are already standardised. They are not transformed, although the control offers the standardised anomaly for them.
 
@@ -59,7 +59,7 @@ Let $u_{\ell h}$ be the value after Eq. (1.1) and, if chosen, Eq. (2.2).
 
 **Bins.** The range of $u$ is cut at $B-1$ interior points $c_1<\dots<c_{B-1}$. The outer bins are open-ended, so values outside the observed range, such as projected values, fall in the first or last bin. The bins are $(-\infty, c_1]$, $(c_1,c_2]$, ..., $(c_{B-1},\infty)$. The lowest bin is the reference and $W_i$ holds the $B-1$ indicators of the other bins:
 
-$$W_{ib} = \mathbb{1}\big[\,c_{b-1} < u_{\ell h_i} \le c_b\,\big], \qquad b = 2,\dots,B \tag{3.1}$$
+$$W_{ib} = \mathbf{1}\big[\ c_{b-1} < u_{\ell h_i} \le c_b\ \big], \qquad b = 2,\dots,B \qquad \text{(3.1)}$$
 
 The interior cut points are set once, from a reference sample described next, and stored. The same cut points are then applied to every later weather series.
 
@@ -83,9 +83,9 @@ With two weather variables, each has its own window, aggregation, transformation
 The Weather stats tab describes the sample with the regressors above and does not enter the estimation.
 
 - **Weighted summaries** by country and survey round: weighted mean, weighted standard deviation, minimum, maximum and count, with the survey weight $\omega_i$.
-- **Comparison with own history.** For each location, the historical weather is taken for the same location and the same calendar months as the interviews, for the years in the chosen historical window. Each location-month cell receives the weight $n_{\ell\mu}$, the number of sampled units interviewed there. For a wave value $\hat s_\ell$ (the mean over the location's interview months, weighted by $n_{\ell\mu}$) and the history $\{v_j\}$ with weights $n_j$:
+- **Comparison with own history.** For each location, the historical weather is taken for the same location and the same calendar months as the interviews, for the years in the chosen historical window. Each location-month cell receives the weight $n_{\ell\mu}$, the number of sampled units interviewed there. For a wave value $\hat s_\ell$ (the mean over the location's interview months, weighted by $n_{\ell\mu}$) and the history $\lbrace v_j\rbrace $ with weights $n_j$:
 
-$$\text{anomaly}_\ell = \hat s_\ell - \frac{\sum_j n_j v_j}{\sum_j n_j}, \qquad \text{percentile}_\ell = 100\,\frac{\sum_j n_j\big(\mathbb{1}[v_j<\hat s_\ell] + \tfrac12\mathbb{1}[v_j=\hat s_\ell]\big)}{\sum_j n_j} \tag{5.1}$$
+$$\text{anomaly}_\ell = \hat s_\ell - \frac{\sum_j n_j v_j}{\sum_j n_j}, \qquad \text{percentile}_\ell = 100\ \frac{\sum_j n_j\big(\mathbf{1}[v_j<\hat s_\ell] + \tfrac12\mathbf{1}[v_j=\hat s_\ell]\big)}{\sum_j n_j} \qquad \text{(5.1)}$$
 
 The historical window includes the survey year. For binned variables, a location shows its modal bin.
 

@@ -33,7 +33,7 @@ A continuous outcome is modelled in logs and a binary outcome as it is (Eq. (1.3
 
 The stored monetary values are in 2021 PPP dollars ([10_data](10_data.md)). The user chooses the currency in which the outcome is modelled:
 
-$$y_i = \begin{cases} \log Y_i^{\text{PPP}} & \text{currency PPP (default)} \\ \log\big(\pi_i\, Y_i^{\text{PPP}}\big) & \text{currency LCU (2021 prices)} \end{cases} \tag{3.1}$$
+$$y_i = \begin{cases} \log Y_i^{\text{PPP}} & \text{currency PPP (default)} \\\\ \log\big(\pi_i\  Y_i^{\text{PPP}}\big) & \text{currency LCU (2021 prices)} \end{cases} \qquad \text{(3.1)}$$
 
 For a log outcome, the LCU choice adds $\log \pi_i$ to $y_i$. If $\pi_i$ is constant within a fixed-effect cell, the fixed effects absorb it and the weather coefficients are unchanged (A2 in [00_notation](00_notation.md)). The currency choice then sets only the units of the poverty line and of predicted and simulated levels.
 
@@ -41,11 +41,11 @@ For a log outcome, the LCU choice adds $\log \pi_i$ to $y_i$. If $\pi_i$ is cons
 
 The poor outcome compares welfare with the line in the currency of the line. With a line $z$ in PPP dollars:
 
-$$\text{poor}_i = \mathbb{1}\big[Y_i^{\text{PPP}} < z\big] \tag{4.1}$$
+$$\text{poor}_i = \mathbf{1}\big[Y_i^{\text{PPP}} < z\big] \qquad \text{(4.1)}$$
 
 With a line in local currency, the comparison is made on the stored PPP value, after the line is divided by the unit's own conversion factor:
 
-$$\text{poor}_i = \mathbb{1}\big[Y_i^{\text{PPP}} < z^{\text{LCU}}/\pi_i\big] \tag{4.2}$$
+$$\text{poor}_i = \mathbf{1}\big[Y_i^{\text{PPP}} < z^{\text{LCU}}/\pi_i\big] \qquad \text{(4.2)}$$
 
 This is the same test as $\pi_i Y_i^{\text{PPP}} < z^{\text{LCU}}$. The indicator is never converted to local currency.
 
@@ -55,7 +55,7 @@ The line starts at the following values, which the user may change.
 
 - **PPP:** $3.00$ per person per day, in 2021 PPP dollars.
 - **LCU:** the weighted 20th percentile of welfare in local currency in the loaded surveys,
-$$z^{\text{LCU}}_{\text{default}} = \hat Q^{\,\omega}_{0.20}\big(\pi_i Y_i^{\text{PPP}}\big) \tag{5.1}$$
+$$z^{\text{LCU}}_{\text{default}} = \hat Q^{\ \omega}_{0.20}\big(\pi_i Y_i^{\text{PPP}}\big) \qquad \text{(5.1)}$$
 rounded to two decimals. The weights are the survey weights as supplied. Surveys of all selected rounds and countries are pooled. If the percentile cannot be computed, the line is $1.00$.
 
 A monetary outcome other than poor also carries a line, which Step 2 and Step 3 use for poverty-type metrics. It starts at the same default.

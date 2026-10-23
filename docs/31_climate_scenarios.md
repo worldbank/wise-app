@@ -25,7 +25,7 @@ The user chooses a historical window $P_0$ and one to three future periods $P_s$
 
 For member $m$, H3 cell $c$ and calendar month $\mu$, the climatology over a period $P$ is the mean of all monthly values in $P$ that fall in month $\mu$:
 
-$$\bar x^{\,m}_{c\mu}(P) = \frac{1}{|P_\mu|}\sum_{h \in P_\mu} x^{\,m}_{ch} \tag{1.1}$$
+$$\bar x^{\ m}_{c\mu}(P) = \frac{1}{|P_\mu|}\sum_{h \in P_\mu} x^{\ m}_{ch} \qquad \text{(1.1)}$$
 
 where $P_\mu$ is the set of months of $P$ with calendar month $\mu$. Two periods are used.
 
@@ -38,7 +38,7 @@ If the interview months of the baseline survey do not cover all calendar months,
 
 For each cell, member and month, the change from the baseline to the future period is
 
-$$\Delta^{m}_{c\mu} = \begin{cases} \bar x^{\,m}_{c\mu}(P_s) - \bar x^{\,m}_{c\mu}(P_0) & \text{additive} \\[6pt] \dfrac{\bar x^{\,m}_{c\mu}(P_s) + \varepsilon}{\bar x^{\,m}_{c\mu}(P_0) + \varepsilon} & \text{multiplicative} \end{cases} \tag{2.1}$$
+$$\Delta^{m}_{c\mu} = \begin{cases} \bar x^{\ m}_{c\mu}(P_s) - \bar x^{\ m}_{c\mu}(P_0) & \text{additive} \\\\[6pt] \dfrac{\bar x^{\ m}_{c\mu}(P_s) + \varepsilon}{\bar x^{\ m}_{c\mu}(P_0) + \varepsilon} & \text{multiplicative} \end{cases} \qquad \text{(2.1)}$$
 
 with $\varepsilon = 0.001$ to avoid division by zero in dry months. A variable measured in millimetres or in days uses the multiplicative form. Every other variable, including temperature and standardised indices, uses the additive form.
 
@@ -48,7 +48,7 @@ The change at the location is the population-weighted mean of the cell changes, 
 
 The observed monthly series of location $\ell$ is changed month by month, using the change of its own calendar month:
 
-$$x^{*m}_{\ell h} = \begin{cases} x_{\ell h} + \Delta^{m}_{\ell\mu(h)} & \text{additive} \\ x_{\ell h}\,\Delta^{m}_{\ell\mu(h)} & \text{multiplicative} \end{cases} \tag{3.1}$$
+$$x^{*m}_{\ell h} = \begin{cases} x_{\ell h} + \Delta^{m}_{\ell\mu(h)} & \text{additive} \\\\ x_{\ell h}\ \Delta^{m}_{\ell\mu(h)} & \text{multiplicative} \end{cases} \qquad \text{(3.1)}$$
 
 This is applied to the **raw** monthly series, before any window. The window, aggregation, transformation and form of [12_weather_measures](12_weather_measures.md) are then applied to $x^{*m}_{\ell h}$, separately for each member:
 

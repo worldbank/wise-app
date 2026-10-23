@@ -35,13 +35,13 @@ Both models fit the model-scale outcome $y_i$ on $Z_i$ with the same three neste
 
 **Random forest.** The prediction is the average of $B$ regression trees grown on bootstrap samples with random feature subsets:
 
-$$\hat f(z) = \frac{1}{B}\sum_{b=1}^{B} T_b(z) \tag{1.1}$$
+$$\hat f(z) = \frac{1}{B}\sum_{b=1}^{B} T_b(z) \qquad \text{(1.1)}$$
 
 The settings are fixed: $B=500$ trees, a minimum of 5 observations per leaf, impurity-based variable importance, a single thread, and a fixed seed. It is available for a continuous outcome.
 
 **Gradient boosting.** The prediction is a sum of shallow trees fitted one after another to the remaining error, with shrinkage $\nu$:
 
-$$\hat f(z) = \sum_{b=1}^{B}\nu\, T_b(z) \tag{1.2}$$
+$$\hat f(z) = \sum_{b=1}^{B}\nu\  T_b(z) \qquad \text{(1.2)}$$
 
 The settings are fixed: $B=500$ trees, depth 6, shrinkage $\nu=0.05$, a minimum of 5 observations per node, no required loss reduction per split, a single thread and a fixed seed. It is available for a continuous outcome and, as a classifier, for a binary outcome.
 

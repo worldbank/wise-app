@@ -25,17 +25,17 @@ A coefficient on a log outcome, a probability or a level is shown on the scale a
 
 | Outcome | Reported as | Value for a model-scale effect $c$ |
 |---|---|---|
-| Continuous, log scale | per cent change | $100\,(e^{c}-1)$ |
-| Binary | percentage points | $100\,c$ for a linear probability model; $100\,\Delta p$ of Eq. (3.2) in [21_model_linear](21_model_linear.md) for a logit |
+| Continuous, log scale | per cent change | $100\ (e^{c}-1)$ |
+| Binary | percentage points | $100\ c$ for a linear probability model; $100\ \Delta p$ of Eq. (3.2) in [21_model_linear](21_model_linear.md) for a logit |
 | Other (not logged) | raw units | $c$ |
 
-A 95 per cent interval is $\hat c \pm 1.96\,\widehat{se}$ on the model scale, transformed in the same way. For the logit, the endpoints of the interval for the index are transformed to probabilities, so the interval is not symmetric and respects the bounds of a probability.
+A 95 per cent interval is $\hat c \pm 1.96\ \widehat{se}$ on the model scale, transformed in the same way. For the logit, the endpoints of the interval for the index are transformed to probabilities, so the interval is not symmetric and respects the bounds of a probability.
 
 ### 2. Headline contrast
 
 For each weather variable the app computes one contrast. The contrast is the difference between two design vectors $Z^{\text{hi}}$ and $Z^{\text{lo}}$ for a reference household, so that
 
-$$\hat c = d^{\prime}\hat\phi, \qquad \widehat{se} = \sqrt{d^{\prime}\hat V d}, \qquad d = Z^{\text{hi}} - Z^{\text{lo}} \tag{2.1}$$
+$$\hat c = d^{\prime}\hat\phi, \qquad \widehat{se} = \sqrt{d^{\prime}\hat V d}, \qquad d = Z^{\text{hi}} - Z^{\text{lo}} \qquad \text{(2.1)}$$
 
 - **Continuous weather:** one standard deviation above the sample mean, against the mean. With polynomial terms, $d$ includes the squared and cubic terms at those two values.
 - **Binned weather:** the highest bin against the reference (lowest) bin.
@@ -48,19 +48,19 @@ For the quantile model the contrast is computed at $\tau=0.1$, $0.5$ and $0.9$ f
 
 **Continuous weather.** The figure shows the marginal effect of weather over a grid of 100 values from the smallest to the largest weather value in the sample. For a variable entered as a polynomial, with moderator value $m$:
 
-$$\hat m(w) = \big(\hat\beta_1 + 2\hat\beta_2 w + 3\hat\beta_3 w^2\big) + \big(\hat\gamma_1 + 2\hat\gamma_2 w + 3\hat\gamma_3 w^2\big)\,m \tag{3.1}$$
+$$\hat m(w) = \big(\hat\beta_1 + 2\hat\beta_2 w + 3\hat\beta_3 w^2\big) + \big(\hat\gamma_1 + 2\hat\gamma_2 w + 3\hat\gamma_3 w^2\big)\ m \qquad \text{(3.1)}$$
 
 The 95 per cent band is $\hat m(w)\pm 1.96\sqrt{g(w)^{\prime}\hat V g(w)}$, where $g(w)$ collects the derivative weights of Eq. (3.1) on all coefficients. The curve is a slope, not a predicted level. A rug of observed values and the sample mean are drawn for reference.
 
 **Binned weather.** The figure shows each bin coefficient with its interval, relative to the omitted lowest bin. With a moderator, the coefficients of each moderator group are shown side by side.
 
-**Quantile model.** The figure shows $\hat\beta_\tau$ for each $\tau$ with a 95 per cent band built from the per-quantile standard errors. With polynomial terms, the plotted effect at each $\tau$ is the marginal effect at the mean weather, $\sum_p p\,\bar w^{\,p-1}\hat\beta_{p,\tau}$, with a standard error from the full covariance of the terms.
+**Quantile model.** The figure shows $\hat\beta_\tau$ for each $\tau$ with a 95 per cent band built from the per-quantile standard errors. With polynomial terms, the plotted effect at each $\tau$ is the marginal effect at the mean weather, $\sum_p p\ \bar w^{\ p-1}\hat\beta_{p,\tau}$, with a standard error from the full covariance of the terms.
 
 ### 4. Comparing specifications
 
 The table lists the weather coefficient in Models 1, 2 and 3. The robustness verdict compares the fixed-effects model (or Model 1 if Model 2 is not available) with Model 3. Two estimates $a$ and $b$ **agree** if they have the same non-zero sign and
 
-$$|\hat a - \hat b| \le 1.96\sqrt{se_a^2 + se_b^2} \tag{4.1}$$
+$$|\hat a - \hat b| \le 1.96\sqrt{se_a^2 + se_b^2} \qquad \text{(4.1)}$$
 
 The verdict is "Robust" if they agree, "Sensitive" if the sign holds but they do not agree in size, and "Not robust" if the sign changes. For the quantile model the comparison is made at the median.
 
@@ -73,7 +73,7 @@ The verdict is "Robust" if they agree, "Sensitive" if the sign holds but they do
 
 For binned weather, the app reports the bin with the largest effect and the first bin above the reference whose interval excludes zero. For a quadratic with no moderator, it reports the turning point when it falls inside the observed range:
 
-$$w^{*} = -\frac{\hat\beta_1}{2\hat\beta_2} \tag{6.1}$$
+$$w^{*} = -\frac{\hat\beta_1}{2\hat\beta_2} \qquad \text{(6.1)}$$
 
 as a peak if $\hat\beta_2<0$ and a trough otherwise. For polynomials it also reports the contrast between the median and the 95th percentile of weather.
 
@@ -82,7 +82,7 @@ as a peak if $\hat\beta_2<0$ and a trough otherwise. For polynomials it also rep
 The Model fit tab reports, for Model 3, the number of observations and:
 
 - **Linear model:** $R^2$, adjusted $R^2$ and within $R^2$. **Quantile model:** $R^2$ and within $R^2$ for each quantile. The within $R^2$ is the share of the variation of the outcome, after the fixed effects are removed, that the regressors explain:
-$$R^2_{\text{within}} = 1 - \frac{\sum_i \hat{\ddot e}_i^{\,2}}{\sum_i \ddot y_i^{\,2}} \tag{7.1}$$
+$$R^2_{\text{within}} = 1 - \frac{\sum_i \hat{\ddot e}_i^{\ 2}}{\sum_i \ddot y_i^{\ 2}} \qquad \text{(7.1)}$$
 - **Logistic model:** McFadden $R^2 = 1 - \ell\ell/\ell\ell_0$, with $\ell\ell_0$ the log-likelihood of a model with only a constant, and the Akaike criterion.
 
 Diagnostic figures use the median quantile equation for the quantile model:
@@ -91,7 +91,7 @@ Diagnostic figures use the median quantile equation for the quantile model:
 - residuals against each weather variable;
 - **relative importance** of each term, as the share of the sum of squared standardised coefficients:
 
-$$s_j = 100\,\frac{\big(|\hat\phi_j|\,\mathrm{sd}(Z_j)\big)^2}{\sum_k \big(|\hat\phi_k|\,\mathrm{sd}(Z_k)\big)^2} \tag{7.2}$$
+$$s_j = 100\ \frac{\big(|\hat\phi_j|\ \mathrm{sd}(Z_j)\big)^2}{\sum_k \big(|\hat\phi_k|\ \mathrm{sd}(Z_k)\big)^2} \qquad \text{(7.2)}$$
 
 where $\mathrm{sd}(Z_j)$ is the standard deviation of the design column in the estimation sample. The 15 largest shares are shown. Fixed effects are not included.
 

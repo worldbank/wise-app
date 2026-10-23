@@ -33,7 +33,7 @@ The data may be read from a local folder or from cloud storage. The source does 
 
 Every variable that the variable list marks as a local-currency amount is converted to 2021 international dollars per person per day. For unit $i$ in country $c$, survey year $t$ and data level $d$:
 
-$$Y_i^{\text{PPP}} = \frac{Y_i^{\text{LCU, nominal}}}{\text{CPI}_{ct}\ \pi_{ct}} \tag{1.1}$$
+$$Y_i^{\text{PPP}} = \frac{Y_i^{\text{LCU, nominal}}}{\text{CPI}_{ct}\ \pi_{ct}} \qquad \text{(1.1)}$$
 
 where $\text{CPI}_{ct}$ is the price index that takes survey-year prices to 2021 prices and $\pi_{ct}$ is the 2021 conversion factor from local currency to PPP dollars, both as supplied in the CPI and PPP table. The table is matched on country, survey year and a data level. The data level is "national" for every country except China, where urban and rural households use separate deflators.
 
@@ -51,7 +51,7 @@ The weather grid and the survey cells can have different H3 resolutions. The app
 
 The weather of location $\ell$ in calendar month $h$ (a month of a given year) is the population-weighted mean of the weather in its cells:
 
-$$x_{\ell h} = \frac{\sum_{c} p_{\ell c}\, x_{ch}\,\mathbb{1}[x_{ch}\ \text{observed}]}{\sum_{c} p_{\ell c}\,\mathbb{1}[x_{ch}\ \text{observed}]} \tag{3.1}$$
+$$x_{\ell h} = \frac{\sum_{c} p_{\ell c}\  x_{ch}\ \mathbf{1}[x_{ch}\ \text{observed}]}{\sum_{c} p_{\ell c}\ \mathbf{1}[x_{ch}\ \text{observed}]} \qquad \text{(3.1)}$$
 
 where $x_{ch}$ is the monthly value in weather cell $c$ and $p_{\ell c}$ is the 2020 population in the part of cell $c$ that lies in location $\ell$ [@schiavina2022]. Population weights give more weight to the settled parts of a large location. When a mapping file carries no population, every cell receives weight one. A cell-month with a missing value drops out of both sums for that variable only; the other variables of the same cell are kept.
 
@@ -63,7 +63,7 @@ Eq. (3.1) gives the raw monthly series. Rolling windows, anomalies and bins are 
 
 The same place appears in several survey rounds with slightly different cluster boundaries. Two locations $A$ and $B$ are linked when their cell overlaps are large in both directions:
 
-$$o_{A\to B} = \frac{\sum_{c \in A\cap B} p_{Ac}}{\sum_{c \in A} p_{Ac}}, \qquad \text{link if } \min\{o_{A\to B},\, o_{B\to A}\} \ge 0.5 \tag{4.1}$$
+$$o_{A\to B} = \frac{\sum_{c \in A\cap B} p_{Ac}}{\sum_{c \in A} p_{Ac}}, \qquad \text{link if } \min\lbrace o_{A\to B},\  o_{B\to A}\rbrace  \ge 0.5 \qquad \text{(4.1)}$$
 
 A location panel is a connected set of linked locations. If $A$ links to $B$ and $B$ links to $C$, all three are in one panel. Locations with no link form their own panel. The panel identifier $g_\ell$ is the cluster used for standard errors in Steps 1 and 2.
 

@@ -27,11 +27,11 @@ The ingredients of the specification are the outcome $y_i$ ([11_outcomes](11_out
 
 All three models are fitted to the same sample. Write $W_i \otimes M_i$ for the products of every weather regressor with every moderator.
 
-$$\text{Model 1:}\quad y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i\otimes M_i)^{\prime}\gamma + \varepsilon_i \tag{1.1}$$
+$$\text{Model 1:}\quad y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i\otimes M_i)^{\prime}\gamma + \varepsilon_i \qquad \text{(1.1)}$$
 
-$$\text{Model 2:}\quad y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i\otimes M_i)^{\prime}\gamma + \alpha_{g(i)} + \lambda_{t(i)} + \varepsilon_i \tag{1.2}$$
+$$\text{Model 2:}\quad y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i\otimes M_i)^{\prime}\gamma + \alpha_{g(i)} + \lambda_{t(i)} + \varepsilon_i \qquad \text{(1.2)}$$
 
-$$\text{Model 3:}\quad y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i\otimes M_i)^{\prime}\gamma + X_i^{\prime}\delta + \alpha_{g(i)} + \lambda_{t(i)} + \varepsilon_i \tag{1.3}$$
+$$\text{Model 3:}\quad y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i\otimes M_i)^{\prime}\gamma + X_i^{\prime}\delta + \alpha_{g(i)} + \lambda_{t(i)} + \varepsilon_i \qquad \text{(1.3)}$$
 
 Model 1 is the raw association. Model 2 adds the fixed effects and shows how much of the raw association is place and time confounding. Model 3 adds the controls and is the model used for simulation, policy analysis and the effect figures.
 
@@ -43,7 +43,7 @@ A continuous outcome uses linear regression. A binary outcome uses either a line
 
 Fixed effects are absorbed, not estimated as dummies. For linear models the estimator is equivalent to ordinary least squares on variables from which the fixed-effect means have been removed. Let $\ddot z_i$ denote the residual from projecting $z_i$ on the dummies of all absorbed fixed effects. Then the coefficients solve
 
-$$\ddot y_i = \ddot Z_i^{\prime}\phi + \ddot\varepsilon_i, \qquad Z_i = \big(W_i,\ M_i,\ W_i\otimes M_i,\ X_i\big) \tag{2.1}$$
+$$\ddot y_i = \ddot Z_i^{\prime}\phi + \ddot\varepsilon_i, \qquad Z_i = \big(W_i,\ M_i,\ W_i\otimes M_i,\ X_i\big) \qquad \text{(2.1)}$$
 
 so that the coefficients are identified from variation of $Z_i$ inside an area-by-round cell, as the framework requires ([01_framework](01_framework.md), Eq. (3.1)). A regressor with no variation inside cells is dropped as collinear. The default fixed effects are the survey year, shared by all units of a round, and the first administrative level.
 
@@ -53,7 +53,7 @@ Fixed effects fitted on the estimation sample are reused to predict. A unit in a
 
 Standard errors are cluster-robust. The cluster is the location panel ([10_data](10_data.md)), the level at which weather is assigned. The covariance of the coefficients is the usual cluster sandwich:
 
-$$\hat V = (\ddot Z^{\prime}\ddot Z)^{-1}\Big(\sum_{p}\ddot Z_p^{\prime}\hat e_p\hat e_p^{\prime}\ddot Z_p\Big)(\ddot Z^{\prime}\ddot Z)^{-1} \tag{3.1}$$
+$$\hat V = (\ddot Z^{\prime}\ddot Z)^{-1}\Big(\sum_{p}\ddot Z_p^{\prime}\hat e_p\hat e_p^{\prime}\ddot Z_p\Big)(\ddot Z^{\prime}\ddot Z)^{-1} \qquad \text{(3.1)}$$
 
 where the sum runs over the location panels $p$, $\hat e_p$ are the residuals of the units in panel $p$, and the estimation software applies its default small-sample adjustment.
 
@@ -77,13 +77,13 @@ The user either lists the covariates or lets a Lasso choose them.
 
 **Lasso.** For the linear model, the outcome, the unpenalised terms and the candidates are first residualised on the fixed effects. Let $\tilde y$, $\tilde Z$ and $\tilde X$ be those residualised variables. The Lasso solves an elastic-net problem with mixing weight $\varrho$ ($\varrho=1$ is the pure Lasso and the default) and penalty level $\eta$:
 
-$$\min_{\kappa,\,\delta}\ \frac{1}{2N}\sum_i\big(\tilde y_i - \tilde Z_i^{\prime}\kappa - \tilde X_i^{\prime}\delta\big)^2 + \eta\sum_{j}\Big[\varrho\,|\delta_j| + \tfrac{1-\varrho}{2}\delta_j^2\Big] \tag{5.1}$$
+$$\min_{\kappa,\ \delta}\ \frac{1}{2N}\sum_i\big(\tilde y_i - \tilde Z_i^{\prime}\kappa - \tilde X_i^{\prime}\delta\big)^2 + \eta\sum_{j}\Big[\varrho\ |\delta_j| + \tfrac{1-\varrho}{2}\delta_j^2\Big] \qquad \text{(5.1)}$$
 
 with no penalty on $\kappa$. The level $\eta$ is chosen by $k$-fold cross-validation ($k=10$ by default) with the one-standard-error rule: the largest $\eta$ within one standard error of the cross-validated minimum. Predictors are standardised by default. For the logistic model the same problem is solved with the binomial likelihood and the fixed effects are kept in the design instead of being residualised.
 
 **Stability.** The selection is repeated $R$ times ($R=5$ by default), each time with new random cross-validation folds. If multiple imputation is switched on (it is off by default), each repetition uses a different imputed data set. A candidate is kept if it is selected in at least half of the repetitions:
 
-$$f_j = \frac{1}{R}\sum_{r=1}^{R}\mathbb{1}\big[\hat\delta_j^{(r)} \ne 0\big], \qquad \text{keep } j \text{ if } f_j \ge 0.5 \tag{5.2}$$
+$$f_j = \frac{1}{R}\sum_{r=1}^{R}\mathbf{1}\big[\hat\delta_j^{(r)} \ne 0\big], \qquad \text{keep } j \text{ if } f_j \ge 0.5 \qquad \text{(5.2)}$$
 
 Without imputation, units with a missing candidate are dropped for the selection step only. The final model is fitted on its own complete-case sample (Section 4).
 

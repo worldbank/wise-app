@@ -38,7 +38,7 @@ For every simulation, the household keeps its characteristics $M_i$, $X_i$, its 
 
 Each household $i$ lives in location $\ell(i)$ and was interviewed in calendar month $\mu_i$. For each year $r$ of the historical window, the simulation builds the weather regressors of $i$ as if the interview had taken place in month $\mu_i$ of year $r$, using the same window, aggregation, transformation and bins as in estimation ([12_weather_measures](12_weather_measures.md)):
 
-$$W_i^{(r)} = \Phi\big(\tilde x_{\ell(i),\,(r,\mu_i)}\big) \tag{2.1}$$
+$$W_i^{(r)} = \Phi\big(\tilde x_{\ell(i),\ (r,\mu_i)}\big) \qquad \text{(2.1)}$$
 
 where $\tilde x$ is the aggregated location weather of Eq. (1.1) in [12_weather_measures](12_weather_measures.md) and $\Phi$ the chosen form (levels, polynomial terms or bin indicators). The simulation grid is therefore every interview month present in the baseline survey crossed with every year of the window. A household with interview month $\mu_i$ appears once per simulation year.
 
@@ -48,7 +48,7 @@ For a future series the weather is built from the same grid. The observed weathe
 
 For the linear and logistic engines the model-scale prediction is the fitted model of Model 3 evaluated at the household's own characteristics and fixed effects, with only the weather changed:
 
-$$\hat y_i^{(r)} = \hat f\big(W_i^{(r)},\ M_i,\ X_i,\ \hat\alpha_{g(i)},\ \hat\lambda_{t(i)}\big) \tag{3.1}$$
+$$\hat y_i^{(r)} = \hat f\big(W_i^{(r)},\ M_i,\ X_i,\ \hat\alpha_{g(i)},\ \hat\lambda_{t(i)}\big) \qquad \text{(3.1)}$$
 
 For the quantile model the prediction is Eq. (4.3) of [22_model_rif](22_model_rif.md), with the baseline weather $W_i^{0}$ taken as the weather the household actually experienced at its interview.
 
@@ -56,14 +56,14 @@ For the quantile model the prediction is Eq. (4.3) of [22_model_rif](22_model_ri
 
 For a log outcome, the retransformed welfare of household $i$ in year $r$ is
 
-$$Y_i^{*(r)} = \exp\big(\hat y_i^{(r)} + e_i^{(r)}\big) \tag{4.1}$$
+$$Y_i^{*(r)} = \exp\big(\hat y_i^{(r)} + e_i^{(r)}\big) \qquad \text{(4.1)}$$
 
 The residual term $e_i^{(r)}$ follows the residual rule. Let $\hat\varepsilon_j$ be the fitted residuals of Model 3 in the estimation sample (observed minus fitted, fixed effects included) and $\hat\sigma^2$ their variance.
 
 | Rule | Residual term | In the app |
 |---|---|---|
 | Original | $e_i = \hat\varepsilon_{j(i)}$, the residual of the same unit in the estimation sample. If the unit is not in that sample, a residual chosen from the estimation residuals by a fixed function of the unit's identifier. The same value is used in every year. | Offered, default |
-| Resample | $e_i^{(r)}$ drawn with replacement from $\{\hat\varepsilon_j\}$, independently across households | Offered |
+| Resample | $e_i^{(r)}$ drawn with replacement from $\lbrace \hat\varepsilon_j\rbrace $, independently across households | Offered |
 | Normal | $e_i^{(r)} \sim N(0,\hat\sigma^2)$ | Not offered |
 | None | $e_i = 0$ | Not offered; used for the quantile model |
 
@@ -77,7 +77,7 @@ A cash transfer from a policy is added to the level $Y_i^{*(r)}$ before the stat
 
 For simulation year $r$, scenario $s$ and member $m$ (the index $m$ and $s$ are absent for the historical series), the statistic is
 
-$$T^{(r,s,m)} = \mathcal{A}\Big(\big\{(Y_i^{*(r,s,m)},\ \omega_i)\big\}_{i \in \mathcal{B}^{(r)}}\Big) \tag{5.1}$$
+$$T^{(r,s,m)} = \mathcal{A}\Big(\big\lbrace (Y_i^{*(r,s,m)},\ \omega_i)\big\rbrace _{i \in \mathcal{B}^{(r)}}\Big) \qquad \text{(5.1)}$$
 
 where $\mathcal{A}$ is a metric of [32_metrics](32_metrics.md) and $\mathcal{B}^{(r)}\subseteq\mathcal{B}$ drops households whose prediction or weight is missing in that year. A missing prediction occurs when a fixed-effect cell is not in the estimation sample. The numbers of dropped household-years are counted and reported.
 

@@ -23,35 +23,35 @@ The regressors, fixed effects and sample are those of [20_model_specification](2
 
 For a continuous outcome, $y_i = \log Y_i$, and the model is
 
-$$y_i = Z_i^{\prime}\phi + \alpha_{g(i)} + \lambda_{t(i)} + \varepsilon_i \tag{1.1}$$
+$$y_i = Z_i^{\prime}\phi + \alpha_{g(i)} + \lambda_{t(i)} + \varepsilon_i \qquad \text{(1.1)}$$
 
 estimated by ordinary least squares. After the fixed-effect means are removed from every variable, the estimator is
 
-$$\hat\phi = \big(\ddot Z^{\prime}\ddot Z\big)^{-1}\ddot Z^{\prime}\ddot y \tag{1.2}$$
+$$\hat\phi = \big(\ddot Z^{\prime}\ddot Z\big)^{-1}\ddot Z^{\prime}\ddot y \qquad \text{(1.2)}$$
 
 where dots mark the residuals from projecting on the fixed-effect dummies (Eq. (2.1) in [20_model_specification](20_model_specification.md)). Under the exogeneity condition of the framework, $\hat\beta$ is the within-cell partial association between weather and log welfare.
 
-The same estimator is used for a binary outcome, with $y_i\in\{0,1\}$. The coefficients are then changes in the probability of the event (a linear probability model).
+The same estimator is used for a binary outcome, with $y_i\in\lbrace 0,1\rbrace $. The coefficients are then changes in the probability of the event (a linear probability model).
 
 ### 2. Reading a coefficient
 
 A coefficient on a log outcome is a semi-elasticity. For a change $\Delta w$ in a continuous weather regressor with no polynomial or interaction terms, the proportional change in welfare is
 
-$$\frac{\Delta Y}{Y} = e^{\hat\beta\,\Delta w} - 1 \tag{2.1}$$
+$$\frac{\Delta Y}{Y} = e^{\hat\beta\ \Delta w} - 1 \qquad \text{(2.1)}$$
 
-For a bin $b$, $100\,(e^{\hat\beta_b}-1)$ is the per cent difference in welfare between bin $b$ and the lowest bin. With a moderator $m$ and an interaction, the slope is $\hat\beta + \hat\gamma m$. With a polynomial, the slope at weather level $w$ is $\hat\beta_1 + 2\hat\beta_2 w + 3\hat\beta_3 w^2$, and the confidence band of the slope uses the full coefficient covariance (Eq. (3.1) in [20_model_specification](20_model_specification.md)).
+For a bin $b$, $100\ (e^{\hat\beta_b}-1)$ is the per cent difference in welfare between bin $b$ and the lowest bin. With a moderator $m$ and an interaction, the slope is $\hat\beta + \hat\gamma m$. With a polynomial, the slope at weather level $w$ is $\hat\beta_1 + 2\hat\beta_2 w + 3\hat\beta_3 w^2$, and the confidence band of the slope uses the full coefficient covariance (Eq. (3.1) in [20_model_specification](20_model_specification.md)).
 
 ### 3. Logistic regression
 
 For a binary outcome the user may instead fit a logit:
 
-$$\Pr(y_i = 1 \mid Z_i, g, t) = \Lambda\big(\eta_i\big), \qquad \eta_i = Z_i^{\prime}\phi + \alpha_{g(i)} + \lambda_{t(i)}, \qquad \Lambda(u) = \frac{1}{1+e^{-u}} \tag{3.1}$$
+$$\Pr(y_i = 1 \mid Z_i, g, t) = \Lambda\big(\eta_i\big), \qquad \eta_i = Z_i^{\prime}\phi + \alpha_{g(i)} + \lambda_{t(i)}, \qquad \Lambda(u) = \frac{1}{1+e^{-u}} \qquad \text{(3.1)}$$
 
 The coefficients are changes in the log-odds. They are estimated by maximum likelihood with the fixed effects included in the index. If a fixed-effect cell has no events (or all events), its observations carry no information and the cell effect is not identified. This is called separation. It can make coefficients very large. If the outcome is not a clean 0/1 indicator, the app fits the linear model instead and records the fallback.
 
 Because the logit is nonlinear, the effect of a weather contrast on the probability depends on the baseline. The app reports a probability change at one reference household, the household whose fitted probability is the sample median:
 
-$$\Delta p = \Lambda\big(\hat\eta_0 + \hat c\big) - \Lambda\big(\hat\eta_0\big) \tag{3.2}$$
+$$\Delta p = \Lambda\big(\hat\eta_0 + \hat c\big) - \Lambda\big(\hat\eta_0\big) \qquad \text{(3.2)}$$
 
 where $\hat\eta_0$ is the reference household's fitted index, fixed effects included, and $\hat c$ is the estimated contrast in the index.
 
@@ -59,7 +59,7 @@ where $\hat\eta_0$ is the reference household's fitted index, fixed effects incl
 
 A prediction of the model-scale outcome for a unit with regressors $Z_i$ is $\hat y_i = Z_i^{\prime}\hat\phi + \hat\alpha_{g(i)} + \hat\lambda_{t(i)}$. Step 2 adds a residual term chosen by the residual rule and returns to levels:
 
-$$y_i^{*} = \hat y_i + \hat e_i, \qquad Y_i^{*} = \exp\big(y_i^{*}\big) \tag{4.1}$$
+$$y_i^{*} = \hat y_i + \hat e_i, \qquad Y_i^{*} = \exp\big(y_i^{*}\big) \qquad \text{(4.1)}$$
 
 The residual term $\hat e_i$ is the unit's own fitted residual, a draw from the fitted residuals, a normal draw with the same standard deviation, or zero ([30_simulation](30_simulation.md)). The app applies no smearing correction. With a residual term, the retransformed outcome keeps the dispersion of the data. Without one, $\exp(\hat y_i)$ estimates the conditional geometric mean of welfare (the median if the errors are symmetric) and not its mean, and so understates the mean by an amount that grows with the residual variance.
 

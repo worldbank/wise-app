@@ -25,12 +25,12 @@ WISE-APP works with three kinds of objects: a **survey** (people or households o
 | $\ell$ | Survey location | A place where interviews took place, tied to one or more H3 cells. All units in a location share the same weather. |
 | $g$ | Area group | The administrative area used for the area fixed effect. By default the first administrative level (region or province). |
 | $t$ | Survey round | A survey wave, identified by its year. Also the index of the time fixed effect. |
-| $\mu$ | Calendar month | $\mu \in \{1,\dots,12\}$. $\mu_i$ is the month in which unit $i$ was interviewed. |
+| $\mu$ | Calendar month | $\mu \in \lbrace 1,\dots,12\rbrace $. $\mu_i$ is the month in which unit $i$ was interviewed. |
 | $r$ | Simulation year | The calendar year of the weather that is applied to the baseline population in Step 2. Historical years in the historical window, projected years in a future period. |
 | $s$ | Scenario | The historical scenario, or a combination of an emissions pathway (SSP) and a future period. |
 | $m$ | Climate model member | One member of the CMIP6 ensemble. Used only for future scenarios. |
 | $v$ | Weather variable | One of at most two weather variables chosen in Step 1. |
-| $\tau$ | Quantile level | A point of the welfare distribution, $\tau \in (0,1)$. The unconditional quantile regression uses the grid $\tau \in \{0.1, 0.2, \dots, 0.9\}$. |
+| $\tau$ | Quantile level | A point of the welfare distribution, $\tau \in (0,1)$. The unconditional quantile regression uses the grid $\tau \in \lbrace 0.1, 0.2, \dots, 0.9\rbrace $. |
 
 ### Data objects
 
@@ -71,23 +71,23 @@ A hat marks an estimate ($\hat\beta$). A star marks a counterfactual value ($y_i
 
 Welfare is stored in 2021 international dollars (PPP) per person per day. A local-currency (LCU) outcome multiplies it by the 2021 conversion factor $\pi_i$ (LCU per PPP dollar, taken from the CPI and PPP table that comes with the data):
 
-$$Y_i^{\text{LCU}} = \pi_i \, Y_i^{\text{PPP}} \tag{1.1}$$
+$$Y_i^{\text{LCU}} = \pi_i \  Y_i^{\text{PPP}} \qquad \text{(1.1)}$$
 
 Welfare is bottom-coded at the level used by the World Bank Poverty and Inequality Platform when the survey is loaded:
 
-$$Y_i \leftarrow \max\{Y_i,\ 0.28\} \quad \text{(2021 PPP)} \tag{1.2}$$
+$$Y_i \leftarrow \max\lbrace Y_i,\ 0.28\rbrace  \quad \text{(2021 PPP)} \qquad \text{(1.2)}$$
 
 A continuous outcome is modelled in logs and a binary outcome as it is:
 
-$$y_i = \begin{cases} \log Y_i & \text{continuous outcome} \\ \mathbb{1}[\text{event}] & \text{binary outcome} \end{cases} \tag{1.3}$$
+$$y_i = \begin{cases} \log Y_i & \text{continuous outcome} \\\\ \mathbf{1}[\text{event}] & \text{binary outcome} \end{cases} \qquad \text{(1.3)}$$
 
-The poverty indicator is the binary outcome $\mathbb{1}[Y_i < z]$, with $Y_i$ and $z$ in the same currency. Predictions are back-transformed with $\hat Y_i = \exp(\hat y_i)$ whenever a level is needed (see [21_model_linear](21_model_linear.md)).
+The poverty indicator is the binary outcome $\mathbf{1}[Y_i < z]$, with $Y_i$ and $z$ in the same currency. Predictions are back-transformed with $\hat Y_i = \exp(\hat y_i)$ whenever a level is needed (see [21_model_linear](21_model_linear.md)).
 
 ### 2. Reference estimating equation
 
 Every model page is a variant of one equation. For unit $i$ in location $\ell$, area $g$ and survey round $t$:
 
-$$y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i \otimes M_i)^{\prime}\gamma + X_i^{\prime}\delta + \alpha_{g} + \lambda_{t} + \varepsilon_i \tag{2.1}$$
+$$y_i = W_i^{\prime}\beta + M_i^{\prime}\theta + (W_i \otimes M_i)^{\prime}\gamma + X_i^{\prime}\delta + \alpha_{g} + \lambda_{t} + \varepsilon_i \qquad \text{(2.1)}$$
 
 where $W_i \otimes M_i$ collects the products of each weather regressor with each moderator. The quantile model replaces $y_i$ by a transformed outcome and lets every coefficient depend on $\tau$. The tree-based models do not have this form. Pages that need the exact variant restate it.
 
@@ -97,13 +97,13 @@ The area and time effects in Eq. (2.1) are the default choice (administrative le
 
 Step 2 applies the fitted model to a fixed **baseline** survey sample while the weather changes. For simulation year $r$, scenario $s$ and member $m$, the counterfactual weather of unit $i$ is $W_i^{(r,s,m)}$ and the model-scale prediction is $y_i^{*(r,s,m)}$. Historical runs have no $s$ or $m$ index and are written $W_i^{(r)}$. The statistic of interest is a weighted function of the back-transformed values:
 
-$$T^{(r,s,m)} = \mathcal{A}\Big(\big\{(Y_i^{*(r,s,m)},\ \omega_i)\big\}_{i=1}^{N}\Big) \tag{3.1}$$
+$$T^{(r,s,m)} = \mathcal{A}\Big(\big\lbrace (Y_i^{*(r,s,m)},\ \omega_i)\big\rbrace _{i=1}^{N}\Big) \qquad \text{(3.1)}$$
 
 where $\mathcal{A}$ is the rule for the chosen metric (see [32_metrics](32_metrics.md)).
 
 Step 3 changes the policy variables from $D_i$ to $D_i^{\text{pol}}$ and re-evaluates the same prediction. The policy effect on a statistic is
 
-$$\Delta T^{(r,s,m)} = T^{(r,s,m)}_{\text{policy}} - T^{(r,s,m)}_{\text{baseline}} \tag{3.2}$$
+$$\Delta T^{(r,s,m)} = T^{(r,s,m)}_{\text{policy}} - T^{(r,s,m)}_{\text{baseline}} \qquad \text{(3.2)}$$
 
 with the same weather, the same baseline population and the same coefficient draws in both arms.
 
@@ -111,7 +111,7 @@ with the same weather, the same baseline population and the same coefficient dra
 
 The quantile model needs the rank of a unit in the outcome distribution. The rank of unit $i$ is read from the empirical distribution function of the **estimation sample** on the model scale, clipped to the estimated grid:
 
-$$\tau_i = \min\Big\{\max\big\{\hat F(y_i),\ 0.1\big\},\ 0.9\Big\} \tag{4.1}$$
+$$\tau_i = \min\Big\lbrace \max\big\lbrace \hat F(y_i),\ 0.1\big\rbrace ,\ 0.9\Big\rbrace  \qquad \text{(4.1)}$$
 
 ## Interpretation
 

@@ -29,19 +29,19 @@ The metrics offered depend on the outcome.
 
 ### 1. Definitions
 
-$$\bar Y = \sum_i \tilde\omega_i Y_i, \qquad \text{Total} = \sum_i \omega_i Y_i \tag{1.1}$$
+$$\bar Y = \sum_i \tilde\omega_i Y_i, \qquad \text{Total} = \sum_i \omega_i Y_i \qquad \text{(1.1)}$$
 
 The median is the smallest value $Y$ such that the weighted share of households at or below $Y$ is at least one half. Poverty is measured by the Foster-Greer-Thorbecke family [@foster1984]:
 
-$$P_0 = \sum_i \tilde\omega_i\,\mathbb{1}[Y_i < z], \qquad P_1 = \sum_i \tilde\omega_i\,\frac{\max(z-Y_i,\,0)}{z}, \qquad P_2 = \sum_i \tilde\omega_i\,\Big(\frac{\max(z-Y_i,\,0)}{z}\Big)^2 \tag{1.2}$$
+$$P_0 = \sum_i \tilde\omega_i\ \mathbf{1}[Y_i < z], \qquad P_1 = \sum_i \tilde\omega_i\ \frac{\max(z-Y_i,\ 0)}{z}, \qquad P_2 = \sum_i \tilde\omega_i\ \Big(\frac{\max(z-Y_i,\ 0)}{z}\Big)^2 \qquad \text{(1.2)}$$
 
 These are the poverty rate, the poverty gap and the poverty severity. The Gini index is computed from households sorted by $Y$, with $F_{(i)} = \sum_{j\le i}\tilde\omega_{(j)} - \tilde\omega_{(i)}/2$ the weighted mid-rank:
 
-$$G = \frac{2\sum_i \tilde\omega_{(i)}\,Y_{(i)}\,F_{(i)}}{\sum_i \tilde\omega_{(i)}\,Y_{(i)}} - 1 \tag{1.3}$$
+$$G = \frac{2\sum_i \tilde\omega_{(i)}\ Y_{(i)}\ F_{(i)}}{\sum_i \tilde\omega_{(i)}\ Y_{(i)}} - 1 \qquad \text{(1.3)}$$
 
 Two further measures do not use the poverty line:
 
-$$\text{Prosperity gap} = \sum_i \tilde\omega_i \max\!\big(28/Y_i,\ 1\big), \qquad \text{Average poverty} = \sum_{i:\,Y_i>0} \frac{\tilde\omega_i}{Y_i} \tag{1.4}$$
+$$\text{Prosperity gap} = \sum_i \tilde\omega_i \max\big(28/Y_i,\ 1\big), \qquad \text{Average poverty} = \sum_{i:\ Y_i>0} \frac{\tilde\omega_i}{Y_i} \qquad \text{(1.4)}$$
 
 The prosperity gap is the average factor by which incomes would have to be multiplied to reach 28 dollars per person per day. The threshold 28 is fixed and is applied to the values as they are. For an outcome in local currency it is not converted. Average poverty is the average number of days needed to earn one dollar. For average poverty the weights are normalised over households with positive welfare.
 
@@ -51,7 +51,7 @@ For a binary outcome, the mean is the weighted share of households with the even
 
 A result can be shown as a level or as a change from the historical reference $T^{\text{ref}}$:
 
-$$\Delta T^{(r,s,m)} = T^{(r,s,m)} - T^{\text{ref}}, \qquad T^{\text{ref}} = \begin{cases}\text{mean over historical years} \\ \text{median over historical years}\end{cases} \tag{2.1}$$
+$$\Delta T^{(r,s,m)} = T^{(r,s,m)} - T^{\text{ref}}, \qquad T^{\text{ref}} = \begin{cases}\text{mean over historical years} \\\\ \text{median over historical years}\end{cases} \qquad \text{(2.1)}$$
 
 The change is absolute (in the units of the metric) for the mean, median, total, prosperity gap and average poverty. It is in percentage points for rates (poverty rate, gap, severity, and a binary mean) and in index points for the Gini index. A percentage change is not computed.
 
@@ -68,19 +68,19 @@ For a scenario with $M$ members and $R$ simulation years:
 
 Annual values are sorted ascending for each member: $v_{(1)}\le\dots\le v_{(n)}$. The value that is exceeded with probability $q$ is read by rank interpolation:
 
-$$k = n(1-q) + \tfrac12, \qquad v(q) = (1-\theta)\,v_{(\lfloor k\rfloor)} + \theta\,v_{(\lceil k\rceil)}, \quad \theta = k-\lfloor k\rfloor \tag{4.1}$$
+$$k = n(1-q) + \tfrac12, \qquad v(q) = (1-\theta)\ v_{(\lfloor k\rfloor)} + \theta\ v_{(\lceil k\rceil)}, \quad \theta = k-\lfloor k\rfloor \qquad \text{(4.1)}$$
 
 Whether the adverse tail is high or low depends on the metric. For poverty measures, the Gini index, the prosperity gap and average poverty, high values are adverse. For means, medians and totals, low values are adverse. A binary outcome follows the direction given with the outcome. For an adverse event of probability $p$ (one in $1/p$ years), $q=p$ if the adverse tail is high and $q=1-p$ if it is low.
 
 The table reports $p = 0.20,\ 0.10,\ 0.05,\ 0.02$ (labelled 1-in-5, 1-in-10, 1-in-20, 1-in-50 adverse), and $p=0.5$ (the median year, labelled "1:1"). The threshold of a scenario is the equal-weight mean over members of $v^m(q)$. A return period is shown only if every member has at least
 
-$$n \ge \max\Big\{2,\ \Big\lceil \frac{1}{\min(p,\,1-p)} \Big\rceil\Big\} \tag{4.2}$$
+$$n \ge \max\Big\lbrace 2,\ \Big\lceil \frac{1}{\min(p,\ 1-p)} \Big\rceil\Big\rbrace  \qquad \text{(4.2)}$$
 
 finite annual values, and the rank $k$ lies inside $[1,n]$. With 30 historical years, the 1-in-50 value is not available.
 
 The **return period of a historical adverse level** $\theta$ under another scenario is read from the pooled model-years:
 
-$$\hat\pi = \frac{\#\{\text{model-years with } T \text{ at least as adverse as } \theta\}}{\#\{\text{model-years}\}}, \qquad \text{return period} = 1/\hat\pi \tag{4.3}$$
+$$\hat\pi = \frac{\text{number of } \lbrace \text{model-years with } T \text{ at least as adverse as } \theta\rbrace }{\text{number of } \lbrace \text{model-years}\rbrace }, \qquad \text{return period} = 1/\hat\pi \qquad \text{(4.3)}$$
 
 and is infinite if no model-year reaches the level.
 
@@ -88,7 +88,7 @@ and is infinite if no model-year reaches the level.
 
 The breakdown of the variation of a scenario into three variances is
 
-$$\sigma^2_{\text{coef}} = \overline{\text{sd}_{m,r}^2}, \qquad \sigma^2_{\text{annual}} = \frac1M\sum_m \mathrm{Var}_r\big(T^{(r,m)}\big), \qquad \sigma^2_{\text{model}} = \mathrm{Var}_m\big(\bar T^{m}\big) \tag{5.1}$$
+$$\sigma^2_{\text{coef}} = \overline{\text{sd}_{m,r}^2}, \qquad \sigma^2_{\text{annual}} = \frac1M\sum_m \mathrm{Var}_r\big(T^{(r,m)}\big), \qquad \sigma^2_{\text{model}} = \mathrm{Var}_m\big(\bar T^{m}\big) \qquad \text{(5.1)}$$
 
 where $\text{sd}_{m,r}$ is the coefficient standard deviation of the annual value ([33_uncertainty](33_uncertainty.md)), and $\sigma^2_{\text{model}}$ is zero for the historical series. The three are shown side by side. They are not added.
 
@@ -96,7 +96,7 @@ where $\text{sd}_{m,r}$ is the coefficient standard deviation of the annual valu
 
 Households are placed in deciles of the observed baseline outcome, by weighted cumulative share. The deciles are fixed and not re-ranked after simulation. For each household, the simulated welfare level is averaged over years, separately for the historical series and for each member, with no residual term. The effect of a scenario on household $i$ and member $m$ is the difference of these means. The effect for decile $D_k$ is the weighted mean of the household effects, pooled over members:
 
-$$\bar d_k = \frac{\sum_{i\in D_k}\omega_i\,\Delta_i}{\sum_{i\in D_k}\omega_i}, \qquad \Delta_i = \bar Y_i^{\,\text{scenario}} - \bar Y_i^{\,\text{historical}} \tag{6.1}$$
+$$\bar d_k = \frac{\sum_{i\in D_k}\omega_i\ \Delta_i}{\sum_{i\in D_k}\omega_i}, \qquad \Delta_i = \bar Y_i^{\ \text{scenario}} - \bar Y_i^{\ \text{historical}} \qquad \text{(6.1)}$$
 
 ### 7. Calibration against the survey
 
