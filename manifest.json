@@ -4508,13 +4508,13 @@
       "checksum": "43acbdd8427452b1f89bbfe539e0370f"
     },
     "R/fct_aggregation_delta.R": {
-      "checksum": "37850b9900eeb786c12f164feced0bc2"
+      "checksum": "4359d2b7a58a388a823c8a33fe55c683"
     },
     "R/fct_aggregation_kernel.R": {
       "checksum": "4abe86f039622d06119d43d43a7369d3"
     },
     "R/fct_aggregation.R": {
-      "checksum": "a50516efe904cea2a451c815bb5ca2ba"
+      "checksum": "6f1f6d1d74d42638afa91c254d234fac"
     },
     "R/fct_batch_spec.R": {
       "checksum": "13a6c898f0d8e1d54ce97002a53d1fd3"
