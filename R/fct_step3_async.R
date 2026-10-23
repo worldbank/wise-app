@@ -329,6 +329,7 @@ step3_compute <- function(svy, hs, ss, mf,
   if (is.null(diagnostic_summary)) {
     stop("Policy diagnostics produced no results.", call. = FALSE)
   }
+  diagnostic_summary$decile_movement <- policy_decile_movement(decomp_context)
 
   progress(1, "Results ready")
   list(

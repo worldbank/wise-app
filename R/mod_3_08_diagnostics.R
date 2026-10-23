@@ -181,6 +181,25 @@
 }
 
 # Reach cards: share of the baseline population touched by any policy lever.
+.policy_decile_move_cards <- function(movement) {
+  if (is.null(movement) || !is.finite(movement$share %||% NA_real_)) {
+    return(NULL)
+  }
+  large <- movement$share >= movement$warn_at
+  list(list(
+    label = "Households moving more than one decile",
+    value = fmt_num(100 * movement$share, digits = 1, suffix = "%"),
+    note = paste0(
+      "Position before and after the direct effect. ",
+      if (large) {
+        "Large movement: the repositioning effect is an extrapolation."
+      } else {
+        "Repositioning stays close to the observed positions."
+      }
+    )
+  ))
+}
+
 .policy_reach_cards <- function(reach, analysis_unit = "hh") {
   if (is.null(reach) || !is.finite(reach$share %||% NA_real_)) {
     return(NULL)
@@ -785,7 +804,10 @@ mod_3_08_diagnostics_server <- function(id,
 
     output$reach_cards_ui <- shiny::renderUI({
       d <- valid_diag()
-      headline_cards_ui(.policy_reach_cards(d$reach, d$analysis_unit))
+      headline_cards_ui(c(
+        .policy_reach_cards(d$reach, d$analysis_unit),
+        .policy_decile_move_cards(d$decile_movement)
+      ))
     })
     outputOptions(output, "reach_cards_ui", suspendWhenHidden = FALSE)
 

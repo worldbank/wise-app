@@ -198,3 +198,32 @@ policy_component_matrix <- function(baseline_svy, policy_svy,
   if (any(sp_mask & other_mask)) add_row(.policy_overlap_label, sp_mask & other_mask)
   dplyr::bind_rows(rows)
 }
+
+
+# Share of the represented population moved by more than one decile of the
+# estimation-sample outcome distribution by the direct effect (DOC-03). The
+# quantile model prices weather at the household's position, so a large share
+# means the repositioning effect leans on an extrapolation. Only the quantile
+# model has a position; other engines return NULL.
+.DECILE_MOVE_WARN <- 0.10
+
+policy_decile_movement <- function(context) {
+  if (is.null(context) || !identical(context$engine, "rif") ||
+    !is.function(context$F_hat) || is.null(context$delta_main)) {
+    return(NULL)
+  }
+  decile <- function(y) pmin(pmax(ceiling(context$F_hat(y) * 10), 1L), 10L)
+  d0 <- decile(context$y_baseline)
+  d1 <- decile(context$y_baseline + context$delta_main)
+  svy <- context$svy_baseline
+  wcol <- survey_weight_column(names(svy))
+  w <- if (!is.null(wcol)) as.numeric(svy[[wcol]]) else rep(1, length(d0))
+  w[!is.finite(w) | w < 0] <- 0
+  ok <- is.finite(d0) & is.finite(d1)
+  if (!any(ok) || sum(w[ok]) <= 0) return(NULL)
+  list(
+    share = sum(w[ok & abs(d1 - d0) > 1L]) / sum(w[ok]),
+    share_any = sum(w[ok & d1 != d0]) / sum(w[ok]),
+    warn_at = .DECILE_MOVE_WARN
+  )
+}
