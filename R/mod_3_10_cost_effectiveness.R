@@ -193,8 +193,9 @@ mod_3_10_cost_effectiveness_server <- function(id,
             paste0(
               "The Results metric (", x$label, ") has no per-dollar reading: the ",
               "transfer is added to welfare, so a gain per $1 would only restate ",
-              "the cost. Choose Poverty rate or Poverty gap in Results to see ",
-              "what the transfer buys."
+              "the cost. To see what the transfer buys, open the Results tab and ",
+              "set the aggregation method to Poverty rate or Poverty gap, then ",
+              "return here."
             )
           )
         },
@@ -203,6 +204,14 @@ mod_3_10_cost_effectiveness_server <- function(id,
           ns("ce_cost_plot"), "Annual cost of the cash transfer by scenario",
           height = "320px"
         ),
+        if (isTRUE(x$shock)) {
+          shiny::tags$p(
+            class = "diagnostic-note",
+            "The split of a shock-responsive program applies the share of spending ",
+            "that reaches the non-poor in a year with payments to each scenario's ",
+            "average cost. It is an approximation: the share varies with who is paid."
+          )
+        },
         if (has_ratio) {
           shiny::tags$details(
             class = "decomposition-data-details",
