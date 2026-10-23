@@ -774,7 +774,7 @@ test_that("sim settings are normalised so equal specs hash equal", {
 test_that("sim validation lists the problems", {
   err <- function(...) conditionMessage(tryCatch(sim_spec(list(...)), error = identity))
   expect_match(err(hist_years = c(2020, 1991)), "sim.hist_years must be two years")
-  expect_match(err(hist_years = c(1940, 2000)), "between 1950 and 2024")
+  expect_match(err(hist_years = c(1940, 2000)), "between 1950 and 2025")
   expect_match(err(hist_years = 2000), "sim.hist_years")
   expect_match(err(future_periods = list(c(2010, 2030))), "starts|between 2015")
   expect_match(err(future_periods = list(c(2030, 2030))), "the end after the start")

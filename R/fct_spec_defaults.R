@@ -133,7 +133,7 @@ WISEAPP_SSP_CODES <- c("ssp2_4_5", "ssp3_7_0", "ssp5_8_5")
 
 # Bounds of the Step 2 historical-period slider (the projection periods run
 # from `.STEP2_SSP_START_YEAR` to `.STEP2_SSP_END_YEAR`, fct_step2_input.R).
-WISEAPP_SIM_HIST_RANGE <- c(1950L, 2024L)
+WISEAPP_SIM_HIST_RANGE <- c(1950L, 2025L)
 
 #' Default simulation section
 #'
