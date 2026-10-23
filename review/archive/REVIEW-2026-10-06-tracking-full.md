@@ -445,3 +445,7 @@ Verification: `devtools::test(filter = "fct_weather_select|fct_step1_data|batch"
 | DOC-09 | L | S | ☐ | From the docs/ revision (2026-10-23). Show the number of climate-model members per scenario in the Step 2 Results header, since the inter-model band and return periods depend on it (`docs/32_metrics.md` section 3). |
 
 | DOC-14 | L | S | ☐ | From the docs/ revision (2026-10-23). The `docs/index.yml` generator and the page checks (front matter, links and anchors, code names in the body, Implementation map names, equation tags) ran from a scratch directory. Put them in `dev/` so the index and the checks can be rerun when a page changes. |
+
+| DOC-10 | M | S | ☐ | From the docs/ revision (2026-10-23). The Step 3 correction applies weather-by-policy interactions to the weather change from interview weather (`W(r) - W0`), so for the linear engine the interaction at the interview weather (`gamma * dD * W0`) is in neither the direct nor the resilience effect, and the policy arm differs from `yhat(W(r), D') - yhat(W(r), D)` when an interaction exists. Decide whether this is intended; if not, add it to the direct effect (`.policy_annual_channel_block()`, `docs/40_policy_framework.md` section 3, A3). |
+
+Decision log, DOC-10 (2026-10-23): main effect includes the weather channels at the interview weather. Synthetic fixture (linear, log outcome, `temp * electricity`, `dD = 1`): policy effect per row 0.2, 0.2, 1.2, 1.2 before, 0.7, 1.2, 1.7, 2.2 after, equal to `yhat(W(r), D') - yhat(W(r), D)`. BFA before/after: owed (needs a manual Step 3 run).

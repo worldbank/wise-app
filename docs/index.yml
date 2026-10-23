@@ -480,6 +480,7 @@ pages:
       - "6. Mechanism diagnostics"
     equations:
       - {tag: "(1.1)", section: "1. Direct effect"}
+      - {tag: "(1.2)", section: "1. Direct effect"}
       - {tag: "(2.1)", section: "2. Position in the distribution (quantile model)"}
       - {tag: "(3.1)", section: "3. Resilience effect"}
       - {tag: "(3.2)", section: "3. Resilience effect"}

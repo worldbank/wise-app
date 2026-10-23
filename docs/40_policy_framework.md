@@ -45,7 +45,7 @@ The correction is the sum of a main effect and two resilience effects, defined i
 
 $$\Delta y_i^{(r,s,m)} = \delta_i^{\text{main}} + \delta_i^{\text{rep}\ (r,s,m)} + \delta_i^{\text{int}\ (r,s,m)} \qquad \text{(2.2)}$$
 
-The main effect does not depend on weather. The two resilience effects depend on the weather of the prediction row, through the weather change defined in Eq. (3.1).
+The main effect does not depend on the simulated weather. The two resilience effects depend on the weather of the prediction row, through the weather change defined in Eq. (3.1).
 
 The statistic of the policy arm is computed from the corrected prediction with the same residual term as the baseline:
 
@@ -65,7 +65,7 @@ For the linear model, the weather-dependent part of the correction is the fitted
 
 Two features follow.
 
-- If a policy variable interacts with weather, the effect of the policy is the interaction coefficient times the weather change. It is zero at the weather the household experienced and grows with the weather change. The part of the interaction that applies at the weather of the interview itself is part of neither the main effect nor the resilience effect (see Assumption A3).
+- If a policy variable interacts with weather, the effect of the policy is the interaction coefficient times the weather change. It is zero at the weather the household experienced and grows with the weather change. The part of the interaction that applies at the weather of the interview itself is part of the main effect, so that main plus resilience is the effect of the policy at the weather of the row (see Assumption A3).
 - The prediction row must map exactly to a weather observation of the Step 2 run. If the mapping is missing or inconsistent, the run stops with an error. There is no fallback to period-mean weather.
 
 ### 4. Which models and outcomes are supported
@@ -107,7 +107,7 @@ where $T^{\text{hist}}$ is the historical baseline value, $T^{s}$ the baseline v
 
 - **A1. Policy variables in the model.** A lever acts only through the Step 1 model. The effect of a lever that the model does not contain is zero by construction.
 - **A2. Coefficients as scenario inputs.** The coefficients on policy variables and their interactions with weather are cross-sectional associations ([01_framework](01_framework.md), A4). They are applied as if they were effects of changing the variable.
-- **A3. Weather interaction anchored at the interview weather.** The effect of a policy on weather sensitivity is applied to the weather change of Eq. (3.1). The part of an interaction that operates at the weather the household experienced at its interview is part of the baseline outcome and is not added.
+- **A3. Weather interaction anchored at the interview weather.** The effect of a policy on weather sensitivity is applied to the weather change of Eq. (3.1). The part of an interaction that operates at the weather the household experienced at its interview is part of the main effect, which is evaluated at that weather ([44_decomposition](44_decomposition.md), Eq. (1.2)). Because that weather is fixed for the household, the main effect is the same in every simulation year.
 - **A4. Fixed population and cells.** The households, their fixed-effect cells and their residuals are those of the baseline survey. A policy that would move a household to another fixed-effect cell is not represented.
 - **A5. Unchanged coefficients.** The estimated relationship does not change when the policy variable changes, including at values outside the estimation support.
 

@@ -234,18 +234,17 @@ test_that("production applies exact annual exposure instead of period-mean broad
     )
   )
 
-  # R2-BUG-06: Step 2 anchors to observed welfare, so the weather terms act on
-  # the change from survey-time weather. The absolute-level oracle above minus
-  # the same oracle at survey-time weather gives the production value.
+  # R2-BUG-06 / DOC-10: Step 2 anchors to observed welfare, so the weather
+  # channels act on the change from survey-time weather. The main effect is the
+  # effect at the survey-time weather (it contains the interaction there), so
+  # main + weather channels equal the absolute-level oracle at the row's weather.
   survey_delta <- .policy_central_delta(
     baseline, policy, model_fit, so,
     weather_raw = data.frame(loc_id = baseline$loc_id, temp = baseline$temp)
   )
-  anchored_annual_delta <- explicit_annual_delta -
-    c(survey_delta[c(1L, 2L, 1L, 2L)] - c(0.2, 0.2, 0.2, 0.2))
-  expect_equal(production_y, anchored_annual_delta, tolerance = 1e-10)
+  expect_equal(survey_delta, c(0.2 + 0.05 * 10, 0.2 + 0.05 * 20), tolerance = 1e-10)
+  expect_equal(production_y, explicit_annual_delta, tolerance = 1e-10)
   expect_equal(explicit_annual_delta, c(0.7, 1.2, 1.7, 2.2), tolerance = 1e-10)
-  expect_equal(production_y, c(0.2, 0.2, 1.2, 1.2), tolerance = 1e-10)
   expect_equal(period_mean_delta[c(1L, 2L, 1L, 2L)],
                c(1.2, 1.7, 1.2, 1.7), tolerance = 1e-10)
   expect_false(isTRUE(all.equal(production_y,

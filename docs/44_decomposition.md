@@ -27,11 +27,17 @@ the weather of the row minus the weather the household experienced at its interv
 
 ### 1. Direct effect
 
-The direct effect does not depend on weather. It is the sum of the cash transfer and the change in the policy variables, each priced at the household's position before the policy:
+The direct effect does not depend on the simulated weather. It is the effect of the policy at the weather the household experienced at its interview, which is fixed for the household and the same in every simulation year. It is the sum of the cash transfer and the change in the policy variables, each priced at the household's position before the policy:
 
 $$\delta_i^{\text{main}} = \delta_i^{\text{cash}} + \delta_i^{\text{cov}}, \qquad \delta_i^{\text{cov}} = \sum_{v}\delta_v\big(\tau_i^{\text{pre}}\big)\ \Delta D_{iv} \qquad \text{(1.1)}$$
 
 The cash effect is Eq. (5.1) of [42_social_protection](42_social_protection.md): $\log(e^{\hat y_i} + T_i) - \hat y_i$ for a log outcome, and $T_i$ for a level outcome. In a year, it is evaluated against the predicted level of that year. In a programme that pays only after a trigger, the payment of the year is part of the direct effect and is shown as its own channel ([43_shock_responsive_sp](43_shock_responsive_sp.md)).
+
+At the interview weather $W^0_{iw}$, a model with a weather-by-policy interaction also prices the policy through the interaction (and, in the quantile model, through the change of the weather coefficient with the position). These terms are those of Section 3 evaluated at $W^0_{iw}$ instead of at the weather change, and they belong to the direct effect:
+
+$$\delta_i^{\text{int},0} = \sum_{w}\Big[\big(\beta_w(\tau_i^{\text{post}}) - \beta_w(\tau_i^{\text{pre}})\big) + \sum_{v}\gamma_{wv}\big(\tau_i^{\text{post}}\big)\ \Delta D_{iv}\Big]\ W^0_{iw} \qquad \text{(1.2)}$$
+
+so that the direct effect of Eq. (1.1) includes $\delta_i^{\text{int},0}$. The first term is zero for the linear model, which has constant coefficients. For binned weather, $W^0_{iw}$ is the indicator of the bin of the interview. Without this term the direct effect would be the effect of the policy at $W = 0$, which is the normal weather only when the weather variable is centred. Without an interaction in the model the term is zero.
 
 A policy variable that has no coefficient in the model has no effect. Terms are matched to variables by exact component names.
 
@@ -107,7 +113,7 @@ For each weather variable (and each bin of a binned variable), the app summarise
 ## Assumptions
 
 - **A1. Coefficients as scenario inputs.** The coefficients on the policy variables and on their interactions with weather are used as if they were causal ([40_policy_framework](40_policy_framework.md), A2).
-- **A2. Anchored weather change.** The resilience channels act on the weather change defined in the Setup and not on the weather level ([40_policy_framework](40_policy_framework.md), A3).
+- **A2. Anchored weather change.** The direct effect is evaluated at the interview weather and the resilience channels act on the weather change defined in the Setup, so that direct plus resilience is the effect of the policy at the weather of the row ([40_policy_framework](40_policy_framework.md), A3).
 - **A3. Position from the observed outcome.** In the quantile model, the position of a household is set by its observed baseline outcome and by the static part of the direct effect, and not re-evaluated for each year. The payment of a shock-responsive programme does not move it.
 - **A4. Interaction at the new position.** The interaction coefficient is read at the position after the direct effect.
 - **A5. Fixed order.** The contributions of Section 5 follow the order direct, shock payment, repositioning, interaction.
