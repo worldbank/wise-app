@@ -40,10 +40,28 @@ unlink(tarball)
 cat("Staged committed content (git archive HEAD) at:", stage, "\n")
 
 # -- 2. Generate the manifest ------------------------------------------------
-rsconnect::writeManifest(
-  appDir = stage,
-  appFiles = c("app.R", "R", "src", "inst", "DESCRIPTION", "NAMESPACE"),
-  appPrimaryDoc = "app.R"
+# rsconnect refuses packages installed from source, and a locally installed
+# copy of wiseapp itself (devtools::install(), load_all() workflows) is found
+# through `wiseapp::run_app()` in app.R. The app is deployed from its files,
+# not from that copy, so it is moved aside while writeManifest() runs and put
+# back afterwards, whatever happens.
+installed <- find.package("wiseapp", quiet = TRUE)
+parked <- NULL
+if (length(installed)) {
+  parked <- paste0(installed, ".manifest-parked")
+  stopifnot(!file.exists(parked), file.rename(installed, parked))
+  cat("Moved the installed wiseapp aside:", installed, "\n")
+}
+tryCatch(
+  rsconnect::writeManifest(
+    appDir = stage,
+    appFiles = c("app.R", "R", "src", "inst", "DESCRIPTION", "NAMESPACE"),
+    appPrimaryDoc = "app.R"
+  ),
+  finally = if (!is.null(parked)) {
+    file.rename(parked, installed)
+    cat("Restored the installed wiseapp.\n")
+  }
 )
 manifest <- jsonlite::fromJSON(file.path(stage, "manifest.json"),
                                simplifyVector = FALSE)
