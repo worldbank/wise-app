@@ -36,12 +36,8 @@
 #' \deqn{\text{overlap}_X = \frac{\sum_{c \in X \cap Y} w_{X,c}}{\sum_{c \in X} w_{X,c}}}
 #' and symmetrically for Y. The pair is linked when
 #' \eqn{\min(\text{overlap}_X, \text{overlap}_Y) \geq \text{threshold}}.
-#' Groups are then derived via
-#' \code{\link[igraph:components]{igraph::components}} on the resulting
-#' undirected graph; all locations appear in the output even if isolated.
-#'
-#' @seealso \code{\link[igraph:components]{igraph::components}},
-#'   \code{\link[igraph:graph_from_data_frame]{igraph::graph_from_data_frame}}
+#' Groups are then the connected components of the resulting undirected graph;
+#' all locations appear in the output even if isolated.
 #'
 #' @examples
 #' survey <- tibble::tribble(
@@ -69,7 +65,6 @@
 #' @importFrom dplyr select distinct mutate summarise inner_join left_join
 #'   filter rename
 #' @importFrom tibble tibble
-#' @importFrom igraph graph_from_data_frame add_vertices components
 #'
 #' @export
 loc_panel <- function(data,
@@ -165,34 +160,17 @@ loc_panel <- function(data,
 
   all_ids_chr <- as.character(ids_df$loc_id)
 
-  # --- 6. Build graph, find connected components -----------------------------
-  g <- igraph::graph_from_data_frame(
-    d        = edges_df,
-    directed = FALSE,
-    vertices = data.frame(name = all_ids_chr)
+  # --- 6. Connected components, numbered by first sorted member -------------
+  loc_id_panel <- loc_components(
+    n    = length(all_ids_chr),
+    from = match(as.character(edges_df$from), all_ids_chr),
+    to   = match(as.character(edges_df$to), all_ids_chr)
   )
-
-  comp <- igraph::components(g)
-
-  # igraph labels components in vertex traversal order. Normalize those labels
-  # by each component's first sorted member so equivalent graphs always expose
-  # the same loc_id_panel values regardless of edge scan order.
-  component_first <- tapply(
-    seq_along(comp$membership),
-    comp$membership,
-    min
-  )
-  component_order <- order(component_first)
-  component_map <- stats::setNames(
-    seq_along(component_order),
-    names(component_first)[component_order]
-  )
-  stable_membership <- unname(component_map[as.character(comp$membership)])
 
   # --- 7. Map components back to (composite) loc_id -------------------------
   panel_map <- tibble::tibble(
-    loc_id_composite = names(comp$membership),
-    loc_id_panel     = stable_membership
+    loc_id_composite = all_ids_chr,
+    loc_id_panel     = loc_id_panel
   )
 
   # --- 8. Restore original loc_id (and group cols if supplied) ---------------
@@ -211,4 +189,38 @@ loc_panel <- function(data,
       ) |>
       dplyr::select(loc_id, loc_id_panel)
   }
+}
+
+# Connected components ----
+
+#' Connected components by min-label propagation
+#'
+#' Every vertex starts with its own index as label. Each round sets a vertex to
+#' the smallest label among its neighbours, then follows the label chain once
+#' (pointer jumping). Labels only shrink and always name a vertex of the same
+#' component, so the loop ends with one label per component.
+#'
+#' @param n Number of vertices, numbered \code{1..n}.
+#' @param from,to Integer vectors of edge endpoints in \code{1..n}. Duplicate
+#'   edges and self-loops are allowed; \code{NA} is an error.
+#' @return Integer vector of length \code{n}: the component of each vertex,
+#'   numbered in order of each component's first vertex.
+#' @noRd
+loc_components <- function(n, from, to) {
+  if (anyNA(from) || anyNA(to)) {
+    stop("Edge endpoints must be known location ids.", call. = FALSE)
+  }
+  # Group of every edge endpoint, the same in every round
+  grp <- collapse::GRP(c(from, to))
+  verts <- grp$groups[[1]]
+  label <- seq_len(n)
+  repeat {
+    smallest <- collapse::fmin(c(label[to], label[from]), grp)
+    hooked <- label
+    hooked[verts] <- pmin(label[verts], smallest)
+    hooked <- hooked[hooked]
+    if (identical(hooked, label)) break
+    label <- hooked
+  }
+  match(label, unique(label))
 }
