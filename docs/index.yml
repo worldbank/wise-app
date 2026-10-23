@@ -495,7 +495,7 @@ pages:
       - "A banner appears when the model has no weather-by-policy interaction, since the interaction channel is then zero."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab"
     code: ["R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_decomposition_summary.R", "R/fct_policy_sim.R"]
-    verified_against: "5c55e61"
+    verified_against: "23880be"
   - id: "cost-effectiveness"
     file: "45_cost_effectiveness.md"
     title: "Cost-effectiveness of a cash transfer"
