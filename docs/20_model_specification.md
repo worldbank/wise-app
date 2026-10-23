@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, weather-measures]
 symbols: [y, W, M, X, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation
 code: [R/fct_model_select.R, R/fct_step1_model.R, R/fct_fit_model.R, R/mod_1_06_model.R, R/fct_model_card.R, R/fct_results.R, R/fct_simulations.R]
-verified_against: 8592a9d
+verified_against: e8be204
 ---
 
 # Model specification and estimation sample
@@ -17,7 +17,7 @@ verified_against: 8592a9d
 
 The ingredients of the specification are the outcome $y_i$ ([11_outcomes](11_outcomes.md)), the weather regressors $W_i$ ([12_weather_measures](12_weather_measures.md)), the moderators $M_i$, the fixed effects, and the covariates $X_i$. Symbols are in [00_notation](00_notation.md).
 
-- **Moderators.** Categorical variables flagged in the variable list as eligible for interaction. Numeric variables are not offered. When the user selects a policy scenario in Step 1, the variables of that policy are added to the moderators and cannot be removed.
+- **Moderators.** Categorical variables flagged in the variable list as eligible for interaction. Numeric variables are not offered. A variable that is also flagged as an outcome, such as the labour status variables, is offered, except the outcome of the run. When the user selects a policy scenario in Step 1, the variables of that policy are added to the moderators and cannot be removed.
 - **Fixed effects.** Categorical variables flagged as eligible. The default is the survey year and the first administrative level, where available.
 - **Covariates.** Individual, household, firm and area variables, depending on the level of analysis.
 
@@ -73,7 +73,7 @@ Survey weights are **not** used in estimation. The estimated coefficients descri
 
 The user either lists the covariates or lets a Lasso choose them.
 
-**Candidate pool.** A variable is a candidate only if the variable list flags it as an individual, household, firm or area characteristic, it is numeric, it is not an outcome, and is at least 90 per cent complete in every survey round among units with an outcome. Weather terms, moderators, their interactions and the fixed effects are never penalised.
+**Candidate pool.** A variable is a candidate only if the variable list flags it as an individual, household, firm or area characteristic, it is numeric, it is not an outcome, and is at least 90 per cent complete in every survey round among units with an outcome. Employment and unemployment are defined only for people of working age, so they are judged on people aged 15 and over. Self-employment and the sector of the main job are defined only for the employed, so they are judged on the employed. Weather terms, moderators, their interactions and the fixed effects are never penalised.
 
 **Lasso.** For the linear model, the outcome, the unpenalised terms and the candidates are first residualised on the fixed effects. Let $\tilde y$, $\tilde Z$ and $\tilde X$ be those residualised variables. The Lasso solves an elastic-net problem with mixing weight $\varrho$ ($\varrho=1$ is the pure Lasso and the default) and penalty level $\eta$:
 
@@ -133,7 +133,7 @@ User guide: [Model specification and estimation](https://github.com/worldbank/wi
 | Cluster variable | (3.1) | `R/fct_step1_model.R` `wise_cluster_var()` |
 | Covariance fallbacks | 3 | `R/fct_results.R` `.fixest_vcov()`; `R/fct_simulations.R` `compute_chol_vcov()` |
 | Complete-case sample | 4 | `R/fct_fit_model.R` `fit_model()` |
-| Candidate pool (90 per cent complete) | 5 | `R/fct_step1_model.R` `wise_valid_vars()`; `R/fct_model_select.R` `filter_valid_vars()` |
+| Candidate pool (90 per cent complete) | 5 | `R/fct_step1_model.R` `wise_valid_vars()`, `WISE_LABOR_ROW_RULES`; `R/fct_model_select.R` `filter_valid_vars()` |
 | Stability Lasso | (5.1), (5.2) | `R/fct_fit_model.R` `run_lasso_selection()`; `R/fct_step1_model.R` `wise_lasso_selection()`, `wise_lasso_covariates()` |
 | Lasso defaults | 5 | `R/fct_spec_defaults.R` `wise_default_lasso()` |
 | Fit wrapper with snapshot | 1 | `R/fct_step1_model.R` `wise_fit()` |

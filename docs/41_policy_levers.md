@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, data]
 symbols: [D, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers
 code: [R/fct_policy_registry.R, R/fct_policy_sim.R, R/mod_3_levers.R, R/fct_step3_input.R]
-verified_against: 213ef99
+verified_against: e8be204
 ---
 
 # Policy levers: access, percent change, travel time and labour market
@@ -116,7 +116,7 @@ A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ ha
 
 - Step 3 > Infrastructure, Digital inclusion, Education and Other policies: each lever has a Universal checkbox and a slider for the percentage change. The sliders run from $-20$ to $+100$ per cent for binary levers and from $-100$ to $+100$ per cent for numeric levers. Health access has a percentage change from $-100$ to $+20$ per cent or a cap of 15 to 240 minutes.
 - Step 3 > Labour market: a slider for the change in employment (percentage points, $-20$ to $+20$) and two sliders for the sector shares of industry and services.
-- A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back.
+- A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect ([20_model_specification](20_model_specification.md)).
 
 User guide: [Policy levers](https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers).
 

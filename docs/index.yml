@@ -161,7 +161,7 @@ pages:
       - "Step 1 > Model: model type, interaction moderator, Model settings (fixed effects, covariate selection, Lasso options), then Run model. The model summary card shows the specification, the cluster and the covariate count."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation"
     code: ["R/fct_model_select.R", "R/fct_step1_model.R", "R/fct_fit_model.R", "R/mod_1_06_model.R", "R/fct_model_card.R", "R/fct_results.R", "R/fct_simulations.R"]
-    verified_against: "8592a9d"
+    verified_against: "e8be204"
   - id: "linear-model"
     file: "21_model_linear.md"
     title: "Linear and logistic models"
@@ -402,10 +402,10 @@ pages:
     ui:
       - "Step 3 > Infrastructure, Digital inclusion, Education and Other policies: each lever has a Universal checkbox and a slider for the percentage change. The sliders run from -20 to +100 per cent for binary levers and from -100 to +100 per cent for numeric levers. Health access has a percentage change from -100 to +20 per cent or a cap of 15 to 240 minutes."
       - "Step 3 > Labour market: a slider for the change in employment (percentage points, -20 to +20) and two sliders for the sector shares of industry and services."
-      - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back."
+      - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect (20_model_specification)."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers"
     code: ["R/fct_policy_registry.R", "R/fct_policy_sim.R", "R/mod_3_levers.R", "R/fct_step3_input.R"]
-    verified_against: "213ef99"
+    verified_against: "e8be204"
   - id: "social-protection"
     file: "42_social_protection.md"
     title: "Regular cash transfers: targeting, amount, cost and reach"
