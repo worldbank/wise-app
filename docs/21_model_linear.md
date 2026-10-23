@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, model-specification]
 symbols: [y, Y, W, M, X, beta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning
 code: [R/fct_fit_model.R, R/fct_predict_outcomes.R, R/fct_step1_headline.R, R/fct_aggregation.R, R/fct_results.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Linear and logistic models

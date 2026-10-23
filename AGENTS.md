@@ -6,6 +6,8 @@ This file provides guidance to coding agents (Kilo, Claude Code, Codex, etc.) wh
 
 **Code hygiene work**: follow `review/code_hygiene.md`. **Open review items** (security, performance, accessibility, code quality) are tracked in `review/REVIEW-2026-10-06-tracking.md`; finished work is in `review/archive/`.
 
+**Methods reference**: `docs/README.md` indexes the methods pages (estimators, simulation, metrics, uncertainty, policy mechanics). Each page ends with an Implementation map from equations to code and records the commit it was checked against (`verified_against`); update the page when a change alters a method.
+
 ## What This Is
 
 **WISE-APP** (Weather Impact Simulation and Evaluation for Adaptation Policy and Planning) is an R Shiny web application built by the World Bank. It estimates relationships between weather and household welfare, simulates welfare outcomes under climate scenarios, and evaluates policy/adaptation strategies.

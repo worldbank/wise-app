@@ -1,0 +1,577 @@
+# Machine-readable index of the pages of docs/.
+# Built from the front matter, the numbered Method subsections, the equation
+# tags and the 'In the app' bullets of each page. Rebuild it when a page changes.
+pages:
+  - id: "index"
+    file: "README.md"
+    title: "WISE-APP methods reference"
+    app_step: "cross"
+    depends_on: ["notation", "framework"]
+    methods: []
+    equations: []
+    symbols: []
+    ui: []
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd"
+    code: []
+    verified_against: "8592a9d"
+  - id: "notation"
+    file: "00_notation.md"
+    title: "Notation and conventions"
+    app_step: "cross"
+    depends_on: []
+    methods:
+      - "1. Outcome scale and units"
+      - "2. Reference estimating equation"
+      - "3. Counterfactual notation"
+      - "4. Quantile position"
+    equations:
+      - {tag: "(1.1)", section: "1. Outcome scale and units"}
+      - {tag: "(1.2)", section: "1. Outcome scale and units"}
+      - {tag: "(1.3)", section: "1. Outcome scale and units"}
+      - {tag: "(2.1)", section: "2. Reference estimating equation"}
+      - {tag: "(3.1)", section: "3. Counterfactual notation"}
+      - {tag: "(3.2)", section: "3. Counterfactual notation"}
+      - {tag: "(4.1)", section: "4. Quantile position"}
+    symbols: ["i", "l", "g", "t", "r", "mu", "s", "m", "v", "tau", "Y", "y", "pi", "omega", "z", "W", "M", "X", "D", "beta", "theta", "gamma", "delta", "alpha", "lambda", "epsilon", "Sigma", "L", "F_hat", "q_tau", "T", "Delta"]
+    ui:
+      - "Outcome and currency: Step 1 > Outcome."
+      - "Weather regressors: Step 1 > Weather."
+      - "Fixed effects and covariates: Step 1 > Model > Model settings."
+      - "Baseline survey, historical window, scenarios: Step 2 > Simulation settings."
+      - "Policy variables: Step 3, one panel per lever group."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning"
+    code: ["R/fct_results.R", "R/fct_outcome.R", "R/fct_surveystats.R", "R/fct_spec_defaults.R", "R/fct_incidence.R", "R/fct_simulations.R", "R/fct_aggregation.R", "R/fct_rif_sim.R", "R/fct_loc_panel.R", "R/utils_math.R"]
+    verified_against: "8592a9d"
+  - id: "framework"
+    file: "01_framework.md"
+    title: "Framework and identification"
+    app_step: "cross"
+    depends_on: ["notation"]
+    methods:
+      - "1. Questions and estimands"
+      - "2. Counterfactual design"
+      - "3. Identification of the weather response"
+      - "4. Why policy coefficients are different"
+      - "5. What kind of statement each step supports"
+    equations:
+      - {tag: "(2.1)", section: "2. Counterfactual design"}
+      - {tag: "(2.2)", section: "2. Counterfactual design"}
+      - {tag: "(3.1)", section: "3. Identification of the weather response"}
+      - {tag: "(4.1)", section: "4. Why policy coefficients are different"}
+    symbols: ["y", "W", "M", "X", "D", "beta", "gamma", "delta", "alpha", "lambda", "T", "Delta"]
+    ui:
+      - "Step 0 > Overview: choose a data source."
+      - "Step 1 > Sample, Outcome, Weather, Model, Results: estimation and its diagnostics."
+      - "Step 2 > Simulation settings: baseline survey, historical window, scenarios."
+      - "Step 3 > policy levers, Results, Diagnostics, Decomposition."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
+    code: ["R/fct_step1_model.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_policy_sim.R", "R/fct_step3_async.R"]
+    verified_against: "8592a9d"
+  - id: "data"
+    file: "10_data.md"
+    title: "Data and spatial linking"
+    app_step: "0"
+    depends_on: ["notation", "framework"]
+    methods:
+      - "1. Survey welfare in 2021 prices"
+      - "2. Locations and weather cells"
+      - "3. Weather at the location"
+      - "4. Location panels"
+      - "5. Merging survey and weather"
+      - "6. Variable roles"
+      - "7. Sampling weights"
+    equations:
+      - {tag: "(1.1)", section: "1. Survey welfare in 2021 prices"}
+      - {tag: "(3.1)", section: "3. Weather at the location"}
+      - {tag: "(4.1)", section: "4. Location panels"}
+    symbols: ["i", "l", "t", "mu", "Y", "omega"]
+    ui:
+      - "Step 0 > Overview: data source and survey list."
+      - "Step 1 > Sample: economy, survey rounds and level of analysis; Survey stats shows interview timing and the location map."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/data.qmd"
+    code: ["R/fct_surveystats.R", "R/fct_step1_data.R", "R/fct_loc_panel.R", "R/fct_get_weather.R", "R/fct_sample.R", "R/fct_incidence.R", "R/fct_weatherstats.R"]
+    verified_against: "8592a9d"
+  - id: "outcomes"
+    file: "11_outcomes.md"
+    title: "Outcomes and poverty lines"
+    app_step: "1"
+    depends_on: ["notation", "data"]
+    methods:
+      - "1. Monetary and other outcomes"
+      - "2. Model scale"
+      - "3. Currency"
+      - "4. The poverty indicator"
+      - "5. Default poverty line"
+      - "6. Direction"
+    equations:
+      - {tag: "(3.1)", section: "3. Currency"}
+      - {tag: "(4.1)", section: "4. The poverty indicator"}
+      - {tag: "(4.2)", section: "4. The poverty indicator"}
+      - {tag: "(5.1)", section: "5. Default poverty line"}
+    symbols: ["Y", "y", "z", "pi", "omega"]
+    ui:
+      - "Step 1 > Outcome: choose the outcome, currency and poverty line. Outcome stats shows summary statistics, distributions by round, and the share of units with a non-missing outcome by location."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#welfare-outcome"
+    code: ["R/fct_outcome.R", "R/fct_results.R", "R/fct_spec_defaults.R", "R/fct_step1_data.R", "R/fct_policy_sim.R"]
+    verified_against: "8592a9d"
+  - id: "weather-measures"
+    file: "12_weather_measures.md"
+    title: "Weather measures"
+    app_step: "1"
+    depends_on: ["notation", "data"]
+    methods:
+      - "1. Window and aggregation"
+      - "2. Transformation to an anomaly"
+      - "3. Functional form"
+      - "4. Two variables"
+      - "5. Weather statistics of the Step 1 sample"
+    equations:
+      - {tag: "(1.1)", section: "1. Window and aggregation"}
+      - {tag: "(2.1)", section: "2. Transformation to an anomaly"}
+      - {tag: "(2.2)", section: "2. Transformation to an anomaly"}
+      - {tag: "(3.1)", section: "3. Functional form"}
+      - {tag: "(5.1)", section: "5. Weather statistics of the Step 1 sample"}
+    symbols: ["W", "mu", "l", "v", "x"]
+    ui:
+      - "Step 1 > Weather: choose variables, then Configure each one. Weather stats shows the pipeline for each variable, the distribution of each wave against its own history, maps of the regressor, binned scatter plots of the outcome, and summary tables."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#weather-variables-transformations"
+    code: ["R/fct_get_weather.R", "R/fct_weather_select.R", "R/fct_weather_pipeline.R", "R/fct_weatherstats.R", "R/fct_loc_panel.R", "R/utils_mod_1_helpers.R", "R/mod_1_04_weather.R", "R/mod_1_05_weatherstats.R"]
+    verified_against: "8592a9d"
+  - id: "model-specification"
+    file: "20_model_specification.md"
+    title: "Model specification and estimation sample"
+    app_step: "1"
+    depends_on: ["notation", "framework", "outcomes", "weather-measures"]
+    methods:
+      - "1. Three nested models"
+      - "2. Fixed effects"
+      - "3. Variance and clustering"
+      - "4. Estimation sample and weights"
+      - "5. Covariate selection"
+    equations:
+      - {tag: "(1.1)", section: "1. Three nested models"}
+      - {tag: "(1.2)", section: "1. Three nested models"}
+      - {tag: "(1.3)", section: "1. Three nested models"}
+      - {tag: "(2.1)", section: "2. Fixed effects"}
+      - {tag: "(3.1)", section: "3. Variance and clustering"}
+      - {tag: "(5.1)", section: "5. Covariate selection"}
+      - {tag: "(5.2)", section: "5. Covariate selection"}
+    symbols: ["y", "W", "M", "X", "beta", "theta", "gamma", "delta", "alpha", "lambda", "epsilon", "Sigma"]
+    ui:
+      - "Step 1 > Model: model type, interaction moderator, Model settings (fixed effects, covariate selection, Lasso options), then Run model. The model summary card shows the specification, the cluster and the covariate count."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation"
+    code: ["R/fct_model_select.R", "R/fct_step1_model.R", "R/fct_fit_model.R", "R/mod_1_06_model.R", "R/fct_model_card.R", "R/fct_results.R", "R/fct_simulations.R"]
+    verified_against: "8592a9d"
+  - id: "linear-model"
+    file: "21_model_linear.md"
+    title: "Linear and logistic models"
+    app_step: "1"
+    depends_on: ["notation", "framework", "outcomes", "model-specification"]
+    methods:
+      - "1. Linear regression with absorbed fixed effects"
+      - "2. Reading a coefficient"
+      - "3. Logistic regression"
+      - "4. Prediction and retransformation"
+      - "5. Use in Steps 2 and 3"
+    equations:
+      - {tag: "(1.1)", section: "1. Linear regression with absorbed fixed effects"}
+      - {tag: "(1.2)", section: "1. Linear regression with absorbed fixed effects"}
+      - {tag: "(2.1)", section: "2. Reading a coefficient"}
+      - {tag: "(3.1)", section: "3. Logistic regression"}
+      - {tag: "(3.2)", section: "3. Logistic regression"}
+      - {tag: "(4.1)", section: "4. Prediction and retransformation"}
+    symbols: ["y", "Y", "W", "M", "X", "beta", "gamma", "delta", "alpha", "lambda", "epsilon", "Sigma"]
+    ui:
+      - "Step 1 > Model: choose Linear regression or Logistic regression. Results show effect curves, the progressive coefficient plot and the regression table; Model fit shows fit statistics and diagnostics (24_model_results)."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning"
+    code: ["R/fct_fit_model.R", "R/fct_predict_outcomes.R", "R/fct_step1_headline.R", "R/fct_aggregation.R", "R/fct_results.R"]
+    verified_against: "8592a9d"
+  - id: "rif-model"
+    file: "22_model_rif.md"
+    title: "Unconditional quantile regression (RIF)"
+    app_step: "1"
+    depends_on: ["notation", "framework", "outcomes", "model-specification", "linear-model"]
+    methods:
+      - "1. The transformed outcome"
+      - "2. Regression for each quantile"
+      - "3. Position of a household"
+      - "4. Simulated effect of a weather change"
+    equations:
+      - {tag: "(1.1)", section: "1. The transformed outcome"}
+      - {tag: "(2.1)", section: "2. Regression for each quantile"}
+      - {tag: "(3.1)", section: "3. Position of a household"}
+      - {tag: "(4.1)", section: "4. Simulated effect of a weather change"}
+      - {tag: "(4.2)", section: "4. Simulated effect of a weather change"}
+      - {tag: "(4.3)", section: "4. Simulated effect of a weather change"}
+    symbols: ["y", "tau", "q_tau", "f_Y", "beta_tau", "W", "X", "F_hat"]
+    ui:
+      - "Step 1 > Model: choose \"Unconditional quantile regression (RIF)\" when the outcome is continuous. Results shows the quantile curve with its 95 per cent band; Model fit reports fit statistics for each quantile."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif"
+    code: ["R/fct_fit_model.R", "R/fct_rif_sim.R", "R/fct_step1_headline.R", "R/fct_results.R"]
+    verified_against: "8592a9d"
+  - id: "ml-models"
+    file: "23_model_ml.md"
+    title: "Tree-based models (random forest, gradient boosting)"
+    app_step: "1"
+    depends_on: ["notation", "framework", "model-specification", "linear-model"]
+    methods:
+      - "1. Models and settings"
+      - "2. Prediction"
+    equations:
+      - {tag: "(1.1)", section: "1. Models and settings"}
+      - {tag: "(1.2)", section: "1. Models and settings"}
+    symbols: ["y", "W", "M", "X", "Z"]
+    ui: []
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-type"
+    code: ["R/fct_fit_model.R", "R/fct_model_select.R", "R/fct_predict_outcomes.R", "R/fct_metric_registry.R", "R/mod_2_01_weathersim.R", "R/fct_policy_decompose.R"]
+    verified_against: "8592a9d"
+  - id: "model-results"
+    file: "24_model_results.md"
+    title: "Reading the Step 1 results"
+    app_step: "1"
+    depends_on: ["notation", "outcomes", "model-specification", "linear-model", "rif-model"]
+    methods:
+      - "1. Translated effects"
+      - "2. Headline contrast"
+      - "3. Effect curves"
+      - "4. Comparing specifications"
+      - "5. Heterogeneity screens"
+      - "6. Shape of the response"
+      - "7. Fit statistics and diagnostics"
+    equations:
+      - {tag: "(2.1)", section: "2. Headline contrast"}
+      - {tag: "(3.1)", section: "3. Effect curves"}
+      - {tag: "(4.1)", section: "4. Comparing specifications"}
+      - {tag: "(6.1)", section: "6. Shape of the response"}
+      - {tag: "(7.1)", section: "7. Fit statistics and diagnostics"}
+      - {tag: "(7.2)", section: "7. Fit statistics and diagnostics"}
+    symbols: ["beta", "gamma", "Sigma", "tau", "y", "Z"]
+    ui:
+      - "Step 1 > Results: headline cards, effect curves, progressive coefficient plot and the regression table with a download button."
+      - "Step 1 > Model fit: the model summary, fit statistics, residual panels, importance and the raw model output."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#interpreting-the-results-tab"
+    code: ["R/fct_step1_headline.R", "R/fct_step1_model_tables.R", "R/fct_results.R", "R/fct_results_table2.R", "R/mod_1_07_results.R", "R/mod_1_08_modelfit.R"]
+    verified_against: "8592a9d"
+  - id: "simulation"
+    file: "30_simulation.md"
+    title: "Simulation of welfare under historical and future weather"
+    app_step: "2"
+    depends_on: ["notation", "framework", "weather-measures", "linear-model", "rif-model", "climate-scenarios"]
+    methods:
+      - "1. Baseline population"
+      - "2. Weather years"
+      - "3. Prediction"
+      - "4. Residual rule and levels"
+      - "5. Annual statistics"
+      - "6. Weather support"
+      - "7. Calibration check"
+    equations:
+      - {tag: "(2.1)", section: "2. Weather years"}
+      - {tag: "(3.1)", section: "3. Prediction"}
+      - {tag: "(4.1)", section: "4. Residual rule and levels"}
+      - {tag: "(5.1)", section: "5. Annual statistics"}
+    symbols: ["i", "r", "s", "m", "mu", "W", "y", "Y", "omega", "T", "epsilon"]
+    ui:
+      - "Step 2 > Simulation settings: baseline survey, historical window, projection periods, scenarios, residuals, coefficient uncertainty. Run simulation starts the run."
+      - "Step 2 > Results: annual series, scenario bands, threshold tables. Step 2 > Diagnostics: weather distributions and the sources of uncertainty."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare"
+    code: ["R/fct_step2_input.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_simulations.R", "R/fct_predict_outcomes.R", "R/fct_aggregation.R", "R/fct_sim_diag.R", "R/fct_sim_compare.R", "R/fct_spec_defaults.R"]
+    verified_against: "8592a9d"
+  - id: "climate-scenarios"
+    file: "31_climate_scenarios.md"
+    title: "Climate scenarios (monthly delta method)"
+    app_step: "2"
+    depends_on: ["notation", "data", "weather-measures"]
+    methods:
+      - "1. Monthly climatology of a climate model"
+      - "2. Change factor"
+      - "3. Perturbed monthly series"
+      - "4. Members and scenarios"
+    equations:
+      - {tag: "(1.1)", section: "1. Monthly climatology of a climate model"}
+      - {tag: "(2.1)", section: "2. Change factor"}
+      - {tag: "(3.1)", section: "3. Perturbed monthly series"}
+    symbols: ["l", "mu", "m", "v", "s", "W", "x"]
+    ui:
+      - "Step 2 > Simulation settings: historical window, projection periods (up to three) and pathways. The Diagnostics tab compares the weather distribution of each scenario with the weather used in estimation."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation"
+    code: ["R/fct_get_weather.R", "R/fct_simulations.R", "R/fct_step2_input.R", "R/fct_run_simulation.R"]
+    verified_against: "8592a9d"
+  - id: "metrics"
+    file: "32_metrics.md"
+    title: "Welfare metrics and how annual results are summarised"
+    app_step: "2"
+    depends_on: ["notation", "outcomes", "simulation"]
+    methods:
+      - "1. Definitions"
+      - "2. Changes from the historical baseline"
+      - "3. Expected value and annual spread"
+      - "4. Return-period thresholds"
+      - "5. Sources of variation"
+      - "6. Incidence by baseline decile"
+      - "7. Calibration against the survey"
+    equations:
+      - {tag: "(1.1)", section: "1. Definitions"}
+      - {tag: "(1.2)", section: "1. Definitions"}
+      - {tag: "(1.3)", section: "1. Definitions"}
+      - {tag: "(1.4)", section: "1. Definitions"}
+      - {tag: "(2.1)", section: "2. Changes from the historical baseline"}
+      - {tag: "(4.1)", section: "4. Return-period thresholds"}
+      - {tag: "(4.2)", section: "4. Return-period thresholds"}
+      - {tag: "(4.3)", section: "4. Return-period thresholds"}
+      - {tag: "(5.1)", section: "5. Sources of variation"}
+      - {tag: "(6.1)", section: "6. Incidence by baseline decile"}
+    symbols: ["Y", "omega", "z", "T", "G", "r", "m", "s"]
+    ui:
+      - "Step 2 > Results: choose the metric, the poverty line, a difference from the historical mean or median, and the band widths. The tabs show the expected outcome, annual curves, the return-period table, the sources of uncertainty and the effects by decile."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#interpreting-the-results-tab"
+    code: ["R/fct_aggregation.R", "R/fct_metric_registry.R", "R/fct_sim_compare.R", "R/fct_step2_tables.R", "R/fct_uncertainty_helpers.R", "R/fct_incidence.R", "R/fct_simulations.R"]
+    verified_against: "8592a9d"
+  - id: "uncertainty"
+    file: "33_uncertainty.md"
+    title: "Uncertainty propagation"
+    app_step: "2"
+    depends_on: ["notation", "model-specification", "linear-model", "rif-model", "simulation", "metrics"]
+    methods:
+      - "1. Factor loading"
+      - "2. Delta method for a metric"
+      - "3. Gradients of the metrics"
+      - "4. Bands"
+      - "5. Which coefficients are perturbed"
+      - "6. Quantile model"
+      - "7. Combining members"
+      - "8. Paired contrasts"
+    equations:
+      - {tag: "(1.1)", section: "1. Factor loading"}
+      - {tag: "(2.1)", section: "2. Delta method for a metric"}
+      - {tag: "(6.1)", section: "6. Quantile model"}
+      - {tag: "(7.1)", section: "7. Combining members"}
+      - {tag: "(8.1)", section: "8. Paired contrasts"}
+    symbols: ["Sigma", "L", "F", "h", "T", "Y", "omega", "z"]
+    ui:
+      - "Step 2 > Simulation settings: Include coefficient uncertainty, and Include uncertainty on all covariates."
+      - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
+    code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
+    verified_against: "8592a9d"
+  - id: "policy-framework"
+    file: "40_policy_framework.md"
+    title: "Policy scenarios as a change to the simulated population"
+    app_step: "3"
+    depends_on: ["notation", "framework", "linear-model", "rif-model", "simulation", "metrics", "uncertainty"]
+    methods:
+      - "1. A policy changes the survey"
+      - "2. The policy arm"
+      - "3. The correction is evaluated for each prediction row"
+      - "4. Which models and outcomes are supported"
+      - "5. Uncertainty of the policy arm"
+      - "6. Share of the climate loss offset"
+    equations:
+      - {tag: "(1.1)", section: "1. A policy changes the survey"}
+      - {tag: "(2.1)", section: "2. The policy arm"}
+      - {tag: "(2.2)", section: "2. The policy arm"}
+      - {tag: "(2.3)", section: "2. The policy arm"}
+      - {tag: "(3.1)", section: "3. The correction is evaluated for each prediction row"}
+      - {tag: "(6.1)", section: "6. Share of the climate loss offset"}
+    symbols: ["D", "Delta", "T", "y", "W", "tau", "omega"]
+    ui:
+      - "Step 3 > the lever panels (Social protection, Infrastructure, Digital inclusion, Labour market, Education, Other): choose levers. A panel shows its controls only for variables that are in the Step 1 model. Otherwise it lists the variables to add back in Step 1."
+      - "Step 3 > Run: builds the modified survey and the policy arm."
+      - "Step 3 > Results, Diagnostics, Decomposition and Cost-effectiveness: the policy and baseline series side by side, the before-and-after summary of the changed variables, the channels and the cost per outcome gained."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model"
+    code: ["R/fct_policy_sim.R", "R/fct_policy_registry.R", "R/fct_step3_input.R", "R/fct_step3_async.R", "R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_policy_sim_compare.R"]
+    verified_against: "8592a9d"
+  - id: "policy-levers"
+    file: "41_policy_levers.md"
+    title: "Policy levers: access, percent change, travel time and labour market"
+    app_step: "3"
+    depends_on: ["notation", "policy-framework", "data"]
+    methods:
+      - "1. Binary access"
+      - "2. Numeric variable"
+      - "3. Travel time to a health facility"
+      - "4. Employment status"
+      - "5. Sector of work"
+    equations:
+      - {tag: "(1.1)", section: "1. Binary access"}
+      - {tag: "(2.1)", section: "2. Numeric variable"}
+      - {tag: "(3.1)", section: "3. Travel time to a health facility"}
+      - {tag: "(4.1)", section: "4. Employment status"}
+      - {tag: "(5.1)", section: "5. Sector of work"}
+    symbols: ["D", "Delta"]
+    ui:
+      - "Step 3 > Infrastructure, Digital inclusion, Education and Other policies: each lever has a Universal checkbox and a slider for the percentage change. The sliders run from -20 to +100 per cent for binary levers and from -100 to +100 per cent for numeric levers. Health access has a percentage change from -100 to +20 per cent or a cap of 15 to 240 minutes."
+      - "Step 3 > Labour market: a slider for the change in employment (percentage points, -20 to +20) and two sliders for the sector shares of industry and services."
+      - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers"
+    code: ["R/fct_policy_registry.R", "R/fct_policy_sim.R", "R/mod_3_levers.R", "R/fct_step3_input.R"]
+    verified_against: "8592a9d"
+  - id: "social-protection"
+    file: "42_social_protection.md"
+    title: "Regular cash transfers: targeting, amount, cost and reach"
+    app_step: "3"
+    depends_on: ["notation", "policy-framework", "outcomes", "metrics"]
+    methods:
+      - "1. Eligibility"
+      - "2. Targeting errors"
+      - "3. Transfer per person"
+      - "4. Cost"
+      - "5. Effect on welfare"
+      - "6. Reach and targeting measures"
+    equations:
+      - {tag: "(1.1)", section: "1. Eligibility"}
+      - {tag: "(2.1)", section: "2. Targeting errors"}
+      - {tag: "(3.1)", section: "3. Transfer per person"}
+      - {tag: "(3.2)", section: "3. Transfer per person"}
+      - {tag: "(4.1)", section: "4. Cost"}
+      - {tag: "(5.1)", section: "5. Effect on welfare"}
+      - {tag: "(5.2)", section: "5. Effect on welfare"}
+      - {tag: "(6.1)", section: "6. Reach and targeting measures"}
+    symbols: ["Y", "omega", "z", "T"]
+    ui:
+      - "Step 3 > Social protection: choose a regular programme, the targeting rule and its threshold, inclusion and exclusion errors, how errors are concentrated, the basis of the amount, an amount first or a budget first, the number of payments and the administration share. A preview card shows who is reached and what it costs before the run."
+      - "Step 3 > Diagnostics: total cost, cost per recipient, coverage, leakage, adequacy and realised errors."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers"
+    code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_sp_effectiveness.R", "R/fct_policy_metric_decompose.R", "R/mod_3_01_sp.R"]
+    verified_against: "8592a9d"
+  - id: "shock-sp"
+    file: "43_shock_responsive_sp.md"
+    title: "Shock-responsive cash transfers: triggers, payments and basis risk"
+    app_step: "3"
+    depends_on: ["notation", "policy-framework", "social-protection", "simulation", "climate-scenarios", "metrics"]
+    methods:
+      - "1. Trigger"
+      - "2. Payout scope"
+      - "3. Layers of dynamic targeting"
+      - "4. Amount and budget"
+      - "5. Timing"
+      - "6. Outputs"
+    equations:
+      - {tag: "(1.1)", section: "1. Trigger"}
+      - {tag: "(1.2)", section: "1. Trigger"}
+      - {tag: "(2.1)", section: "2. Payout scope"}
+      - {tag: "(3.1)", section: "3. Layers of dynamic targeting"}
+      - {tag: "(4.1)", section: "4. Amount and budget"}
+      - {tag: "(4.2)", section: "4. Amount and budget"}
+      - {tag: "(5.1)", section: "5. Timing"}
+      - {tag: "(5.2)", section: "5. Timing"}
+      - {tag: "(6.1)", section: "6. Outputs"}
+      - {tag: "(6.2)", section: "6. Outputs"}
+      - {tag: "(6.3)", section: "6. Outputs"}
+    symbols: ["omega", "T", "r", "m", "s"]
+    ui:
+      - "Step 3 > Social protection > Programme type: choose a shock-responsive programme. Trigger settings set the weather variable or impact metric, the threshold or return period, the scope, layers, budget rule, cap, and timing."
+      - "Step 3 > Social protection (preview card): expected activation and annual cost on the historical record before the run."
+      - "Step 3 > Diagnostics and Cost-effectiveness: the run outputs of Section 6."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release"
+    code: ["R/fct_sp_shock.R", "R/fct_policy_sim.R", "R/fct_policy_metric_decompose.R", "R/fct_step3_input.R", "R/mod_3_01_sp.R"]
+    verified_against: "8592a9d"
+  - id: "decomposition"
+    file: "44_decomposition.md"
+    title: "Decomposition of the policy effect into direct and resilience channels"
+    app_step: "3"
+    depends_on: ["notation", "policy-framework", "linear-model", "rif-model", "metrics", "social-protection"]
+    methods:
+      - "1. Direct effect"
+      - "2. Position in the distribution (quantile model)"
+      - "3. Resilience effect"
+      - "4. Effects in outcome units"
+      - "5. Channels of a welfare metric"
+      - "6. Mechanism diagnostics"
+    equations:
+      - {tag: "(1.1)", section: "1. Direct effect"}
+      - {tag: "(2.1)", section: "2. Position in the distribution (quantile model)"}
+      - {tag: "(3.1)", section: "3. Resilience effect"}
+      - {tag: "(3.2)", section: "3. Resilience effect"}
+      - {tag: "(3.3)", section: "3. Resilience effect"}
+      - {tag: "(4.1)", section: "4. Effects in outcome units"}
+      - {tag: "(5.1)", section: "5. Channels of a welfare metric"}
+      - {tag: "(5.2)", section: "5. Channels of a welfare metric"}
+      - {tag: "(5.3)", section: "5. Channels of a welfare metric"}
+    symbols: ["y", "W", "D", "Delta", "tau", "beta", "gamma", "delta", "T"]
+    ui:
+      - "Step 3 > Decomposition: \"What drives the total policy effect?\" shows the headline channels for a scenario, in outcome units, per cent of the baseline or in the units of the metric, and by weather-year basis (average or adverse year). \"Who gains, and through which channel?\" shows the channels by baseline decile. For the quantile model, panels show the weather-sensitivity curve."
+      - "A banner appears when the model has no weather-by-policy interaction, since the interaction channel is then zero."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab"
+    code: ["R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_decomposition_summary.R", "R/fct_policy_sim.R"]
+    verified_against: "8592a9d"
+  - id: "cost-effectiveness"
+    file: "45_cost_effectiveness.md"
+    title: "Cost-effectiveness of a cash transfer"
+    app_step: "3"
+    depends_on: ["notation", "policy-framework", "social-protection", "shock-sp", "metrics", "decomposition"]
+    methods:
+      - "1. Inputs"
+      - "2. Poverty rate: cost per person lifted"
+      - "3. Poverty gap: gap closed per dollar"
+      - "4. Intervals"
+      - "5. Metrics without a per-dollar reading"
+      - "6. Cost split"
+    equations:
+      - {tag: "(2.1)", section: "2. Poverty rate: cost per person lifted"}
+      - {tag: "(3.1)", section: "3. Poverty gap: gap closed per dollar"}
+    symbols: ["T", "z", "omega", "Delta"]
+    ui:
+      - "Step 3 > Cost-effectiveness: a table of the ratio by scenario and weather year (average or 1-in-20), with the annual cost, the change in the metric and a 95 per cent interval, followed by a chart of the ratio and of the annual cost. A programme with a trigger adds the climate-adjusted cost and the coverage of the affected poor."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-results-tab"
+    code: ["R/fct_sp_effectiveness.R", "R/fct_step3_tables.R", "R/fct_sp_shock.R", "R/mod_3_10_cost_effectiveness.R"]
+    verified_against: "8592a9d"
+  - id: "assumptions"
+    file: "50_assumptions_limitations.md"
+    title: "Assumptions and limitations in one place"
+    app_step: "cross"
+    depends_on: ["notation", "framework", "data", "outcomes", "weather-measures", "model-specification", "linear-model", "rif-model", "ml-models", "model-results", "simulation", "climate-scenarios", "metrics", "uncertainty", "policy-framework", "policy-levers", "social-protection", "shock-sp", "decomposition", "cost-effectiveness"]
+    methods: []
+    equations: []
+    symbols: []
+    ui: []
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
+    code: []
+    verified_against: "8592a9d"
+  - id: "reproducibility"
+    file: "51_reproducibility.md"
+    title: "Seeds, run provenance and exports"
+    app_step: "cross"
+    depends_on: ["notation", "framework", "simulation", "policy-framework"]
+    methods:
+      - "1. Streams derived from one seed"
+      - "2. What else a result depends on"
+      - "3. Run provenance"
+      - "4. Exports and restore"
+    equations:
+      - {tag: "(1.1)", section: "1. Streams derived from one seed"}
+    symbols: []
+    ui:
+      - "Export menu in the top bar: Export all (.zip), Configuration only (.json), Export tables (.zip), Export figures (.zip) and Import configuration."
+      - "The summary cards at the top of each results tab record the settings behind its result."
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/export.qmd"
+    code: ["R/utils_math.R", "R/fct_provenance.R", "R/fct_export.R", "R/fct_aggregation.R", "R/fct_policy_sim.R", "R/fct_step2_compute.R"]
+    verified_against: "8592a9d"
+  - id: "batch"
+    file: "52_batch_runs.md"
+    title: "Batch runs"
+    app_step: "cross"
+    depends_on: ["notation", "reproducibility", "simulation", "policy-framework"]
+    methods:
+      - "1. What is guaranteed"
+      - "2. Caching by stage"
+      - "3. Tables"
+      - "4. Failures"
+    equations: []
+    symbols: []
+    ui: []
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/export.qmd"
+    code: ["R/fct_batch_spec.R", "R/fct_batch_targets.R", "R/fct_spec_defaults.R", "R/fct_step1_tables.R", "R/fct_step2_tables.R", "R/fct_step3_tables.R"]
+    verified_against: "8592a9d"
+  - id: "references"
+    file: "references.md"
+    title: "References"
+    app_step: "cross"
+    depends_on: ["notation"]
+    methods: []
+    equations: []
+    symbols: []
+    ui: []
+    guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd"
+    code: []
+    verified_against: "8592a9d"

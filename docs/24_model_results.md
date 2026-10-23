@@ -6,7 +6,7 @@ depends_on: [notation, outcomes, model-specification, linear-model, rif-model]
 symbols: [beta, gamma, Sigma, tau, y, Z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#interpreting-the-results-tab
 code: [R/fct_step1_headline.R, R/fct_step1_model_tables.R, R/fct_results.R, R/fct_results_table2.R, R/mod_1_07_results.R, R/mod_1_08_modelfit.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Reading the Step 1 results

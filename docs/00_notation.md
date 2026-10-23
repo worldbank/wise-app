@@ -6,7 +6,7 @@ depends_on: []
 symbols: [i, l, g, t, r, mu, s, m, v, tau, Y, y, pi, omega, z, W, M, X, D, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma, L, F_hat, q_tau, T, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning
 code: [R/fct_results.R, R/fct_outcome.R, R/fct_surveystats.R, R/fct_spec_defaults.R, R/fct_incidence.R, R/fct_simulations.R, R/fct_aggregation.R, R/fct_rif_sim.R, R/fct_loc_panel.R, R/utils_math.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Notation and conventions
@@ -105,7 +105,7 @@ Step 3 changes the policy variables from $D_i$ to $D_i^{\text{pol}}$ and re-eval
 
 $$\Delta T^{(r,s,m)} = T^{(r,s,m)}_{\text{policy}} - T^{(r,s,m)}_{\text{baseline}} \qquad \text{(3.2)}$$
 
-with the same weather, the same baseline population and the same coefficient draws in both arms.
+with the same weather, the same baseline population and the same coefficient loading in both arms.
 
 ### 4. Quantile position
 

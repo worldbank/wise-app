@@ -6,7 +6,7 @@ depends_on: [notation, framework]
 symbols: [i, l, t, mu, Y, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
 code: [R/fct_surveystats.R, R/fct_step1_data.R, R/fct_loc_panel.R, R/fct_get_weather.R, R/fct_sample.R, R/fct_incidence.R, R/fct_weatherstats.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Data and spatial linking

@@ -6,7 +6,7 @@ depends_on: [notation, data]
 symbols: [Y, y, z, pi, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#welfare-outcome
 code: [R/fct_outcome.R, R/fct_results.R, R/fct_spec_defaults.R, R/fct_step1_data.R, R/fct_policy_sim.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Outcomes and poverty lines

@@ -6,7 +6,7 @@ depends_on: [notation, model-specification, linear-model, rif-model, simulation,
 symbols: [Sigma, L, F, h, T, Y, omega, z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations
 code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_simulations.R, R/fct_results.R, R/fct_rif_sim.R, R/fct_step2_tables.R, R/fct_sim_compare.R, R/fct_uncertainty_helpers.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Uncertainty propagation
@@ -79,7 +79,7 @@ where $z_q=\Phi^{-1}(q)$ and $\Lambda$ is the logistic function. If the SD is ze
 
 A household's coefficient uncertainty is mostly irrelevant to a change in weather. Write the counterfactual prediction as the observed baseline plus a shift: with a household's own fitted residual held fixed, $y^{*}_i = y_i + (W^{*}_i - W_i)^{\prime}\hat\gamma$, where $\hat\gamma$ collects the coefficients on terms that change. The uncertainty on coefficients of terms that do not change cancels through the residual. The app uses this **additive-decomposition scope** by default.
 
-- **Active coefficients.** Every coefficient whose name involves a weather variable, or involves a variable that the scenario changes (for Step 3, the policy variables), including interactions. Intercepts are excluded.
+- **Active coefficients.** Every coefficient whose name involves a weather variable, or involves a variable that the scenario changes, including interactions. Intercepts are excluded. The policy arm of Step 3 reuses the loading of the baseline arm. The coefficients on policy variables are therefore not added to the block ([40_policy_framework](40_policy_framework.md), Section 5).
 - **Block factor.** The loading uses only the active block of the covariance, $F_i = x_{a,i}^{\prime}L_{a}$ with $L_aL_a^{\prime}=\hat\Sigma_{aa}$, a fresh Cholesky factor of that block. Selecting columns of $x_i^{\prime}L$ would give a wrong variance when active and inactive coefficients are correlated.
 - **When it applies.** For the linear model, only with the "original" residual rule. For the quantile model, with any residual rule, because the observed baseline outcome plays the role of the fixed residual.
 - **Switch.** "Include uncertainty on all covariates" removes the restriction and uses the full covariance.

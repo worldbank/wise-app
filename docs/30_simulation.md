@@ -6,7 +6,7 @@ depends_on: [notation, framework, weather-measures, linear-model, rif-model, cli
 symbols: [i, r, s, m, mu, W, y, Y, omega, T, epsilon]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare
 code: [R/fct_step2_input.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_simulations.R, R/fct_predict_outcomes.R, R/fct_aggregation.R, R/fct_sim_diag.R, R/fct_sim_compare.R, R/fct_spec_defaults.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Simulation of welfare under historical and future weather
@@ -71,7 +71,7 @@ The draws are seeded by the run seed and the simulation year only. The historica
 
 With the original rule and unchanged weather, a household in the estimation sample returns its observed welfare. A binary outcome has no retransformation. The residual is added to the predicted probability on the response scale.
 
-A cash transfer from a policy is added to the level $Y_i^{*(r)}$ before the statistic is computed ([42_social_protection](42_social_protection.md)).
+A cash transfer from a policy is added in Step 3 to the predicted level, before the residual factor, as in Eq. (5.2) of [42_social_protection](42_social_protection.md).
 
 ### 5. Annual statistics
 

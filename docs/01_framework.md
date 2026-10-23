@@ -6,7 +6,7 @@ depends_on: [notation]
 symbols: [y, W, M, X, D, beta, gamma, delta, alpha, lambda, T, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: [R/fct_step1_model.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_policy_sim.R, R/fct_step3_async.R]
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # Framework and identification
@@ -75,9 +75,9 @@ Policy variables $D_i$ (access to electricity, to a health facility, to a mobile
 
 Step 3 uses them anyway, as scenario arithmetic. For the linear model, changing policy variables from $D_i$ to $D_i^{\text{pol}}$ shifts the prediction by
 
-$$\Delta y_i = \hat\delta_D^{\prime}\ \Delta D_i + \hat\gamma_D^{\prime}\big(W_i^{(r,s,m)} \otimes \Delta D_i\big), \qquad \Delta D_i = D_i^{\text{pol}} - D_i \qquad \text{(4.1)}$$
+$$\Delta y_i = \hat\delta_D^{\prime}\ \Delta D_i + \hat\gamma_D^{\prime}\big(\Delta W_i^{(r,s,m)} \otimes \Delta D_i\big), \qquad \Delta D_i = D_i^{\text{pol}} - D_i, \qquad \Delta W_i^{(r,s,m)} = W_i^{(r,s,m)} - W_i^{0} \qquad \text{(4.1)}$$
 
-where the first term is the level shift and the second term is the change in weather sensitivity, both read from the fitted model. A cash transfer is added to the welfare level directly, instead of acting through a coefficient (see [42_social_protection](42_social_protection.md)). Eq. (4.1) is the linear-engine form of the decomposition into direct and resilience effects in [44_decomposition](44_decomposition.md).
+where the first term is the level shift and the second term is the change in weather sensitivity, both read from the fitted model. The second term acts on the change in weather from the weather the household experienced at its interview, $W_i^{0}$ (see [40_policy_framework](40_policy_framework.md), Section 3). A cash transfer is added to the welfare level directly, instead of acting through a coefficient (see [42_social_protection](42_social_protection.md)). Eq. (4.1) is the linear-engine form of the decomposition into direct and resilience effects in [44_decomposition](44_decomposition.md).
 
 The asymmetry follows from the design: the same fixed effects that make the weather channel credible are what leave the policy channel open to selection.
 

@@ -6,14 +6,14 @@ depends_on: [notation, framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd
 code: []
-verified_against: 6529b81
+verified_against: 8592a9d
 ---
 
 # WISE-APP methods reference
 
 > This folder explains how WISE-APP computes its numbers: the estimators, the simulation design, the metrics, the uncertainty bands and the policy mechanics. It is written like the methods appendix of an economics paper. It does not explain how to use the screens; the user guide does that.
 
-**Status: draft.** Batches 1 to 3 of 5 are written: this page, notation, framework, data, Step 1 and Step 2. The pages marked "planned" in the tables below are written in later batches. The legacy `method_policy.md`, `policy_effects.md` and `batch_pipeline.md` remain until the pages that replace them exist.
+**Status: draft for review.** All pages are written and were checked against the code at the commit named in each page's `verified_against` field. The earlier method pages of this folder are replaced.
 
 ## Who this is for
 
@@ -26,7 +26,7 @@ verified_against: 6529b81
 1. [00_notation](00_notation.md): symbols, indices, units. Everything else relies on it.
 2. [01_framework](01_framework.md): the question, the estimand of each step, and what the data identify.
 3. Then the pages for the step you use, in the table below.
-4. [50_assumptions_limitations](50_assumptions_limitations.md) for all assumptions in one place (planned).
+4. [50_assumptions_limitations](50_assumptions_limitations.md) for all assumptions in one place.
 
 ## Map from app step to pages
 
@@ -37,10 +37,10 @@ verified_against: 6529b81
 | Step 1 Weather | [12_weather_measures](12_weather_measures.md) |
 | Step 1 Model and Results | [20_model_specification](20_model_specification.md), [21_model_linear](21_model_linear.md), [22_model_rif](22_model_rif.md), [23_model_ml](23_model_ml.md), [24_model_results](24_model_results.md) |
 | Step 2 Simulation | [30_simulation](30_simulation.md), [31_climate_scenarios](31_climate_scenarios.md), [32_metrics](32_metrics.md), [33_uncertainty](33_uncertainty.md) |
-| Step 3 Policy | [40_policy_framework](40_policy_framework.md), [41_policy_levers](41_policy_levers.md), [42_social_protection](42_social_protection.md), [43_shock_responsive_sp](43_shock_responsive_sp.md), [44_decomposition](44_decomposition.md), [45_cost_effectiveness](45_cost_effectiveness.md) (planned) |
-| Across steps | [51_reproducibility](51_reproducibility.md), [52_batch_runs](52_batch_runs.md), [references](references.md) (planned) |
+| Step 3 Policy | [40_policy_framework](40_policy_framework.md), [41_policy_levers](41_policy_levers.md), [42_social_protection](42_social_protection.md), [43_shock_responsive_sp](43_shock_responsive_sp.md), [44_decomposition](44_decomposition.md), [45_cost_effectiveness](45_cost_effectiveness.md) |
+| Across steps | [51_reproducibility](51_reproducibility.md), [52_batch_runs](52_batch_runs.md), [references](references.md) |
 
-A machine-readable list of pages, equations and symbols is in `index.yml` (planned).
+A machine-readable list of pages, equations and symbols is in [index.yml](index.yml).
 
 ## How this folder relates to other documentation
 

@@ -18,7 +18,7 @@ All Critical and High findings are done in code, except where noted below. Done:
 | B6 | Performance | 7 |
 | B7 | Medium/Low bugs | 0 |
 | B8 | Accessibility | 6 |
-| B9 | Code quality and docs | 13 |
+| B9 | Code quality and docs | 18 |
 
 Closed as won't fix or deferred (full rows in the archive addendum; reopen only on the stated trigger): R2-OPS-05 (stay on DuckDB 1.5.6), CR-SEC-02 (no further DuckDB lockdown), CR-SEC-07 metadata profile (shared pool, guidelines §0), R2-SEC-07 (persistent prepared-weather cache off), CR-PERF-15 (keep `load_all()` in `app.R`), R2-PERF-10 / CR-PERF-02 (weather cache keys; reopen if remote slice reads dominate), CR-PERF-03 (prediction speedup), OPT-05 (aggregation remainders), R2-PERF-13 / R2-PERF-09 / CR-PERF-05, CR-PERF-07 (model_fit size; reopen if a large-country session shows high RSS), CR-CQ-07 (one integer `year` type; needs an engine parity gate).
 
@@ -116,6 +116,11 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 | DOC-07 | L | S | ☐ | From the docs/ revision (2026-10-23). The climate baseline (climatology) window runs from the first to the last simulation date, not necessarily whole calendar years, so if interview months do not cover the year some calendar months have one year fewer. Define the baseline as whole calendar years of the historical window (`docs/31_climate_scenarios.md` section 1). |
 | DOC-08 | L | S | ☐ | From the docs/ revision (2026-10-23). The prosperity gap uses a fixed threshold of 28 that is not converted for an outcome in local currency. Add a note to the prosperity-gap card when the outcome is in local currency, or convert the threshold (`docs/32_metrics.md` section 1). |
 | DOC-09 | L | S | ☐ | From the docs/ revision (2026-10-23). Show the number of climate-model members per scenario in the Step 2 Results header, since the inter-model band and return periods depend on it (`docs/32_metrics.md` section 3). |
+| DOC-10 | M | S | ☐ | From the docs/ revision (2026-10-23). The Step 3 correction applies weather-by-policy interactions to the weather change from interview weather (`W(r) - W0`), so for the linear engine the interaction at the interview weather (`gamma * dD * W0`) is in neither the direct nor the resilience effect, and the policy arm differs from `yhat(W(r), D') - yhat(W(r), D)` when an interaction exists. Decide whether this is intended; if not, add it to the direct effect (`.policy_annual_channel_block()`, `docs/40_policy_framework.md` section 3, A3). |
+| DOC-11 | L | S | ☐ | From the docs/ revision (2026-10-23). For a log outcome the cash transfer is added to the predicted level before the residual, so the policy arm adds `T * exp(e_i)` and not `T`. Add the transfer after the residual, or document the scaling in the UI (`docs/42_social_protection.md` section 5). |
+| DOC-12 | M | M | ☐ | From the docs/ revision (2026-10-23). Policy-arm bands reuse the baseline factor loading, so the coefficient uncertainty of the policy variables is not in the bands of a policy run, and the effect band covers only coefficients that the baseline loading includes. Rebuild the loading from the policy design matrix or state this beside the Step 3 bands (`apply_policy_delta_to_baseline()`, `docs/40_policy_framework.md` section 5). |
+| DOC-13 | L | S | ☐ | From the docs/ revision (2026-10-23). The access levers and the employment lever draw rows by count, not by survey weight, so the weighted share of the population moved can differ from the slider value. Offer weighted draws or show the weighted share moved in the Diagnostics tab (`docs/41_policy_levers.md` sections 1 and 4). |
+| DOC-14 | L | S | ☐ | From the docs/ revision (2026-10-23). The `docs/index.yml` generator and the page checks (front matter, links and anchors, code names in the body, Implementation map names, equation tags) ran from a scratch directory. Put them in `dev/` so the index and the checks can be rerun when a page changes. |
 
 Ordering note from the report: delete dead code before splitting files; one PR per file with characterisation tests.
 
