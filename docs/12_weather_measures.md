@@ -72,7 +72,7 @@ The interior cut points are set once, from a reference sample described next, an
 
 Duplicate cut points are dropped, so the number of bins can be smaller than requested. If a rule cannot produce cut points, such as k-means with fewer distinct values than bins, the variable stays continuous and a message says so.
 
-**Reference sample.** The cut points are computed from the transformed weather at every location of the selected surveys, in all months that coincide with an interview month of any selected survey. The sample is pooled, unweighted, and not restricted to the months in which a given location was interviewed.
+**Reference sample.** The cut points are computed from the transformed weather at every location of the selected surveys, in all months that coincide with an interview month of any selected survey. The sample is pooled, unweighted, and not restricted to the months in which a given location was interviewed. The Weather stats tab states this beside the continuous distribution, with the number of location-months.
 
 ### 4. Two variables
 

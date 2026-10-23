@@ -352,3 +352,11 @@ test_that("R2-BUG-21: the load short-circuit does not keep a stale outcome", {
     expect_equal(load_status(), "success")
   })
 })
+
+test_that(".bin_reference_text describes the reference sample (DOC-05)", {
+  b <- list()
+  attr(b, "reference") <- list(n_cells = 12345L, n_months = 24L)
+  expect_match(.bin_reference_text(b), "12,345 location-months in 24 months")
+  expect_match(.bin_reference_text(NULL), "unweighted")
+  expect_no_match(.bin_reference_text(NULL), "location-months in")
+})

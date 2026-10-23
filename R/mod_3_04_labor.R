@@ -15,7 +15,8 @@ mod_3_04_labor_ui <- function(id) {
     uiOutput(ns("placeholder_ui")),
     uiOutput(ns("labor_lfp_ui")),
     uiOutput(ns("labor_emp_ui")),
-    uiOutput(ns("labor_sector_ui"))
+    uiOutput(ns("labor_sector_ui")),
+    uiOutput(ns("labor_note_ui"))
   )
 }
 
@@ -50,10 +51,14 @@ mod_3_04_labor_server <- function(id,
     coeffs <- coeffs_rx$all
 
     # Candidate variables for this category ----
-    labor_patterns <- c("employed", "selfemployed", "agriculture", "industry", "services")
+    # The labour levers of the registry (`policy_registry()`).
+    labor_patterns <- reactive({
+      r <- policy_registry(variable_list())
+      unique(r$var[r$slot == "labor"])
+    })
 
     any_selected <- reactive({
-      any(tolower(labor_patterns) %in% tolower(coeffs()))
+      any(tolower(labor_patterns()) %in% tolower(coeffs()))
     })
 
     # Labor variables available in the selected survey
@@ -63,7 +68,7 @@ mod_3_04_labor_server <- function(id,
         return(character(0))
       }
       # Check which labour variables are actually in the selected survey
-      intersect(labor_patterns, names(svy))
+      intersect(labor_patterns(), names(svy))
     })
 
     output$placeholder_ui <- renderUI({
@@ -77,8 +82,30 @@ mod_3_04_labor_server <- function(id,
         ))
       }
       # Show candidate variables with their levels from variable_list
-      cand <- policy_candidate_info(variable_list(), labor_patterns)
+      cand <- policy_candidate_info(variable_list(), paste0("^", labor_patterns(), "$"))
       policy_placeholder_tag("labor market", cand)
+    })
+
+    # Controls that are hidden because their variables are not all in the model
+    # (not silently left out).
+    output$labor_note_ui <- renderUI({
+      req(any_selected())
+      in_model <- tolower(labor_patterns()) %in% tolower(coeffs())
+      miss <- function(v) setdiff(v, labor_patterns()[in_model])
+      notes <- c(
+        if (!isTRUE(show_emp())) {
+          paste0("Employment rate (needs one of employed, selfemployed, unemployed in the Step 1 model)")
+        },
+        if (!isTRUE(show_sector())) {
+          paste0(
+            "Sectoral composition (needs agriculture, industry and services in the Step 1 model; missing: ",
+            paste(miss(c("agriculture", "industry", "services")), collapse = ", "), ")"
+          )
+        }
+      )
+      if (length(notes) > 0L) {
+        tags$small(class = "text-muted d-block", "Not available: ", paste(notes, collapse = "; "))
+      }
     })
 
     # Helper: pp slider ----

@@ -1733,6 +1733,71 @@ test_that("CR-BUG-01: CMIP6 baseline pools historical and SSP rows once", {
   expect_equal(cmp$tx_fut - cmp$tx_hist, rep(9, nrow(cmp)), tolerance = 1e-6)
 })
 
+test_that("DOC-07: CMIP6 baseline spans whole calendar years of the window", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("bit64")
+
+  dir <- withr::local_tempdir()
+  fx <- make_long_history_fixture(dir)
+  withr::local_envvar(WISEAPP_WEATHER_CACHE_DISABLE = "1")
+  code <- fx$selected_surveys$code
+  cells <- unique(arrow::read_parquet(file.path(
+    dir, "hazard", "weather", "historical", code,
+    paste0(code, "_era5land.parquet")
+  ))$h3)
+
+  cmip6_df <- function(from, to, tx) {
+    months <- seq(as.Date(from), as.Date(to), by = "1 month")
+    df <- expand.grid(h3 = cells, timestamp = months)
+    df$model <- "TESTMOD"
+    df$tx <- tx
+    df[, c("h3", "model", "timestamp", "tx")]
+  }
+  proj_dir <- file.path(dir, "hazard", "weather", "projections", code)
+  dir.create(proj_dir, recursive = TRUE, showWarnings = FALSE)
+  # January 1991 lies before the first month of the window (February 1991) and
+  # is the only month that differs from 20.
+  jan91 <- cmip6_df("1991-01-01", "1991-01-01", 50)
+  arrow::write_parquet(
+    rbind(jan91, cmip6_df("1991-02-01", "2014-12-01", 20)),
+    file.path(proj_dir, paste0(code, "_cmip6_historical.parquet"))
+  )
+  arrow::write_parquet(
+    rbind(
+      cmip6_df("2015-01-01", "2020-12-01", 25),
+      cmip6_df("2025-01-01", "2025-12-01", 30)
+    ),
+    file.path(proj_dir, paste0(code, "_cmip6_ssp245.parquet"))
+  )
+
+  dates <- seq(as.Date("1991-02-01"), as.Date("2020-11-01"), by = "1 month")
+  result <- get_weather(
+    survey_data = fx$survey_data,
+    selected_surveys = fx$selected_surveys,
+    selected_weather = sw_continuous("tx"),
+    dates = dates,
+    connection_params = fx$connection_params,
+    ssp = "ssp2_4_5",
+    future_period = c("2025-01-01", "2025-12-31"),
+    perturbation_method = c(tx = "additive")
+  )
+  scen_name <- grep("ssp2_4_5", names(result), value = TRUE)
+  cmp <- merge(
+    result[[scen_name]][, c("loc_id", "timestamp", "tx")],
+    result$historical[, c("loc_id", "timestamp", "tx")],
+    by = c("loc_id", "timestamp"), suffixes = c("_fut", "_hist")
+  )
+  cmp <- cmp[stats::complete.cases(cmp), , drop = FALSE]
+  delta <- cmp$tx_fut - cmp$tx_hist
+  month <- as.integer(format(cmp$timestamp, "%m"))
+  # Every month averages 30 whole years. January: (50 + 23 x 20 + 6 x 25) / 30
+  # = 22, a change of 8; other months: (24 x 20 + 6 x 25) / 30 = 21, a change
+  # of 9. The weather variable is a window of the three previous months, so
+  # February to April carry the January change: (8 + 9 + 9) / 3.
+  expected <- ifelse(month %in% 2:4, 26 / 3, 9)
+  expect_equal(delta, expected, tolerance = 1e-4)
+})
+
 test_that("R2-BUG-29: zero reference SD gives NA standardized anomalies and one warning", {
 
   con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")

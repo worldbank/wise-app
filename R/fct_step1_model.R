@@ -22,9 +22,25 @@ wise_valid_vars <- function(survey_weather, variable_list, outcome_name) {
   filter_valid_vars(survey_weather, variable_list,
     min_complete = 0.9,
     group_cols = c("code", "year", "survname"),
-    outcome = outcome_name
+    outcome = outcome_name,
+    row_rules = WISE_LABOR_ROW_RULES
   )
 }
+
+# Labour variables are defined for part of the sample only: employment and
+# unemployment for people of working age (15+), and self-employment and the
+# sector of the main job for the employed. Their completeness is judged on
+# those rows (`filter_valid_vars(row_rules =)`).
+#' @noRd
+WISE_LABOR_ROW_RULES <- local({
+  working_age <- function(d) d$age >= 15
+  employed <- function(d) d$employed == 1
+  list(
+    employed = working_age, unemployed = working_age,
+    selfemployed = employed, agriculture = employed,
+    industry = employed, services = employed
+  )
+})
 
 #' Lasso settings with the Model tab's defaults for omitted fields
 #'

@@ -700,7 +700,8 @@ mod_1_05_weatherstats_server <- function(
                   ),
                   dist_output,
                   shiny::helpText(
-                    "Continuous distribution the bins were derived from",
+                    "Continuous distribution the bins were derived from.",
+                    .bin_reference_text(stored_breaks()),
                     style = "font-size: 12px; margin: 0;"
                   ),
                   wise_chart_output(
@@ -1580,4 +1581,16 @@ mod_1_05_weatherstats_server <- function(
       load_status = load_status
     )
   })
+}
+
+# Describe the sample the bin cut points were computed from (DOC-05).
+.bin_reference_text <- function(breaks) {
+  ref <- attr(breaks, "reference")
+  paste0(
+    "Cut points use the weather of every selected location in the interview months of the surveys",
+    if (!is.null(ref)) {
+      paste0(" (", format(ref$n_cells, big.mark = ","), " location-months in ", ref$n_months, " months)")
+    },
+    ", unweighted, not only of the interviewed households."
+  )
 }

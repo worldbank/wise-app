@@ -29,10 +29,10 @@ $$\bar x^{\ m}_{c\mu}(P) = \frac{1}{|P_\mu|}\sum_{h \in P_\mu} x^{\ m}_{ch} \qqu
 
 where $P_\mu$ is the set of months of $P$ with calendar month $\mu$. Two periods are used.
 
-- **Baseline period $P_0$.** The span from the first to the last date of the simulation grid ([30_simulation](30_simulation.md)). With interviews in all months, this is January of the first historical year to December of the last. The baseline pools the monthly values of the historical experiment (to 2014) and of the projection (from 2015) and averages them once. This avoids giving the few projection years too much weight when the window straddles 2015.
+- **Baseline period $P_0$.** Whole calendar years: from 1 January of the year of the first date to 31 December of the year of the last date of the simulation grid ([30_simulation](30_simulation.md)). The baseline pools the monthly values of the historical experiment (to 2014) and of the projection (from 2015) and averages them once. This avoids giving the few projection years too much weight when the window straddles 2015.
 - **Future period $P_s$.** From 1 January of the first year to 31 December of the last year of the period chosen by the user.
 
-If the interview months of the baseline survey do not cover all calendar months, $P_0$ starts in the earliest interview month of the first year and ends in the latest interview month of the last year. Calendar months before the first or after the last of these are then averaged over one year fewer.
+Because $P_0$ is whole years, every calendar month of the climatology averages the same number of years, also when the interview months of the baseline survey do not cover all calendar months. The observed record that is perturbed may then cover a few months fewer at the edges than $P_0$.
 
 ### 2. Change factor
 

@@ -70,3 +70,34 @@ test_that("placeholder: hidden when a variable is in the model, warning when sur
     expect_match(html, "labor market")
   })
 })
+
+test_that("controls that stay hidden are reported, and unemployed counts as a labour variable", {
+  shiny::testServer(mod_3_04_labor_server, args = labor_args("unemployed"), {
+    expect_match(output$labor_emp_ui$html, "labor_emp", fixed = TRUE)
+    note <- output$labor_note_ui$html
+    expect_match(note, "Not available", fixed = TRUE)
+    expect_match(note, "Sectoral composition", fixed = TRUE)
+    expect_match(note, "missing: agriculture, industry, services", fixed = TRUE)
+    expect_false(grepl("Employment rate", note, fixed = TRUE))
+  })
+  shiny::testServer(mod_3_04_labor_server, args = labor_args(c("employed", "agriculture", "industry", "services")), {
+    expect_false(isTRUE(nzchar(output$labor_note_ui$html)))
+  })
+  shiny::testServer(mod_3_04_labor_server, args = labor_args("other"), {
+    expect_error(output$labor_note_ui, class = "shiny.silent.error")
+  })
+})
+
+test_that("the labour variables come from the registry", {
+  vl <- data.frame(
+    name = c("emp_flag", "agriculture"), label = c("Emp", "Agr"), type = "logical",
+    ind = 1L, hh = 0L, firm = 0L, area = 0L,
+    policy = c("employed", "agriculture"), policy_group = "labor", stringsAsFactors = FALSE
+  )
+  args <- labor_args("emp_flag")
+  args$variable_list <- shiny::reactive(vl)
+  shiny::testServer(mod_3_04_labor_server, args = args, {
+    # `emp_flag` is the variable of the `employed` lever here
+    expect_true(isTRUE(any_selected()))
+  })
+})

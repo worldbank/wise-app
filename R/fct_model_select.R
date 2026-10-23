@@ -175,13 +175,19 @@ get_policy_locked_vars <- function(selected_policies, variable_list = NULL) {
 #' @param outcome       Scalar character. Name of the outcome column in `df`.
 #'   When non-`NULL` and present in `df`, only rows where the outcome is
 #'   non-missing are used for completeness calculations. Default `NULL`.
+#' @param row_rules     Optional named list of functions, one per variable
+#'   that is only defined for part of the sample (for example employment for
+#'   people of working age). Each takes `df` and returns a logical vector of
+#'   the rows the variable must be complete on; its completeness is checked
+#'   on those rows only. A rule that cannot be evaluated (a column it needs is
+#'   missing) leaves the variable on the usual all-rows check. Default `NULL`.
 #'
 #' @return The filtered `variable_list`.
 #'
 #' @export
 filter_valid_vars <- function(df, variable_list, min_complete = 0.5,
                               group_cols = c("code", "year", "survname"),
-                              outcome = NULL) {
+                              outcome = NULL, row_rules = NULL) {
   if (is.null(df) || is.null(variable_list)) {
     return(variable_list)
   }
@@ -216,6 +222,19 @@ filter_valid_vars <- function(df, variable_list, min_complete = 0.5,
     # a column is valid only if it meets the threshold in every group
     min_comp <- if (is.matrix(comp_mat)) apply(comp_mat, 1, min) else comp_mat
     valid <- c(group_cols, data_cols[min_comp >= min_complete])
+  }
+
+  # variables defined for part of the sample: complete on that part, in every group
+  for (v in intersect(names(row_rules), names(df))) {
+    rows <- tryCatch(as.logical(row_rules[[v]](df)), error = function(e) NULL)
+    if (is.null(rows) || length(rows) != nrow(df)) next
+    rows <- rows %in% TRUE
+    key <- if (length(group_cols)) do.call(paste, c(df[group_cols], sep = "\x01")) else rep("", nrow(df))
+    comp <- tapply(!is.na(df[[v]][rows]), key[rows], mean)
+    # a group with no such rows (or no group at all) cannot show completeness
+    ok <- length(comp) > 0L && all(comp >= min_complete) && all(unique(key) %in% names(comp))
+    valid <- setdiff(valid, v)
+    if (ok) valid <- c(valid, v)
   }
 
   variable_list[variable_list$name %in% valid, , drop = FALSE]

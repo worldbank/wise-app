@@ -1690,6 +1690,11 @@ get_weather <- function(
       keep <- unique(c(sort_cols, wx_cols))
       hist_ref <- result[["historical"]][result[["historical"]]$timestamp %in% survey_timestamps, keep, drop = FALSE]
       stored_breaks <- .compute_breaks(hist_ref, selected_weather, seed = seed)
+      # DOC-05: describe the reference sample the cut points came from
+      attr(stored_breaks, "reference") <- list(
+        n_cells = nrow(hist_ref),
+        n_months = length(unique(hist_ref$timestamp))
+      )
     }
 
     # Keep the untouched (already transformed) values of the binned columns
@@ -1725,9 +1730,12 @@ get_weather <- function(
 
   # -- Climate perturbation ---------------------------------------------------
   if (climate_scenario) {
+    # DOC-07: whole calendar years of the historical window, so every calendar
+    # month of the model climatology has the same number of years even when the
+    # interview months do not cover the year.
     bp <- range(dates)
-    baseline_start <- as.Date(bp[1])
-    baseline_end <- as.Date(bp[2])
+    baseline_start <- as.Date(sprintf("%d-01-01", as.integer(format(as.Date(bp[1]), "%Y"))))
+    baseline_end <- as.Date(sprintf("%d-12-31", as.integer(format(as.Date(bp[2]), "%Y"))))
     delta_vars <- paste0("delta_", weather_vars)
 
     # -- CMIP6 helpers --------------------------------------------------------

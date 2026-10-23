@@ -482,3 +482,31 @@ test_that("a derived policy variable carries the flags of its sources and can mo
     "Interaction variable"
   )
 })
+
+test_that("labour variables are judged on the rows they are defined for", {
+  n <- 20
+  df <- data.frame(
+    code = "TST", year = 2020, survname = "S", welfare = 1,
+    age = rep(c(5, 30), each = n / 2),
+    employed = c(rep(NA, n / 2), rep(c(1, 0), n / 4)),
+    unemployed = c(rep(NA, n / 2), rep(0, n / 2)),
+    industry = c(rep(NA, n / 2), rep(c(1, NA), n / 4)),
+    other = c(rep(NA, n / 2), rep(1, n / 2))
+  )
+  vl <- data.frame(name = c("employed", "unemployed", "industry", "other"))
+  valid <- wise_valid_vars(df, vl, "welfare")$name
+  # working age (15+) for employed/unemployed: complete there
+  expect_true(all(c("employed", "unemployed") %in% valid))
+  # industry: 5 of 10 employed-or-not rows missing, but the rule is employed == 1
+  # (all employed rows have a value), so it passes
+  expect_true("industry" %in% valid)
+  # a variable without a rule keeps the all-rows check (50 % here)
+  expect_false("other" %in% valid)
+
+  # incomplete on its own rows still fails
+  df$employed[df$age > 15][1:4] <- NA
+  expect_false("employed" %in% wise_valid_vars(df, vl, "welfare")$name)
+
+  # without `age` the rule cannot be read: the all-rows check applies
+  expect_false("unemployed" %in% wise_valid_vars(df[setdiff(names(df), "age")], vl, "welfare")$name)
+})
