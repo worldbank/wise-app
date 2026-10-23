@@ -222,9 +222,9 @@ test_that("build_selected_weather uses Sum default for mm variable", {
   expect_equal(out$temporalAgg, "Sum")
 })
 
-test_that("build_selected_weather uses Standardized anomaly for dimensionless", {
+test_that("build_selected_weather uses None for the already standardised spi6", {
   out <- build_selected_weather("spi6", make_var_info())
-  expect_equal(out$transformation, "Standardized anomaly")
+  expect_equal(out$transformation, "None")
 })
 
 # ============================================================================ #
@@ -322,4 +322,13 @@ test_that("build_selected_weather forwards customBreaks input to spec", {
   out <- build_selected_weather("tx", make_var_info(), spec_inputs = inputs)
   expect_equal(out$binning_method, "Custom")
   expect_equal(out$custom_breaks[[1]], c(20, 25, 30, 35))
+})
+
+test_that("SPI and SPEI offer only None and default to it (DOC-04)", {
+  for (v in c("spi6", "spei6")) {
+    expect_equal(unname(transformation_choices("", v)), "None")
+    expect_equal(transformation_default("", v), "None")
+    expect_equal(weather_spec_defaults("", v)$transformation, "None")
+  }
+  expect_equal(transformation_choices("", "other"), "Standardized anomaly")
 })

@@ -113,6 +113,52 @@ survey_n_no_deflator <- function(df, variable_list) {
 }
 
 
+# Minimum number of distinct locations in a survey round below which the
+# geography is treated as coarse (area-level), DOC-02.
+.SURVEY_MIN_LOCATIONS <- 30L
+
+#' Survey rounds with little within-cell weather variation
+#'
+#' DOC-02: weather coefficients are identified from variation within a
+#' location and survey round, so a round with few locations (area-average
+#' weather) or with no interview month (or only one) leaves little to
+#' identify them. One message per affected round.
+#'
+#' @param df Survey frame with `economy`, `year` and `loc_id`, and optionally
+#'   `timestamp`.
+#' @return Character vector of messages (empty when no round is affected).
+#' @noRd
+survey_identification_notes <- function(df) {
+  if (!all(c("economy", "year") %in% names(df))) return(character(0))
+  label <- paste(df$economy, df$year)
+  month <- if ("timestamp" %in% names(df)) {
+    as.integer(format(as.Date(df$timestamp), "%m"))
+  } else {
+    rep(NA_integer_, nrow(df))
+  }
+  loc <- if ("loc_id" %in% names(df)) df$loc_id else rep(NA, nrow(df))
+  out <- character(0)
+  for (r in unique(label)) {
+    i <- label == r
+    n_loc <- length(unique(loc[i & !is.na(loc)]))
+    n_month <- length(unique(month[i & !is.na(month)]))
+    if (n_loc < .SURVEY_MIN_LOCATIONS) {
+      out <- c(out, sprintf(
+        "%s has only %d location(s): households get area-average weather, which smooths local variation.",
+        r, n_loc
+      ))
+    }
+    if (n_month < 2L) {
+      out <- c(out, sprintf(
+        "%s has %s, so there is little within-year variation to identify weather effects.",
+        r, if (n_month == 0L) "no interview month" else "a single interview month"
+      ))
+    }
+  }
+  out
+}
+
+
 # Location panel ----
 
 #' H3 cell files of the selected surveys

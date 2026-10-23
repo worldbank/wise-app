@@ -47,7 +47,7 @@ where $\mathcal{T}_\mu$ is the set of months of 1991 to 2020 with calendar month
 
 $$\text{deviation: } \tilde x_{\ell h} - \bar x_{\ell\mu}, \qquad \text{standardised anomaly: } \frac{\tilde x_{\ell h} - \bar x_{\ell\mu}}{s_{\ell\mu}} \qquad \text{(2.2)}$$
 
-The standardised anomaly is missing where $s_{\ell\mu}=0$, for example for rainfall in a month that is always dry. The app warns about the number of such location-months. The six-month standardised precipitation index and the six-month standardised precipitation-evapotranspiration index are already standardised. They are not transformed, although the control offers the standardised anomaly for them.
+The standardised anomaly is missing where $s_{\ell\mu}=0$, for example for rainfall in a month that is always dry. The app warns about the number of such location-months. The six-month standardised precipitation index and the six-month standardised precipitation-evapotranspiration index are already standardised. They are not transformed, and the control offers only "None (already standardised)" for them.
 
 The normal does not depend on the historical window chosen in Step 2 or on the climate scenario. It is the same in the historical and the projected weather.
 

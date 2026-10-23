@@ -288,6 +288,10 @@ mod_1_02_surveystats_server <- function(
           ), type = "warning", duration = 8)
         }
 
+        for (msg in survey_identification_notes(df)) {
+          notify(msg, type = "warning", duration = 10)
+        }
+
         publish_new_survey_data(df)
 
         # H3 map data (computed once per button click) ----

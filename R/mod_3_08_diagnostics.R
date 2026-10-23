@@ -804,6 +804,8 @@ mod_3_08_diagnostics_server <- function(id,
       shiny::tags$p(
         class = "diagnostic-note",
         "Charts show who is touched by the policy, not observed impacts.",
+        "Population shares use the survey weights. Access and employment levers",
+        "draw units by count, so the weighted share moved can differ from the slider value.",
         if (shock) {
           paste(
             "For a shock-responsive program, social protection reach is households",

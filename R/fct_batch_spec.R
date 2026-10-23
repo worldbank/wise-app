@@ -819,7 +819,12 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
     if (!x$temporal_agg %in% temporal_agg_choices(units)) {
       stop("weather.", v, ".temporal_agg '", x$temporal_agg, "' is not available for ", v, ".", call. = FALSE)
     }
-    if (!x$transformation %in% transformation_choices(units)) {
+    # Earlier specs offered the anomaly for the already standardised SPI/SPEI
+    if (v %in% .WX_PRESTANDARDISED &&
+        identical(x$transformation, "Standardized anomaly")) {
+      x$transformation <- "None"
+    }
+    if (!x$transformation %in% transformation_choices(units, v)) {
       stop("weather.", v, ".transformation '", x$transformation, "' is not available for ", v, ".", call. = FALSE)
     }
     w[[v]] <- x[order(names(x))]

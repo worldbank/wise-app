@@ -59,19 +59,28 @@ temporal_agg_default <- function(units, name = NULL) {
   if (!is.na(units) && units %in% c("days", "mm")) "Sum" else "Mean"
 }
 
+# Variables that arrive already standardised; `get_weather()` leaves them
+# untransformed (its `skip_vars`), so only "None" is meaningful for them.
+.WX_PRESTANDARDISED <- c("spi6", "spei6")
+
 #' Transformation choices for a weather variable
 #'
 #' Dimensionless variables (empty-string units) are restricted to
 #' `"Standardized anomaly"`. All others include `"None"` and
-#' `"Deviation from mean"` as well.
+#' `"Deviation from mean"` as well. The 6-month SPI and SPEI are already
+#' standardised and are never transformed, so they offer only `"None"`
+#' (labelled as already standardised).
 #'
 #' @param units Scalar character string of the variable's units.
+#' @param name Optional scalar character; the variable name.
 #'
 #' @return A character vector of transformation choices.
 #'
 #' @export
-transformation_choices <- function(units) {
-  if (!is.na(units) && identical(units, "")) {
+transformation_choices <- function(units, name = NULL) {
+  if (!is.null(name) && name %in% .WX_PRESTANDARDISED) {
+    c("None (already standardised)" = "None")
+  } else if (!is.na(units) && identical(units, "")) {
     "Standardized anomaly"
   } else {
     c("None", "Deviation from mean", "Standardized anomaly")
@@ -81,12 +90,15 @@ transformation_choices <- function(units) {
 #' Default transformation for a weather variable
 #'
 #' @param units Scalar character string of the variable's units.
+#' @param name Optional scalar character; the variable name.
 #'
-#' @return `"Standardized anomaly"` for dimensionless units, `"None"`
+#' @return `"None"` for the already standardised SPI and SPEI,
+#'   `"Standardized anomaly"` for other dimensionless units, `"None"`
 #'   otherwise.
 #'
 #' @export
-transformation_default <- function(units) {
+transformation_default <- function(units, name = NULL) {
+  if (!is.null(name) && name %in% .WX_PRESTANDARDISED) return("None")
   if (!is.na(units) && identical(units, "")) "Standardized anomaly" else "None"
 }
 
@@ -113,7 +125,7 @@ weather_spec_defaults <- function(units, name = NULL) {
     ref_start      = 1L,
     ref_end        = 1L,
     temporal_agg   = temporal_agg_default(units, name),
-    transformation = transformation_default(units),
+    transformation = transformation_default(units, name),
     cont_binned    = "Binned",
     num_bins       = 5L,
     binning_method = "Equal frequency",

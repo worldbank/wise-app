@@ -77,6 +77,11 @@
               "population outcome for each simulated weather year and climate model.",
               "Poverty and prosperity metrics evaluate outcomes relative to the",
               "specified poverty line; prosperity gap uses a fixed threshold of 28."
+            ),
+            shiny::p(
+              "Survey weights are used as supplied. They are not converted between",
+              "household and person level, so the aggregate represents whichever",
+              "population the survey weights describe."
             )
           ),
           style = "font-size: 0.92rem; font-weight: 700; color: #173042; margin: 0;"
@@ -135,7 +140,13 @@
             style = "font-size: 0.8rem;",
             paste0(
               "Prosperity gap uses a fixed threshold of 28; currency and time applicability ",
-              "are described in the headline context."
+              "are described in the headline context.",
+              if (identical(toupper(pov_units), "LCU")) {
+                paste(
+                  " The threshold is in 2021 PPP dollars per day and is not converted;",
+                  "this outcome is in local currency, so the gap is not comparable."
+                )
+              }
             )
           )
         )

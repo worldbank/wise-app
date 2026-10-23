@@ -113,8 +113,8 @@ mod_1_04_weather_server <- function(id, variable_list) {
               pill_toggle(
                 ns(paste0(prefix, "varConstruction")),
                 label = "Transformation",
-                choices = transformation_choices(units),
-                selected = transformation_default(units),
+                choices = transformation_choices(units, v),
+                selected = transformation_default(units, v),
                 layout = "vertical"
               ),
               pill_toggle(
