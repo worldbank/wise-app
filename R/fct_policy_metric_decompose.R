@@ -98,6 +98,8 @@
     shock = shock,
     loading_terms = if (identical(context$engine, "fixest") && !is.null(context$coef_L)) {
       .policy_loading_terms(context)
+    } else if (identical(context$engine, "rif") && !is.null(context$coef_chol_list)) {
+      .policy_loading_terms_rif(context)
     },
     correction_version = "row_aligned_annual_v1"
   ), parent = emptyenv())

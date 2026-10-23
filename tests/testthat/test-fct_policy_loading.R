@@ -89,3 +89,68 @@ test_that("a run without a covariate lever keeps the baseline loading", {
     pipeline$weather_exposure, 20L)
   expect_null(loading)
 })
+
+test_that("quantile policy arm loading reproduces the correction's response to the coefficients", {
+  skip_if_not_installed("fixest")
+  set.seed(77)
+  n <- 300L
+  baseline <- data.frame(
+    code = "BFA", year = "2018", survname = "w", loc_id = seq_len(n), int_month = 1L,
+    temp = rnorm(n, 3, 1), electricity = rbinom(n, 1, 0.4), weight = 1
+  )
+  baseline$welfare <- exp(1 - 0.1 * baseline$temp + 0.4 * baseline$electricity -
+    0.05 * baseline$temp * baseline$electricity + rnorm(n, 0, 0.4))
+  policy <- baseline
+  policy$electricity <- 1L
+  sm <- build_selected_model(model_type = "Unconditional quantile regression (RIF)",
+    engine = "rif", interactions = "electricity", hh_covariates = "electricity")
+  sw <- data.frame(name = "temp", cont_binned = "Continuous", stringsAsFactors = FALSE)
+  so <- list(name = "welfare", type = "numeric", transform = "log")
+  mf <- fit_model(baseline, so, sw, sm)
+
+  ids <- rep(seq_len(n), 2L)
+  weather <- baseline$temp[ids] + rep(c(0.5, 2), each = n)
+  pipeline <- list(y_point = rep(0, 2L * n), svy_row_id = ids,
+    sim_year = rep(c(2030L, 2031L), each = n), weight = NULL, id_vec = ids)
+  pipeline <- .policy_test_attach_exposure(pipeline, baseline, list(temp = weather))
+  k_base <- 2L # temp and temp:electricity
+  pipeline$F_loading <- matrix(0, 2L * n, k_base)
+
+  run_identity <- "loading-rif"
+  context <- .build_decomposition_context(baseline, policy, mf, so,
+    skip_coef = FALSE, run_identity = run_identity)
+  prepared <- .prepare_policy_annual_channels(context, run_identity)
+  exposure <- .validate_policy_annual_exposure(pipeline, context)
+  F_pol <- .policy_arm_loading_rif(pipeline, prepared, exposure, chunk_size = 200L)
+  expect_false(is.null(F_pol))
+  recipe <- prepared$loading_terms
+  extra <- ncol(F_pol) - k_base
+  expect_equal(extra, 1L) # electricity is outside the active block
+
+  # Move every grid coefficient along a shared draw z of the Cholesky basis
+  # and compare the response of the correction with F z
+  rows_by_k <- .policy_loading_rows_rif(context, k_base, recipe$names)
+  z <- rnorm(ncol(F_pol))
+  eps <- 1e-3
+  values <- as.list(context, all.names = TRUE)
+  index <- values$rif_curve_index
+  for (term in recipe$names) {
+    grid_k <- match(round(index[[term]]$tau, 8), round(values$taus, 8))
+    index[[term]]$estimate <- index[[term]]$estimate +
+      eps * vapply(grid_k, function(k) sum(rows_by_k[[k]][term, ] * z), 0)
+  }
+  values$rif_curve_index <- index
+  values$delta_main <- NULL
+  values$beta_at <- function(term, tau) {
+    curve <- index[[term]]
+    if (is.null(curve)) return(rep(0, length(tau)))
+    stats::approx(curve$tau, curve$estimate, xout = tau, rule = 2)$y
+  }
+  moved <- .finalize_decomposition_context(list2env(values, parent = emptyenv()))
+  prepared2 <- .prepare_policy_annual_channels(moved, run_identity)
+  base <- .policy_annual_channels(pipeline, prepared, run_identity)
+  after <- .policy_annual_channels(pipeline, prepared2, run_identity)
+  response <- (after$delta_total - base$delta_total) / eps
+  expect_gt(max(abs(response)), 1e-3)
+  expect_equal(as.numeric(F_pol %*% z), response, tolerance = 1e-4)
+})

@@ -141,8 +141,11 @@
 .policy_arm_loading <- function(pipeline, prepared, exposure, chunk_size) {
   context <- prepared$context
   F_base <- pipeline$F_loading
-  if (is.null(F_base) || !identical(context$engine, "fixest") ||
-    is.null(context$coef_L) || is.null(dim(F_base))) {
+  if (is.null(F_base) || is.null(dim(F_base))) return(NULL)
+  if (identical(context$engine, "rif")) {
+    return(.policy_arm_loading_rif(pipeline, prepared, exposure, chunk_size))
+  }
+  if (!identical(context$engine, "fixest") || is.null(context$coef_L)) {
     return(NULL)
   }
   terms <- prepared$loading_terms
@@ -160,6 +163,166 @@
     w <- .policy_loading_weights(terms, context, exposure, ids[r], idx[r])
     if (any(w != 0)) moved <- TRUE
     out[r, ] <- .policy_loading_block(F_base[r, , drop = FALSE], w, rows_t)
+  }
+  if (!moved) return(NULL)
+  rownames(out) <- rownames(F_base)
+  out
+}
+
+
+# Quantile model ----
+#
+# The correction is linear in the coefficient curves given the household's
+# positions before and after the main effect (the position moves with the
+# outcome, not with the coefficients, so it is held fixed as in the channel
+# standard deviations). At the weather x of a row, a household with positions
+# tau_pre and tau_post has
+#   correction = sum_lever d_lever b_lever(tau_pre)
+#              + sum_weather x (b_w(tau_post) - b_w(tau_pre))
+#              + sum_weather,lever x d_lever b_wl(tau_post)
+# (for a binned weather variable x is the indicator of the row's bin). Each
+# curve b(tau) is the linear interpolation of the grid coefficients, so the
+# loading is the same interpolation of the rows of the per-quantile Cholesky
+# basis, in the baseline's own convention (common z across the quantiles).
+
+# The curves the correction uses: lever main terms, weather terms and their
+# interactions with the levers, resolved as `.compute_rif_channels()` does.
+.policy_loading_terms_rif <- function(context) {
+  all_terms <- context$all_terms
+  svy <- context$svy_baseline
+  main <- list()
+  for (v in names(context$deltas)) {
+    term <- context$rif_term_map[[v]]
+    if (!is.null(term)) main[[length(main) + 1L]] <- list(term = term, lever = v)
+  }
+  weather <- inter <- list()
+  for (wv in context$weather_vars) {
+    binned <- is.factor(svy[[wv]])
+    levels_wv <- if (binned) levels(svy[[wv]]) else NA_character_
+    for (lv in levels_wv) {
+      term <- if (binned) paste0(wv, lv) else wv
+      if (term %in% all_terms) {
+        weather[[length(weather) + 1L]] <- list(var = wv, level = lv, term = term)
+      }
+      for (u in names(context$deltas)) {
+        candidates <- context$rif_interaction_map[[wv]][[u]] %||% character(0)
+        it <- if (binned) {
+          pair <- c(paste0(wv, lv, ":", u), paste0(u, ":", wv, lv))
+          hit <- pair[pair %in% candidates]
+          if (length(hit)) hit[[1L]] else NULL
+        } else if (length(candidates)) {
+          candidates[[1L]]
+        }
+        if (!is.null(it)) {
+          inter[[length(inter) + 1L]] <- list(var = wv, level = lv, term = it, lever = u)
+        }
+      }
+    }
+  }
+  terms <- c(main, weather, inter)
+  if (!length(terms)) return(NULL)
+  list(main = main, weather = weather, inter = inter,
+    names = unique(vapply(terms, `[[`, "", "term")))
+}
+
+# Interpolation weights of the grid points of a curve at positions `tau`
+# (n x length(curve_tau)); positions outside the curve take its end points.
+.policy_curve_weights <- function(curve_tau, tau) {
+  m <- length(curve_tau)
+  out <- matrix(0, length(tau), m)
+  if (m == 1L) {
+    out[, 1L] <- 1
+    return(out)
+  }
+  ord <- order(curve_tau)
+  ct <- curve_tau[ord]
+  tau <- pmin(pmax(tau, ct[1L]), ct[m])
+  lo <- findInterval(tau, ct, all.inside = TRUE)
+  w <- (tau - ct[lo]) / (ct[lo + 1L] - ct[lo])
+  rows <- seq_along(tau)
+  out[cbind(rows, ord[lo])] <- 1 - w
+  out[cbind(rows, ord[lo + 1L])] <- w
+  out
+}
+
+# Rows of the basis [A, P] for `names` in every quantile equation; NULL when a
+# term is missing from an equation or the baseline basis cannot be rebuilt.
+.policy_loading_rows_rif <- function(context, k_base, names) {
+  lapply(context$coef_chol_list, function(obj) {
+    sub <- list(coef_L = obj$L, coef_names = names(obj$beta),
+      weather_vars = context$weather_vars)
+    if (!all(names %in% sub$coef_names)) return(NULL)
+    .policy_loading_rows(sub, k_base, names)
+  })
+}
+
+# Interpolated loading rows of curve `term` at positions `tau`.
+.policy_curve_rows <- function(term, tau, context, rows_by_k) {
+  curve <- context$rif_curve_index[[term]]
+  if (is.null(curve)) return(0)
+  grid_k <- match(round(curve$tau, 8), round(context$taus, 8))
+  if (anyNA(grid_k)) return(NULL)
+  rmat <- do.call(rbind, lapply(grid_k, function(k) rows_by_k[[k]][term, ]))
+  .policy_curve_weights(curve$tau, tau) %*% rmat
+}
+
+.policy_arm_loading_rif <- function(pipeline, prepared, exposure, chunk_size) {
+  context <- prepared$context
+  F_base <- pipeline$F_loading
+  recipe <- prepared$loading_terms
+  if (is.null(recipe) || !length(context$coef_chol_list) ||
+    length(context$coef_chol_list) != length(context$taus)) {
+    return(NULL)
+  }
+  rows_by_k <- .policy_loading_rows_rif(context, ncol(F_base), recipe$names)
+  if (anyNA(vapply(rows_by_k, is.null, NA)) || any(vapply(rows_by_k, is.null, NA))) {
+    return(NULL)
+  }
+  extra <- ncol(rows_by_k[[1L]]) - ncol(F_base)
+  if (extra < 0L) return(NULL)
+  n <- nrow(F_base)
+  ids <- pipeline$svy_row_id
+  idx <- exposure$row_index
+  out <- matrix(0, n, ncol(F_base) + extra)
+  moved <- FALSE
+  pre <- context$tau_i_pre
+  post <- context$tau_i_post
+  for (start in seq.int(1L, n, by = chunk_size)) {
+    r <- seq.int(start, min(n, start + chunk_size - 1L))
+    h <- ids[r]
+    d <- matrix(0, length(r), ncol(out))
+    for (t in recipe$main) {
+      dl <- as.numeric(context$deltas[[t$lever]])[h]
+      dl[!is.finite(dl)] <- 0
+      if (!any(dl != 0)) next
+      d <- d + dl * .policy_curve_rows(t$term, pre[h], context, rows_by_k)
+    }
+    x_of <- function(var) exposure$table[[var]][idx[r]]
+    for (t in recipe$weather) {
+      x <- x_of(t$var)
+      w <- if (is.na(t$level)) as.numeric(x) else as.numeric(as.character(x) == t$level)
+      sel <- which(w != 0)
+      if (!length(sel)) next
+      diff_rows <- .policy_curve_rows(t$term, post[h[sel]], context, rows_by_k) -
+        .policy_curve_rows(t$term, pre[h[sel]], context, rows_by_k)
+      d[sel, ] <- d[sel, , drop = FALSE] + w[sel] * diff_rows
+    }
+    for (t in recipe$inter) {
+      x <- x_of(t$var)
+      w <- if (is.na(t$level)) as.numeric(x) else as.numeric(as.character(x) == t$level)
+      dl <- as.numeric(context$deltas[[t$lever]])[h]
+      dl[!is.finite(dl)] <- 0
+      w <- w * dl
+      sel <- which(w != 0)
+      if (!length(sel)) next
+      d[sel, ] <- d[sel, , drop = FALSE] +
+        w[sel] * .policy_curve_rows(t$term, post[h[sel]], context, rows_by_k)
+    }
+    d[!is.finite(d)] <- 0
+    if (any(d != 0)) moved <- TRUE
+    out[r, seq_len(ncol(F_base))] <- F_base[r, , drop = FALSE] +
+      d[, seq_len(ncol(F_base)), drop = FALSE]
+    if (extra > 0L) out[r, ncol(F_base) + seq_len(extra)] <- d[, ncol(F_base) + seq_len(extra), drop = FALSE]
   }
   if (!moved) return(NULL)
   rownames(out) <- rownames(F_base)

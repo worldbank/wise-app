@@ -88,7 +88,7 @@ $$F_i^{\text{pol}} = F_i + \nabla_{\beta}\,\Delta y_i \qquad \text{(5.1)}$$
 The coefficients of the policy variables are outside the block of weather coefficients and their interactions that the baseline loading covers (unless the Step 2 setting propagates all covariates). They are added as extra columns in the Cholesky basis of the covered block plus the policy coefficients. The leading block of that basis is the baseline's own, so the baseline arm is unchanged, and the covariance between the policy coefficients and the weather coefficients is kept. Two things follow.
 
 - The bands on the policy series and on the effect include the sampling error of the policy coefficients and of the interactions at the weather of the row. A run without a covariate lever (for example a cash transfer only) has the baseline loading, because the cash transfer is a fixed amount.
-- For the quantile model the policy arm still reuses the baseline loading, so its bands do not include the sampling error of the policy coefficients.
+- For the quantile model the correction is also linear in the coefficient curves once the household's positions before and after the main effect are fixed (the positions depend on the outcome, not on the coefficients). Its gradient is the same interpolation of the grid coefficients that the correction uses, and the loading rows are interpolated between the quantile equations in the same way as the baseline loading, in the Cholesky basis of each equation extended by the policy coefficients. A cash transfer then also carries coefficient uncertainty, through the weather coefficients at the shifted position.
 
 The band on the effect of the policy is the band of the paired contrast of [33_uncertainty](33_uncertainty.md): the coefficient error that the two arms share cancels, so only the part that differs between arms remains. The cash transfer is a fixed amount and carries no coefficient error.
 
@@ -147,7 +147,7 @@ User guide: [Policy variables must be in the Step 1 model](https://github.com/wo
 | Covariate changes | (1.1) | `R/fct_policy_decompose.R` `.compute_policy_deltas()` |
 | Policy arm from the baseline pipelines | (2.1), (2.3) | `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()`; `R/fct_policy_metric_decompose.R` `.apply_policy_annual_pipeline()` |
 | Run orchestration | Section 2 | `R/fct_step3_async.R` `step3_compute()`; `R/fct_step3_input.R` `wise_step3_input()` |
-| Factor loading of the policy arm | (5.1) | `R/fct_policy_loading.R` `.policy_arm_loading()`, `.policy_loading_terms()`, `.policy_loading_rows()` |
+| Factor loading of the policy arm | (5.1) | `R/fct_policy_loading.R` `.policy_arm_loading()`, `.policy_arm_loading_rif()`, `.policy_loading_terms()`, `.policy_loading_rows()` |
 | Correction per prediction row | (2.2), (3.1) | `R/fct_policy_metric_decompose.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()`, `.validate_policy_annual_exposure()` |
 | Supported models and outcomes | Section 4 | `R/fct_policy_sim_compare.R` `.policy_endpoint_status()`; `R/fct_policy_metric_decompose.R` `.policy_annual_channel_status()` |
 | Run with no effect | Section 2 | `R/fct_policy_sim.R` `.scenario_has_effect()` |

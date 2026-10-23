@@ -821,6 +821,13 @@
       stats::approx(curve$tau, curve$estimate, xout = tau, rule = 2)$y
     }
     ctx$beta_at <- beta_at
+    # Per-quantile Cholesky factors for the policy arm's factor loading
+    # (DOC-12); only when coefficient uncertainty runs
+    ctx$coef_chol_list <- if (isTRUE(skip_coef) || !inherits(model_fit$fit3, "fixest_multi")) {
+      NULL
+    } else {
+      tryCatch(compute_chol_vcov(model_fit$fit3), error = function(e) NULL)
+    }
     ctx$tau_i_pre <- pmin(pmax(ctx$F_hat(ctx$y_baseline), min(ctx$taus)), max(ctx$taus))
     delta_sp <- if (is_log) {
       log(pmax(exp(ctx$y_baseline) + sp_transfer, 1e-10)) -
