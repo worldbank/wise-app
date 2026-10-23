@@ -465,7 +465,13 @@ mod_3_09_decomposition_server <- function(id,
         },
         shiny::tags$p(class = "diagnostic-note", style = "margin: 0 0 8px;",
           "Effects are means over the sampled units, weighted by the survey weights",
-          "(the population each unit represents).")
+          "(the population each unit represents).",
+          if (identical(so()$transform %||% "", "log") && !is.null(sp_scenario())) {
+            paste(
+              "For a log outcome with residual terms, a cash transfer T is worth T times the",
+              "household's exponentiated residual, about 1 + SD^2 / 2 on average (8% more at SD 0.4)."
+            )
+          })
       )
     })
     is_relative <- reactive(isTRUE(relative_available()) &&

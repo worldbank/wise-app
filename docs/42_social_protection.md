@@ -83,7 +83,7 @@ and a level outcome adds $T_i$ directly. The simulated welfare of the policy arm
 
 $$Y_i^{\text{pol}} = e^{e_i}\big(e^{\hat y_i} + T_i\big) \qquad \text{(5.2)}$$
 
-where $e_i$ is the residual term of the run ([30_simulation](30_simulation.md)). The transfer is added to the predicted level before the residual factor, so a residual term scales the transfer by $e^{e_i}$. With no residual term, or for a level outcome, the transfer adds exactly $T_i$. If a household has no finite prediction in a year, the transfer is evaluated at its observed baseline level instead.
+where $e_i$ is the residual term of the run ([30_simulation](30_simulation.md)). The transfer is added to the predicted level before the residual factor, so a residual term scales the transfer by $e^{e_i}$. The average of $e^{e_i}$ over households is about $1 + \sigma^2/2$ for residual standard deviation $\sigma$, so with a residual term the transfer is worth about 8% more than $T_i$ on average at $\sigma = 0.4$ and about 18% more at $\sigma = 0.6$, and it is worth more to households with a positive residual. With no residual term, or for a level outcome, the transfer adds exactly $T_i$. If a household has no finite prediction in a year, the transfer is evaluated at its observed baseline level instead.
 
 For the quantile model, the same correction is the main effect. It also moves the household up the distribution, which changes its weather sensitivity ([44_decomposition](44_decomposition.md)).
 
