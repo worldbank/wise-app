@@ -436,7 +436,7 @@ Why each member frame has 310,500 rows: it is 596 locations x 270 months x 2 sur
 
 ### Docs-revision items closed in batch 1 (2026-10-23)
 
-Verification: `devtools::test(filter = "fct_weather_select|fct_step1_data|batch")`, 0 failures. Commit: pending.
+Verification: `devtools::test(filter = "fct_weather_select|fct_step1_data|batch")`, 0 failures. Commit: `eae6a6b`.
 
 | DOC-01 | L | S | ☐ | From the docs/ revision (2026-10-23). Survey weights are used as supplied and are not converted between household and person level, and the choice is not documented in the app. Decide whether Steps 2 and 3 aggregates should weight households by size, and state the convention in the UI. |
 | DOC-02 | L | S | ☐ | From the docs/ revision (2026-10-23). Warn at the Sample or Survey stats stage when a survey has only coarse geography (area-level locations) or no interview month, because weather coefficients then rest on little within-cell variation (`docs/01_framework.md` section 3). |
