@@ -205,6 +205,10 @@ resolve_agg_fn <- function(method) {
 #'   \code{.residual_lookup()} (PERF-34). When NULL it is built here.
 #' @param resid_sigma2 Optional pre-built residual variance from
 #'   \code{.residual_sigma2()} (PERF-34). When NULL it is computed here.
+#' @param resid_pos Optional integer vector, length N: position of each
+#'   \code{id_vec} element in \code{names(resid_lookup)} (NA when absent), as
+#'   \code{match(as.character(id_vec), names(resid_lookup))} gives. Lets a caller
+#'   that draws year by year convert each distinct id to character once.
 #'
 #' @return Numeric vector of length N. Zero vector when
 #'   \code{residuals = "none"}.
@@ -217,7 +221,8 @@ draw_residuals_vec <- function(residuals,
                                id_col = NULL,
                                seed = WISEAPP_DEFAULT_SEED,
                                resid_lookup = NULL,
-                               resid_sigma2 = NULL) {
+                               resid_sigma2 = NULL,
+                               resid_pos = NULL) {
   switch(residuals,
     none = rep(0, N),
     original = {
@@ -236,10 +241,14 @@ draw_residuals_vec <- function(residuals,
       # neither depends on caller RNG state nor consumes the global stream.
       # PERF-34: the lookup may be supplied pre-built by the pipeline owner.
       resid_lookup <- resid_lookup %||% .residual_lookup(train_aug, id_col)
-      matched <- as.character(id_vec) %in% names(resid_lookup)
+      pos <- resid_pos %||% match(as.character(id_vec), names(resid_lookup))
+      matched <- !is.na(pos)
 
       out <- numeric(N)
-      out[matched] <- resid_lookup[as.character(id_vec[matched])]
+      # A missing id matches a missing lookup name in match() but not in
+      # character subsetting; keep the subsetting result (NA) for it.
+      out[matched] <- unname(resid_lookup)[pos[matched]]
+      out[matched & is.na(id_vec)] <- NA_real_
       out[!matched] <- deterministic_values_by_key(
         train_aug$.resid,
         id_vec[!matched],

@@ -80,3 +80,28 @@ test_that("shared aggregation cache keys differ by seed, default 123", {
   expect_identical(key(), key(seed = 123L))
   expect_false(identical(key(seed = 123L), key(seed = 7L)))
 })
+
+test_that("a precomputed resid_pos gives the same residuals as the id match", {
+  ta <- data.frame(hhid = c(10L, 20L, 30L), .resid = c(0.1, -0.2, 0.3))
+  lookup <- .residual_lookup(ta, "hhid")
+  ids <- c(30L, 99L, 10L, NA, 20L, 98L, 10L)
+  pos <- match(as.character(ids), names(lookup))
+  direct <- draw_residuals_vec("original", ta, length(ids), ids, "hhid",
+    resid_lookup = lookup)
+  viaPos <- draw_residuals_vec("original", ta, length(ids), ids, "hhid",
+    resid_lookup = lookup, resid_pos = pos)
+  expect_identical(viaPos, direct)
+  expect_equal(direct[c(1L, 3L, 5L)], c(0.3, 0.1, -0.2))
+})
+
+test_that("preparation rows are the ascending row indices of each year", {
+  pipe <- list(
+    sim_year = c(2031L, 2030L, 2031L, 2030L, 2032L, 2030L),
+    y_point = log(c(1, 2, 3, 4, 5, 6)), weight = rep(1, 6),
+    id_vec = 1:6, id_col = "hhid"
+  )
+  ta <- data.frame(hhid = 1:6, .resid = rep(0, 6))
+  prep <- .aggregation_prepare_pipeline(pipe, ta, "hhid", "original", 1L, TRUE)
+  expect_identical(prep$years, c(2030L, 2031L, 2032L))
+  expect_identical(prep$rows, list(c(2L, 4L, 6L), c(1L, 3L), 5L))
+})

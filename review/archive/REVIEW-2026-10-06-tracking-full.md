@@ -21,3 +21,16 @@ Decision log, igraph removal (2026-10-23, user: remove if no slowdown, no new de
 
 Headless Chrome (`dev/ui_drive.R`), BFA 2018 + 2021 defaults, linear fixest with binned temperature and an urban interaction, SSP3-7.0 2025-2035 (22 models), Step 3 universal cash transfer: Step 1 to Step 3 ran with no JS, output or notification errors beyond the expected missing-location notice (407 of 14,186). Found and fixed one bug: the Step 1 "Shape of response" card ranked bin-by-moderator coefficients with the bins and read "(largest: 29.9 - 31.9]:urban °C -17.0%". `.s1_bin_pattern()` now leaves out terms containing ":" (test in `test-step1-headline-cards.R`, fails before, passes after); after the fix the card reads "(largest: 28.4 - 29.9 °C +14.8%)". Accessibility checks in the live app: `<html lang="en">`, one main landmark, skip link, one visible h1 per step, 85 info icons all named, no unnamed buttons, 24 px hit area on `.wise-info-icon`. Not checked: see "Browser spot-check, what is still unchecked" in the tracker.
 
+### R2-PERF-04 closed (2026-10-23)
+
+Re-profile of the line-dependent group (headcount_ratio, gap, fgt2; uncertainty off, residuals original, skip_coef) on a BFA-shaped fixture: 30 simulation years x 7,176 households = 215,280 rows per pipeline, each pipeline with its own perturbed `y_point` so the prep cache cannot share entries, calling `aggregate_pipeline_tables_multi()` as the Results tab does (scratch harness, not in the repo). Laptop (8 cores, 16 GB, macOS), `dev` at 9dc46a4 plus the change, median of 5 runs, cold = empty prep cache, warm = same pipelines at a second poverty line (prep hits, kernel and tables only).
+
+| Pipelines | Cold before | Cold after | Warm before | Warm after | Max RSS before / after |
+|---:|---:|---:|---:|---:|---:|
+| 17 (1x1 shape) | 1.17 s | 0.50 s | 0.165 s | 0.168 s | 1.46 / 1.36 GB |
+| 63 (2x2 shape) | 4.35 s | 2.20 s | 0.54 s | 0.67 s (noise; kernel code unchanged) | 2.38 / 2.26 GB |
+
+Finding: the kernel with `need_sort = FALSE` is one O(n) scan; it is the warm figure (0.17 s at 17 pipelines, 8% to 12% of a cold run), so no C++ change was made. Rprof of the cold run: `draw_residuals_vec` 52% (per-year `as.character(id_vec)` plus `%in%` plus a named-vector subset, three hash passes) and `which(sim_year == year)` 24%. Changes: (1) `rows` from one `split(seq_along(sim_year), match(sim_year, years))`; (2) `draw_residuals_vec(resid_pos =)`: one `match()` against the lookup names instead of `%in%` plus subsetting, with the character conversion done once per distinct id per pipeline in `.aggregation_prepare_pipeline`. Equivalence: the full result of both runs is `identical()` (17 and 63 pipelines, both poverty lines); unit tests cover the missing-id and unmatched-id cases and the year grouping with unsorted `sim_year`. Not measured: IRN payload (no IRN pipeline run for this change; the code path is the same, cost scales with rows), a real Step 2 session.
+
+Decision (numerical change: none). Bit-identical by construction: `rows` is the same ascending integer index per year, and `match()` returns the first matching name exactly as character subsetting does.
+

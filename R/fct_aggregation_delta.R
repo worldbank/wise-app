@@ -500,7 +500,9 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
   }
 
   years <- sort(unique(pipe$sim_year))
-  rows <- lapply(years, function(year) which(pipe$sim_year == year))
+  # One grouping pass instead of one full-vector scan per year; each element is
+  # the ascending row index, identical to which(sim_year == year).
+  rows <- unname(split(seq_along(pipe$sim_year), match(pipe$sim_year, years)))
   pred_ok <- lapply(rows, function(idx) !is.na(pipe$y_point[idx]))
   # R2-BUG-28: NA household-year predictions are excluded from each year's
   # statistics. Count them per year (this pipeline = one model/member) and
@@ -547,6 +549,13 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
   })
   lookup <- .residual_lookup(train_aug, id_col)
   sigma2 <- .residual_sigma2(train_aug)
+  # Original-residual matching: convert each distinct id to character once for
+  # the pipeline, not once per year.
+  id_pos <- if (identical(residuals, "original") && !is.null(pipe$id_vec) &&
+    !is.null(lookup)) {
+    u <- unique(pipe$id_vec)
+    list(of = match(pipe$id_vec, u), pos = match(as.character(u), names(lookup)))
+  }
   residual_vectors <- lapply(seq_along(rows), function(i) {
     idx <- rows[[i]][valid[[i]]]
     draw_residuals_vec(
@@ -557,7 +566,8 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
       id_col = id_col,
       seed = wise_seed(seed, "residual", years[[i]]),
       resid_lookup = lookup,
-      resid_sigma2 = sigma2
+      resid_sigma2 = sigma2,
+      resid_pos = if (!is.null(id_pos)) id_pos$pos[id_pos$of[idx]]
     )
   })
   mu <- lapply(seq_along(rows), function(i) {
