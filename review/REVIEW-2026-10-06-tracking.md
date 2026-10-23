@@ -18,7 +18,7 @@ All Critical and High findings are done in code, except where noted below. Done:
 | B6 | Performance | 7 |
 | B7 | Medium/Low bugs | 0 |
 | B8 | Accessibility | 6 |
-| B9 | Code quality and docs | 7 |
+| B9 | Code quality and docs | 8 |
 
 Closed as won't fix or deferred (full rows in the archive addendum; reopen only on the stated trigger): R2-OPS-05 (stay on DuckDB 1.5.6), CR-SEC-02 (no further DuckDB lockdown), CR-SEC-07 metadata profile (shared pool, guidelines §0), R2-SEC-07 (persistent prepared-weather cache off), CR-PERF-15 (keep `load_all()` in `app.R`), R2-PERF-10 / CR-PERF-02 (weather cache keys; reopen if remote slice reads dominate), CR-PERF-03 (prediction speedup), OPT-05 (aggregation remainders), R2-PERF-13 / R2-PERF-09 / CR-PERF-05, CR-PERF-07 (model_fit size; reopen if a large-country session shows high RSS), CR-CQ-07 (one integer `year` type; needs an engine parity gate).
 
@@ -103,6 +103,7 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
+| UNC-01 | H | M | ☐ | Found 2026-10-23 while checking for double-counted uncertainty. Level bands of Step 2 and Step 3 use the absolute weather design `X(W(r)) L` as the coefficient loading (`fct_simulations.R`, `compute_factor_loading()`), but the prediction is anchored on the observed outcome (original residual: `y_obs + f(W(r)) - f(W0)`), so the part `beta * X(W0)` that the observed welfare already pins down is counted as uncertain. At unchanged weather the band should be zero; it is not. Evidence (BFA, continuous temperature, SE 0.006, W0 about 28): the historical adverse-year level 4.50 has a coefficient band [3.58, 5.42], about +/-20%; the anchored band would be about SE x |W - W0|, roughly 1%. Contrasts are not affected (climate-change delta and policy effect use gradient differences in which `X(W0)` cancels; the policy loading of DOC-12 is already a difference). Proposed fix: loading `(X(W(r)) - X(W0))[, active] L_active`, with `X(W0)` from the survey rows at their own weather; check by a test in which the simulated weather equals the survey weather (band must be 0) and a BFA before/after of the level bands. Needs a user decision because every level band and the retained Step 2 payload change. Related minor item: `paired_effect_summary()` averages the per-model coefficient SDs (`mean(model_rows$coef_sd)`); the coefficients are shared by all members, so the norm of the mean gradient is the exact figure (a small overcount when gradients differ across members). |
 | CR-CQ-03 | L-M | M | ☐ | One `cachem` helper; `bindCache()` on run-pure outputs. Overlaps R2-PERF-03/04. |
 | CR-CQ-04 | M | M | ☐ | Define outputs once at module level (58 are defined inside observers). |
 | CR-CQ-01 | M | L | ☐ | Move static builders out; split the three giant server functions. |
