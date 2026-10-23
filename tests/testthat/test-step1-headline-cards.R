@@ -125,6 +125,33 @@ test_that("binned weather effect card popover names the largest bin", {
   expect_match(card$info, "Largest effect by bin", fixed = TRUE)
 })
 
+test_that("bin pattern ranks the main bin effects, not the bin-by-moderator terms", {
+  set.seed(12)
+  n <- 3000L
+  temp <- stats::runif(n, 15, 40)
+  urban <- stats::rbinom(n, 1, 0.5)
+  df <- data.frame(
+    # Mild main effect, strong extra effect for urban households in the top bin
+    welfare = 3 - 0.02 * pmax(temp - 25, 0) - 2 * urban * (temp > 35) +
+      stats::rnorm(n, 0, 0.5),
+    temp = cut(temp, breaks = seq(15, 40, by = 5), include.lowest = TRUE),
+    urban = urban, loc_id_panel = sample(sprintf("L%02d", 1:30), n, replace = TRUE)
+  )
+  sm <- build_selected_model(model_type = "Linear regression", engine = "fixest",
+    interactions = "urban", hh_covariates = "urban")
+  so <- list(name = "welfare", type = "numeric", transform = "none", label = "Welfare")
+  sw <- data.frame(name = "temp", label = "Temperature", units = "\u00b0C",
+    cont_binned = "Binned", stringsAsFactors = FALSE)
+  mf <- tryCatch(fit_model(df, so, sw, sm), error = function(e) NULL)
+  skip_if(is.null(mf), "binned fixture not fittable without bin preparation")
+  ct <- .fixest_coeftable(extract_native_fit(mf$fit3, mf$engine))
+  skip_if(!any(grepl("^temp.*:urban", rownames(ct))), "no bin-by-moderator terms in this fixture")
+  bp <- .s1_bin_pattern(mf, list(weather = sw), "temp", "level")
+  expect_false(is.null(bp))
+  expect_false(grepl(":", bp$label, fixed = TRUE))
+  expect_false(grepl(":", bp$first_label %||% "", fixed = TRUE))
+})
+
 .s1_poly_fixture <- function(n = 3000L, seed = 5, type = "numeric") {
   set.seed(seed)
   temp <- stats::rnorm(n, 25, 4)

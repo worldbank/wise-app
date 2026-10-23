@@ -932,6 +932,9 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       }
       ct <- .fixest_coeftable(extract_native_fit(mf$fit3, mf$engine))
       terms <- grep(paste0("^", .s1_esc(var), "[\\[\\(]"), rownames(ct), value = TRUE)
+      # Bin-by-moderator terms ("t(29.9,31.9]:urban") are not bins of the
+      # response; they would be ranked with the bins and mislabel the card
+      terms <- terms[!grepl(":", terms, fixed = TRUE)]
       if (length(terms) < 2L) {
         return(NULL)
       }
