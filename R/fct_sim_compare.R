@@ -294,9 +294,9 @@ paired_effect_summary <- function(effect_tbl,
     } else {
       list()
     }
-    coef_sd <- if (length(gradients) == nrow(x)) {
-      g <- Reduce(`+`, gradients) / nrow(x)
-      sqrt(sum(g * g, na.rm = TRUE))
+    coef_g <- if (length(gradients) == nrow(x)) Reduce(`+`, gradients) / nrow(x) else NULL
+    coef_sd <- if (!is.null(coef_g)) {
+      sqrt(sum(coef_g * coef_g, na.rm = TRUE))
     } else {
       # Coefficient error is shared by every year of a model, so it does not
       # shrink with the number of years.
@@ -309,6 +309,7 @@ paired_effect_summary <- function(effect_tbl,
       policy = if ("policy" %in% names(x)) mean(x$policy) else NA_real_,
       annual_lo = q[[1L]], annual_hi = q[[2L]],
       coef_sd = coef_sd,
+      coef_gradient = list(coef_g),
       n_years = nrow(x)
     )
   })
@@ -327,7 +328,18 @@ paired_effect_summary <- function(effect_tbl,
     hi = mean(model_rows$annual_hi, na.rm = TRUE)
   )
   z <- stats::qnorm(band_q)
-  coef_sd <- mean(model_rows$coef_sd, na.rm = TRUE)
+  # The coefficients are shared by every ensemble member, so their error does
+  # not average out across members: the exact figure is the norm of the mean
+  # gradient. Members without gradients fall back to their own SDs.
+  grads <- model_rows$coef_gradient
+  coef_sd <- if (all(!vapply(grads, is.null, logical(1L))) &&
+    length(unique(lengths(grads))) == 1L) {
+    g <- Reduce(`+`, grads) / length(grads)
+    sqrt(sum(g * g, na.rm = TRUE))
+  } else {
+    mean(model_rows$coef_sd, na.rm = TRUE)
+  }
+  model_rows$coef_gradient <- NULL
   tibble::tibble(
     scenario = scenario, value = center_value,
     baseline = center_fn(model_rows$baseline, na.rm = TRUE),

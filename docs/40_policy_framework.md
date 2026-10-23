@@ -81,7 +81,7 @@ The outcome may be in logs or in levels. The policy arm uses the same Model 3 co
 
 ### 5. Uncertainty of the policy arm
 
-The central values of the policy series are exact given Eq. (2.1). The coefficient uncertainty of the baseline arm is carried by a factor loading $F_i$ ([33_uncertainty](33_uncertainty.md)), the gradient of the prediction with respect to the coefficients that the band covers. For the linear model the correction $\Delta y_i$ is linear in the coefficients: the policy coefficients times the lever changes, and the weather-by-policy interactions times the weather of the row. Its gradient is added to the baseline loading to give the policy arm's loading:
+The central values of the policy series are exact given Eq. (2.1). The coefficient uncertainty of the baseline arm is carried by a factor loading $F_i$ ([33_uncertainty](33_uncertainty.md)), the gradient of the prediction with respect to the coefficients that the band covers. For the linear model the correction $\Delta y_i$ is linear in the coefficients: the policy coefficients times the lever changes, and the weather-by-policy interactions times the weather of the row. The baseline loading is the anchored loading of Eq. (1.2) in [33_uncertainty](33_uncertainty.md), the change from each household's own design. The gradient of the correction is added to it to give the policy arm's loading:
 
 $$F_i^{\text{pol}} = F_i + \nabla_{\beta}\,\Delta y_i \qquad \text{(5.1)}$$
 

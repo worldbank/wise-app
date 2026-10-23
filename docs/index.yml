@@ -343,6 +343,7 @@ pages:
       - "8. Paired contrasts"
     equations:
       - {tag: "(1.1)", section: "1. Factor loading"}
+      - {tag: "(1.2)", section: "1. Factor loading"}
       - {tag: "(2.1)", section: "2. Delta method for a metric"}
       - {tag: "(6.1)", section: "6. Quantile model"}
       - {tag: "(7.1)", section: "7. Combining members"}

@@ -584,23 +584,14 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
     )
   }
 
-  # For F_loading: the scenario design matrix X_scenario %*% L_k gives the
-  # delta-method gradient of the *predicted welfare level* under the RIF
-  # regression at quantile k, consistent with the OLS path's F_loading
-  # construction. Downstream:
-  #   - Level mode: ||F_loading||^2 = level-CI of the predicted welfare
-  #     under the RIF model at this household's quantile position tau_i.
-  #     Comparable in width to OLS level bands.
-  #   - Deviation/contrast mode: the aggregation layer subtracts the
-  #     historical reference F_agg, so F_agg_s - F_agg_h reduces (per
-  #     household i) to (X_scenario_i - X_hist_i) %*% t(L_tau_i) - the
-  #     paired-contrast variance, matching the X_diff construction we
-  #     previously used. Deviation bands stay tight.
-  #
-  # The displayed point estimate remains y_observed + delta_i; the level
-  # SE refers to the predicted level under the regression, not to that
-  # observed-anchored displayed value (analogous to how OLS's level SE
-  # refers to its predicted, not "true," welfare).
+  # For F_loading: (X_scenario - X_base) %*% L_k gives the delta-method
+  # gradient of the displayed value y_observed + delta_i at quantile k,
+  # consistent with the OLS path's anchored F_loading (UNC-01). The observed
+  # outcome pins down the part of the level that depends on the household's
+  # own weather, so only the change from it carries coefficient uncertainty;
+  # the band is zero at unchanged weather. Downstream the contrast mode
+  # subtracts the historical reference F_agg, which cancels the same shared
+  # part.
   #
   # Memory: rather than materialising all K full N*P scenario design matrices
   # up front (~ K * N * p * 8 bytes - ~8 GB for a large-N country with K=9),
@@ -635,9 +626,8 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
     )
   }
 
-  # Clean up the baseline frame. newdata_scen is retained until after F_loading
-  # is built below, since the lazy design-matrix accessor reads from it.
-  rm(newdata_base)
+  # newdata_base and newdata_scen are retained until after F_loading is built
+  # below, since the lazy design-matrix accessor reads from them.
 
   # Assemble output
   newdata$.fitted <- y_baseline + delta_i
@@ -650,12 +640,20 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
   if (compute_loading) {
     active_mask <- attr(chol_list, "active_mask")
     direct_design_cache <- attr(direct_pairs, "design_cache")
+    # UNC-01: the displayed value is y_observed + delta, so the loading is the
+    # change from each household's own (baseline) design, X_scenario - X_base.
     X_scen_fn <- if (!is.null(direct_design_cache)) {
-      function(k, rows) direct_design_cache$scenario_X[rows, , drop = FALSE]
+      function(k, rows) {
+        direct_design_cache$scenario_X[rows, , drop = FALSE] -
+          direct_design_cache$base_X[rows, , drop = FALSE]
+      }
     } else {
       function(k, rows) {
         stats::model.matrix(fit_multi[[k]],
           data = newdata_scen[rows, , drop = FALSE],
+          type = "rhs"
+        ) - stats::model.matrix(fit_multi[[k]],
+          data = newdata_base[rows, , drop = FALSE],
           type = "rhs"
         )
       }
@@ -686,7 +684,7 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
     }
   }
 
-  rm(newdata_scen)
+  rm(newdata_scen, newdata_base)
 
   newdata
 }

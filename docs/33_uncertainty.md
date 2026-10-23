@@ -34,6 +34,12 @@ $$\mathrm{Var}(F_i z) = x_i^{\prime}\hat\Sigma\ x_i \qquad \text{(1.1)}$$
 
 which is the usual variance of a linear prediction. The app does not draw $z$. It uses $F$ in the closed form below.
 
+**Anchored loading.** With the "original" residual rule the displayed prediction of a household is its observed outcome plus the change in the fitted value, $y_i^{\text{obs}} + f(x_i) - f(x_i^{0})$, because the household's residual carries $f(x_i^{0})$, the fitted value at the weather of its interview. The observed outcome pins down the part of the level that depends on $x_i^{0}$, so only the change carries coefficient uncertainty and the loading is
+
+$$F_i = (x_i - x_i^{0})^{\prime}L \qquad \text{(1.2)}$$
+
+with $x_i^{0}$ the design row of the household in the estimation sample that its residual is matched to. The band of a level is then zero when the simulated weather equals the weather of the interview, and grows with the distance from it. Using $x_i^{\prime}L$ instead would treat the part of the prediction that the observed outcome already fixes as uncertain, and over-state the band of a level by an order of magnitude when the weather change is small. Households whose residual is not matched to an estimation row (it is a hash-keyed draw) and the other residual rules keep $x_i^{\prime}L$. Paired differences are not affected when the aggregate is linear in the predictions, because $x_i^{0}$ cancels. For a non-linear aggregate of a log outcome the gradient $h_i$ differs between the arms, and the anchored loading is the correct one in $F^{\prime}h$.
+
 ### 2. Delta method for a metric
 
 The metric changes with the prediction of household $i$ through the gradient $h_i = (\partial T/\partial Y_i)\ \kappa_i$. Define the gradient of $T$ with respect to the coefficients and the variance:
@@ -79,7 +85,7 @@ where $z_q=\Phi^{-1}(q)$ and $\Lambda$ is the logistic function. If the SD is ze
 
 A household's coefficient uncertainty is mostly irrelevant to a change in weather. Write the counterfactual prediction as the observed baseline plus a shift: with a household's own fitted residual held fixed, $y^{*}_i = y_i + (W^{*}_i - W_i)^{\prime}\hat\gamma$, where $\hat\gamma$ collects the coefficients on terms that change. The uncertainty on coefficients of terms that do not change cancels through the residual. The app uses this **additive-decomposition scope** by default.
 
-- **Active coefficients.** Every coefficient whose name involves a weather variable, or involves a variable that the scenario changes, including interactions. Intercepts are excluded. The policy arm of Step 3 reuses the loading of the baseline arm. The coefficients on policy variables are therefore not added to the block ([40_policy_framework](40_policy_framework.md), Section 5).
+- **Active coefficients.** Every coefficient whose name involves a weather variable, or involves a variable that the scenario changes, including interactions. Intercepts are excluded. For the linear model the policy arm of Step 3 adds the coefficients on the policy variables to the block as extra columns ([40_policy_framework](40_policy_framework.md), Section 5). For the quantile model it reuses the baseline loading.
 - **Block factor.** The loading uses only the active block of the covariance, $F_i = x_{a,i}^{\prime}L_{a}$ with $L_aL_a^{\prime}=\hat\Sigma_{aa}$, a fresh Cholesky factor of that block. Selecting columns of $x_i^{\prime}L$ would give a wrong variance when active and inactive coefficients are correlated.
 - **When it applies.** For the linear model, only with the "original" residual rule. For the quantile model, with any residual rule, because the observed baseline outcome plays the role of the fixed residual.
 - **Switch.** "Include uncertainty on all covariates" removes the restriction and uses the full covariance.
@@ -92,7 +98,7 @@ For the quantile model, $\hat\Sigma_k$ and $L_k$ come from the equation of each 
 
 $$F_i = (1-w_i)\ x_i^{*\prime}L_k + w_i\ x_i^{*\prime}L_{k+1} \qquad \text{(6.1)}$$
 
-with $x_i^{*}$ the design row under the scenario. Households outside the grid take the loading of the boundary quantile, with no extra penalty. The nine equations are treated as independent. There is no residual variance.
+with $x_i^{*}$ the design row under the scenario minus the design row at the weather of the interview, as in Eq. (1.2). Households outside the grid take the loading of the boundary quantile, with no extra penalty. The nine equations are treated as independent. There is no residual variance.
 
 ### 7. Combining members
 
@@ -136,7 +142,7 @@ and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference 
 - Error in the weather data, and uncertainty about the interview month and location.
 - Poverty-line uncertainty and survey-weight uncertainty.
 - The estimation of the quantile density and of the quantiles themselves (the quantile model).
-- Cross-quantile covariance, and correlation between the baseline and the prediction of a household in the quantile model. The coefficient band of that model refers to the predicted level at the household's position, not to the observed-anchored value that is displayed.
+- Cross-quantile covariance, and correlation between the baseline and the prediction of a household in the quantile model.
 - Scenario uncertainty: the choice of pathway, horizon and policy design.
 - Coefficient uncertainty for non-linear and tree-based models.
 - Uncertainty in the bandwidth rules. The poverty rate and the median depend on the smoothing bandwidths.
@@ -158,6 +164,7 @@ User guide: [Sources of uncertainty](https://github.com/worldbank/wise-app-docs/
 |---|---|---|
 | Covariance factor | 1 | `R/fct_simulations.R` `compute_chol_vcov()`, `COEF_VCOV_SPEC` |
 | Factor loading | (1.1) | `R/fct_simulations.R` `compute_factor_loading()` |
+| Anchored loading | (1.2) | `R/fct_simulations.R` `.anchor_design_shift()` |
 | Delta-method aggregation | (2.1) | `R/fct_aggregation_delta.R` `aggregate_with_uncertainty_delta()` |
 | Gradients | 3 | `R/fct_aggregation_delta.R` `gradient_for_method()` |
 | Bands | 4 | `R/fct_aggregation_delta.R` `apply_band_transform()`; `R/fct_sim_compare.R` `resolve_band_q()` |

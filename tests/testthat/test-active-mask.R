@@ -436,10 +436,12 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
     method = "mean", weights = rep(1, 50), residuals = "none",
     train_aug = NULL, is_log = FALSE
   )
-  # Additive var_coef must be strictly smaller (non-weather coefs were
-  # contributing under legacy). With this fixture we see ~30x reduction.
-  expect_lt(agg_adit$var_coef, agg_legacy$var_coef)
-  expect_lt(agg_adit$var_coef / agg_legacy$var_coef, 0.5)
+  # UNC-01: the loading is the change from the household's own design, so a
+  # covariate that does not move adds nothing and the unmasked and masked
+  # loadings give the same variance (before, the absolute design made the
+  # unmasked variance about 30x larger).
+  expect_equal(agg_adit$var_coef, agg_legacy$var_coef, tolerance = 1e-8)
+  expect_lte(agg_adit$var_coef, agg_legacy$var_coef * (1 + 1e-8))
 })
 
 test_that("end-to-end: masked F_loading shrinks var_coef vs unmasked", {

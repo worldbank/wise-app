@@ -241,6 +241,41 @@ compute_factor_loading <- function(X_nonFE, chol_obj) {
 }
 
 
+# UNC-01: with `residuals = "original"` a household's prediction is
+# y_obs + f(X(W(r))) - f(X(W0)): the residual carries f(X(W0)). Its
+# coefficient loading is therefore X(W(r)) - X(W0), not X(W(r)), and is zero at
+# unchanged weather. X0 is the design row of the training household the
+# residual is matched to; rows without a match (their residual is a hash-keyed
+# draw) keep the absolute loading. Only the columns the loading uses are
+# shifted: the active block, or every column without a mask.
+.anchor_design_shift <- function(X_nonFE, chol_obj, model, train_data, id_vec, id_col) {
+  X <- align_factor_loading_matrix(X_nonFE, names(chol_obj$beta))
+  if (is.null(train_data) || is.null(id_col) || !id_col %in% names(train_data)) {
+    return(X)
+  }
+  hit <- match(as.character(id_vec), as.character(train_data[[id_col]]))
+  rows <- which(!is.na(hit))
+  if (!length(rows) || length(hit) != nrow(X)) return(X)
+  mask <- chol_obj$active_mask
+  cols <- if (!is.null(mask) && length(mask) == ncol(X)) which(mask) else seq_len(ncol(X))
+  src <- unique(hit[rows])
+  X0 <- tryCatch(
+    align_factor_loading_matrix(
+      stats::model.matrix(model, data = train_data[src, , drop = FALSE], type = "rhs"),
+      colnames(X)
+    ),
+    error = function(e) {
+      warning("[run_sim_pipeline] anchor design failed: ", conditionMessage(e))
+      NULL
+    }
+  )
+  if (is.null(X0) || nrow(X0) != length(src)) return(X)
+  X[rows, cols] <- X[rows, cols, drop = FALSE] -
+    X0[match(hit[rows], src), cols, drop = FALSE]
+  X
+}
+
+
 # `model.matrix()` can omit valid coefficient columns when a prediction slice
 # has no observations for a factor level, and some model classes return the
 # same columns in a different order. Align by coefficient name before applying
@@ -737,6 +772,14 @@ run_sim_pipeline <- function(weather_raw,
       ), detail = "ols")
       if (!is.null(X_nonFE)) {
         if (is.list(chol_obj) && "L" %in% names(chol_obj)) {
+          # UNC-01: with original residuals the prediction is anchored on the
+          # observed outcome, so the loading is the change from the
+          # household's own design
+          if (identical(residuals, "original") && !is.null(id_vec)) {
+            X_nonFE <- .anchor_design_shift(
+              X_nonFE, chol_obj, model, train_data, id_vec, id_col
+            )
+          }
           # Our named list format - use compute_factor_loading()
           F_loading <- profile_stage("factor_loading",
             compute_factor_loading(X_nonFE, chol_obj), detail = "ols")
