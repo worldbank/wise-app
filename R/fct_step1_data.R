@@ -272,8 +272,12 @@ wise_selected_outcome <- function(variable_list, df, outcome = NULL, currency = 
     stop("Outcome '", outcome, "' is not available in the selected surveys.", call. = FALSE)
   }
   cur <- if (is_monetary_outcome(info$name[1], info$units[1])) currency else NULL
+  # A local-currency outcome starts at the same line as the Outcome control, not
+  # at 3.00 (a PPP figure), so the Step 2 and Step 3 poverty metrics are readable.
   pl <- if (identical(as.character(info$name[1]), "poor")) {
     poverty_line %||% wise_default_poverty_line(currency, df)
+  } else if (identical(cur, "LCU")) {
+    wise_default_poverty_line(cur, df)
   }
   list(info = info, so = build_selected_outcome(info, currency = cur, poverty_line = pl))
 }

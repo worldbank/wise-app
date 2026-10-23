@@ -158,10 +158,14 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
       if (nrow(info) == 0) {
         return(info)
       }
+      # Without a line control (outcomes other than `poor`), a local-currency
+      # outcome starts at the same default line the control would show.
       build_selected_outcome(
         info         = info,
         currency     = input$currency,
-        poverty_line = input$poverty_line
+        poverty_line = input$poverty_line %||% if (identical(input$currency, "LCU")) {
+          wise_default_poverty_line("LCU", survey_data())
+        }
       )
     })
 
