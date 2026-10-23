@@ -510,3 +510,24 @@ test_that("labour variables are judged on the rows they are defined for", {
   # without `age` the rule cannot be read: the all-rows check applies
   expect_false("unemployed" %in% wise_valid_vars(df[setdiff(names(df), "age")], vl, "welfare")$name)
 })
+
+test_that("outcome-flagged variables can be interactions, except the outcome of the run", {
+  fx <- model_fixture()
+  swx <- model_fixture_weather(fx$vl)
+  vl <- fx$vl
+  vl$outcome[vl$name == "urban"] <- 1
+  model <- wise_spec(model = list(
+    type = "linear", fixed_effects = c("year", "gaul1_code"),
+    covariates = list(vars = "hhsize"), interactions = "urban"
+  ))$model
+  m <- wise_model_from_spec(model, "hh", fx$sw, fx$so, swx, vl, 123L)
+  expect_identical(m$selected_model$interactions, "urban")
+
+  # when it is the outcome, it cannot also moderate the weather effect
+  so <- fx$so
+  so$name <- "urban"
+  expect_error(
+    wise_model_from_spec(model, "hh", fx$sw, so, swx, vl, 123L),
+    "Interaction variable\\(s\\) not available in the data: urban"
+  )
+})
