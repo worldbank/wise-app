@@ -1465,3 +1465,31 @@ test_that("weather_support_pool adds member counts and recomputes the share", {
   expect_identical(pooled$scenario, "SSP2 / 2030")
   expect_null(weather_support_pool(list(NULL), "x"))
 })
+
+test_that("the weighted-suite cache is bounded and evicts the least recently used (CR-CQ-03)", {
+  hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs"
+    ),
+    {
+      session$flushReact()
+      w <- agg_workspace()
+      for (i in 1:40) assign_suite(w, paste0("k", i), i)
+      expect_length(ls(w$weighted_suite_cache), 32L)
+      expect_null(get_suite(w, "k1"))
+      expect_identical(get_suite(w, "k40"), 40L)
+      # A read refreshes the entry: k9 is the oldest, reading it saves it
+      expect_identical(get_suite(w, "k9"), 9L)
+      assign_suite(w, "k41", 41L)
+      expect_identical(get_suite(w, "k9"), 9L)
+      expect_null(get_suite(w, "k10"))
+    }
+  )
+})

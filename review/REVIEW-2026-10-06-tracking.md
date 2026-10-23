@@ -18,9 +18,9 @@ All Critical and High findings are done in code, and the docs/ revision items (D
 | B6 | Performance | 7 |
 | B7 | Medium/Low bugs | 0 |
 | B8 | Accessibility | 6 |
-| B9 | Code quality and docs | 5 |
+| B9 | Code quality and docs | 3 |
 
-Closed as won't fix or deferred (full rows in the archive addendum; reopen only on the stated trigger): DOC-03 items (1) and (3) (deferred 2026-10-23; reopen if a user needs externally supplied effects, or has 3+ survey rounds per stratum), R2-OPS-05 (stay on DuckDB 1.5.6), CR-SEC-02 (no further DuckDB lockdown), CR-SEC-07 metadata profile (shared pool, guidelines §0), R2-SEC-07 (persistent prepared-weather cache off), CR-PERF-15 (keep `load_all()` in `app.R`), R2-PERF-10 / CR-PERF-02 (weather cache keys; reopen if remote slice reads dominate), CR-PERF-03 (prediction speedup), OPT-05 (aggregation remainders), R2-PERF-13 / R2-PERF-09 / CR-PERF-05, CR-PERF-07 (model_fit size; reopen if a large-country session shows high RSS), CR-CQ-07 (one integer `year` type; needs an engine parity gate).
+Closed as won't fix or deferred (full rows in the archive addendum; reopen only on the stated trigger): CR-CQ-04 (deferred 2026-10-23: the 58 outputs created inside observers follow the INT-05 fit-snapshot pattern on purpose; reopen if a stale-output or re-fit cost problem shows up in a browser check), DOC-03 items (1) and (3) (deferred 2026-10-23; reopen if a user needs externally supplied effects, or has 3+ survey rounds per stratum), R2-OPS-05 (stay on DuckDB 1.5.6), CR-SEC-02 (no further DuckDB lockdown), CR-SEC-07 metadata profile (shared pool, guidelines §0), R2-SEC-07 (persistent prepared-weather cache off), CR-PERF-15 (keep `load_all()` in `app.R`), R2-PERF-10 / CR-PERF-02 (weather cache keys; reopen if remote slice reads dominate), CR-PERF-03 (prediction speedup), OPT-05 (aggregation remainders), R2-PERF-13 / R2-PERF-09 / CR-PERF-05, CR-PERF-07 (model_fit size; reopen if a large-country session shows high RSS), CR-CQ-07 (one integer `year` type; needs an engine parity gate).
 
 ## Working rules
 
@@ -102,8 +102,6 @@ Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepw
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| CR-CQ-03 | L-M | M | ☐ | One `cachem` helper; `bindCache()` on run-pure outputs. Overlaps R2-PERF-03/04. |
-| CR-CQ-04 | M | M | ☐ | Define outputs once at module level (58 are defined inside observers). |
 | CR-CQ-01 | M | L | ☐ | Move static builders out; split the three giant server functions. |
 | CR-CQ-02 | M | L | ☐ | Shared Results-pane module for Steps 2 and 3. |
 | DOC-11 | L | L | ◐ | Decided 2026-10-23 (user): document and quantify now, done (docs/42 section 5 gives the mean factor 1 + SD^2/2; note on the Step 3 decomposition tab). The exact fix is open and is L, not S: the policy arm would carry a separate level-scale transfer through the aggregation mean (`fct_aggregation_delta.R`), its delta-method gradient, the metric states (`fct_policy_metric_decompose.R`) and the level channels. From the docs/ revision (2026-10-23). For a log outcome the cash transfer is added to the predicted level before the residual, so the policy arm adds `T * exp(e_i)` and not `T`. Add the transfer after the residual, or document the scaling in the UI (`docs/42_social_protection.md` section 5). |

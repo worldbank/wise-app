@@ -934,6 +934,7 @@ mod_2_02_results_server <- function(id,
         if (length(cached_suites)) {
           rm(list = cached_suites, envir = ws$weighted_suite_cache)
         }
+        attr(ws$weighted_suite_cache, "keys") <- character(0)
       }
       if (identical(ws, cache_workspace_ref$current)) {
         cache_workspace_ref$current <- NULL
@@ -968,6 +969,29 @@ mod_2_02_results_server <- function(id,
           ws$cache_order$evictions <- c(ws$cache_order$evictions, old)
         }
       }
+      invisible(value)
+    }
+
+    # CR-CQ-03: the weighted-suite cache is bounded like the others. Keys are
+    # kept in use order in an attribute of the environment; the oldest go first.
+    .SUITE_CACHE_MAX <- 32L
+
+    get_suite <- function(ws, key) {
+      cache <- ws$weighted_suite_cache
+      value <- get0(key, envir = cache, inherits = FALSE)
+      if (!is.null(value)) attr(cache, "keys") <- c(setdiff(attr(cache, "keys"), key), key)
+      value
+    }
+
+    assign_suite <- function(ws, key, value) {
+      cache <- ws$weighted_suite_cache
+      assign(key, value, envir = cache)
+      keys <- c(setdiff(attr(cache, "keys"), key), key)
+      while (length(keys) > .SUITE_CACHE_MAX) {
+        rm(list = keys[[1L]], envir = cache)
+        keys <- keys[-1L]
+      }
+      attr(cache, "keys") <- keys
       invisible(value)
     }
 
@@ -1114,7 +1138,7 @@ mod_2_02_results_server <- function(id,
             )
             suite <- shared_aggregation_cache_get(shared_aggregation_cache, shared_key)
             if (!is.null(suite)) return(setNames(list(suite[[method]]), method))
-            suite <- get0(suite_key, envir = ws$weighted_suite_cache)
+            suite <- get_suite(ws, suite_key)
            if (is.null(suite)) {
              suite <- aggregate_pipeline_tables_multi(
                pipelines = pl,
@@ -1132,7 +1156,7 @@ mod_2_02_results_server <- function(id,
                preparation_cache = ws$prep_cache,
                seed = .step2_run_seed(ws$hs)
               )
-              assign(suite_key, suite, envir = ws$weighted_suite_cache)
+              assign_suite(ws, suite_key, suite)
               shared_aggregation_cache_put(shared_aggregation_cache, shared_key, suite)
            }
            out <- suite[[method]]
@@ -1187,7 +1211,7 @@ mod_2_02_results_server <- function(id,
                 "scenario_suite_", names(sc)[[s_idx]], "_", format(suite_pov), "_", format(bandwidth_p0()), "_",
                 group$poverty_dependent
               )
-             suite <- get0(suite_key, envir = ws$weighted_suite_cache)
+             suite <- get_suite(ws, suite_key)
              if (is.null(suite)) {
                suite <- aggregate_pipeline_tables_multi(
                  pipelines = pipes,
@@ -1204,7 +1228,7 @@ mod_2_02_results_server <- function(id,
                  preparation_cache = ws$prep_cache,
                  seed = .step2_run_seed(ws$hs)
                )
-               assign(suite_key, suite, envir = ws$weighted_suite_cache)
+               assign_suite(ws, suite_key, suite)
              }
              out <- suite[[method]]
              return(setNames(list(out), method))
