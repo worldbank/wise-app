@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, weather-measures]
 symbols: [y, W, M, X, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation
 code: [R/fct_model_select.R, R/fct_step1_model.R, R/fct_fit_model.R, R/mod_1_06_model.R, R/fct_model_card.R, R/fct_results.R, R/fct_simulations.R]
-verified_against: e8be204
+verified_against: 93a2782
 ---
 
 # Model specification and estimation sample

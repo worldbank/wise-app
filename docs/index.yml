@@ -161,7 +161,7 @@ pages:
       - "Step 1 > Model: model type, interaction moderator, Model settings (fixed effects, covariate selection, Lasso options), then Run model. The model summary card shows the specification, the cluster and the covariate count."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation"
     code: ["R/fct_model_select.R", "R/fct_step1_model.R", "R/fct_fit_model.R", "R/mod_1_06_model.R", "R/fct_model_card.R", "R/fct_results.R", "R/fct_simulations.R"]
-    verified_against: "e8be204"
+    verified_against: "93a2782"
   - id: "linear-model"
     file: "21_model_linear.md"
     title: "Linear and logistic models"
