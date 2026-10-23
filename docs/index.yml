@@ -406,7 +406,7 @@ pages:
       - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. A moved lever whose variables are not in the survey or the model is reported when the policy runs (employment needs employed and unemployed; the sector shares need employed and the three sectors), and in a batch run as a partial policy failure. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect (20_model_specification)."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers"
     code: ["R/fct_policy_registry.R", "R/fct_policy_sim.R", "R/mod_3_levers.R", "R/fct_step3_input.R"]
-    verified_against: "e8be204"
+    verified_against: "69503ea"
   - id: "social-protection"
     file: "42_social_protection.md"
     title: "Regular cash transfers: targeting, amount, cost and reach"
