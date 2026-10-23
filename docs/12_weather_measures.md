@@ -6,7 +6,7 @@ depends_on: [notation, data]
 symbols: [W, mu, l, v, x]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#weather-variables-transformations
 code: [R/fct_get_weather.R, R/fct_weather_select.R, R/fct_weather_pipeline.R, R/fct_weatherstats.R, R/fct_loc_panel.R, R/utils_mod_1_helpers.R, R/mod_1_04_weather.R, R/mod_1_05_weatherstats.R]
-verified_against: 8592a9d
+verified_against: b8d37e4
 ---
 
 # Weather measures
