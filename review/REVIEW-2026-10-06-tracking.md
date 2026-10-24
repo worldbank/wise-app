@@ -11,12 +11,11 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | Batch | Scope | Open |
 |---|---|---|
 | B2 | Security | 1 |
-| B5 | Robustness, CI, tests | 1 |
 | B6 | Performance | 4 |
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 3 |
 
-B1, B3, B4, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
+B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
 
 ## Working rules
 
@@ -42,13 +41,6 @@ B1, B3, B4, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting
 |---|---|---|---|---|
 | CR-SEC-09 (rest) | L | S | ◐ | Steps 1 (no inline script or handler in the app's code) and 2 (report-only policy designed; zero violations over the fixture flow Step 1 to 3 in headless Chrome) are done. Open: set the report-only header on a staging Connect instance and read real traffic (`CustomHeader` in the `[Server]` section of `rstudio-connect.gcfg`; it applies to all content on that server, so check other apps first), then decide on enforcing. Header: `Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://tiles.basemaps.cartocdn.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'`. It pins connections, images, workers, plugins, base and form targets, but gives no injected-script protection (`script-src` needs `'unsafe-inline'` for bslib/Shiny initialisers and `'unsafe-eval'` for `htmlwidgets::JS()`); a strict `script-src` would need nonces, which Shiny lacks. Not covered locally: real downloads, hover tooltips, real-data tile traffic. Evidence in the archive. |
 
-## B5 - Robustness, CI and test hygiene
-
-| ID | Sev | Eff | Status | Open task |
-|---|---|---|---|---|
-| R2-OPS-09 | L | S | ✗ | Deferred 2026-10-19 (user). Left: `set.seed` vs `local_seed` (116 calls in 48 files; convert only in files being touched); `tests/spelling.R` never fails (the `spelling` package is not installed here and there is no `inst/WORDLIST`; needs a WORDLIST pass first). The `localhost:1` tests are a refused connection with a 15-20 s deadline, so they finish at once; left as they are. |
-| RED-06 | M | M | ◐ | One parameterised batch driver over `step2_compute()`. Consolidating the five `04_run_sim` copies deferred by user decision 2026-10-07. |
-
 ## B6 - Performance
 
 Work stopped by decision 2026-10-24 (user agreed): the rows below have no measured pain behind them. Baselines and measurements are in the archive. Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepwise fits, SQL `ORDER BY` for survey sort, `bw.SJ` subsampling, batched gemm (1.8x regression with reference BLAS), `shared_period` plan, reference weather as default, shared SSP monthly cache, sort-once materialisation of the period relation (no gain: 3.35 s against 3.23 s for 16 members), unsorted per-member collect with a key-order check (DuckDB does not return key order, so it collects twice: 2x2 40.0 s to 43.1 s), R-side rounding rewrite (identical, saves only 4 ms per member).
@@ -72,7 +64,7 @@ Work stopped by decision 2026-10-24 (user agreed): the rows below have no measur
 |---|---|---|---|---|
 | CR-CQ-01 | M | L | ☐ | Move static builders out; split the three giant server functions. |
 | CR-CQ-02 | M | L | ☐ | Shared Results-pane module for Steps 2 and 3. |
-| DOC-11 | L | L | ◐ | Decided 2026-10-23 (user): document and quantify now, done (docs/42 section 5 gives the mean factor 1 + SD^2/2; note on the Step 3 decomposition tab). The exact fix is open and is L, not S: the policy arm would carry a separate level-scale transfer through the aggregation mean (`fct_aggregation_delta.R`), its delta-method gradient, the metric states (`fct_policy_metric_decompose.R`) and the level channels. From the docs/ revision (2026-10-23). For a log outcome the cash transfer is added to the predicted level before the residual, so the policy arm adds `T * exp(e_i)` and not `T`. Add the transfer after the residual, or document the scaling in the UI (`docs/42_social_protection.md` section 5). |
+| DOC-11 | M | L | ◐ | Decided 2026-10-23 (user): document and quantify now, done (docs/42 section 5 gives the mean factor 1 + SD^2/2; note on the Step 3 decomposition tab). The exact fix is open and is L, not S: the policy arm would carry a separate level-scale transfer through the aggregation mean (`fct_aggregation_delta.R`), its delta-method gradient, the metric states (`fct_policy_metric_decompose.R`) and the level channels. From the docs/ revision (2026-10-23). For a log outcome the cash transfer is added to the predicted level before the residual, so the policy arm adds `T * exp(e_i)` and not `T`. Add the transfer after the residual, or document the scaling in the UI (`docs/42_social_protection.md` section 5). |
 
 Ordering note from the report: delete dead code before splitting files; one PR per file with characterisation tests.
 
@@ -82,3 +74,4 @@ Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (move
 
 - 2026-10-24 - Tracker compacted to open work; closed list, known gaps, baselines and the Log moved to the archive verbatim.
 - 2026-10-24 - CR-SEC-03 and CR-A11Y-08 closed as won't fix (user decision; B2 open count 2 to 1, B8 2 to 1). Rows and reopen triggers in the archive addendum.
+- 2026-10-24 - RED-06 and R2-OPS-09 closed as won't fix (B5 open count 1 to 0); DOC-11 severity raised L to M (the log-outcome transfer is worth 8% to 18% more than T with a residual term, so policy gains are overstated). Rows in the archive addendum.

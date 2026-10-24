@@ -236,3 +236,12 @@ Rows as they stood:
 
 Reopen triggers: CR-SEC-03, if one Connect process serves sessions with different credentials for the same bucket (for example UI-typed credentials on a shared server). CR-A11Y-08, if a user or an accessibility review asks for a map value table or for chart descriptions (hand-written on key charts, not generated).
 
+### RED-06 and R2-OPS-09 closed as won't fix (2026-10-24, user decision on recommendation)
+
+Rows as they stood:
+
+| R2-OPS-09 | L | S | ✗ | Deferred 2026-10-19 (user). Left: `set.seed` vs `local_seed` (116 calls in 48 files; convert only in files being touched); `tests/spelling.R` never fails (the `spelling` package is not installed here and there is no `inst/WORDLIST`; needs a WORDLIST pass first). The `localhost:1` tests are a refused connection with a 15-20 s deadline, so they finish at once; left as they are. |
+| RED-06 | M | M | ◐ | One parameterised batch driver over `step2_compute()`. Consolidating the five `04_run_sim` copies deferred by user decision 2026-10-07. |
+
+Reasons. RED-06: the five `04_run_sim` copies are dev benchmark drivers, deferred since 2026-10-07, with no bug or maintenance cost behind them. R2-OPS-09: `tests/spelling.R` calls `spelling::spell_check_test(error = FALSE)` on purpose and the package is not on CRAN; a WORDLIST pass would only make a check that cannot fail look busy; `set.seed` vs `local_seed` is converted when a file is touched anyway. Reopen triggers: RED-06, if a fix must be applied to all five drivers more than once; R2-OPS-09, if a CRAN submission is planned (then add `inst/WORDLIST` and drop `error = FALSE`) or a test leaks RNG state into another.
+
