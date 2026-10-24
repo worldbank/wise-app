@@ -10,10 +10,10 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 
 | Batch | Scope | Open |
 |---|---|---|
-| B2 | Security | 2 |
+| B2 | Security | 1 |
 | B5 | Robustness, CI, tests | 1 |
 | B6 | Performance | 4 |
-| B8 | Accessibility | 2 |
+| B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 3 |
 
 B1, B3, B4, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
@@ -40,7 +40,6 @@ B1, B3, B4, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| CR-SEC-03 | H | M | ◐ | Per-session secret names and a per-session connection. Two sessions in one process using different credentials for the same bucket still share one secret. Low priority: Connect uses one service principal and UI credentials are a local-use path. Scoped Databricks secret confirmed on Connect (user, 2026-10-23). |
 | CR-SEC-09 (rest) | L | S | ◐ | Steps 1 (no inline script or handler in the app's code) and 2 (report-only policy designed; zero violations over the fixture flow Step 1 to 3 in headless Chrome) are done. Open: set the report-only header on a staging Connect instance and read real traffic (`CustomHeader` in the `[Server]` section of `rstudio-connect.gcfg`; it applies to all content on that server, so check other apps first), then decide on enforcing. Header: `Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://tiles.basemaps.cartocdn.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'`. It pins connections, images, workers, plugins, base and form targets, but gives no injected-script protection (`script-src` needs `'unsafe-inline'` for bslib/Shiny initialisers and `'unsafe-eval'` for `htmlwidgets::JS()`); a strict `script-src` would need nonces, which Shiny lacks. Not covered locally: real downloads, hover tooltips, real-data tile traffic. Evidence in the archive. |
 
 ## B5 - Robustness, CI and test hygiene
@@ -65,7 +64,6 @@ Work stopped by decision 2026-10-24 (user agreed): the rows below have no measur
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| CR-A11Y-08 | M | M | ◐ | Map "View as table" alternative: dropped by user decision 2026-10-08 (maps stay hover-only for values). ECharts `aria` in `wise_echart_theme()` (`utils_plot_theme.R`): deferred by user decision 2026-10-08 (generic generated descriptions judged not worth a screen-reader pass); reopen with hand-written descriptions on key charts if wanted. |
 | CR-A11Y-09 | M | M | ◐ | Done 2026-10-24: axe-core scans 16 screens (Overview, Steps 1 to 3 and every result tab) in the smoke job on a generated fixture data folder; four real violation types fixed in `custom.js`; green locally with `WISEAPP_AXE_FAIL=1`. Open: the first GitHub run, and a real-data pass (the scan sees fixture table sizes only). Known and filtered: bslib's navbar `role="tablist"` also holds plain links and a dropdown (`aria-required-children` on `.navbar-nav`; upstream). Shiny toasts are outside the scan (transient contrast). |
 
 ## B9 - Code quality and docs
@@ -83,3 +81,4 @@ Ordering note from the report: delete dead code before splitting files; one PR p
 Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (moved)" and earlier addenda). Add new entries here.
 
 - 2026-10-24 - Tracker compacted to open work; closed list, known gaps, baselines and the Log moved to the archive verbatim.
+- 2026-10-24 - CR-SEC-03 and CR-A11Y-08 closed as won't fix (user decision; B2 open count 2 to 1, B8 2 to 1). Rows and reopen triggers in the archive addendum.

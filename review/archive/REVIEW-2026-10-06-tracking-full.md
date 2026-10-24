@@ -226,3 +226,13 @@ Local column measured 2026-10-08 on the developer laptop (8 cores, 16 GB, local 
 - 2026-10-24 - CR-A11Y-09: axe scan extended from 2 to 16 screens (Steps 1 to 3 and all result tabs) on a generated fixture data folder, no private data. Four real violation types fixed in `custom.js`; B8 stays open (first GitHub run and a real-data pass pending). Details in the row and the archive addendum.
 - 2026-10-24 - CR-SEC-09 step 2: report-only CSP designed and tested in headless Chrome on the fixture flow; zero violations with the proposed header; row updated, staging step open (needs a go-ahead). Details in the archive addendum.
 - 2026-10-24 - Tooling: `dev/ui_drive.R` `errors` now records JS errors (the hook did not persist between calls); `wise-ui-check` skill notes the fixture-data recipe, the `.Renviron` override trap and the CSP method. No finding row affected.
+
+### CR-SEC-03 and CR-A11Y-08 closed as won't fix (2026-10-24, user decision)
+
+Rows as they stood:
+
+| CR-SEC-03 | H | M | ◐ | Per-session secret names and a per-session connection. Two sessions in one process using different credentials for the same bucket still share one secret. Low priority: Connect uses one service principal and UI credentials are a local-use path. Scoped Databricks secret confirmed on Connect (user, 2026-10-23). |
+| CR-A11Y-08 | M | M | ◐ | Map "View as table" alternative: dropped by user decision 2026-10-08 (maps stay hover-only for values). ECharts `aria` in `wise_echart_theme()` (`utils_plot_theme.R`): deferred by user decision 2026-10-08 (generic generated descriptions judged not worth a screen-reader pass); reopen with hand-written descriptions on key charts if wanted. |
+
+Reopen triggers: CR-SEC-03, if one Connect process serves sessions with different credentials for the same bucket (for example UI-typed credentials on a shared server). CR-A11Y-08, if a user or an accessibility review asks for a map value table or for chart descriptions (hand-written on key charts, not generated).
+
