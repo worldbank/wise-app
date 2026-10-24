@@ -4508,7 +4508,7 @@
       "checksum": "43acbdd8427452b1f89bbfe539e0370f"
     },
     "R/fct_aggregation_delta.R": {
-      "checksum": "4359d2b7a58a388a823c8a33fe55c683"
+      "checksum": "e2e93f7817e331c187ac9bd759033334"
     },
     "R/fct_aggregation_kernel.R": {
       "checksum": "4abe86f039622d06119d43d43a7369d3"
@@ -4577,7 +4577,7 @@
       "checksum": "5cb2abc76dc3f110a9a54c846e0ce4fa"
     },
     "R/fct_policy_metric_decompose.R": {
-      "checksum": "f598b213966057d4a5cbb59fdd019761"
+      "checksum": "17482b3dce5b19e111671f07bb9b675f"
     },
     "R/fct_policy_registry.R": {
       "checksum": "d4624d6698ac611c18eb04782e88ce14"
@@ -4616,7 +4616,7 @@
       "checksum": "e3ceaf8e87c7aa065e9f677490b5c47d"
     },
     "R/fct_simulations.R": {
-      "checksum": "7d43f2cc79219e2a0d15ce6b14ec9746"
+      "checksum": "fa55b08621a791961ed07c39073efdee"
     },
     "R/fct_sp_ce_charts.R": {
       "checksum": "f030fd6392ab900c078f537ec7706473"
@@ -4754,7 +4754,7 @@
       "checksum": "63e679b6898158e7d6387ff217fd660a"
     },
     "R/mod_3_09_decomposition.R": {
-      "checksum": "aa8799f2b579a19314d99352a3ed1011"
+      "checksum": "5af8502a5d70d8b6c02391d1a763e364"
     },
     "R/mod_3_10_cost_effectiveness.R": {
       "checksum": "6bfd2f3c94ee165ab0dec6c7d90bd7b3"
