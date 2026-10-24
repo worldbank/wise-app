@@ -38,3 +38,14 @@ Decision (numerical change: none). Bit-identical by construction: `rows` is the 
 
 Re-measured after R2-PERF-04 (same BFA-shaped fixture, line-dependent group, uncertainty off, median of 5, laptop). 63 pipelines (2x2 shape), slider change after a first run: 2.14 s with the app's 32-entry prep cache (it thrashes, so no better than cold at 1.9 s), 0.58 s with all 63 entries held; max RSS 2.33 / 2.17 GB in the harness. Entries are about 8.6 MB each (2026-10-08 figure), so holding all 63 is about 540 MB per session. An index-only entry would not be much smaller because the prepared residuals and masks are most of it. At 1x1 the existing cache already holds every pipeline. Not worth about 500 MB per session on a shared Connect host for 1.5 s. Reopen if a slider change at 2x2 or larger is reported slow.
 
+### B8 browser pass: CR-A11Y-05, R2-A11Y-04, R2-A11Y-05, R2-A11Y-06 closed (2026-10-24)
+
+Headless Chrome through `dev/ui_drive.R` on `dev` at 2e6fabf (BFA defaults, Step 1 sample, outcome and weather stats loaded), plus a scratch Chrome DevTools script that sends real mouse and key events (the JS-only path cannot test `:focus` or `:hover`: headless Chrome reports `document.hasFocus()` false unless focus emulation is on). The page and the app log had no errors.
+
+- **CR-A11Y-05 (legend `.wx-tip` markers, hexmap tooltip):** the marker has `tabindex=0`, a `role="tooltip"` child and `aria-describedby`. With real events: hidden at rest; hover shows it; Escape hides it while the pointer stays; leaving the marker and re-hovering shows it again; focus shows it and Escape hides it. The hexmap pointer tooltip: hover over a hex shows "Value: (28.4, 29.9]", Escape hides it, and it stays hidden while the pointer moves within the hexes (`tipDismissed`, by design).
+- **R2-A11Y-06 (map keyboard pan):** the MapLibre canvas has `tabindex=0` and `map.keyboard` is enabled; with the canvas focused, ArrowRight moved the centre from lng -1.70 to 0.30 and ArrowDown from lat 12.21 to 10.24. No pan buttons are needed.
+- **R2-A11Y-04 (palette):** computed contrast against white: `.okabe_ito` 5.19, 3.87, 3.42, 4.68, 3.55, 3.06, 3.96, 21.0 (all series at least 3:1), `.wise_marker_alt` `#A86400` 4.68 (at least 4.5 for the label), tooltip marker text `#555` 7.46, marker border `#888` 3.54. The weather-stats screen (two charts and the map with its legend) rendered with no visual defects.
+- **R2-A11Y-05 (info-icon names):** every info icon and button was named in the 2026-10-23 pass on the real app; the mock-page check covered icons added later. Closed on that evidence.
+
+Not checked: screen-reader output (no screen reader was run), touch devices, the wave-colour map palette and `.coverage_ramp` (they keep canonical hexes by decision), and any screen outside Step 1.
+
