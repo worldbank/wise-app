@@ -55,6 +55,15 @@ Rscript dev/ui_drive.R wait "Connected to" 60
   app does not reload by itself.
 - State files (pids, logs, Chrome profile) live in `<tmp>/wiseapp-ui`
   (`WISEAPP_UI_STATE`). The app log is `<tmp>/wiseapp-ui/app.log`.
+- **Another agent may be driving the app on this machine.** The defaults (state
+  directory, Chrome DevTools port 9333, app port 8765) are shared, so two
+  agents would drive one Chrome. Use your own: set `WISEAPP_UI_STATE` (a
+  directory in your scratchpad) and `WISEAPP_UI_PORT` (for example 9341) in
+  every call, and pass a free app port, `app-start 8791`, then
+  `open http://127.0.0.1:8791/`. Stop only what you started.
+- **Shell:** `D="Rscript dev/ui_drive.R"; $D click ...` fails in zsh (the
+  variable is not word-split). Write a small wrapper script that sets the two
+  variables and runs `Rscript dev/ui_drive.R "$@"`, and call that.
 
 ### Look
 
@@ -84,7 +93,22 @@ Rscript dev/ui_drive.R set "#step1-sample-unit" Individual   # radio group: valu
 Rscript dev/ui_drive.R click "#step1-surveystats-survey_stats"
 Rscript dev/ui_drive.R wait "Location of interviews" 120     # slow outputs
 Rscript dev/ui_drive.R size 900 700                          # viewport for responsive checks
+Rscript dev/ui_drive.R hover ".wx-tip"                       # real pointer onto the first visible match
+Rscript dev/ui_drive.R hover off                             # pointer away
+Rscript dev/ui_drive.R key Escape                            # real key press
+Rscript dev/ui_drive.R key ArrowRight 500                    # held for 500 ms (map pan)
 ```
+
+- `hover` and `key` send real input events. Use them, not `js`, for anything
+  that depends on `:hover`, `:focus`, focus order or key handlers (tooltips,
+  Escape to dismiss, keyboard pan, tab order). `js` can dispatch a synthetic
+  event but cannot make `:hover` match. Focus emulation is on for every
+  command, so `:focus` and `document.hasFocus()` behave as in a focused
+  browser; without it a headless page reports no focus and focus-driven UI
+  looks broken when it is not.
+- `key` takes `Escape`, `Tab`, `Enter`, `Space` and the four arrows. Focus the
+  target first (`click`, or `js` with `el.focus()`); a held arrow key needs the
+  map canvas focused.
 
 - Every action waits until Shiny is idle (up to 30 s). For model fits, follow
   with `wait "<text>" <secs>`; `wait` exits 1 on timeout. It does not cover the
@@ -181,6 +205,16 @@ it: `Rscript dev/ui_drive.R open <url>`.
      (about 9 s plus the decomposition), then poll. Result tabs: Results,
      Diagnostics, Cost-effectiveness, Decomposition.
   7. `errors`, read the app log, `close`, `app-stop`.
+- **Accessibility spot-check recipe (Step 1 weather stats, about six calls):**
+  steps 1 to 3 of the full-flow recipe, then `click "#step1-weatherstats-weather_stats"`.
+  The map legend then has `.wx-tip` markers (`tabindex=0`, `role=tooltip` child):
+  `hover ".wx-tip"`, `key Escape`, `hover off` should show, hide and reset the
+  text (read `getComputedStyle(el.querySelector(".wx-tip-text")).visibility`
+  with `js`). The hex map is `[...document.querySelectorAll("*")].find(e =>
+  e.__hexmap && e.__hexmap.map && e.offsetParent).__hexmap`: `.map.getCenter()`
+  before and after `key ArrowRight 500` shows keyboard pan, `.tip.style.display`
+  shows the pointer tooltip. Contrast of the palettes is computed from the
+  hexes, not read from screenshots.
 - A screenshot can time out (`Page.captureScreenshot`) right after a heavy
   render, such as Step 3 results. Wait a few seconds and run it again.
 - `wise_user_error()` shows a short message with an id and logs the full

@@ -15,6 +15,8 @@
 #   click-text <text>       click a tab, button, link or label by its text
 #   set <css> <value>       set an input (selectize, select, text, number, radio)
 #   js <expr>               evaluate a JavaScript expression and print the result
+#   hover <css>|off         move the real pointer onto the first visible match's centre (or off)
+#   key <name> [ms]         real key press (Escape, Tab, Enter, Arrow*), held for [ms]
 #   shot <file.png> [css]   screenshot the viewport, or one element
 #   size <width> <height>   set the viewport (default 1440 x 900)
 #   errors                  print JS errors, Shiny output errors, notifications
@@ -135,6 +137,9 @@ connect <- function() {
     width = if (is.na(w)) 1440L else w, height = if (is.na(h)) 900L else h,
     deviceScaleFactor = 1, mobile = FALSE
   )
+  # Headless Chrome reports the page as unfocused, so :focus never matches
+  # and focus-driven UI (tooltips, outlines) cannot be tested without this.
+  s$Emulation$setFocusEmulationEnabled(enabled = TRUE)
   s
 }
 
@@ -288,6 +293,42 @@ switch(cmd,
     wait_idle(s, secs = 30)
   },
   "js" = print(js(connect(), arg(1L))),
+  "hover" = {
+    s <- connect()
+    where <- arg(1L)
+    if (identical(where, "off")) {
+      pt <- c(x = 1, y = 1)
+    } else {
+      r <- js(s, sprintf(paste0(
+        "(() => { const e = [...document.querySelectorAll(%s)].find(x => x.getClientRects().length);",
+        " if (!e) return null;",
+        " e.scrollIntoView({block: 'center'}); const b = e.getBoundingClientRect();",
+        " return [b.x + b.width / 2, b.y + b.height / 2]; })()"
+      ), q(where)))
+      if (is.null(r)) stop("no visible element: ", where, call. = FALSE)
+      pt <- c(x = r[[1L]], y = r[[2L]])
+    }
+    # A short approach move first, so mouseenter and mouseover handlers fire.
+    s$Input$dispatchMouseEvent(type = "mouseMoved", x = pt[["x"]] - 2, y = pt[["y"]])
+    s$Input$dispatchMouseEvent(type = "mouseMoved", x = pt[["x"]], y = pt[["y"]])
+    Sys.sleep(0.4)
+    cat("pointer at ", round(pt[["x"]]), ",", round(pt[["y"]]), "\n", sep = "")
+  },
+  "key" = {
+    s <- connect()
+    name <- arg(1L)
+    codes <- c(Escape = 27L, Tab = 9L, Enter = 13L, Space = 32L, ArrowLeft = 37L,
+               ArrowUp = 38L, ArrowRight = 39L, ArrowDown = 40L)
+    if (is.null(name) || !name %in% names(codes)) {
+      stop("key needs one of: ", paste(names(codes), collapse = ", "), call. = FALSE)
+    }
+    ev <- list(key = name, code = name, windowsVirtualKeyCode = codes[[name]])
+    do.call(s$Input$dispatchKeyEvent, c(list(type = "keyDown"), ev))
+    Sys.sleep(as.numeric(arg(2L, "50")) / 1000)
+    do.call(s$Input$dispatchKeyEvent, c(list(type = "keyUp"), ev))
+    Sys.sleep(0.3)
+    cat("pressed ", name, "\n", sep = "")
+  },
   "shot" = {
     s <- connect()
     file <- normalizePath(arg(1L, state_file("shot.png")), mustWork = FALSE)
