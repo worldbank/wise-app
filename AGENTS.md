@@ -51,6 +51,8 @@ testthat::test_dir("tests")
 devtools::test()
 ```
 
+**Real data**: `WISEAPP_DATA_PATH` is set in the user's `.Renviron` and points to the produced datasets. Read it from R (`Sys.getenv("WISEAPP_DATA_PATH")`), not from the shell: Bash does not load `.Renviron`. Do not open or print `.Renviron` itself (it holds credentials). The sibling repository `wise-app-data` is the data-prep code only and has no produced datasets. Benchmarks, batch runs and `dev/ui_drive.R` read the real data from that path. To compare two builds in a batch run, install each into its own library and run `targets::tar_make()` in the main process (remove `controller` in `_targets.R`) with `.libPaths()` set first: `crew` workers load the default installed `wiseapp`, not the one you meant.
+
 Development scripts are in `dev/`: `run_dev.R` (run the app), `00_make_manifest.R` (Connect manifest), the benchmark harnesses in `dev/bench/` (`bench_*.R`, `run_step2_benchmark.sh`) `docs_index.R` and `docs_check.R` (rebuild `docs/index.yml`; check the methods pages: front matter, links, Implementation maps, index current) and `ui_drive.R` (start the app and drive it in headless Chrome one command per call: tabs, inputs, hover, key presses, screenshots, errors; usage in `.claude/skills/wise-ui-check/SKILL.md`).
 
 ## Architecture
