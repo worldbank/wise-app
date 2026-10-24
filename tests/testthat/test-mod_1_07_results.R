@@ -232,6 +232,46 @@ test_that("P16: one fit-signature observer preserves exact stale transitions", {
   )
 })
 
+test_that("R2-BUG-14: the fit signature carries the seed, so a seed-only refit differs", {
+  local_mocked_bindings(
+    prepare_outcome_df = function(df, so) df,
+    fit_model = function(df, selected_outcome, selected_weather, selected_model) {
+      list(engine = selected_model$engine, y_var = selected_outcome$name,
+           weather_terms = selected_weather$name, interaction_terms = character(0),
+           fit1 = NULL, fit2 = NULL, fit3 = NULL, rif_grid = NULL)
+    },
+    echart_make_coefplot = function(...) NULL,
+    echart_weather_effect_plot = function(...) NULL,
+    is_logistic_fit = function(mf) FALSE
+  )
+  run <- shiny::reactiveVal(0L)
+  shiny::testServer(
+    mod_1_07_results_server,
+    args = list(id = "res", variable_list = shiny::reactiveVal(make_vl()),
+                selected_surveys = shiny::reactiveVal(data.frame()),
+                selected_outcome = shiny::reactiveVal(make_outcome()),
+                selected_weather = shiny::reactiveVal(make_weather_sel()),
+                survey_weather = shiny::reactiveVal(
+                  data.frame(tx = 1:4, welfare = 1:4, weight = 1)
+                ),
+                selected_model = shiny::reactiveVal(list(engine = "fixest")),
+                run_model = run, survey_version = shiny::reactiveVal(0L),
+                tabset_id = "step1_tabs"),
+    {
+      settle <- function() { session$elapse(500); session$flushReact() }
+      session$userData$wise_analysis_seed <- 11L
+      run(1L); settle(); run(2L); settle()
+      sig_a <- model_fit_val()$.sig
+      expect_identical(sig_a$seed, 11L)
+      session$userData$wise_analysis_seed <- 12L
+      run(3L); settle()
+      sig_b <- model_fit_val()$.sig
+      expect_identical(sig_b$seed, 12L)
+      expect_false(identical(sig_a, sig_b))
+    }
+  )
+})
+
 test_that("redesigned sections render: who-panel, focused table, RIF suppression", {
 
   local_mocked_bindings(

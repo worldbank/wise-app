@@ -70,7 +70,8 @@ mod_1_07_results_server <- function(id,
         survey_shape   = if (is.null(sw)) NULL else c(nrow(sw), ncol(sw)),
         outcome        = .sig_plain(selected_outcome()),
         weather        = .sig_plain(selected_weather()),
-        model          = .sig_plain(selected_model())
+        model          = .sig_plain(selected_model()),
+        seed           = wise_current_seed()
       )
     }
 
