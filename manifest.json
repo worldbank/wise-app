@@ -4619,7 +4619,7 @@
       "checksum": "7d43f2cc79219e2a0d15ce6b14ec9746"
     },
     "R/fct_sp_ce_charts.R": {
-      "checksum": "68e0c46fb2d04d034c3f786825cb0929"
+      "checksum": "f030fd6392ab900c078f537ec7706473"
     },
     "R/fct_sp_effectiveness.R": {
       "checksum": "d7b3ef55accd7cf578427ab0c474e482"
@@ -4709,7 +4709,7 @@
       "checksum": "2463ed0ec9c2939fefe2b6d299a81f20"
     },
     "R/mod_1_07_results.R": {
-      "checksum": "139ed8bbe8bbcd3bb99f17c39a8c4ec0"
+      "checksum": "8efecda850aa6e2fc5fa09876c60442c"
     },
     "R/mod_1_08_modelfit.R": {
       "checksum": "5e2fb605fc214d22f9740ef03a33b966"
@@ -4730,7 +4730,7 @@
       "checksum": "1635bad43e613277099a7e78d0d79488"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "de65f2ba293ac6db026dddd6d2aab736"
+      "checksum": "9404cac243ab2064ef6f12136100c70b"
     },
     "R/mod_3_02_infra.R": {
       "checksum": "2200dbc9564786d1989465dd0bb70c42"
@@ -4787,7 +4787,7 @@
       "checksum": "e715b6a866363f28ad4d8af629e9bda0"
     },
     "R/utils_ui.R": {
-      "checksum": "95586930fc2105aaff6d79920a52071c"
+      "checksum": "c004d31b75583f7d10bae9d0894c5556"
     },
     "src/RcppExports.cpp": {
       "checksum": "b5983a083dc1aea52d08f9c00d2378b7"
