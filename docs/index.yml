@@ -276,7 +276,7 @@ pages:
       - "Step 2 > Results: annual series, scenario bands, threshold tables. Step 2 > Diagnostics: weather distributions and the sources of uncertainty."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare"
     code: ["R/fct_step2_input.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_simulations.R", "R/fct_predict_outcomes.R", "R/fct_aggregation.R", "R/fct_sim_diag.R", "R/fct_sim_compare.R", "R/fct_spec_defaults.R"]
-    verified_against: "8592a9d"
+    verified_against: "1c2834e"
   - id: "climate-scenarios"
     file: "31_climate_scenarios.md"
     title: "Climate scenarios (monthly delta method)"
@@ -435,7 +435,7 @@ pages:
       - "Step 3 > Diagnostics: total cost, cost per recipient, coverage, leakage, adequacy and realised errors."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers"
     code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_sp_effectiveness.R", "R/fct_policy_metric_decompose.R", "R/fct_aggregation_delta.R", "R/mod_3_01_sp.R"]
-    verified_against: "213ef99"
+    verified_against: "1c2834e"
   - id: "shock-sp"
     file: "43_shock_responsive_sp.md"
     title: "Shock-responsive cash transfers: triggers, payments and basis risk"
@@ -497,7 +497,7 @@ pages:
       - "A banner appears when the model has no weather-by-policy interaction, since the interaction channel is then zero."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab"
     code: ["R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_decomposition_summary.R", "R/fct_policy_sim.R"]
-    verified_against: "23880be"
+    verified_against: "1c2834e"
   - id: "cost-effectiveness"
     file: "45_cost_effectiveness.md"
     title: "Cost-effectiveness of a cash transfer"
