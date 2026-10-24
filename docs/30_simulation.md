@@ -71,7 +71,7 @@ The draws are seeded by the run seed and the simulation year only. The historica
 
 With the original rule and unchanged weather, a household in the estimation sample returns its observed welfare. A binary outcome has no retransformation. The residual is added to the predicted probability on the response scale.
 
-A cash transfer from a policy is added in Step 3 to the predicted level, before the residual factor, as in Eq. (5.2) of [42_social_protection](42_social_protection.md).
+A cash transfer from a policy is added in Step 3 after the residual, as in Eq. (5.2) of [42_social_protection](42_social_protection.md).
 
 ### 5. Annual statistics
 

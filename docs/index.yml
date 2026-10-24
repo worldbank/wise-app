@@ -434,7 +434,7 @@ pages:
       - "Step 3 > Social protection: choose a regular programme, the targeting rule and its threshold, inclusion and exclusion errors, how errors are concentrated, the basis of the amount, an amount first or a budget first, the number of payments and the administration share. A preview card shows who is reached and what it costs before the run."
       - "Step 3 > Diagnostics: total cost, cost per recipient, coverage, leakage, adequacy and realised errors."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers"
-    code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_sp_effectiveness.R", "R/fct_policy_metric_decompose.R", "R/mod_3_01_sp.R"]
+    code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_sp_effectiveness.R", "R/fct_policy_metric_decompose.R", "R/fct_aggregation_delta.R", "R/mod_3_01_sp.R"]
     verified_against: "213ef99"
   - id: "shock-sp"
     file: "43_shock_responsive_sp.md"

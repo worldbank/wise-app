@@ -705,11 +705,16 @@ run_sim_pipeline <- function(weather_raw,
   } else {
     NULL
   }
+  sp_added <- NULL
   if (!is.null(sp_vec) && any(sp_vec > 0, na.rm = TRUE)) {
     is_log <- isTRUE(so$transform == "log")
     if (is_log) {
       welfare_lvl <- exp(y_point) + sp_vec
+      y_before <- y_point
       y_point <- log(pmax(welfare_lvl, .Machine$double.eps))
+      # DOC-11: kept so the aggregation adds the transfer after the residual
+      sp_added <- list(sp_level = ifelse(is.na(sp_vec), 0, sp_vec),
+        sp_log = ifelse(is.na(sp_vec), 0, y_point - y_before))
     } else {
       y_point <- y_point + sp_vec
     }
@@ -837,6 +842,7 @@ run_sim_pipeline <- function(weather_raw,
     weather_raw = weather_full,
     train_aug   = train_aug
   )
+  if (!is.null(sp_added)) result[names(sp_added)] <- sp_added
   if (!is.null(prediction_profile)) {
     .prediction_profile_record(
       prediction_profile, "assembly", prediction_profile$started,

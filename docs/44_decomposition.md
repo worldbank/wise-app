@@ -83,7 +83,7 @@ A statistic such as the poverty rate or the Gini index is not a mean of househol
 
 $$T_k = \mathcal{A}\Big(\big\lbrace (Y_i^{(k)},\ \omega_i)\big\rbrace _{i}\Big), \qquad Y_i^{(k)} = \exp\Big(y_i + \sum_{j \le k}\delta_i^{(j)} + e_i\Big) \qquad \text{(5.1)}$$
 
-with the channels in the order $\delta^{(1)} = $ direct effect (static), $\delta^{(2)} = $ payment of a shock-responsive programme (if any), $\delta^{(3)} = $ repositioning, $\delta^{(4)} = $ interaction. The residual term $e_i$ and the weights are those of the baseline run, so every state uses the same households and the same draws. $T_0$ is the baseline value and the last state is the policy value. The contribution of a channel is the difference between a state and the one before it:
+with the channels in the order $\delta^{(1)} = $ direct effect (static), $\delta^{(2)} = $ payment of a shock-responsive programme (if any), $\delta^{(3)} = $ repositioning, $\delta^{(4)} = $ interaction. The residual term $e_i$ and the weights are those of the baseline run, so every state uses the same households and the same draws. For a log outcome the cash transfer is a level amount, so it is not scaled by the residual: the cash part of the channels is taken out of the exponent in Eq. (5.1), and the transfer $T_i^{(k)}$ paid up to state $k$ is added after it, $Y_i^{(k)} = \exp\big(y_i + \sum_{j \le k}\delta_i^{(j)} - \delta_i^{\text{cash},(k)} + e_i\big) + T_i^{(k)}$ ([42_social_protection](42_social_protection.md), Eq. (5.2)). $T_0$ is the baseline value and the last state is the policy value. The contribution of a channel is the difference between a state and the one before it:
 
 $$C_k = T_k - T_{k-1}, \qquad \sum_k C_k = T_{\text{pol}} - T_0 = \Delta T \qquad \text{(5.2)}$$
 

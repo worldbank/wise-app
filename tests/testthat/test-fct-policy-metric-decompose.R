@@ -90,6 +90,27 @@ test_that("metric states use canonical aggregates and reconcile for all metrics 
 })
 
 
+test_that("metric states match the aggregated policy arm under residuals with a covariate lever and a transfer (DOC-11)", {
+  for (mode in c("original", "normal", "resample")) for (method in c("mean", "headcount_ratio", "gini")) {
+    fx <- metric_channel_fixture("fixest", "log", mode)
+    expect_true(!is.null(fx$policy_hist$pipeline$sp_level))
+    result <- .policy_metric_decomposition(fx$hist, fx$policy_hist, list(), list(),
+      fx$prepared, method, 3, mode)
+    expect_identical(result$status, "ok", info = result$reason)
+    actual <- aggregate_pipeline_per_year(fx$policy_hist$pipeline, method, pov_line = 3,
+      residuals = mode, is_log = TRUE, skip_coef = TRUE, shared_context = fx$hist$shared_context)
+    expect_equal(result$annual$policy, vapply(actual, `[[`, numeric(1), "value"),
+      info = paste(mode, method))
+  }
+})
+
+test_that("the quantile model carries no separate transfer (DOC-11)", {
+  fx <- metric_channel_fixture("rif", "log", "original")
+  expect_null(fx$policy_hist$pipeline$sp_level)
+  fx <- metric_channel_fixture("fixest", "none", "original")
+  expect_null(fx$policy_hist$pipeline$sp_level)
+})
+
 test_that("adverse support interpolates deterministic year keys and fails closed", {
   low <- adverse_year_support(1:20, 2030:2049, .05, "low")
   high <- adverse_year_support(1:20, 2030:2049, .05, "high")

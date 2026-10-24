@@ -5,7 +5,7 @@ app_step: 3
 depends_on: [notation, policy-framework, outcomes, metrics]
 symbols: [Y, omega, z, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers
-code: [R/fct_policy_sim.R, R/fct_step3_input.R, R/fct_sp_effectiveness.R, R/fct_policy_metric_decompose.R, R/mod_3_01_sp.R]
+code: [R/fct_policy_sim.R, R/fct_step3_input.R, R/fct_sp_effectiveness.R, R/fct_policy_metric_decompose.R, R/fct_aggregation_delta.R, R/mod_3_01_sp.R]
 verified_against: 213ef99
 ---
 
@@ -75,15 +75,15 @@ where $v_i^{\text{entry}}$ is the amount in the currency of entry, and $a_{\text
 
 ### 5. Effect on welfare
 
-The transfer is added to the predicted level of welfare of the same household in the same year. For a log outcome, with $\hat y_i$ the model-scale prediction and $T_i$ the transfer in the units of the outcome level, the correction is
+The transfer is added to the welfare of the same household in the same year. For a log outcome, with $\hat y_i$ the model-scale prediction and $T_i$ the transfer in the units of the outcome level, the effect on the log of the predicted level is
 
 $$\delta_i^{\text{cash}} = \log\big(e^{\hat y_i} + T_i\big) - \hat y_i \qquad \text{(5.1)}$$
 
-and a level outcome adds $T_i$ directly. The simulated welfare of the policy arm for a log outcome is then
+and a level outcome adds $T_i$ directly. The transfer is a level amount, so it is added after the residual term. With $e_i$ the residual term of the run ([30_simulation](30_simulation.md)), the simulated welfare of the policy arm for a log outcome is
 
-$$Y_i^{\text{pol}} = e^{e_i}\big(e^{\hat y_i} + T_i\big) \qquad \text{(5.2)}$$
+$$Y_i^{\text{pol}} = e^{\hat y_i + e_i} + T_i \qquad \text{(5.2)}$$
 
-where $e_i$ is the residual term of the run ([30_simulation](30_simulation.md)). The transfer is added to the predicted level before the residual factor, so a residual term scales the transfer by $e^{e_i}$. The average of $e^{e_i}$ over households is about $1 + \sigma^2/2$ for residual standard deviation $\sigma$, so with a residual term the transfer is worth about 8% more than $T_i$ on average at $\sigma = 0.4$ and about 18% more at $\sigma = 0.6$, and it is worth more to households with a positive residual. With no residual term, or for a level outcome, the transfer adds exactly $T_i$. If a household has no finite prediction in a year, the transfer is evaluated at its observed baseline level instead.
+and the baseline arm is $e^{\hat y_i + e_i}$. The policy arm therefore gains exactly $T_i$ for every household, with a residual term (original, normal or resample) or without. If other levers move the prediction, $\hat y_i$ in Eq. (5.2) includes their effect, and the transfer is still added once, at the end. Eq. (5.1) is the effect on the predicted level before any residual. The decomposition channels use it, and so do the level channels, which are residual-free ([44_decomposition](44_decomposition.md)). For the coefficient uncertainty of an aggregate, the welfare that moves with the coefficients is $Y_i^{\text{pol}} - T_i$, because the transfer carries no coefficient error. If a household has no finite prediction in a year, the transfer is evaluated at its observed baseline level instead.
 
 For the quantile model, the same correction is the main effect. It also moves the household up the distribution, which changes its weather sensitivity ([44_decomposition](44_decomposition.md)).
 
@@ -106,7 +106,7 @@ Coverage is the share of the poor who receive a transfer. Leakage is the share o
 
 - **A1. Eligibility is fixed.** Households eligible in the baseline survey remain eligible in every year and every climate scenario.
 - **A2. Full take-up of the rule.** Every household selected receives the full amount, subject to the targeting errors entered by the user.
-- **A3. Transfers are consumed.** The transfer adds one for one to daily welfare (Eq. (5.1)), apart from the scaling by the residual factor in Eq. (5.2).
+- **A3. Transfers are consumed.** The transfer adds one for one to daily welfare (Eq. (5.2)).
 - **A4. Amounts are known.** The transfer carries no coefficient error ([40_policy_framework](40_policy_framework.md), Section 5).
 - **A5. Administration is a share of cost.** Administration cost does not reach households.
 
@@ -140,5 +140,6 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 | Transfer written to the survey | (3.1) | `R/fct_policy_sim.R` `apply_policy_to_svy()` |
 | Programme cost | (4.1) | `R/fct_policy_sim.R` `.sp_transfer_totals()`, `.sp_transfer_totals_values()` |
 | Effect on predicted welfare | (5.1), (5.2) | `R/fct_policy_metric_decompose.R` `.policy_annual_channel_block()`; `R/fct_policy_decompose.R` `.compute_rif_channels()` |
+| Transfer added after the residual | (5.2) | `R/fct_policy_metric_decompose.R` `.apply_policy_annual_pipeline()` (`sp_level`, `sp_log`), `.policy_metric_pipeline()`; `R/fct_aggregation_delta.R` `.aggregation_prepare_pipeline()`, `gradient_for_method()` |
 | Coverage, leakage, adequacy, errors | (6.1) | `R/fct_sp_effectiveness.R` `sp_effectiveness()` |
 | Preview of reach and cost | Section 6 | `R/fct_policy_sim.R` `.sp_scenario_reach()` |

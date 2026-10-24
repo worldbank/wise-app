@@ -1520,3 +1520,78 @@ test_that("PR-9: an impact plan records where the metric sits historically", {
     fx$base, "hh", seed = 5L, exposure = fx$pipeline$weather_exposure)
   expect_null(weather$impact_range)
 })
+
+# DOC-11: for a log outcome the transfer is a level amount added after the
+# residual, so the policy arm gains T and not T * exp(e).
+doc11_gain <- function(fx, prepared, mode, method = "mean") {
+  shared <- step2_shared_context(
+    data.frame(id = 1:12, .resid = seq(-0.8, 0.8, length.out = 12)), "id")
+  pipe <- fx$pipeline
+  policy <- .apply_policy_annual_pipeline(pipe, prepared, "annual-run")$pipeline
+  agg <- function(p) vapply(
+    aggregate_pipeline_per_year(p, method, residuals = mode, is_log = TRUE,
+      skip_coef = TRUE, shared_context = shared), `[[`, numeric(1), "value")
+  list(gain = agg(policy) - agg(pipe), pipe = pipe, policy = policy, shared = shared)
+}
+
+doc11_expected <- function(fx, method = "mean") {
+  pipe <- fx$pipeline
+  tr <- fx$regular_policy[[SP_TRANSFER_COL]][pipe$svy_row_id]
+  vapply(split(seq_along(pipe$sim_year), pipe$sim_year), function(i) {
+    if (method == "mean") stats::weighted.mean(tr[i], pipe$weight[i]) else sum(pipe$weight[i] * tr[i])
+  }, numeric(1), USE.NAMES = FALSE)
+}
+
+test_that("a log-outcome transfer adds T after the residual, regular and shock (DOC-11)", {
+  fx <- shk_fixture("log", shk_spec(trigger_value = -1e9))
+  prepared <- list(
+    regular = .prepare_policy_annual_channels(fx$ctx_regular, "annual-run"),
+    shock = shk_prepared(fx))
+  for (kind in names(prepared)) for (mode in c("original", "normal", "resample")) {
+    for (method in c("mean", "total")) {
+      got <- doc11_gain(fx, prepared[[kind]], mode, method)
+      expect_equal(got$gain, doc11_expected(fx, method), tolerance = 1e-10,
+        info = paste(kind, mode, method))
+    }
+  }
+})
+
+test_that("residuals off and level outcomes keep adding exactly T (DOC-11)", {
+  fx <- shk_fixture("log", shk_spec(trigger_value = -1e9))
+  prepared <- .prepare_policy_annual_channels(fx$ctx_regular, "annual-run")
+  expect_equal(doc11_gain(fx, prepared, "none")$gain, doc11_expected(fx), tolerance = 1e-10)
+  lv <- shk_fixture("none", shk_spec(trigger_value = -1e9))
+  pl <- .prepare_policy_annual_channels(lv$ctx_regular, "annual-run")
+  shared <- step2_shared_context(
+    data.frame(id = 1:12, .resid = seq(-0.8, 0.8, length.out = 12)), "id")
+  policy <- .apply_policy_annual_pipeline(lv$pipeline, pl, "annual-run")$pipeline
+  agg <- function(p) vapply(aggregate_pipeline_per_year(p, "mean", residuals = "original",
+    is_log = FALSE, skip_coef = TRUE, shared_context = shared), `[[`, numeric(1), "value")
+  expect_equal(agg(policy) - agg(lv$pipeline), doc11_expected(lv), tolerance = 1e-10)
+})
+
+test_that("metric states and the policy mean agree on the log-outcome transfer (DOC-11)", {
+  fx <- shk_fixture("log", shk_spec(trigger_value = -1e9))
+  for (kind in c("regular", "shock")) {
+    prepared <- if (kind == "regular") {
+      .prepare_policy_annual_channels(fx$ctx_regular, "annual-run")
+    } else shk_prepared(fx)
+    got <- doc11_gain(fx, prepared, "original")
+    hist <- list(pipeline = fx$pipeline, so = fx$ctx_regular$so,
+      shared_context = got$shared, residuals = "original")
+    policy_hist <- hist
+    policy_hist$pipeline <- got$policy
+    res <- .policy_metric_decomposition(hist, policy_hist, list(), list(), prepared,
+      "mean", requested_residuals = "original")
+    expect_identical(res$status, "ok", info = res$reason)
+    expect_equal(res$annual$total, doc11_expected(fx), tolerance = 1e-10, info = kind)
+    expect_equal(res$annual$policy - res$annual$baseline, got$gain, tolerance = 1e-10)
+  }
+})
+
+test_that("the coefficient-variance gradient lifts the welfare excluding the transfer (DOC-11)", {
+  mu <- c(2, 3, 5); tr <- c(0, 1, 2); w <- c(1, 2, 3)
+  lifted <- gradient_for_method("mean", mu, w, NULL, NA_real_, sp_level = tr)
+  expect_equal(lifted, (w / sum(w)) * (mu - tr))
+  expect_equal(gradient_for_method("mean", mu, w, NULL, NA_real_), (w / sum(w)) * mu)
+})

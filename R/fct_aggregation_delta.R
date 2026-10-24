@@ -55,6 +55,12 @@
 #'   the kernel result) reused by the Gini gradient in place of \code{order()}.
 #' @param F_row_ss Optional pre-computed row sums of squares of the year's
 #'   \code{F_loading} block, reused by the headcount bandwidth tuning.
+#' @param sp_level,sp_log Optional per-row cash transfer of a policy arm on a
+#'   log outcome (DOC-11): the level amount and the log shift it contributed
+#'   to \code{y_point}. The transfer is added after the residual,
+#'   \code{exp(y_point - sp_log + resid) + sp_level}, and the gradient is
+#'   taken on the welfare without it. \code{sp_log} is needed only when
+#'   \code{prepared_mu} is not supplied.
 #'
 #' @return Named list:
 #'   \describe{
@@ -85,7 +91,9 @@ aggregate_with_uncertainty_delta <- function(y_point,
                                              prepared_mu = NULL,
                                              prepared_value = NULL,
                                              prepared_order = NULL,
-                                             F_row_ss = NULL) {
+                                             F_row_ss = NULL,
+                                             sp_level = NULL,
+                                             sp_log = NULL) {
   N <- length(y_point)
   stopifnot(is.numeric(y_point) && N > 0)
 
@@ -103,7 +111,13 @@ aggregate_with_uncertainty_delta <- function(y_point,
       seed = seed,
       resid_lookup = resid_lookup, resid_sigma2 = resid_sigma2
     )
-    mu <- if (is_log) exp(y_point + resid_vec) else y_point + resid_vec
+    mu <- if (!is_log) {
+      y_point + resid_vec
+    } else if (!is.null(sp_level)) {
+      exp(y_point - sp_log + resid_vec) + sp_level
+    } else {
+      exp(y_point + resid_vec)
+    }
   } else {
     stopifnot(length(prepared_mu) == N)
     mu <- prepared_mu
@@ -136,7 +150,8 @@ aggregate_with_uncertainty_delta <- function(y_point,
       F_loading    = F_loading,
       prepared_order = prepared_order,
       F_row_ss     = F_row_ss,
-      is_log       = is_log
+      is_log       = is_log,
+      sp_level     = sp_level
     )
   } else {
     F_loading <- F_loading[keep, , drop = FALSE]
@@ -145,7 +160,8 @@ aggregate_with_uncertainty_delta <- function(y_point,
       F_loading    = F_loading,
       prepared_order = NULL,
       F_row_ss     = F_row_ss[keep],
-      is_log       = is_log
+      is_log       = is_log,
+      sp_level     = sp_level[keep]
     )
   }
   n_coef_dropped <- if (is.null(keep)) 0L else sum(!keep)
@@ -229,7 +245,9 @@ aggregate_point_estimate <- function(mu, method, weights = NULL, pov_line = NULL
 # Per-method gradient functions ----
 # Each returns h = dT/dy, the gradient wrt the prediction scale y that
 # F_loading perturbs: (dT/dwelfare) * mu when welfare = exp(y) (is_log), and
-# dT/dwelfare when welfare = y (level outcomes). Length N. Sign matters - preserves the
+# dT/dwelfare when welfare = y (level outcomes). With a cash transfer added
+# after the residual (`sp_level`, DOC-11) the log lift is the welfare without
+# it, mu - sp_level. Length N. Sign matters - preserves the
 # direction of perturbation so var = ||F' h||^2 reflects the true Taylor
 # expansion. For aggregates where the sign cancels in the variance (everything
 # here), we still keep it explicit for clarity.
@@ -239,11 +257,18 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
                                 F_loading = NULL,
                                 prepared_order = NULL,
                                 F_row_ss = NULL,
-                                is_log = TRUE) {
+                                is_log = TRUE,
+                                sp_level = NULL) {
   N <- length(mu)
   # dwelfare/dy: mu on the log scale, 1 on the level scale. Log outcomes keep
   # the exact arithmetic they had before level outcomes were handled.
-  dw <- if (is_log) mu else rep(1, N)
+  dw <- if (!is_log) rep(1, N) else if (is.null(sp_level)) mu else mu - sp_level
+  # Factor of the methods written with mu itself: dw / mu (DOC-11)
+  dw_over_mu <- if (is_log && !is.null(sp_level)) {
+    r <- dw / mu
+    r[!is.finite(r)] <- 0
+    r
+  }
   W <- if (!is.null(weights)) sum(weights, na.rm = TRUE) else N
   if (!is.finite(W) || W <= 0) W <- N
   w_tilde <- if (!is.null(weights)) weights / W else rep(1 / N, N)
@@ -274,6 +299,7 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
         if (W > 0) h[below28] <- -(weights[below28] / W) * 28 / mu[below28]
       }
       if (!is_log) h[below28] <- h[below28] / mu[below28]
+      if (!is.null(dw_over_mu)) h <- h * dw_over_mu
       h
     },
     fgt2 = {
@@ -316,6 +342,7 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
         if (W_ok > 0) h[ok] <- -weights[ok] / (W_ok * mu[ok])
       }
       if (!is_log) h[ok] <- h[ok] / mu[ok]
+      if (!is.null(dw_over_mu)) h <- h * dw_over_mu
       h
     },
     median = {
@@ -374,7 +401,7 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
         return(rep(0, N))
       }
       G_pt <- value_pt
-      h_o <- w_n * (if (is_log) mu_o else 1) * (2 * F_vec - 1 - G_pt) / mu_bar
+      h_o <- w_n * (if (is_log) dw[ord] else 1) * (2 * F_vec - 1 - G_pt) / mu_bar
       h <- numeric(N)
       h[ord] <- h_o
       h
@@ -475,6 +502,8 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
   rlang::hash(list(
     sim_year = pipe$sim_year,
     y_point = pipe$y_point,
+    sp_level = pipe$sp_level,
+    sp_log = pipe$sp_log,
     weight = pipe$weight,
     id_vec = pipe$id_vec,
     id_col = id_col,
@@ -570,11 +599,23 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
       resid_pos = if (!is.null(id_pos)) id_pos$pos[id_pos$of[idx]]
     )
   })
+  # DOC-11: a cash transfer of a policy arm on a log outcome is a level amount
+  # added after the residual, not part of the exponentiated prediction
+  has_sp <- isTRUE(is_log) && !is.null(pipe$sp_level) && !is.null(pipe$sp_log)
+  sp_level <- if (has_sp) {
+    lapply(seq_along(rows), function(i) pipe$sp_level[rows[[i]][valid[[i]]]])
+  }
   mu <- lapply(seq_along(rows), function(i) {
     idx <- rows[[i]][valid[[i]]]
     y <- pipe$y_point[idx]
     r <- residual_vectors[[i]]
-    if (isTRUE(is_log)) exp(y + r) else y + r
+    if (!isTRUE(is_log)) {
+      y + r
+    } else if (has_sp) {
+      exp(y - pipe$sp_log[idx] + r) + pipe$sp_level[idx]
+    } else {
+      exp(y + r)
+    }
   })
   factor_blocks <- if (isTRUE(include_factor_loading) && !is.null(pipe$F_loading)) {
     F_full <- pipe$F_loading
@@ -605,6 +646,7 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
     weights_normalized = weights_normalized,
     residuals = residual_vectors,
     mu = mu,
+    sp_level = sp_level,
     factor_blocks = factor_blocks,
     factor_row_ss = factor_row_ss,
     resid_sigma2 = sigma2
@@ -714,7 +756,8 @@ aggregate_pipeline_per_year <- function(pipe,
         seed = wise_seed(seed, "residual", yr),
         resid_lookup = NULL,
         resid_sigma2 = sg2,
-        prepared_mu = prep$mu[[i]]
+        prepared_mu = prep$mu[[i]],
+        sp_level = prep$sp_level[[i]]
       )
     }
     m$sim_year <- yr
@@ -874,7 +917,8 @@ aggregate_pipeline_per_year_multi <- function(pipe,
           prepared_mu = prep$mu[[i]],
           prepared_value = picked$value,
           prepared_order = picked$order,
-          F_row_ss = F_row_ss
+          F_row_ss = F_row_ss,
+          sp_level = prep$sp_level[[i]]
         )
       }
       value$sim_year <- yr

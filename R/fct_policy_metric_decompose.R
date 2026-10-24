@@ -302,11 +302,19 @@
   # without a finite prediction keep the observed-baseline value.
   delta_sp <- prepared$delta_sp[ids]
   y_t <- as.numeric(pipeline$y_point[rows])
-  if (identical(prepared$context$so$transform %||% "", "log")) {
+  is_log <- identical(prepared$context$so$transform %||% "", "log")
+  # DOC-11: the level amount paid, kept beside its log shift so that the
+  # aggregation can add it after the residual (NULL for a level outcome and for
+  # the quantile model, which has no residual term)
+  track_sp <- is_log && !identical(prepared$context$engine, "rif")
+  sp_level <- if (track_sp) numeric(length(rows))
+  sp_level_shock <- NULL
+  if (is_log) {
     transfer <- as.numeric(prepared$context$sp_transfer)[ids]
     ok <- is.finite(y_t) & is.finite(transfer)
     delta_sp[ok] <- ifelse(transfer[ok] == 0, 0,
       log(pmax(exp(y_t[ok]) + transfer[ok], 1e-10)) - y_t[ok])
+    if (track_sp) sp_level[ok] <- transfer[ok]
   }
   if (!is.null(sp_dynamic)) {
     # Own vector, added into delta_sp (and so delta_main and delta_total): the
@@ -314,9 +322,12 @@
     # see this transfer (plan section 4.3). Rows with no finite prediction use
     # the observed baseline level, as the static transfer does above.
     transfer <- sp_dynamic[rows]
-    is_log <- identical(prepared$context$so$transform %||% "", "log")
     delta_sp_shock <- sp_dynamic_effect(y_t, transfer, is_log)
     missing <- is.na(delta_sp_shock)
+    if (track_sp) {
+      sp_level_shock <- ifelse(missing | !is.finite(transfer), 0, transfer)
+      sp_level <- sp_level + sp_level_shock
+    }
     if (any(missing)) {
       fallback <- if (is_log) {
         level_base <- as.numeric(prepared$context$y_level_baseline)[ids][missing]
@@ -338,6 +349,10 @@
     interaction_included = prepared$interaction_included,
     correction_version = prepared$correction_version)
   if (!is.null(sp_dynamic)) out$delta_sp_shock <- delta_sp_shock
+  if (track_sp) {
+    out$sp_level <- sp_level
+    out$sp_level_shock <- sp_level_shock
+  }
   out
 }
 
@@ -374,6 +389,10 @@
     current
   }
   out <- pipeline
+  # DOC-11: the transfer paid per row and its log shift, for the aggregation to
+  # add it after the residual. The quantile model has no residual term.
+  track_sp <- is_log_outcome && !identical(prepared$context$engine, "rif")
+  sp_level <- sp_log <- if (track_sp) numeric(n)
   shock <- .policy_sp_shock_eval(pipeline, prepared, exposure)
   sp_dynamic <- shock$model
   for (start in seq.int(1L, n, by = chunk_size)) {
@@ -383,6 +402,10 @@
       stop("Nonfinite annual policy correction.", call. = FALSE)
     }
     out$y_point[rows] <- pipeline$y_point[rows] + ch$delta_total
+    if (track_sp) {
+      sp_level[rows] <- ch$sp_level
+      sp_log[rows] <- ch$delta_sp
+    }
     if (!is.null(scenario)) {
       weights <- if (is.null(pipeline$weight)) rep(1, length(rows)) else pipeline$weight[rows]
       valid <- is.finite(weights) & weights > 0
@@ -443,6 +466,10 @@
       cell_stats <- accumulate(cell_stats, cbind(stats, 1, weights),
         (year_id - 1L) * 11L + decile_code + 1L, length(years) * 11L)
     }
+  }
+  if (track_sp && any(sp_level != 0)) {
+    out$sp_level <- sp_level
+    out$sp_log <- sp_log
   }
   # DOC-12: the policy arm's coefficient uncertainty includes the policy terms
   policy_loading <- .policy_arm_loading(pipeline, prepared, exposure, chunk_size)
@@ -851,6 +878,14 @@
     deltas <- list(rep(0, length(rows)),
       if (is.null(shock_ch)) ch$delta_main else ch$delta_main - shock_ch,
       shock_ch, ch$delta_res1, ch$delta_res2)
+    # DOC-11: each state adds the transfers paid so far after the residual. The
+    # static transfer joins at state 2, the shock-responsive one at state 3.
+    sp_state <- if (is_log && !is.null(ch$sp_level)) {
+      static_log <- ch$delta_sp - (shock_ch %||% 0)
+      static_level <- ch$sp_level - (ch$sp_level_shock %||% 0)
+      list(log = list(0, static_log, ch$delta_sp, ch$delta_sp, ch$delta_sp),
+        level = list(0, static_level, ch$sp_level, ch$sp_level, ch$sp_level))
+    }
     in_decile <- is.finite(row_deciles) & row_deciles >= 1 & row_deciles <= 10
     decile_codes <- integer(length(rows))
     decile_codes[in_decile] <- as.integer(row_deciles[in_decile])
@@ -868,7 +903,13 @@
         next
       }
       if (j > 1L) y <- y + deltas[[j]]
-      mu <- if (is_log) exp(y + residual) else y + residual
+      mu <- if (!is_log) {
+        y + residual
+      } else if (!is.null(sp_state)) {
+        exp(y - sp_state$log[[j]] + residual) + sp_state$level[[j]]
+      } else {
+        exp(y + residual)
+      }
       state_values[[j]] <- mu
       # `[<-` with list(): a NULL (not covered) must not delete the element
       group_stats[j] <- list(

@@ -13,7 +13,7 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B2 | Security | 1 |
 | B6 | Performance | 4 |
 | B8 | Accessibility | 1 |
-| B9 | Code quality and docs | 3 |
+| B9 | Code quality and docs | 2 |
 
 B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
 
@@ -64,7 +64,6 @@ Work stopped by decision 2026-10-24 (user agreed): the rows below have no measur
 |---|---|---|---|---|
 | CR-CQ-01 | M | L | ☐ | Move static builders out; split the three giant server functions. |
 | CR-CQ-02 | M | L | ☐ | Shared Results-pane module for Steps 2 and 3. |
-| DOC-11 | M | L | ◐ | Decided 2026-10-23 (user): document and quantify now, done (docs/42 section 5 gives the mean factor 1 + SD^2/2; note on the Step 3 decomposition tab). The exact fix is open and is L, not S: the policy arm would carry a separate level-scale transfer through the aggregation mean (`fct_aggregation_delta.R`), its delta-method gradient, the metric states (`fct_policy_metric_decompose.R`) and the level channels. From the docs/ revision (2026-10-23). For a log outcome the cash transfer is added to the predicted level before the residual, so the policy arm adds `T * exp(e_i)` and not `T`. Add the transfer after the residual, or document the scaling in the UI (`docs/42_social_protection.md` section 5). |
 
 Ordering note from the report: delete dead code before splitting files; one PR per file with characterisation tests.
 
@@ -75,3 +74,4 @@ Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (move
 - 2026-10-24 - Tracker compacted to open work; closed list, known gaps, baselines and the Log moved to the archive verbatim.
 - 2026-10-24 - CR-SEC-03 and CR-A11Y-08 closed as won't fix (user decision; B2 open count 2 to 1, B8 2 to 1). Rows and reopen triggers in the archive addendum.
 - 2026-10-24 - RED-06 and R2-OPS-09 closed as won't fix (B5 open count 1 to 0); DOC-11 severity raised L to M (the log-outcome transfer is worth 8% to 18% more than T with a residual term, so policy gains are overstated). Rows in the archive addendum.
+- 2026-10-24 - DOC-11 closed (B9 open count 3 to 2): for a log outcome the cash transfer is now added after the residual, so the policy arm gains T and not T * exp(e); regular and shock-responsive SP, aggregation mean and its gradient, and the metric states. Outputs move (policy gains shrink by up to 8% at SD 0.4); Decision log entry, fixture before/after numbers and the row in the archive addendum. Not checked on real BFA data (the local microdata folders are empty).
