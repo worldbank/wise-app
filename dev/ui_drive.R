@@ -140,6 +140,7 @@ connect <- function() {
   # Headless Chrome reports the page as unfocused, so :focus never matches
   # and focus-driven UI (tooltips, outlines) cannot be tested without this.
   s$Emulation$setFocusEmulationEnabled(enabled = TRUE)
+  js(s, error_hook)
   s
 }
 
@@ -155,11 +156,15 @@ js <- function(s, expr, timeout = 30) {
 `%||%` <- function(x, y) if (is.null(x)) y else x
 q <- function(x) jsonlite::toJSON(x, auto_unbox = TRUE)
 
-# Records uncaught errors from the moment the page loads.
+# Records uncaught errors. Page.addScriptToEvaluateOnNewDocument ends with the
+# CDP session, i.e. with this process, so connect() also installs the hook in
+# the current document (once); errors thrown before the first call after a
+# load are not recorded.
 error_hook <- paste(
+  "(function () { if (window.__wiseHook) return; window.__wiseHook = true;",
   "window.__wiseErrors = [];",
   "window.addEventListener('error', e => window.__wiseErrors.push(String(e.message)));",
-  "window.addEventListener('unhandledrejection', e => window.__wiseErrors.push(String(e.reason)));"
+  "window.addEventListener('unhandledrejection', e => window.__wiseErrors.push(String(e.reason))); })();"
 )
 
 wait_idle <- function(s, text = NULL, secs = 60) {

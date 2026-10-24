@@ -159,6 +159,28 @@ it: `Rscript dev/ui_drive.R open <url>`.
   data source." once metadata loads. Local data comes from `WISEAPP_DATA_PATH`
   (`.Renviron`). If it never connects, check that the variable is set without
   printing `.Renviron`, and read the app log.
+- **Without private data:** `tests/e2e/smoke.R` builds a small fixture data
+  folder (`batch_fixture_tree(dir, projections = TRUE)` from
+  `tests/testthat/helper-batch-fixture.R`, after `pkgload::load_all()`; economy
+  `TST`, years 2018 and 2019) and drives Step 1 to Step 3 on it in about 5
+  minutes. To use it with `app-start`, export `WISEAPP_DATA_SOURCE=local`,
+  `WISEAPP_DATA_PATH=<dir>`, `WISEAPP_ASYNC_SYNC=1` and `WISEAPP_ASYNC_STEP3=0`
+  first. A user `R_ENVIRON_USER` file (`.Renviron`) overrides inherited
+  variables in the app process, so point `R_ENVIRON_USER` at a file that holds
+  only your `R_LIBS` line, or the app still reads the real data.
+- `errors` reports JS errors thrown after the first `ui_drive` call following a
+  page load (the hook is installed per call); earlier ones are not recorded.
+  Output errors and notifications are read from the page, so they are complete.
+- **Content-Security-Policy checks:** `ui_drive` cannot add response headers and
+  Shiny has no hook for them. Attach a second long-lived R process to the same
+  Chrome (port 9333, `WISEAPP_UI_PORT`), enable the DevTools `Fetch` domain for
+  `Document` responses at the response stage, re-fulfill the page
+  (`Fetch.getResponseBody`, `Fetch.fulfillRequest`) with a
+  `Content-Security-Policy-Report-Only` header added, and register a
+  `securitypolicyviolation` listener with `Page.addScriptToEvaluateOnNewDocument`
+  in that process (it dies with its session). Then reload with `open` and drive
+  as usual. Method and results: `review/archive/REVIEW-2026-10-06-tracking-full.md`
+  (CR-SEC-09 step 2).
 - Tabs: Overview, Step 1 - Model welfare, Step 2 - Climate scenarios, Step 3 -
   Policy scenarios, Export (a dropdown).
 - The Step 1 sidebar holds accordion panels 1 Sample, 2 Outcome, 3 Weather and
