@@ -49,3 +49,9 @@ Headless Chrome through `dev/ui_drive.R` on `dev` at 2e6fabf (BFA defaults, Step
 
 Not checked: screen-reader output (no screen reader was run), touch devices, the wave-colour map palette and `.coverage_ramp` (they keep canonical hexes by decision), and any screen outside Step 1.
 
+### B5 "Test suite: remaining" closed (2026-10-24, user decision)
+
+Row text before closing: (1) rename history-named test files to `test-<R file>.R`; (2) shared `helper-fixtures-*.R` only when two or more files share a builder; (3) `wiseapp.verbose` option to silence progress messages (an `R/` change); (4) `shinytest2` boot smoke plus one `conditionalPanel` check (done, CR-OPS-01); (5) hygiene in touched files only (`library()`, `wiseapp:::`, `set.seed`, `expect_true(identical())`); (6) coverage job and ratchet in CI (dropped by user decision 2026-10-08). Coverage was 82.1% overall; `fct_predict_outcomes.R` 73%. Deliberately not done: bulk renames, test tiers, parallel test files. Background in `review/archive/test_suite_plan.md` and `test_suite_review.md`.
+
+Decision on (3): not done. `R/` has 33 `message()` calls in 15 files and the ones seen in test output (for example the NA household-year exclusion notice) are real user notices, not progress chatter, so a verbosity option would hide notices or need per-call classification, and it adds a public option to document. If test output noise matters, wrap the noisy tests in `suppressMessages()`. Reopen if test output noise or fixture duplication causes a real problem. `R2-OPS-09` keeps its own deferred row (`set.seed` vs `local_seed`, spelling).
+
