@@ -220,12 +220,33 @@
       i.removeAttribute('aria-label');
       i.setAttribute('aria-hidden', 'true');
     });
-    // The navbar is a tablist, but also holds a dropdown, the spacer and
-    // plain nav items; only tabs may be children of a tablist.
-    document.querySelectorAll('ul.navbar-nav[role="tablist"] > li').forEach(function (li) {
+    // The navbar and the result tab sets are tablists, but also hold a
+    // dropdown, the spacer and plain nav items; only tabs may be children of
+    // a tablist.
+    document.querySelectorAll('ul[role="tablist"] > li').forEach(function (li) {
       if (!li.querySelector(':scope > [role="tab"]') && li.getAttribute('role') !== 'presentation') {
         li.setAttribute('role', 'presentation');
       }
+    });
+    // reactable wraps each role="row" in a role-less .rt-tr-group div inside
+    // the role="rowgroup" body, so axe finds no row owned by the rowgroup.
+    document.querySelectorAll('.rt-tr-group:not([role])').forEach(function (g) {
+      g.setAttribute('role', 'presentation');
+    });
+    // reactable's empty-state live region sits among the rows of the table
+    // and rowgroup; while it is empty it is not a row and says nothing, so
+    // hide it from the accessibility tree until it has text.
+    document.querySelectorAll('.rt-no-data').forEach(function (n) {
+      if (n.textContent.trim()) n.removeAttribute('aria-hidden');
+      else n.setAttribute('aria-hidden', 'true');
+    });
+    // Tabs that Shiny inserts later (insertTab()) come without the tab role
+    // their siblings have.
+    document.querySelectorAll('ul[role="tablist"] a[data-bs-toggle="tab"]:not([role])').forEach(function (a) {
+      var on = a.classList.contains('active');
+      a.setAttribute('role', 'tab');
+      a.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (!on) a.setAttribute('tabindex', '-1');
     });
     // A focusable separator needs its current value: the sidebar's share of
     // the layout width, in percent.
@@ -244,7 +265,7 @@
     queued = true;
     requestAnimationFrame(function () { queued = false; nameIcons(); fixGenerated(); });
   }
-  ['pointerup', 'keyup'].forEach(function (ev) { document.addEventListener(ev, schedule); });
+  ['pointerup', 'keyup', 'shown.bs.tab'].forEach(function (ev) { document.addEventListener(ev, schedule); });
   document.addEventListener('DOMContentLoaded', function () {
     nameIcons();
     fixGenerated();

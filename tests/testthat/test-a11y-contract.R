@@ -280,11 +280,15 @@ test_that("CR-A11Y-09: the page keeps its lang and theme attributes", {
   expect_identical(class(out), class(page))
 })
 
-test_that("CR-A11Y-09: custom.js repairs generated icon, tablist and separator markup", {
+test_that("CR-A11Y-09: custom.js repairs generated icon, tablist, table and separator markup", {
   js <- paste(readLines(file.path("..", "..", "inst", "app", "www", "custom.js"), warn = FALSE),
     collapse = "\n")
   expect_match(js, "i[role=\"presentation\"][aria-label]", fixed = TRUE)
-  expect_match(js, "ul.navbar-nav[role=\"tablist\"] > li", fixed = TRUE)
+  expect_match(js, "ul[role=\"tablist\"] > li", fixed = TRUE)
+  expect_match(js, "a[data-bs-toggle=\"tab\"]:not([role])", fixed = TRUE)
+  expect_match(js, ".rt-tr-group:not([role])", fixed = TRUE)
+  expect_match(js, ".rt-no-data", fixed = TRUE)
+  expect_match(js, "shown.bs.tab", fixed = TRUE)
   expect_match(js, "aria-valuenow", fixed = TRUE)
 })
 

@@ -1,11 +1,11 @@
 # Browser smoke job (CR-OPS-01, CR-A11Y-09): boots the app in headless Chrome
 # through shinytest2, checks one conditionalPanel and runs axe-core on the
-# Overview and Step 2 screens (tests/e2e/smoke.R).
+# Overview, Step 1, Step 2 and Step 3 screens (tests/e2e/smoke.R). Steps 1 to 3
+# run on the small fixture data folder the script builds, so no private data is
+# needed.
 #
-# Blocking: a failure fails the job. Stable over ten consecutive runs on dev
-# (2026-10-14 to 2026-10-23); add the job to branch protection to make it
-# required for merges. The script fails on serious or critical axe violations
-# (WISEAPP_AXE_FAIL=1).
+# Blocking: a failure fails the job, and `main` requires it as a status check.
+# The script fails on serious or critical axe violations (WISEAPP_AXE_FAIL=1).
 on:
   push:
     branches: [main, dev]
@@ -39,7 +39,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::shinytest2 any::jsonlite any::pkgload
+          extra-packages: any::shinytest2 any::jsonlite any::pkgload any::processx any::httpuv
           needs: check
 
       # The ubuntu-24.04 runner image has no Chrome binary on PATH, so chromote
