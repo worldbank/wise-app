@@ -752,7 +752,7 @@ fmt_num <- function(x, digits = 1, prefix = "", suffix = "", na = "\u2014") {
 #' @return A character vector.
 #' @noRd
 fmt_compact <- function(x, prefix = "", suffix = "", small_digits = 0,
-                        threshold = 1e4, na = "—") {
+                        threshold = 1e4, na = "\u2014") {
   x <- suppressWarnings(as.numeric(x))
   trim <- function(v) {
     s <- formatC(round(v, 1), format = "f", digits = 1)

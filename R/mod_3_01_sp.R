@@ -1318,7 +1318,7 @@ mod_3_01_sp_server <- function(id,
                   title = "Amount from a welfare percentile",
                   tags$p(
                     "Each payment is the chosen percentile of baseline daily welfare",
-                    "× 365 ÷ transfers per year, in the outcome's currency.",
+                    "\u00d7 365 \u00f7 transfers per year, in the outcome's currency.",
                     "The percentile is read from the Step 2 baseline survey with survey",
                     "weights, the same distribution that defines ex-ante poor targeting."
                   ),
@@ -1587,7 +1587,7 @@ mod_3_01_sp_server <- function(id,
       prefix <- .sp_currency_prefix(ar$currency)
       paste0(
         "P", ar$pctile, " of daily welfare = ", prefix, format(round(ar$daily_value, 2), nsmall = 2),
-        " → ", prefix, format(round(ar$per_payment, 2), nsmall = 2, big.mark = ","),
+        " \u2192 ", prefix, format(round(ar$per_payment, 2), nsmall = 2, big.mark = ","),
         " per payment, ", prefix, format(round(ar$per_year, 0), big.mark = ","), " per year"
       )
     })

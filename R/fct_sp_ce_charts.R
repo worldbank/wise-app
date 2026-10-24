@@ -135,12 +135,12 @@
   bounded <- r$interval == "95% interval" & is.finite(r$lo) & is.finite(r$hi)
   data.frame(
     scenario = r$scenario, basis = basis,
-    label = paste(r$scenario, basis, sep = " · "),
+    label = paste(r$scenario, basis, sep = " \u00b7 "),
     value = r$value, lo = ifelse(bounded, r$lo, NA_real_),
     hi = ifelse(bounded, r$hi, NA_real_),
     not_bounded = r$interval == "not bounded",
     tip = paste0(
-      "<b>", r$scenario, " · ", basis, "</b><br/>", fmt(r$value),
+      "<b>", r$scenario, " \u00b7 ", basis, "</b><br/>", fmt(r$value),
       ifelse(bounded, paste0("<br/>95% interval ", fmt(r$lo), " to ", fmt(r$hi)),
         ifelse(r$interval == "not bounded",
           "<br/>Interval reaches zero effect (not bounded)",
