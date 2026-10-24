@@ -34,3 +34,7 @@ Finding: the kernel with `need_sort = FALSE` is one O(n) scan; it is the warm fi
 
 Decision (numerical change: none). Bit-identical by construction: `rows` is the same ascending integer index per year, and `match()` returns the first matching name exactly as character subsetting does.
 
+### R2-PERF-03 closed as won't fix (2026-10-24, user decision)
+
+Re-measured after R2-PERF-04 (same BFA-shaped fixture, line-dependent group, uncertainty off, median of 5, laptop). 63 pipelines (2x2 shape), slider change after a first run: 2.14 s with the app's 32-entry prep cache (it thrashes, so no better than cold at 1.9 s), 0.58 s with all 63 entries held; max RSS 2.33 / 2.17 GB in the harness. Entries are about 8.6 MB each (2026-10-08 figure), so holding all 63 is about 540 MB per session. An index-only entry would not be much smaller because the prepared residuals and masks are most of it. At 1x1 the existing cache already holds every pipeline. Not worth about 500 MB per session on a shared Connect host for 1.5 s. Reopen if a slider change at 2x2 or larger is reported slow.
+
