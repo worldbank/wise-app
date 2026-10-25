@@ -79,7 +79,8 @@ test_that("smoke fixture runs active Step 3 path and emits stable metrics", {
                    second$output_fingerprint_sha256)
   expect_match(first$output_fingerprint_sha256, "^[0-9a-f]{64}$")
   expect_gt(first$policy_seconds, 0)
-  expect_gt(first$decomposition_seconds, 0)
+  # elapsed time has 1 ms resolution; a fast fixture run can read exactly 0
+  expect_gte(first$decomposition_seconds, 0)
   expect_gt(first$retained_object_bytes, 0)
   expect_gt(first$retained_serialized_bytes, 0)
   expect_gt(first$n_changed_columns, 1L)
