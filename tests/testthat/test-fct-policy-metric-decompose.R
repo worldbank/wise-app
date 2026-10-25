@@ -104,9 +104,45 @@ test_that("metric states match the aggregated policy arm under residuals with a 
   }
 })
 
-test_that("the quantile model carries no separate transfer (DOC-11)", {
+test_that("level channels add the transfer once, with a covariate lever (DOC-11)", {
+  fx <- metric_channel_fixture("fixest", "log", "none")
+  base <- fx$hist$pipeline
+  ch <- .policy_annual_channels(base, fx$prepared, "annual-run")
+  tr <- fx$fx$policy[[SP_TRANSFER_COL]][base$svy_row_id]
+  lvl <- exp(base$y_point)
+  lc <- .policy_level_channels(ch, TRUE, lvl)
+  covar <- ch$delta_main_covar
+  expect_gt(max(abs(covar)), 0)
+  expect_equal(lc[, 1], lvl * (exp(covar) - 1) + tr)
+  expect_equal(lc[, 4], lvl * (exp(covar + ch$delta_res1 + ch$delta_res2) - 1) + tr)
+  expect_equal(lc[, 1] + lc[, 2] + lc[, 3] + lc[, 5], lc[, 4])
+  res <- .policy_metric_decomposition(fx$hist, fx$policy_hist, list(), list(),
+    fx$prepared, "mean", 3, "none")
+  w <- base$weight
+  by_year <- vapply(split(seq_along(w), base$sim_year), function(i) stats::weighted.mean(lc[i, 4], w[i]), 1)
+  expect_equal(unname(by_year), res$annual$total)
+})
+
+test_that("the quantile model adds the transfer after repositioning (DOC-11)", {
   fx <- metric_channel_fixture("rif", "log", "original")
-  expect_null(fx$policy_hist$pipeline$sp_level)
+  expect_false(is.null(fx$policy_hist$pipeline$sp_level))
+  base <- fx$hist$pipeline
+  ch <- .policy_annual_channels(base, fx$prepared, "annual-run")
+  tr <- fx$fx$policy[[SP_TRANSFER_COL]][base$svy_row_id]
+  expect_gt(max(abs(ch$delta_res1 + ch$delta_res2)), 0)
+  oracle <- exp(base$y_point + ch$delta_main_covar + ch$delta_res1 + ch$delta_res2) + tr
+  pol <- fx$policy_hist$pipeline
+  expect_equal(exp(pol$y_point - pol$sp_log) + pol$sp_level, oracle)
+  for (method in c("mean", "headcount_ratio", "gini")) {
+    result <- .policy_metric_decomposition(fx$hist, fx$policy_hist, list(), list(),
+      fx$prepared, method, 3, "none")
+    expect_identical(result$status, "ok", info = result$reason)
+    actual <- aggregate_pipeline_per_year(pol, method, pov_line = 3, residuals = "none",
+      is_log = TRUE, skip_coef = TRUE, shared_context = fx$hist$shared_context)
+    expect_equal(result$annual$policy, vapply(actual, `[[`, numeric(1), "value"), info = method)
+  }
+  lc <- .policy_level_channels(ch, TRUE, exp(base$y_point))
+  expect_equal(lc[, 4], oracle - exp(base$y_point))
   fx <- metric_channel_fixture("fixest", "none", "original")
   expect_null(fx$policy_hist$pipeline$sp_level)
 })
@@ -724,7 +760,10 @@ test_that("compact level channels convert log effects per household before avera
   # R2-BUG-07: level channels are taken against the predicted year-t level.
   b <- exp(fx$pipeline$y_point)
   year <- fx$pipeline$sim_year == rows$sim_year[[1L]]
-  expected <- stats::weighted.mean(((exp(ch$delta_total) - 1) * b)[year], w[year])
+  # DOC-11: the cash part is the level amount T, not scaled by the other channels
+  per_row <- (exp(ch$delta_main_covar + ch$delta_res1 + ch$delta_res2) - 1) * b +
+    (exp(ch$delta_sp) - 1) * b
+  expected <- stats::weighted.mean(per_row[year], w[year])
   expect_equal(rows$sum_lvl_total[[1L]] / rows$weight_lvl_total[[1L]], expected)
   # Not the (biased) conversion of the averaged log effect.
   naive <- (exp(stats::weighted.mean(ch$delta_total[year], w[year])) - 1) *

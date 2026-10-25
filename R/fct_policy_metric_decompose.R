@@ -215,6 +215,22 @@
   if (!is_log) {
     return(cbind(ch$delta_main - shock, ch$delta_res1, ch$delta_res2, ch$delta_total, shock))
   }
+  if (!is.null(ch$sp_level)) {
+    # DOC-11: the cash transfer is a level amount, not scaled by the other
+    # channels. Its level is baseline * (exp(log shift) - 1), computed against
+    # the same predicted level as the log shift, so it equals T where a
+    # prediction exists and the observed-baseline value elsewhere.
+    cash_static <- (exp(ch$delta_sp - shock) - 1) * baseline
+    cash_shock <- (exp(shock) - 1) * baseline
+    covar <- ch$delta_main_covar
+    return(cbind(
+      (exp(covar) - 1) * baseline + cash_static,
+      exp(covar) * (exp(ch$delta_res1) - 1) * baseline,
+      exp(covar + ch$delta_res1) * (exp(ch$delta_res2) - 1) * baseline,
+      (exp(covar + ch$delta_res1 + ch$delta_res2) - 1) * baseline + cash_static + cash_shock,
+      cash_shock
+    ))
+  }
   main_static <- (exp(ch$delta_main - shock) - 1) * baseline
   cbind(
     main_static,
@@ -304,9 +320,10 @@
   y_t <- as.numeric(pipeline$y_point[rows])
   is_log <- identical(prepared$context$so$transform %||% "", "log")
   # DOC-11: the level amount paid, kept beside its log shift so that the
-  # aggregation can add it after the residual (NULL for a level outcome and for
-  # the quantile model, which has no residual term)
-  track_sp <- is_log && !identical(prepared$context$engine, "rif")
+  # aggregation can add it after the residual and after the repositioning terms
+  # (NULL for a level outcome). The quantile model has no residual term, but its
+  # repositioning scales the market part of welfare, not the cash.
+  track_sp <- is_log
   sp_level <- if (track_sp) numeric(length(rows))
   sp_level_shock <- NULL
   if (is_log) {
@@ -390,8 +407,8 @@
   }
   out <- pipeline
   # DOC-11: the transfer paid per row and its log shift, for the aggregation to
-  # add it after the residual. The quantile model has no residual term.
-  track_sp <- is_log_outcome && !identical(prepared$context$engine, "rif")
+  # add it after the residual (and, for the quantile model, after repositioning).
+  track_sp <- is_log_outcome
   sp_level <- sp_log <- if (track_sp) numeric(n)
   shock <- .policy_sp_shock_eval(pipeline, prepared, exposure)
   sp_dynamic <- shock$model
