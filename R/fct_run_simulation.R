@@ -589,6 +589,17 @@ fct_run_simulation <- function(sw,
       }
     )
   }
+  # UR-01: "original" and "resample" need the training residuals. Without them
+  # the aggregation would fall back to "none" while the run summary still
+  # recorded the requested rule, so stop instead. The quantile model has no
+  # training residuals by construction and is demoted by the caller.
+  if (!is_rif && is.null(precomputed_train_aug) && !identical(residuals, "none")) {
+    stop(
+      "[fct_run_simulation] The training residuals needed for residuals = '", residuals,
+      "' could not be computed from the fitted model. Re-fit the model, or use residuals = 'none'.",
+      call. = FALSE
+    )
+  }
   shared_id_col <- if (identical(residuals, "original")) {
     resolve_id_col(train_data, svy)
   } else {

@@ -81,7 +81,7 @@ run_ledger_sim <- function(weather_result,
                            pipeline_fn = make_ledger_pipeline_fn(),
                            weather_fn = function(...) weather_result,
                            svy = make_ledger_svy(),
-                           train_data = make_ledger_svy(), ...) {
+                           train_data = make_ledger_svy(), residuals = "none", ...) {
   fct_run_simulation(
     sw                  = data.frame(name = "temp", stringsAsFactors = FALSE),
     so                  = data.frame(name = "welfare", type = "numeric",
@@ -95,7 +95,7 @@ run_ledger_sim <- function(weather_result,
     cp                  = list(type = "local", path = tempdir()),
     fp_list             = list(c("2030-01-01", "2040-12-31")),
     ssps                = c("ssp2_4_5", "ssp5_8_5"),
-    residuals           = "none",
+    residuals           = residuals,
     skip_coef_draws     = TRUE,
     sim_dates           = c("2020-01-01", "2020-12-31"),
     perturbation_method = NULL,
@@ -110,6 +110,20 @@ mark_fail <- function(weather_result, keys) {
   for (k in keys) attr(weather_result[[k]], "fail") <- TRUE
   weather_result
 }
+
+test_that("a residual rule that needs the training residuals errors when they cannot be built (UR-01)", {
+  # fit3 is NULL, so the training residuals cannot be computed.
+  expect_error(
+    suppressWarnings(run_ledger_sim(make_ledger_weather_result(), residuals = "original")),
+    "training residuals"
+  )
+  expect_error(
+    suppressWarnings(run_ledger_sim(make_ledger_weather_result(), residuals = "resample")),
+    "training residuals"
+  )
+  # "none" needs none, and the quantile model has none by construction.
+  expect_no_error(suppressWarnings(run_ledger_sim(make_ledger_weather_result(), residuals = "none")))
+})
 
 test_that("all keys succeeding returns an empty ledger and full provenance", {
   res <- suppressWarnings(run_ledger_sim(make_ledger_weather_result()))
