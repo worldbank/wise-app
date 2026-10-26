@@ -517,7 +517,7 @@ mod_1_03_outcome_server <- function(id, variable_list, survey_data,
             )
           })
 
-          # Summary statistics table (§6): client-side search/pagination with
+          # Summary statistics table (section 6): client-side search/pagination with
           # a client-side CSV download; the export bundle keeps the same
           # precomputed, wave-selectable summary (UI-45/UI-48).
           outcome_summary_df <- function() {

@@ -624,7 +624,7 @@ mod_1_07_results_server <- function(id,
           ch
         })
 
-        # Regression table (guidelines §6: reactable + client-side CSV)
+        # Regression table (guidelines section 6: reactable + client-side CSV)
         output$regtable <- reactable::renderReactable({
           req(model_fit_val())
           make_regtable_df_reactable(regtable_df())

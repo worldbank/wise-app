@@ -467,7 +467,7 @@ mod_0_overview_server <- function(id) {
           message("[overview] automatic data-source connection failed (", class(e)[1L], ")")
           # Persist the failure state before any transient UX: the status
           # card must update even if the notification itself fails (e.g.
-          # session already closing — this handler also runs from promise
+          # session already closing - this handler also runs from promise
           # callbacks, where no default reactive domain is set).
             applied_connection(NULL)
             connection_status(list(

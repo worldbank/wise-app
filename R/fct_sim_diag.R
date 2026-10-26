@@ -461,7 +461,7 @@ build_ridge_kde_data <- function(hist_preds,
 
 
 # ============================================================================
-# Interactive (echarts4r) weather-density diagnostic panel (guidelines §7).
+# Interactive (echarts4r) weather-density diagnostic panel (guidelines section 7).
 #
 # Design (documented judgment call): the patchwork multi-variable panel is
 # collapsed into ONE echarts widget. With a single selected variable the

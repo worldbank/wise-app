@@ -175,7 +175,8 @@
   bad_pv <- pv[!grepl("^[a-z][a-z0-9_]*$", pv)]
   if (length(bad_pv)) {
     add(
-      "model.policy_vars must be policy lever codes (e.g. ", paste(utils::head(names(POLICY_DEFINITIONS), 3L), collapse = ", "),
+      "model.policy_vars must be policy lever codes (e.g. ",
+      paste(utils::head(names(POLICY_DEFINITIONS), 3L), collapse = ", "),
       "), their earlier letter keys or labels, not ", paste(bad_pv, collapse = ", "), "."
     )
   }
@@ -363,7 +364,8 @@
 # Allowed ranges of the numeric controls (the sliders and inputs of the modules).
 .POLICY_RANGES <- list(
   budget_fixed = c(0, Inf), targeting_threshold_pct = c(5, 60), inclusion_error_pct = c(0, 30),
-  exclusion_error_pct = c(0, 30), transfer_amount_usd = c(0, Inf), transfer_pctile = c(1, 99), admin_cost_pct = c(0, 50),
+  exclusion_error_pct = c(0, 30), transfer_amount_usd = c(0, Inf), transfer_pctile = c(1, 99),
+  admin_cost_pct = c(0, 50),
   transfer_n_payments = c(2, 24), trigger_return_period_years = c(1, Inf),
   national_k_pct = c(5, 100), payments_per_activation = c(1, 12), dyn_geo_pct = c(5, 100),
   dyn_welfare_pct = c(5, 60), dyn_incl_error_pct = c(0, 50), dyn_excl_error_pct = c(0, 50),

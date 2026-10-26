@@ -907,8 +907,8 @@ merge_loc_values_to_cells <- function(cell_map, loc_vals, by_wave = TRUE) {
 #'   break).
 #' @noRd
 .density_ramp <- function(n_units) {
-  # Binned colour scale. Cells averaging fewer than one unit — where a
-  # location's units spread thin across many cells — share one pale "less
+  # Binned colour scale. Cells averaging fewer than one unit - where a
+  # location's units spread thin across many cells - share one pale "less
   # than 1" bin; the occupied range above 1 is split at its quantiles, so
   # rural variation stays visible and cities sit in the dark end. A single
   # global transform cannot do both: sqrt left most cells nearly
@@ -1275,7 +1275,7 @@ stats_display_slice <- function(base, vl, flag_col = NULL, vars = NULL,
   tab
 }
 
-#' Build a reactable summary table by variable group flag (guidelines §6)
+#' Build a reactable summary table by variable group flag (guidelines section 6)
 #'
 #' Same data pipeline as `build_stats_table()` (shared
 #' one-pass display base via `build_stats_table()`), same 2-decimal display

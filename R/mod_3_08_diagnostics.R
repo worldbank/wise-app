@@ -325,7 +325,7 @@
   out
 }
 
-# Shared reactable styling for the diagnostics tables (guidelines §6): raw
+# Shared reactable styling for the diagnostics tables (guidelines section 6): raw
 # values in the data, display rounding via colFormat; `formats` maps column
 # names to colFormat argument lists. Fallback states pass a single-column
 # Note frame (mod_1_02 pattern).
@@ -1138,7 +1138,7 @@ mod_3_08_diagnostics_server <- function(id,
             baseline_vals <- d$baseline_values[[var_name]]
             policy_vals <- d$policy_values[[var_name]]
             # Zero-arg echarts closure shared by the on-screen render and the
-            # export bundle (guidelines §7 pattern).
+            # export bundle (guidelines section 7 pattern).
             hist_chart <- function() {
               echart_before_after_hist(
                 baseline_vals, policy_vals, display_label,

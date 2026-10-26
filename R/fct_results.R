@@ -632,7 +632,7 @@ coef_label <- function(coef_name, label_fun = identity) {
   paste(vapply(parts, label_fun, character(1)), collapse = " \u00d7 ")
 }
 
-# Pretty polynomial term name: I(I(t^2)) / I(t^2) -> "<label of t>²".
+# Pretty polynomial term name: I(I(t^2)) / I(t^2) -> "<label of t>^2".
 .pretty_poly_label <- function(term, label_fun = identity) {
   m <- regmatches(term, regexec(
     "^I\\((?:I\\()?([^\\^]+)\\^([23])\\)\\)?$",
@@ -888,7 +888,7 @@ make_regtable_df <- function(fit1, fit2, fit3,
 # Model fit diagnostic plots ----
 
 # Clean label for a cut()-style bin level: "[22.1, 26.6]" or "t(26.6, 28.4]"
-# -> "22.1 – 26.6". Falls back to the trimmed input for odd shapes.
+# -> "22.1 - 26.6". Falls back to the trimmed input for odd shapes.
 .cut_bin_label <- function(lvl) {
   s <- trimws(lvl)
   if (startsWith(s, "t(") || startsWith(s, "t[")) s <- substr(s, 2, nchar(s))
@@ -918,7 +918,7 @@ make_regtable_df <- function(fit1, fit2, fit3,
 #'   `seq(0.1, 0.9, by = 0.1)` when `engine = "rif"`.
 #'
 #' @return A data frame with columns `Statistic` and `Value` (RIF: one row
-#'   per quantile with columns `Quantile`, `N`, `R²`, `Within R²`).
+#'   per quantile with columns `Quantile`, `N`, `R^2`, `Within R^2`).
 #'
 #' @export
 calc_fit_stats <- function(model, is_logistic, engine = "fixest", taus = NULL) {
@@ -1034,7 +1034,7 @@ fit_stats_raw <- function(model, is_logistic, engine = "fixest", taus = NULL) {
 
 
 
-# Echarts counterparts of the Results / Model fit figures (guidelines §7) ----
+# Echarts counterparts of the Results / Model fit figures (guidelines section 7) ----
 # Static ggplot renderers are archived under dev/archive/static_plots; these interactive
 # echarts4r widgets draw the same statistics, computed with the same parameters.
 
@@ -1130,7 +1130,7 @@ fit_stats_raw <- function(model, is_logistic, engine = "fixest", taus = NULL) {
 
 #' Echarts coefficient plot across three progressive model fits
 #'
-#' Interactive coefficient stability plot (guidelines §7), with 95% CI
+#' Interactive coefficient stability plot (guidelines section 7), with 95% CI
 #' whiskers, wrapped labels and specification colours. RIF coefficients are
 #' filtered to one selected welfare quantile.
 #'
@@ -1420,7 +1420,7 @@ echart_make_coefplot <- function(fit1, fit2, fit3,
 
 
 # Shared echarts fragments for the effect / diagnostics builders (guidelines
-# §7). Keep these tiny and generic; branch-specific layout stays in the
+# section 7). Keep these tiny and generic; branch-specific layout stays in the
 # builders below.
 
 # Horizontal dashed y = 0 reference (geom_hline(yintercept = 0) counterpart).
@@ -2741,7 +2741,7 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
 
 
 
-# Echarts counterparts of the Model fit figures (guidelines §7) ---------------
+# Echarts counterparts of the Model fit figures (guidelines section 7) ---------------
 
 # Shared-bin histogram shares: counts of `x` in `breaks` as % of the pooled
 # two-sample total, with bin midpoints as category labels. Mirrors the

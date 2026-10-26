@@ -267,7 +267,6 @@ build_ridge_distribution_data <- function(
   n_obs <- sum(w)
   mu <- sum(h_x * w) / n_obs
   variance <- sum((h_x - mu)^2 * w) / max(n_obs - 1, 1)
-  sd_x <- sqrt(max(variance, 0))
   # Histogram rows are not guaranteed to be sorted by bin. Compute
   # approximate quantiles from sorted bins while retaining grouped counts.
   ord <- order(h_x)
@@ -284,7 +283,6 @@ build_ridge_distribution_data <- function(
     x_sorted[idx - 1L] + (x_sorted[idx] - x_sorted[idx - 1L]) *
       (target - prev) / span
   }
-  iqr_x <- hist_quantile(0.75) - hist_quantile(0.25)
   bin_width <- diff(breaks)[1L]
   if (is.null(bandwidth)) {
     # Estimate each series independently using effective sample size. Raw
@@ -476,7 +474,7 @@ model_term_names <- function(sm) {
 }
 
 
-# Shared echarts4r plumbing for the Step 1 module charts (guidelines §7) ----
+# Shared echarts4r plumbing for the Step 1 module charts (guidelines section 7) ----
 
 # Two-column numeric matrix of chart points. htmlwidgets serialises it as a JSON
 # array of [x, y] pairs, the shape ECharts expects, at a small fraction of the

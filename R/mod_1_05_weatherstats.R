@@ -309,7 +309,7 @@ mod_1_05_weatherstats_server <- function(
           # same bins.
 
           # UI-48: builder first, renderer second, so the export bundle and the
-          # screen draw the same figure. Echarts builders (guidelines §7) use
+          # screen draw the same figure. Echarts builders (guidelines section 7) use
           # the shared data preparation above them in fct_weatherstats.R.
           weather_dist_fig <- function(idx) {
             function() {
@@ -1327,7 +1327,6 @@ mod_1_05_weatherstats_server <- function(
       }
       for (i in seq_len(nrow(sw))) {
         local({
-          .i <- i
           .id <- wxmap_id(i)
           .lab <- sw$label[i]
 

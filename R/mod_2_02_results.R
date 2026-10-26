@@ -1590,7 +1590,6 @@ mod_2_02_results_server <- function(id,
       }
       by_model_matrix(tbl)
     }
-    .pct_label <- pct_label
 
     # pointrange_bands_rv: one row per scenario, three nested bands ----
     pointrange_bands_rv <- reactive({
@@ -1770,7 +1769,7 @@ mod_2_02_results_server <- function(id,
     )
 
     # Zero-arg echarts closures shared by the renders and the export bundle
-    # (guidelines §7): one builder call per chart, used for both the live
+    # (guidelines section 7): one builder call per chart, used for both the live
     # output and wise_export_figure(). Heights match the UI slots.
     pointrange_chart <- function() {
       bands <- pointrange_bands_rv()
@@ -1993,7 +1992,7 @@ mod_2_02_results_server <- function(id,
       )
     )
 
-    # Return-period decision table as a reactable (guidelines §6): raw values
+    # Return-period decision table as a reactable (guidelines section 6): raw values
     # in the data, rounded only for display (.threshold_col_defs()), rendered
     # client-side; the CSV download moved to the shared client-side
     # wise_reactable_csv_button() next to the widget. INT-08: while the

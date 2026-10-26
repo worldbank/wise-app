@@ -543,7 +543,7 @@ mod_1_02_surveystats_server <- function(
             base = stats_base
           )
 
-          # §6: the Outcome stats section (heading + CSV button + table) only
+          # section 6: the Outcome stats section (heading + CSV button + table) only
           # renders when the variable list flags outcome candidates, so an
           # empty survey never shows an orphaned "Download CSV" control.
           output$outcome_stats_section_ui <- renderUI({
@@ -623,7 +623,7 @@ mod_1_02_surveystats_server <- function(
           # Only show characteristic tables relevant to the selected level of
           # analysis: individual level implies household + area also apply;
           # household level implies area also applies; firm level is separate.
-          # Each table carries its client-side CSV download button (§6).
+          # Each table carries its client-side CSV download button (section 6).
           output$characteristic_tables_ui <- renderUI({
             unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
             show_ind <- is.null(unit) || unit == "ind"

@@ -630,7 +630,6 @@ STEP3_SUMMARY_ENSEMBLE_BAND <- STEP2_SUMMARY_ENSEMBLE_BAND
   out <- list()
   ps <- v$paired_summary
   if (is.data.frame(ps) && nrow(ps)) {
-    z <- stats::qnorm(resolve_band_q(STEP3_SUMMARY_ENSEMBLE_BAND))
     out[[length(out) + 1L]] <- rbind(
       row(ps$scenario, m, "policy_expected", "effect", "intermodel", NA, ps$value, ps$intermod_lo,
         ps$intermod_hi, ps$n_models),

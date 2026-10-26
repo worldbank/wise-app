@@ -1173,7 +1173,7 @@ build_weather_stats_table <- function(survey_weather, selected_weather,
 }
 
 # Order binned-variable level labels by their numeric bounds. Labels carry
-# one or two numbers ("≤ 6", "(6, 8]", "8-12", "≥ 12"); ordering them
+# one or two numbers ("<= 6", "(6, 8]", "8-12", ">= 12"); ordering them
 # lexicographically would put "(10, 12]" before "(6, 8]". Levels without
 # any number keep their original relative order, placed after the numbered
 # ones; ties resolve to the original order (stable).
@@ -1182,7 +1182,7 @@ build_weather_stats_table <- function(survey_weather, selected_weather,
   if (length(lv) <= 1L) {
     return(lv)
   }
-  # Range separators ("8 - 12", "8–12") must not turn "12" into "-12";
+  # Range separators ("8 - 12", "8-12") must not turn "12" into "-12";
   # normalize them away first.
   norm <- gsub("\\s*[-\u2013\u2014]\\s*", ";", lv, perl = TRUE)
   nums <- lapply(regmatches(norm, gregexpr("[-+]?[0-9]+(\\.[0-9]+)?", norm, perl = TRUE)),
@@ -1263,7 +1263,7 @@ build_weather_binned_table <- function(survey_weather, selected_weather,
     } else {
       unique(as.character(vals[!is.na(vals)]))
     }
-    # Order bin levels by their numeric bounds ("(6, 8]", "8-12", "≤ 6") so
+    # Order bin levels by their numeric bounds ("(6, 8]", "8-12", "<= 6") so
     # lexicographic creation order ("(10, 12]" before "(6, 8]") never wins.
     level_values <- .bin_level_order(level_values)
     data.frame(
@@ -1379,7 +1379,7 @@ build_weather_binned_table <- function(survey_weather, selected_weather,
 #'                 empty entries get a generic default alt text.
 #' @param echarts  Logical. When `TRUE` the slots are `echarts4r` chart
 #'                 outputs (`wise_chart_output`) for modules migrated to
-#'                 echarts (guidelines §7); the default preserves the static-chart
+#'                 echarts (guidelines section 7); the default preserves the static-chart
 #'                 `plotOutput` for modules not yet migrated.
 #'
 #' @return A Shiny tag.
@@ -1416,7 +1416,7 @@ weather_plot_layout <- function(ns, n_vars, ids, height = "500px",
 }
 
 
-# Echarts counterparts of the Weather stats figures (guidelines §7) ----
+# Echarts counterparts of the Weather stats figures (guidelines section 7) ----
 # These draw the weather-statistics views from shared precomputed values as
 # interactive echarts4r widgets.
 
@@ -2000,7 +2000,7 @@ echart_binscatter <- function(df, hv, hv_label = hv, y_var, y_label = y_var,
 }
 
 
-#' Reactable renderer for the continuous weather summary table (guidelines §6)
+#' Reactable renderer for the continuous weather summary table (guidelines section 6)
 #'
 #' Client-side search/pagination replacement of the old DT renderer; the CSV
 #' download is the separate `wise_reactable_csv_button()` in the module UI.
@@ -2034,7 +2034,7 @@ make_weather_stats_reactable <- function(survey_weather, selected_weather,
 }
 
 
-#' Reactable renderer for the binned-weather level distribution (guidelines §6)
+#' Reactable renderer for the binned-weather level distribution (guidelines section 6)
 #'
 #' @param survey_weather Reactive returning merged survey-weather data.
 #' @param selected_weather Reactive returning selected weather rows (needs
@@ -2059,7 +2059,7 @@ make_weather_binned_stats_reactable <- function(survey_weather, selected_weather
   })
 }
 
-# Shared reactable styling for the weather tables: §6 defaults, 2-decimal
+# Shared reactable styling for the weather tables: section 6 defaults, 2-decimal
 # display rounding via colFormat over raw values (N stays an integer count).
 # `pct_cols` names share-valued columns (0-100) that keep the same 2-decimal
 # display; declared separately so callers can express intent per column.

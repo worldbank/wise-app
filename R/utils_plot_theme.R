@@ -60,7 +60,7 @@ wise_seq_ramp <- function(n) {
   grDevices::colorRampPalette(c("#D9EFF8", "#0071BC", "#002244"))(n)
 }
 
-# Shared echarts4r styling (guidelines §7) ----
+# Shared echarts4r styling (guidelines section 7) ----
 # Shared ECharts styling and WISE color tokens.
 
 #' Style fragments for echarts4r axes, legends and tooltips

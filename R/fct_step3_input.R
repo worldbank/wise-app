@@ -341,7 +341,9 @@ step3_merge_access <- function(...) {
   groups <- vapply(codes, function(k) as.character(cfg$lever_groups[[k]] %||% ""), character(1))
   slot_label <- c(infrastructure = "Infrastructure", digital = "Digital inclusion", education = "Education")
   lab <- ifelse(groups %in% names(slot_label), unname(slot_label[groups]),
-    ifelse(!nzchar(groups), default, paste0(toupper(substring(groups, 1, 1)), gsub("_", " ", substring(groups, 2), fixed = TRUE)))
+    ifelse(!nzchar(groups), default,
+      paste0(toupper(substring(groups, 1, 1)), gsub("_", " ", substring(groups, 2), fixed = TRUE))
+    )
   )
   unique(lab)
 }

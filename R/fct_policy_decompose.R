@@ -1437,7 +1437,8 @@ decompose_policy_effect <- function(svy_baseline,
           cand2 <- paste0(v, ":", wv, lv)
           candidates <- context$ols_interaction_map[[wv]][[v]] %||% character(0)
           matched <- c(cand1, cand2)[c(cand1, cand2) %in% candidates]
-          it_name <- if (length(matched)) matched[[1L]] else if (cand1 %in% coef_names) cand1 else if (cand2 %in% coef_names) cand2 else NULL
+          it_name <- if (length(matched)) matched[[1L]] else if (cand1 %in% coef_names) cand1 else
+            if (cand2 %in% coef_names) cand2 else NULL
           if (is.null(it_name)) next
           has_interactions <- TRUE
           active <- !is.na(haz_int) & haz_int == lv

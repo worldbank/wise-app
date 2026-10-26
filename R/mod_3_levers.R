@@ -181,7 +181,10 @@ mod_3_levers_server <- function(input, output, session, slot, category,
       grp <- ifelse(nzchar(m$group), m$group, "other")
       controls <- unlist(lapply(unique(grp), function(g) {
         c(
-          list(tags$h6(class = "mt-2", paste0(toupper(substring(g, 1, 1)), gsub("_", " ", substring(g, 2), fixed = TRUE)))),
+          list(tags$h6(
+            class = "mt-2",
+            paste0(toupper(substring(g, 1, 1)), gsub("_", " ", substring(g, 2), fixed = TRUE))
+          )),
           controls[grp == g]
         )
       }), recursive = FALSE)

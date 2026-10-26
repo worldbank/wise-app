@@ -196,7 +196,7 @@ step3_incidence_by_decile <- function(compact, so = NULL, bases = .decomp_basis_
 # Interactive (echarts4r) renderer for the precomputed incidence summary.
 # Same statistics: weighted mean effect per fixed
 # baseline decile (already precomputed in `tbl`); echarts only draws the
-# precomputed values (guidelines §7).
+# precomputed values (guidelines section 7).
 #
 # Design notes: grouped vertical bars per scenario, Okabe-Ito palette via
 # wise_echart_theme(), axis-trigger tooltip, legend bottom-left, and dashed

@@ -800,7 +800,6 @@ mod_1_06_model_server <- function(id,
 
         df <- prepare_outcome_df(as.data.frame(survey_weather()), selected_outcome())
 
-        outcome_var <- trimws(as.character(selected_outcome()$name)[1])
         weather_vars <- as.character(selected_weather()$name)
         fe_vars <- as.character(input$fixedeffects)
         int_vars <- as.character(input$interactions)

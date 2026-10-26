@@ -3080,16 +3080,6 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     dplyr::bind_rows(Filter(Negate(is.null), rows))
   }
 
-  .build_threshold_rows <- function(agg_hist, agg_scn, hist_ref, source_label,
-                                    bq_coef, bq_ens) {
-    so_obj <- tryCatch(
-      if (!is.null(baseline_hist_sim())) baseline_hist_sim()$so else NULL,
-      error = function(e) NULL
-    )
-    step3_threshold_rows(agg_hist, agg_scn, hist_ref, source_label, bq_coef, bq_ens,
-      aggregation_method(), so_obj, selected_scenario_names(), matrix_transform)
-  }
-
   timeseries_curves_rv <- reactive({
     if (!identical(policy_endpoint_status()$status, "ok")) return(tibble::tibble())
     req(baseline_agg_hist())

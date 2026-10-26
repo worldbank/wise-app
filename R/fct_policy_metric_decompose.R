@@ -717,7 +717,8 @@
               parity <- abs(state_result$baseline - support$baseline_value) <=
                 .policy_metric_tolerance * max(1, abs(support$baseline_value))
               if (!parity) {
-                status <- "unavailable"; reason <- "Reconstructed annual baseline metric does not match Results endpoint."
+                status <- "unavailable"
+                reason <- "Reconstructed annual baseline metric does not match Results endpoint."
               }
             }
           }
@@ -981,13 +982,18 @@
         mechanisms[[length(mechanisms) + 1L]] <- list(scenario = scenario,
           member = member, model_id = member, sim_year = year, hazard = hazard,
           category = if (is.null(product$categories)) NA_character_ else product$categories[j],
-          contrast = if (is.null(product$categories)) "continuous_coefficient_change" else "fitted_reference_category_contrast",
+          contrast =
+            if (is.null(product$categories)) "continuous_coefficient_change" else "fitted_reference_category_contrast",
           repositioning = if (prepared$repositioning_modeled) weighted_mean(r1) else NA_real_,
           interaction = if (prepared$interaction_included) weighted_mean(r2) else NA_real_,
-          positive_repositioning_share = if (prepared$repositioning_modeled) weighted_mean(as.numeric(r1 > 0)) else NA_real_,
-          negative_repositioning_share = if (prepared$repositioning_modeled) weighted_mean(as.numeric(r1 < 0)) else NA_real_,
-          positive_interaction_share = if (prepared$interaction_included) weighted_mean(as.numeric(r2 > 0)) else NA_real_,
-          negative_interaction_share = if (prepared$interaction_included) weighted_mean(as.numeric(r2 < 0)) else NA_real_,
+          positive_repositioning_share =
+            if (prepared$repositioning_modeled) weighted_mean(as.numeric(r1 > 0)) else NA_real_,
+          negative_repositioning_share =
+            if (prepared$repositioning_modeled) weighted_mean(as.numeric(r1 < 0)) else NA_real_,
+          positive_interaction_share =
+            if (prepared$interaction_included) weighted_mean(as.numeric(r2 > 0)) else NA_real_,
+          negative_interaction_share =
+            if (prepared$interaction_included) weighted_mean(as.numeric(r2 < 0)) else NA_real_,
           tau_pre = if (prepared$repositioning_modeled) weighted_mean(prepared$tau_i_pre[ids]) else NA_real_,
           tau_post = if (prepared$repositioning_modeled) weighted_mean(prepared$tau_i_post[ids]) else NA_real_,
           n_retained_rows = length(rows), weighted = !is.null(w),
@@ -1196,7 +1202,8 @@
     rank_convention = "fixed main-derived pre/post ranks; interaction evaluated at post-main rank",
     included_terms = "canonical repositioning and weather-policy interaction channel changes only",
     excluded_terms = "not a complete derivative of nonlinear fitted model terms")
-  result$metadata$effective_residuals <- if (nrow(result$annual)) unique(result$annual$effective_residuals) else character()
+  result$metadata$effective_residuals <-
+    if (nrow(result$annual)) unique(result$annual$effective_residuals) else character()
   result$metadata$mixed_effective_residuals <- length(result$metadata$effective_residuals) > 1L
   focus <- result$scenarios[[focus_scenario]]
   result$status <- focus$status %||% "unavailable"

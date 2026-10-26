@@ -1,4 +1,4 @@
-# Step 1 regression tables (reactable, guidelines §6) ----
+# Step 1 regression tables (reactable, guidelines section 6) ----
 # Results-first table of the weather + interaction coefficients of the full     #
 # specification (3), with a per-row translation on the outcome's reporting      #
 # scale; a compact three-specification comparison; and the full AER-style       #
@@ -504,7 +504,7 @@ make_regtable_focused_df <- function(fit3, weather_terms, interaction_terms, lab
 }
 
 
-# Reactable renderers (guidelines §6) ----
+# Reactable renderers (guidelines section 6) ----
 
 # Shared reactable plumbing for the Step 1 regression tables: compact rows,
 # deliberate (unsortable) order, group separator rows carried in a hidden
@@ -577,7 +577,7 @@ make_regtable_focused_df <- function(fit3, weather_terms, interaction_terms, lab
   as.data.frame(m, stringsAsFactors = FALSE, optional = TRUE)
 }
 
-# Small note-only table for the empty/error states (mirrors the other §6
+# Small note-only table for the empty/error states (mirrors the other section 6
 # tables' "Note" rows).
 .t2_reactable_note <- function(msg) {
   reactable::reactable(
@@ -606,7 +606,7 @@ make_regtable_focused_df <- function(fit3, weather_terms, interaction_terms, lab
 }
 .t2_fmt_ci <- function(lo, hi) paste0(.t2_fmt_num3(lo), " \u2013 ", .t2_fmt_num3(hi))
 
-#' Reactable focused regression table for the Step 1 results tab (guidelines §6)
+#' Reactable focused regression table for the Step 1 results tab (guidelines section 6)
 #'
 #' Renders the shared `.t2_focused_rows()` tidy rows as a reactable widget:
 #' one row per weather/interaction term with estimate + significance stars,
@@ -776,7 +776,7 @@ make_regtable_specs_reactable <- function(fit1, fit2, fit3, weather_terms,
   )
 }
 
-#' Reactable view of the full AER-style coefficient table (guidelines §6)
+#' Reactable view of the full AER-style coefficient table (guidelines section 6)
 #'
 #' Renders the long tidy data frame from `make_regtable_df()` (one row per
 #' specification and term, both engines) as a client-side sortable/searchable

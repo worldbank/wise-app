@@ -1141,7 +1141,6 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       })
       imax <- which.max(abs(vapply(sc, function(s) s$estimate, numeric(1))))
       i_rng <- paste0(fmts[[1]]$value, " vs ", fmts[[length(sc)]]$value)
-      interaction_value_line <- i_rng
       ml <- .s1_modx_label(mf, snap, modx_var, label_fun)
       imax_lab <- sc[[imax]]$label %||% "extreme value"
       # Binary moderator levels are labelled yes/no; keep the separator
@@ -1155,7 +1154,6 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
         ml, lvl_sep(lvl1), lvl1, " vs ", ml,
         lvl_sep(lvlN), lvlN
       )
-      interaction_cmp_line <- cmp_line
       note_parts <- c(note_parts, cmp_line)
       if (length(sc) > 2) {
         largest_line <- paste0("largest for ", ml, lvl_sep(imax_lab), imax_lab)
@@ -1188,7 +1186,6 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       )
       if (!is.null(pdiff) && is.finite(pdiff)) {
         p_line <- if (pdiff < 0.001) "Interaction p < 0.001" else sprintf("Interaction p = %.3f", pdiff)
-        interaction_p_line <- p_line
         note_parts <- c(p_line, note_parts)
       }
       info_bits <- c(info_bits, paste0(

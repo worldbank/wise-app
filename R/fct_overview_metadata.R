@@ -102,7 +102,7 @@ overview_metadata_cache_store <- function(connection_params, value) {
   }
   package_path <- getNamespaceInfo(asNamespace("wiseapp"), "path")
   development_package <- .wise_step2_async_is_dev_package()
-  # Explicit params are allowed only on this local shared pool (guidelines §0).
+  # Explicit params are allowed only on this local shared pool (guidelines section 0).
   submit <- function() {
     if (!isTRUE(is_current())) return(invisible(NULL))
     task <- tryCatch({

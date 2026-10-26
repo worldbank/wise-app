@@ -28,10 +28,6 @@ SP_ELIGIBLE_COL <- ".wiseapp_sp_eligible"
   is.numeric(x) && length(x) == 1L && is.finite(x) && x != 0
 }
 
-.access_moved <- function(universal, change_pct) {
-  isTRUE(universal) || .lever_moved(change_pct)
-}
-
 # Sector sliders carry a target share only when the user changed it from the
 # observed share; NULL means "unchanged", and 0 is a valid target.
 .sector_target_set <- function(x) {

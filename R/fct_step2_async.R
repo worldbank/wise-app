@@ -426,7 +426,8 @@
     )
     .wise_step2_async_notify(current, if (retired) "cancelled" else "failed",
       if (retired) current$retire_reason %||% "Session ended." else conditionMessage(error %||% callback_error))
-    if (!retired && is.function(current$on_error)) try(current$on_error(error %||% callback_error, current), silent = TRUE)
+    if (!retired && is.function(current$on_error))
+      try(current$on_error(error %||% callback_error, current), silent = TRUE)
     if (exists(current$id, envir = state$jobs, inherits = FALSE)) rm(list = current$id, envir = state$jobs)
     .wise_step2_async_cleanup_control(current)
     .wise_step2_async_dispatch()

@@ -504,7 +504,6 @@ interview_dates_table <- function(df) {
 #' @return Data frame keyed by `key` (scope key) and `sample`.
 #' @noRd
 .weather_survey_rows <- function(survey_weather, sw_row, survey_data) {
-  v <- sw_row$name[1]
   sw_df <- survey_weather
   sw_df$year <- as.character(sw_df$year)
   survey_data$year <- as.character(survey_data$year)

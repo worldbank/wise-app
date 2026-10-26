@@ -29,7 +29,8 @@
   repositioning <- suppressWarnings(as.numeric(repositioning))
   interaction <- suppressWarnings(as.numeric(interaction))
   is_log <- identical(so$transform %||% "", "log")
-  ids <- if ("id" %in% names(decomp_df)) suppressWarnings(as.integer(decomp_df$id)) else rep(NA_integer_, nrow(decomp_df))
+  ids <-
+    if ("id" %in% names(decomp_df)) suppressWarnings(as.integer(decomp_df$id)) else rep(NA_integer_, nrow(decomp_df))
   outcome <- so$name %||% ""
   if (is_log && (is.null(baseline_svy) || !outcome %in% names(baseline_svy) ||
       (any(is.finite(ids)) && (any(!is.finite(ids)) || any(ids < 1L | ids > nrow(baseline_svy)))))) {
