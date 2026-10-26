@@ -72,7 +72,7 @@ wise_sp_config <- function(x, currency = "PPP", analysis_unit = "hh") {
   g <- function(id) x[[id]]
   num <- function(v) suppressWarnings(as.numeric(v))
   sp_type_val <- g("sp_type") %||% "regular"
-  is_regular <- TRUE
+  is_regular <- identical(sp_type_val, "regular")
   list(
     # program type
     sp_type = sp_type_val,

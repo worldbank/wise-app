@@ -436,7 +436,7 @@ pages:
       - "Step 3 > Diagnostics: total cost, cost per recipient, coverage, leakage, adequacy and realised errors."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers"
     code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_sp_effectiveness.R", "R/fct_policy_metric_decompose.R", "R/fct_aggregation_delta.R", "R/mod_3_01_sp.R"]
-    verified_against: "72a2fdb"
+    verified_against: "3f4fc5f"
   - id: "shock-sp"
     file: "43_shock_responsive_sp.md"
     title: "Shock-responsive cash transfers: triggers, payments and basis risk"
@@ -468,7 +468,7 @@ pages:
       - "Step 3 > Diagnostics and Cost-effectiveness: the run outputs of Section 6."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release"
     code: ["R/fct_sp_shock.R", "R/fct_policy_sim.R", "R/fct_policy_metric_decompose.R", "R/fct_step3_input.R", "R/mod_3_01_sp.R"]
-    verified_against: "72a2fdb"
+    verified_against: "3f4fc5f"
   - id: "decomposition"
     file: "44_decomposition.md"
     title: "Decomposition of the policy effect into direct and resilience channels"

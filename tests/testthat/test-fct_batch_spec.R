@@ -1025,6 +1025,20 @@ test_that("policy validation lists the problems", {
   ))))
 })
 
+test_that("a shock spec keeps its timing in the resolved configuration and a regular spec has none", {
+  so <- list(units = "PPP", povline = 2.15)
+  shock <- pol_spec(list(sp = list(
+    sp_type = "shock", trigger_variable = "tx", transfer_timing = "anticipatory", forecast_pod_pct = 70,
+    forecast_far_pct = 20, effect_multiplier = 1.5, timeliness_weeks = 4, delay_loss_pct_per_week = 5
+  )))$policy
+  sp <- wise_policy_configs(shock, so, "hh")$sp
+  expect_identical(sp$transfer_timing, "anticipatory")
+  expect_equal(sp$timeliness_weeks, 4)
+  expect_equal(c(sp$forecast_pod_pct, sp$forecast_far_pct, sp$effect_multiplier), c(70, 20, 1.5))
+  regular <- pol_spec(list(sp = list(transfer_amount_usd = 80)))$policy
+  expect_identical(wise_policy_configs(regular, so, "hh")$sp$transfer_timing, NA_character_)
+})
+
 test_that("a policy spec resolves to the lever configurations of the modules", {
   so <- list(units = "PPP", povline = 2.15)
   s <- pol_spec(list(

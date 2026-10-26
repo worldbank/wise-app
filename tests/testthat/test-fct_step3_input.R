@@ -101,7 +101,8 @@ test_that("the lever modules return what the spec route builds from the same con
     payout_scope = "national_triggered", national_k_pct = 30, payments_per_activation = 2,
     dyn_geo = "worst_share", dyn_geo_pct = 40, dyn_welfare = TRUE, budget_rule = "loss_share",
     loss_share_pct = 60, annual_cap = 5e6, loss_event_pct = 12, transfer_timing = "anticipatory",
-    forecast_pod_pct = 80, forecast_far_pct = 10, effect_multiplier = 1.4, trigger_pov_line = 3
+    forecast_pod_pct = 80, forecast_far_pct = 10, effect_multiplier = 1.4, trigger_pov_line = 3,
+    timeliness_weeks = 4, delay_loss_pct_per_week = 5
   )
   spec <- wise_spec(model = list(), sim = list(), policy = list(sp = sp_values))
   expect_no_error(spec)
@@ -121,6 +122,12 @@ test_that("the lever modules return what the spec route builds from the same con
     }
     expect_identical(from_spec$transfer_n_payments, from_module$transfer_n_payments)
     expect_identical(from_spec$currency, from_module$currency)
+    # Equal NA on both sides proves nothing (SP-09): the timing must be set.
+    for (cfg in list(from_module, from_spec)) {
+      expect_identical(cfg$transfer_timing, "anticipatory")
+      expect_equal(cfg$timeliness_weeks, 4)
+      expect_equal(cfg$delay_loss_pct_per_week, 5)
+    }
   })
 
   # A percentile amount: the module and the spec route read the same baseline survey.
@@ -197,6 +204,31 @@ test_that("the lever modules return what the spec route builds from the same con
     expect_null(session$returned$labor_scenario()$sector_manufacturing)
     expect_null(wise_policy_configs(list(labor = list(labor_emp = 0)), so, "hh", step3_sector_defaults(svy))$labor$sector_manufacturing)
   })
+})
+
+test_that("wise_sp_config keeps the timing of a shock program and drops it for a regular one", {
+  shock <- wise_sp_config(list(
+    sp_type = "shock", transfer_timing = "anticipatory", forecast_pod_pct = 70, forecast_far_pct = 20,
+    effect_multiplier = 1.5, timeliness_weeks = 4, delay_loss_pct_per_week = 5
+  ))
+  expect_identical(shock$transfer_timing, "anticipatory")
+  expect_equal(shock$timeliness_weeks, 4)
+  expect_equal(shock$forecast_pod_pct, 70)
+  expect_equal(shock$delay_loss_pct_per_week, 5)
+  expect_identical(shock$transfer_frequency, "oneoff")
+  # Without timing controls a shock program is ex post with no delay.
+  plain <- wise_sp_config(list(sp_type = "shock"))
+  expect_identical(plain$transfer_timing, "expost")
+  expect_equal(plain$timeliness_weeks, 0)
+  # A regular program has no timing, whatever the controls hold.
+  reg <- wise_sp_config(list(sp_type = "regular", transfer_timing = "anticipatory", timeliness_weeks = 4))
+  expect_identical(reg$transfer_timing, NA_character_)
+  expect_identical(reg$timeliness_weeks, NA_integer_)
+  expect_identical(reg$transfer_frequency, "regular")
+  expect_identical(wise_sp_config(list())$transfer_timing, NA_character_)
+  # The delay reaches the plan: 4 weeks at 5 percent a week leaves 80 percent of the effect.
+  delayed <- wise_sp_config(list(sp_type = "shock", timeliness_weeks = 4, delay_loss_pct_per_week = 5))
+  expect_equal(.sp_timing_plan(delayed, NULL, 1L)$delay, 0.8)
 })
 
 test_that("the step 3 input list has the arguments step3_compute() takes", {

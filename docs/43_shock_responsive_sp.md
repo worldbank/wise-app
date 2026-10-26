@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, social-protection, simulation, climate-
 symbols: [omega, T, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release
 code: [R/fct_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decompose.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
-verified_against: 72a2fdb
+verified_against: 3f4fc5f
 ---
 
 # Shock-responsive cash transfers: triggers, payments and basis risk
