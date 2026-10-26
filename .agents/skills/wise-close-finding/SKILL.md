@@ -16,7 +16,7 @@ argument-hint: "[finding id, e.g. R2-PERF-01]"
 # Closing a review finding
 
 Open work is in `review/REVIEW-tracking.md`. The findings text is
-`review/REVIEW-2026-10-06.md` (immutable: read it by id, never edit it). The
+`review/archive/REVIEW-2026-10-06.md` (immutable: read it by id, never edit it). The
 record of finished work is `review/archive/REVIEW-2026-10-06-tracking-full.md`.
 The tracker's "Working rules" are the authority; this skill is the procedure.
 
@@ -25,7 +25,7 @@ won't fix or deferred (the reason is given).
 
 ## 1. Before the work
 
-- Read the row and the finding text (`grep -n "<ID>" review/REVIEW-2026-10-06.md`).
+- Read the row and the finding text (`grep -n "<ID>" review/archive/REVIEW-2026-10-06.md`).
 - Work on a branch off `dev`, one commit per finding id, the id in the
   subject (`R2-PERF-01: share household-constant vectors`). Do not push.
 - Check the work type and use the matching skill: numbers move

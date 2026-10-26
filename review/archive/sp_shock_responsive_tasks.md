@@ -1,6 +1,8 @@
 # Social protection: remaining tasks
 
-Companion to `review/sp_shock_responsive_plan.md` (design rules, Phase 2 and 3 design). Updated 2026-10-19.
+Archived 2026-10-26; open items are in `review/REVIEW-tracking.md` (B11).
+
+Companion to `review/archive/sp_shock_responsive_plan.md` (design rules, Phase 2 and 3 design). Updated 2026-10-19.
 
 Phases 0, 1 and the Phase 2 build tasks P2-1 to P2-8 are built and committed on `dev`. What each task did, with its measurements, is in the git history (`git log --grep "P2-"`); this file keeps only what binds later work or is still open. Status key: `☐` todo, `◐` built but not fully verified, `☑` done.
 

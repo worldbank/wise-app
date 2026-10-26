@@ -1,5 +1,5 @@
 # Static accessibility contracts (WCAG 2.2 AA review findings in
-# review/REVIEW-2026-10-06.md section 9). These read custom.css and render UI
+# review/archive/REVIEW-2026-10-06.md section 9). These read custom.css and render UI
 # fragments with htmltools, so they run without a browser.
 
 a11y_css_rules <- function() {

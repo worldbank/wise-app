@@ -1,6 +1,6 @@
 # ============================================================================ #
 # tests/testthat/test-sp-design-options.R                                      #
-# Social protection design options (plan: review/sp_shock_responsive_plan.md): #
+# Social protection design options (plan: review/archive/sp_shock_responsive_plan.md): #
 #   P0-2 administration cost, P0-3 per-person amounts, P0-4 error placement.   #
 # Defaults must reproduce the earlier behaviour exactly, the preview must      #
 # equal the run, and each option must change numbers in the stated direction.  #

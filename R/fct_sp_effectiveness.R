@@ -1,12 +1,12 @@
 # Social protection cost and targeting effectiveness ----
 #
 # Pure functions (no Shiny) behind the Step 3 diagnostics "Cost and targeting"
-# table (plan: review/step3_cost_effectiveness_plan.md, sections 4.1 and 4.2;
-# task P0-5 in review/sp_shock_responsive_tasks.md). They need only the baseline
+# table (plan: review/archive/step3_cost_effectiveness_plan.md, sections 4.1 and 4.2;
+# task P0-5 in review/archive/sp_shock_responsive_tasks.md). They need only the baseline
 # and policy survey frames, so every figure is exact for the run's single seeded
 # targeting draw. The effect-per-cost functions further down (P2-2) join a Step 3
 # effect to the cost; decisions in section 10 of that plan and in
-# review/sp_shock_responsive_tasks.md settle their definitions.
+# review/archive/sp_shock_responsive_tasks.md settle their definitions.
 
 #' Cost and targeting effectiveness of a social-protection transfer
 #'

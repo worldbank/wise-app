@@ -1,6 +1,6 @@
 # Review remediation tracking (REVIEW-2026-10-06)
 
-Source of truth for findings: `review/REVIEW-2026-10-06.md` (immutable; reviewed commit `df37cdb`). This file tracks **open work only**. The full record of finished, closed and deferred work (commits, verification, measurements, Decision log, dated Log, performance baselines, reopen triggers) is in `review/archive/REVIEW-2026-10-06-tracking-full.md`; read it only for the evidence behind a finished or closed item. Compacted 2026-10-24.
+Source of truth for findings: `review/archive/REVIEW-2026-10-06.md` (immutable; reviewed commit `df37cdb`). This file tracks **open work only**. The full record of finished, closed and deferred work (commits, verification, measurements, Decision log, dated Log, performance baselines, reopen triggers) is in `review/archive/REVIEW-2026-10-06-tracking-full.md`; read it only for the evidence behind a finished or closed item. Compacted 2026-10-24.
 
 Status: `☐` todo · `◐` in progress (remainder listed) · `✗` won't fix / deferred (reason given). Sev: C critical · H high · M medium · L low. Effort: S < 1 day · M 1-3 days · L > 3 days.
 
@@ -15,6 +15,7 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
+| B11 | Social protection (deferred) | 8 |
 
 B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
 
@@ -79,6 +80,21 @@ Source: `review/archive/uncertainty_residuals_review.md` (closed 2026-10-26; fin
 
 Not done and not planned (closed decisions): a cluster-block or stratified resample rule (F4), a bootstrap of the return-period tail (F10).
 
+## B11 - Social protection (all deferred or owed)
+
+Sources: `review/archive/sp_shock_responsive_plan.md`, `review/archive/sp_shock_responsive_tasks.md`, `review/archive/step3_cost_effectiveness_plan.md` (archived 2026-10-26; Phases 0 to 2 and the cost-effectiveness tab are built). Nothing here is scheduled.
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| SP-01 | L | M | ✗ | P0-9 admin and error presets: a literature pass on cost-transfer ratios and PMT error rates, then a preset dropdown. The 10 % / 10 % defaults and zero admin share stay. |
+| SP-02 | L | M | ✗ | PR-13: the shock state plus transfer is re-evaluated per metric-decomposition job (1.7 s base to 3.5 s with anticipatory and layers, BFA, 17 pipelines). Cache it in the retained Step 3 artifact if a slow metric switch is reported. |
+| SP-03 | L | S-M | ✗ | Phase 3 presets and amount rules (P3-1 named presets, P3-4 gap-filling and tiered amounts). |
+| SP-04 | L | M | ✗ | Phase 3 design sweep (P3-2: cost against poverty-reduction frontier over a bounded grid) and reserve dynamics (P3-3: needs an ordered-year rule first, years are draws today). |
+| SP-05 | L | M | ✗ | P3-5 further budget rules (AAL sizing, premium-equivalent cost, budgets tied to the rise in the number of poor, envelope per activation). Needs P2-5. |
+| SP-06 | L | M | ✗ | Cost-effectiveness for non-cash levers (`mod_3_02` to `mod_3_05`) and the cost-effectiveness summary card: need unit costs from the policy team. |
+| SP-07 | M | S | ☐ | Owed numbers: BFA before/after headline figures for P0-8 (synthetic check already recorded: realised weighted inclusion 15.8 % / exclusion 12.2 % before, 15.0 % / 10.0 % after, for 15 % / 10 % sliders), BFA Step 3 benchmark figures with the shock fixtures, and the BFA LCU re-run entry for R2-BUG-04 / CR-BUG-02. |
+| SP-08 | L | S | ✗ | Targeting errors are one seeded draw; the draw-to-draw variation of coverage and leakage, and of the shock forecast layers, is not shown (see UR-02). |
+
 ## Decision log (uncertainty and residuals, 2026-10-26)
 
 Numerical changes, BFA unless stated, "original" rule unless stated. Evidence and tables are in the archived review.
@@ -100,3 +116,4 @@ Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (move
 - 2026-10-24 - DOC-11 closed (B9 open count 3 to 2): for a log outcome the cash transfer is now added after the residual, so the policy arm gains T and not T * exp(e); regular and shock-responsive SP, aggregation mean and its gradient, and the metric states. Outputs move (policy gains shrink by up to 8% at SD 0.4); Decision log entry, real-BFA before/after (policy mean gain 0.70 and 1.30 of the transfer before, 1.00 after, for original and resample residuals) and the row in the archive addendum. The Step 3 pane was not driven in the browser.
 - 2026-10-25 - DOC-11 follow-up: the quantile model (RIF) now adds the transfer after repositioning (`E * exp(c + rho) + T`) and the level channels add it once with another lever active. RIF outputs move when a transfer combines with another lever or repositioning. Decision log in the archive addendum; real-BFA RIF before/after (transfer alone +1.8% gain, transfer plus electricity -0.7%) and the Decomposition tab driven in the browser, both in the archive. Also: `test-bench-step3.R` timing assertion made `expect_gte` (1 ms clock resolution made it flaky).
 - 2026-10-26 - Uncertainty and residuals review closed and archived (B10 opened with 2 low-severity rows): residual key (F0), logistic loading (F8), own residual bar and median reference (F2, F1), poverty-rate residual variance (F9), the all-covariates control removed (F3), the applied residual rule recorded in the run summary, Step 2 provenance and batch provenance, the "normal" rule removed, docs 30, 32, 33, 40, 43, 50. Commits `c5ccb9e`, `1ecc93e`, `f84b9e3`, `235bce2`. Decision log rows above.
+- 2026-10-26 - `REVIEW-2026-10-06.md`, the shock-responsive SP plan and tasks and the cost-effectiveness plan moved to `review/archive/` (code comments, tests, `ARCHITECTURE.md` and the `wise-close-finding` skill re-pointed). Their open or deferred items are B11 (8 rows, none scheduled).

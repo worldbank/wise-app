@@ -1,6 +1,8 @@
 # Social protection: shock-responsive scenarios, design and remaining plan
 
-Scope: the Step 3 social protection (SP) module (`mod_3_01_sp`). Phase 0 (design options for the regular program) and Phase 1 (shock-responsive MVP) are built, verified and committed on `dev` (495ae85 to 7545ab3). This document keeps the design rules the code must follow and the plan for Phases 2 and 3. Work items are in `review/sp_shock_responsive_tasks.md`; what each finished task did is in the git history.
+Archived 2026-10-26; open items are in `review/REVIEW-tracking.md` (B11).
+
+Scope: the Step 3 social protection (SP) module (`mod_3_01_sp`). Phase 0 (design options for the regular program) and Phase 1 (shock-responsive MVP) are built, verified and committed on `dev` (495ae85 to 7545ab3). This document keeps the design rules the code must follow and the plan for Phases 2 and 3. Work items are in `review/archive/sp_shock_responsive_tasks.md`; what each finished task did is in the git history.
 
 Updated 2026-10-19 (Phase 2 built, reviewed and browser-checked). Written for the WISE-APP maintainers and the policy team who decide what to build next.
 
@@ -115,7 +117,7 @@ Scheduled right after the response check and the missing outputs, before binned 
 | Climate-adjusted cost | Cost under SSP members vs historical with the same fixed trigger (the data is in `out$shock`; needs a presentation) | P2-2 |
 | Coverage of the shock-affected poor | Share of poor households with a modelled loss that received a transfer | P2-2 |
 | Adequacy | Transfer as a share of modelled loss or of the poverty gap | P2-2 |
-| Poverty effect per cost | Net change in the number of poor, labelled as such (gross movements are not built), per unit cost, in average and bad years. Leads with cost per person lifted for poverty-rate metrics and welfare gain per $1 otherwise; "not applicable" for near-zero or wrong-signed effects. Design in `review/step3_cost_effectiveness_plan.md` | P2-2 |
+| Poverty effect per cost | Net change in the number of poor, labelled as such (gross movements are not built), per unit cost, in average and bad years. Leads with cost per person lifted for poverty-rate metrics and welfare gain per $1 otherwise; "not applicable" for near-zero or wrong-signed effects. Design in `review/archive/step3_cost_effectiveness_plan.md` | P2-2 |
 | Cost-effectiveness for shock programs | Suppressed today because its annual-cost basis assumes a transfer paid every year | P2-2 |
 | Budget exhaustion | Share of years where a cap binds | P2-6 |
 

@@ -1,6 +1,8 @@
 # Step 3 cost-effectiveness results: initial plan
 
-Status: decisions taken 8 October 2026 (section 10); work is task P2-2 in `review/sp_shock_responsive_tasks.md`. Static metrics (P0-5) are built; the tab, effect-per-cost metrics and shock-program support are not. Where this note says "Results section", read "dedicated Step 3 tab" (decision 4). The summary-card version of cost-effectiveness is deferred (see `review/headline_cards_review.md`, section 11.4C); this note plans the fuller results that the cards would later point to.
+Archived 2026-10-26; open items are in `review/REVIEW-tracking.md` (B11).
+
+Status: decisions taken 8 October 2026 (section 10); work is task P2-2 in `review/archive/sp_shock_responsive_tasks.md`. Static metrics (P0-5) are built; the tab, effect-per-cost metrics and shock-program support are not. Where this note says "Results section", read "dedicated Step 3 tab" (decision 4). The summary-card version of cost-effectiveness is deferred (see `review/headline_cards_review.md`, section 11.4C); this note plans the fuller results that the cards would later point to.
 
 Written for: the WISE-APP maintainers and the policy team deciding what Step 3 should say about value for money.
 
@@ -31,7 +33,7 @@ Cost-effectiveness here is not a cost-benefit analysis. It reports a modelled ef
 What does not exist:
 
 - No cost input for the infrastructure, digital, labour or education levers. Those levers change covariates (for example electricity access or travel time to health); the app has no unit cost for them.
-- No administration cost. A parallel plan (`review/sp_shock_responsive_plan.md`, task P0-2 in `review/sp_shock_responsive_tasks.md`) adds an admin cost markup as a share of total cost.
+- No administration cost. A parallel plan (`review/archive/sp_shock_responsive_plan.md`, task P0-2 in `review/archive/sp_shock_responsive_tasks.md`) adds an admin cost markup as a share of total cost.
 - No cost-effectiveness metrics. The same parallel plan lists them as task P0-5 (coverage of the poor, leakage, adequacy, poverty effect per cost) in a new `R/fct_sp_effectiveness.R`, shown in the Diagnostics tab. This note builds on P0-5 rather than duplicating it.
 - The model is a static annual accounting model: the transfer is added to every household-year in every weather draw, so cost is the same every year in a regular program. That changes if the shock-responsive transfer is built.
 
@@ -123,7 +125,7 @@ Figures worth building (echarts, consistent with the rest of Step 3):
 
 ## 8. Fit with the shock-responsive plan
 
-`review/sp_shock_responsive_plan.md` plans a transfer that depends on weather. Cost-effectiveness changes in three ways when it lands:
+`review/archive/sp_shock_responsive_plan.md` plans a transfer that depends on weather. Cost-effectiveness changes in three ways when it lands:
 
 1. Cost becomes a distribution across years and climate members. The right headline is expected cost and a bad-year cost (for example the 1-in-20 cost), not one number.
 2. Cost per person lifted becomes a ratio of two random quantities. Report it for the expected year and for adverse years using paired (member, year) values, not a ratio of means.
@@ -166,11 +168,11 @@ Taken 8 October 2026: (1) dedicated tab; (2) net change in the number of poor, l
 ## 12. Next steps
 
 1. Review this plan and settle the decisions in section 10, starting with items 1 to 3.
-2. Coordinate with the owner of `review/sp_shock_responsive_plan.md` so the cost-effectiveness work (P0-5) and this plan share one implementation and one set of tests.
+2. Coordinate with the owner of `review/archive/sp_shock_responsive_plan.md` so the cost-effectiveness work (P0-5) and this plan share one implementation and one set of tests.
 3. When Phase 1 is agreed, begin with the pure functions and tests before any UI.
 
 ## References (to verify)
 
 - Coady, Grosh and Hoddinott (2004), Targeting of Transfers in Developing Countries, World Bank.
 - Beckerman (1979), The impact of income maintenance payments on poverty in Britain, 1975, Economic Journal (vertical expenditure efficiency).
-- Caldés, Coady and Maluccio (2006); Bastagli et al. (2016): cost-transfer ratios and cash transfer evidence (also cited in `review/sp_shock_responsive_plan.md`).
+- Caldés, Coady and Maluccio (2006); Bastagli et al. (2016): cost-transfer ratios and cash transfer evidence (also cited in `review/archive/sp_shock_responsive_plan.md`).

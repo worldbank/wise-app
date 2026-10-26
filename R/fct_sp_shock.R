@@ -1,8 +1,8 @@
 # Shock-responsive social protection: spec checks and trigger thresholds ----
 #
 # Pure functions (no Shiny) for the shock-responsive transfer (plan:
-# review/sp_shock_responsive_plan.md, decisions 2, 7, 8 and 9; tasks P1-1 and
-# P1-2 in review/sp_shock_responsive_tasks.md). Thresholds are computed from the
+# review/archive/sp_shock_responsive_plan.md, decisions 2, 7, 8 and 9; tasks P1-1 and
+# P1-2 in review/archive/sp_shock_responsive_tasks.md). Thresholds are computed from the
 # historical exposure table of the run and applied unchanged to every climate
 # member, as Step 2 does for its return periods.
 
