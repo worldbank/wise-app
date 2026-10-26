@@ -64,8 +64,6 @@ mod_3_06_policy_sim_server <- function(id,
                                        analysis_unit = reactive("hh"),
                                        skip_coef_draws = reactive(FALSE),
                                        residuals = reactive("original"),
-                                       propagate_all_covariate_uncertainty =
-                                         reactive(FALSE),
                                        survey_version = reactive(0L),
                                        sim_stale = reactive(FALSE),
                                        run_trigger = reactive(NULL)) {

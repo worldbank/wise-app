@@ -699,7 +699,6 @@ fct_run_simulation <- function(sw,
   }
 
   # Run pipelines (one key at a time) ----
-  t_start <- t_start_total # key loop elapsed = total elapsed from function entry
 
 
   t_start_pipeline <- proc.time()[["elapsed"]]
@@ -1090,7 +1089,6 @@ fct_run_simulation <- function(sw,
   )
   gc(verbose = FALSE)
 
-  t_pipeline_done <- proc.time()[["elapsed"]] - t_start_pipeline
   progress_fn(0.80, "Finalizing scenario results...")
 
   # REACT-12: classify failures - fail fast or publish with ledger ----

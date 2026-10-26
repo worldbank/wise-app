@@ -72,8 +72,6 @@ app_server <- function(input, output, session) {
     analysis_unit = step1_api$analysis_unit,
     skip_coef_draws = step2_api$skip_coef_draws,
     residuals = step2_api$residuals,
-    propagate_all_covariate_uncertainty =
-      step2_api$propagate_all_covariate_uncertainty,
     survey_version = step1_api$survey_version,
     sim_stale = step2_api$stale,
      run_trigger = run_step3_trigger,
