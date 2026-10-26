@@ -40,16 +40,58 @@ test_that("employment-only change leaves sector counts unchanged", {
   expect_identical(sum(reach), sum(out$unemployed != svy$unemployed))
 })
 
-test_that("an unset sector target keeps that sector's count", {
+weighted_sector_sizes <- function(svy) {
+  working <- svy$employed == 1L | svy$selfemployed == 1L
+  vapply(c("agriculture", "industry", "services"), function(sec) {
+    sum(svy$weight[working & svy[[sec]] == 1L])
+  }, numeric(1))
+}
+
+test_that("an unset sector target keeps that sector's size", {
   svy <- make_labor_fixture()
   out <- apply_policy_to_svy(
     svy, labor = list(sector_manufacturing = 50),
     model_vars = labor_vars, seed = 1L
   )
+  # The weights vary, so sizes are weighted, as for the sliders; whole rows
+  # make the match exact only to within one row's weight.
+  before <- weighted_sector_sizes(svy)
+  after <- weighted_sector_sizes(out)
+  expect_equal(after[["services"]], before[["services"]])
+  expect_equal(after[["industry"]], 0.5 * sum(before), tolerance = max(svy$weight) / sum(before))
+})
+
+test_that("sector targets are weighted shares under skewed survey weights", {
+  svy <- make_labor_fixture()
+  # A few heavy rows make weighted and row shares differ a lot.
+  svy$weight <- ifelse(seq_len(nrow(svy)) %% 10L == 0L, 40, 1)
+  start <- .labor_sector_shares(svy)
+  target <- c(manufacturing = 45, services = 35)
+  out <- apply_policy_to_svy(
+    svy, labor = list(sector_manufacturing = target[["manufacturing"]], sector_services = target[["services"]]),
+    model_vars = labor_vars, seed = 1L
+  )
+  got <- .labor_sector_shares(out)
+  tol <- 100 * max(svy$weight) / sum(weighted_sector_sizes(svy))
+  expect_lt(abs(got[["industry"]] - target[["manufacturing"]]), tol)
+  expect_lt(abs(got[["services"]] - target[["services"]]), tol)
+  expect_equal(sum(got), 100)
+  # The starting point differs from the targets, so something moved.
+  expect_gt(abs(start[["industry"]] - target[["manufacturing"]]), 1)
+})
+
+test_that("constant weights give the same targets as no weight column", {
+  svy <- make_labor_fixture()
+  svy$weight <- 3
+  run <- function(x) apply_policy_to_svy(
+    x, labor = list(sector_manufacturing = 45, sector_services = 35),
+    model_vars = labor_vars, seed = 1L
+  )
+  out <- run(svy)
+  expect_identical(out[names(out) != "weight"], run(svy[names(svy) != "weight"]))
   working <- sum(svy$employed + svy$selfemployed)
-  expect_identical(unname(sector_counts(out)[["services"]]),
-                   unname(sector_counts(svy)[["services"]]))
-  expect_equal(unname(sector_counts(out)[["industry"]]), round(working * 0.5))
+  expect_equal(unname(sector_counts(out)[["industry"]]), round(working * 0.45))
+  expect_equal(unname(sector_counts(out)[["services"]]), round(working * 0.35))
 })
 
 test_that("an explicit 0% target is a change; NULL targets are not", {

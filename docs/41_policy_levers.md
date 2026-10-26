@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, data]
 symbols: [D, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers
 code: [R/fct_policy_registry.R, R/fct_policy_sim.R, R/mod_3_levers.R, R/fct_step3_input.R]
-verified_against: 69503ea
+verified_against: 72a2fdb
 ---
 
 # Policy levers: access, percent change, travel time and labour market
@@ -44,7 +44,7 @@ A lever acts if three things hold: the variable is in the survey, the variable i
 
 ## Method
 
-Let $N_0$ and $N_1$ be the numbers of survey units with value 0 and 1 for a binary variable, not counting missing values. The binary access and employment levers are drawn by weight when the survey has non-constant weights: rows are taken in random order until the cumulative survey weight is closest to the weight the share asks for, so the weighted share moved matches the share entered to within one row's weight. Without usable weights the draw is by rows, with the counts below. The sector lever works with counts of rows.
+Let $N_0$ and $N_1$ be the numbers of survey units with value 0 and 1 for a binary variable, not counting missing values. The binary access and employment levers are drawn by weight when the survey has non-constant weights: rows are taken in random order until the cumulative survey weight is closest to the weight the share asks for, so the weighted share moved matches the share entered to within one row's weight. Without usable weights the draw is by rows, with the counts below. The sector lever is weighted in the same way.
 
 ### 1. Binary access
 
@@ -83,13 +83,13 @@ The change is a share of all rows of the survey (of the total survey weight, whe
 
 ### 5. Sector of work
 
-The user sets target shares for industry and for services, as percentages of working units. Agriculture is the remainder, $100 - s_{\text{ind}} - s_{\text{ser}}$ and not below zero. The sliders start at the observed shares of the survey. A target that was not changed from the observed share is left unset and keeps the current count of its sector.
+The user sets target shares for industry and for services, as percentages of working units. Agriculture is the remainder, $100 - s_{\text{ind}} - s_{\text{ser}}$ and not below zero. The sliders start at the observed shares of the survey. A target that was not changed from the observed share is left unset and keeps the current size of its sector.
 
-Let $N_w$ be the number of working rows (the employed) and $n_k$ the current number in sector $k$. The target counts are
+Let $N_w$ be the working population and $n_k$ the current size of sector $k$. Both are survey-weight sums when the survey has non-constant weights, the same weighted shares the sliders start from, and row counts otherwise. The target sizes are
 
-$$n_{\text{ind}}^{*} = \text{round}\big(N_w \min(s_{\text{ind}}/100, 1)\big), \quad n_{\text{ser}}^{*} = \min\big(\text{round}(N_w\ s_{\text{ser}}/100),\ N_w - n_{\text{ind}}^{*}\big), \quad n_{\text{agr}}^{*} = N_w - n_{\text{ind}}^{*} - n_{\text{ser}}^{*} \qquad \text{(5.1)}$$
+$$n_{\text{ind}}^{*} = N_w \min(s_{\text{ind}}/100, 1), \quad n_{\text{ser}}^{*} = \min\big(N_w\ s_{\text{ser}}/100,\ N_w - n_{\text{ind}}^{*}\big), \quad n_{\text{agr}}^{*} = N_w - n_{\text{ind}}^{*} - n_{\text{ser}}^{*} \qquad \text{(5.1)}$$
 
-A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ has a deficit. Workers move only from a sector with a surplus to a sector with a deficit, so no more workers move than the targets require. Sectors are processed in order: agriculture first, then industry, then services. Within a sector, the workers who move are drawn at random. Rows that do not work are not changed. A moved worker is set to exactly one sector.
+With row counts the targets are rounded to whole rows. A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ has a deficit. Workers move only from a sector with a surplus to a sector with a deficit, so no more workers move than the targets require. Sectors are processed in order: agriculture first, then industry, then services. Within a sector, the workers who move are drawn at random, in the same way as the weighted binary and employment draws: rows are taken until the cumulative weight is closest to the weight of the surplus, and the first of them fill the first deficit, so each achieved weighted share is within one row's weight of its target. Rows that do not work are not changed. A moved worker is set to exactly one sector.
 
 ## Interpretation
 
@@ -108,7 +108,6 @@ A sector with $n_k > n_k^{*}$ has a surplus and a sector with $n_k < n_k^{*}$ ha
 
 - Take-up, quality of service and the cost of any lever other than the cash transfer.
 - Targeting of access by need, income or place.
-- Weighted draws for the sector lever: its targets are counts of working rows, and the survey weights do not enter the selection of workers.
 - Interaction terms between two levers.
 - Whether the change in a variable is feasible. A universal option sets all units to 1 whatever the real constraints.
 

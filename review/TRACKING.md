@@ -106,6 +106,12 @@ Numerical changes, BFA unless stated, "original" rule unless stated. Evidence an
 - F9 (poverty-rate residual variance): residual SD under "resample" 0.00967 before, 0.00758 after (Monte Carlo 0.00778).
 - Normal rule removed: point estimates under "original" and "resample" identical to every printed digit (mean 4.36060483590172 and 4.77585348505506).
 
+## Decision log (sector targets, 2026-10-26)
+
+- Methodology review finding 4b (user, 2026-10-26): the labour sector lever sized its targets in working rows while the sliders start from weighted shares. The applied target now uses survey-weight sizes, the same shares the sliders initialise from (`R/fct_policy_sim.R`, the sector block of `apply_policy_to_svy()`). With equal or absent weights the sizes are row counts and outputs are unchanged. Alternative rejected: relabel the sliders as row shares.
+- BFA 2021 individual survey (47,090 rows, weights 15 to 3,225), targets industry 30 and services 35 (agriculture 35), seed 123, survey level (`apply_policy_to_svy()` on the real frame; HEAD `72a2fdb` before, this change after). Weighted shares of industry / services / agriculture among the working: start 18.54 / 25.82 / 51.68; before 29.73 / 25.82 / 40.49 (row shares 29.1 / 31.06 / 35.0, so the row target was met and the weighted one was not); after 30.00 / 31.03 / 35.00. Weighted share of the working who changed sector: 11.19 before, 16.68 after. About 4% of working rows carry no sector flag; their weight is part of the denominator and the services target falls short by it.
+- Not checked: a model-level BFA before/after of welfare. The sector variables are not available as model variables in the batch run on BFA (the fit stops with "not available in the data"), so the policy gain was not compared. The Step 3 pane was not driven in the browser.
+
 ## Log
 
 Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (moved)" and earlier addenda). Add new entries here.

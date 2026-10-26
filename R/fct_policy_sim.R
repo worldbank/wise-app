@@ -1404,25 +1404,31 @@ apply_policy_to_svy <- function(svy,
 
           if (any(working)) {
             working_idx <- which(working)
-            n_working <- length(working_idx)
+            # Sizes are in survey weight when the weights vary (the same
+            # weighted shares the sliders start from), else in rows (unit
+            # weights), so equal or absent weights give the row counts.
+            w_sec <- .sp_error_weights(svy)
+            wt <- if (is.null(w_sec)) rep(1, nrow(svy)) else w_sec
+            to_size <- if (is.null(w_sec)) round else identity
+            n_working <- sum(wt[working_idx])
 
-            # Count current sector distribution (within working population)
-            n_curr_agri <- sum(svy$agriculture[working_idx] == 1L, na.rm = TRUE)
-            n_curr_ind <- sum(svy$industry[working_idx] == 1L, na.rm = TRUE)
-            n_curr_serv <- sum(svy$services[working_idx] == 1L, na.rm = TRUE)
+            # Current sector distribution (within working population)
+            n_curr_agri <- sum(wt[working_idx][svy$agriculture[working_idx] %in% 1L])
+            n_curr_ind <- sum(wt[working_idx][svy$industry[working_idx] %in% 1L])
+            n_curr_serv <- sum(wt[working_idx][svy$services[working_idx] %in% 1L])
 
-            # Target counts: manufacturing and services chosen by user (an
-            # unset target keeps the current count), agriculture is the
+            # Target sizes: manufacturing and services chosen by user (an
+            # unset target keeps the current size), agriculture is the
             # residual. Clamp so targets cannot exceed 100% combined (which
             # would make target_agri negative and corrupt the reallocation).
             n_target_ind <- if (.sector_target_set(labor$sector_manufacturing)) {
-              round(n_working * min(max(labor$sector_manufacturing, 0) / 100, 1))
+              to_size(n_working * min(max(labor$sector_manufacturing, 0) / 100, 1))
             } else {
               n_curr_ind
             }
             n_target_ind <- min(n_target_ind, n_working)
             n_target_serv <- if (.sector_target_set(labor$sector_services)) {
-              round(n_working * max(labor$sector_services, 0) / 100)
+              to_size(n_working * max(labor$sector_services, 0) / 100)
             } else {
               n_curr_serv
             }
@@ -1430,13 +1436,45 @@ apply_policy_to_svy <- function(svy,
             n_target_agri <- n_working - n_target_ind - n_target_serv
 
             # Surplus = current exceeds target; deficit = current below target
-            surplus_agri <- max(0L, n_curr_agri - n_target_agri)
-            surplus_ind <- max(0L, n_curr_ind - n_target_ind)
-            surplus_serv <- max(0L, n_curr_serv - n_target_serv)
+            surplus_agri <- max(0, n_curr_agri - n_target_agri)
+            surplus_ind <- max(0, n_curr_ind - n_target_ind)
+            surplus_serv <- max(0, n_curr_serv - n_target_serv)
 
-            deficit_agri <- max(0L, n_target_agri - n_curr_agri)
-            deficit_ind <- max(0L, n_target_ind - n_curr_ind)
-            deficit_serv <- max(0L, n_target_serv - n_curr_serv)
+            deficit_agri <- max(0, n_target_agri - n_curr_agri)
+            deficit_ind <- max(0, n_target_ind - n_curr_ind)
+            deficit_serv <- max(0, n_target_serv - n_curr_serv)
+
+            # Moves `cap` of weight out of `workers`: the rows are drawn at
+            # random up to the weight asked for (`.pick_rows()`; a row count
+            # without weights), then the first rows up to the first deficit go
+            # to `first` and the rest to `second`. A sector with no deficit
+            # takes none, except that weighted rounding leaves a remainder for
+            # the only sector in deficit.
+            move_rows <- function(workers, cap, first, d_first, second, d_second) {
+              if (!length(workers)) {
+                return(NULL)
+              }
+              n_move <- min(cap, length(workers))
+              cands <- .pick_rows(workers, n_move, min(cap, sum(wt[workers])), w_sec)
+              k <- length(cands)
+              cum <- cumsum(wt[cands])
+              n_first <- if (d_first > 0) {
+                j <- which.min(abs(cum - d_first))
+                min(if (d_first <= abs(cum[j] - d_first)) 0L else j, k)
+              } else {
+                0L
+              }
+              if (!is.null(w_sec) && d_second <= 0 && d_first > 0) n_first <- k
+              n_second <- if (d_second > 0 || (!is.null(w_sec) && d_first > 0)) {
+                max(0L, k - n_first)
+              } else {
+                0L
+              }
+              to <- c(rep(first, n_first), rep(second, n_second))
+              if (length(to) > 0 && length(to) == k) {
+                list(worker = cands, to = to)
+              }
+            }
 
             # Build list of workers to reallocate and their target sectors
             # Priority: reallocate from agriculture, then industry, then services
@@ -1446,109 +1484,46 @@ apply_policy_to_svy <- function(svy,
               to_sector = character(0),
               stringsAsFactors = FALSE
             )
+            add_moves <- function(mv, from) {
+              reallocations <<- rbind(
+                reallocations,
+                data.frame(worker = mv$worker, from_sector = from, to_sector = mv$to, stringsAsFactors = FALSE)
+              )
+            }
 
             # Agriculture -> (deficit sectors)
             if (surplus_agri > 0) {
-              agri_workers <- which(working & svy$agriculture == 1L)
-              if (length(agri_workers) > 0) {
-                n_to_move <- min(surplus_agri, length(agri_workers))
-                candidates <- agri_workers[sample.int(length(agri_workers), n_to_move)]
-                n_to_ind <- if (deficit_ind > 0) min(n_to_move, deficit_ind) else 0L
-                n_to_serv <- if (deficit_serv > 0) max(0L, n_to_move - n_to_ind) else 0L
-                targets <- c(
-                  rep("industry", n_to_ind),
-                  rep("services", n_to_serv)
-                )
-                if (length(targets) > 0 && length(targets) == length(candidates)) {
-                  reallocations <- rbind(
-                    reallocations,
-                    data.frame(
-                      worker = candidates[seq_along(targets)],
-                      from_sector = "agriculture",
-                      to_sector = targets,
-                      stringsAsFactors = FALSE
-                    )
-                  )
-                  deficit_ind <- max(0, deficit_ind - sum(targets == "industry"))
-                  deficit_serv <- max(0, deficit_serv - sum(targets == "services"))
-                }
+              mv <- move_rows(
+                which(working & svy$agriculture == 1L), surplus_agri,
+                "industry", deficit_ind, "services", deficit_serv
+              )
+              if (!is.null(mv)) {
+                add_moves(mv, "agriculture")
+                deficit_ind <- max(0, deficit_ind - sum(wt[mv$worker][mv$to == "industry"]))
+                deficit_serv <- max(0, deficit_serv - sum(wt[mv$worker][mv$to == "services"]))
               }
             }
 
             # Industry -> (deficit sectors)
             if (surplus_ind > 0 && (deficit_agri > 0 || deficit_serv > 0)) {
-              ind_workers <- which(working & svy$industry == 1L)
-              if (length(ind_workers) > 0) {
-                n_to_move <- min(
-                  surplus_ind, length(ind_workers),
-                  deficit_agri + deficit_serv
-                )
-                candidates <- ind_workers[sample.int(length(ind_workers), n_to_move)]
-                n_to_agri <- if (deficit_agri > 0) {
-                  min(n_to_move, deficit_agri)
-                } else {
-                  0L
-                }
-                n_to_serv <- if (deficit_serv > 0) {
-                  max(0L, n_to_move - n_to_agri)
-                } else {
-                  0L
-                }
-                targets <- c(
-                  rep("agriculture", n_to_agri),
-                  rep("services", n_to_serv)
-                )
-                if (length(targets) > 0 && length(targets) == length(candidates)) {
-                  reallocations <- rbind(
-                    reallocations,
-                    data.frame(
-                      worker = candidates[seq_along(targets)],
-                      from_sector = "industry",
-                      to_sector = targets,
-                      stringsAsFactors = FALSE
-                    )
-                  )
-                  deficit_agri <- max(0, deficit_agri - sum(targets == "agriculture"))
-                  deficit_serv <- max(0, deficit_serv - sum(targets == "services"))
-                }
+              mv <- move_rows(
+                which(working & svy$industry == 1L), min(surplus_ind, deficit_agri + deficit_serv),
+                "agriculture", deficit_agri, "services", deficit_serv
+              )
+              if (!is.null(mv)) {
+                add_moves(mv, "industry")
+                deficit_agri <- max(0, deficit_agri - sum(wt[mv$worker][mv$to == "agriculture"]))
+                deficit_serv <- max(0, deficit_serv - sum(wt[mv$worker][mv$to == "services"]))
               }
             }
 
             # Services -> (deficit sectors)
             if (surplus_serv > 0 && (deficit_agri > 0 || deficit_ind > 0)) {
-              serv_workers <- which(working & svy$services == 1L)
-              if (length(serv_workers) > 0) {
-                n_to_move <- min(
-                  surplus_serv, length(serv_workers),
-                  deficit_agri + deficit_ind
-                )
-                candidates <- serv_workers[sample.int(length(serv_workers), n_to_move)]
-                n_to_agri <- if (deficit_agri > 0) {
-                  min(n_to_move, deficit_agri)
-                } else {
-                  0L
-                }
-                n_to_ind <- if (deficit_ind > 0) {
-                  max(0L, n_to_move - n_to_agri)
-                } else {
-                  0L
-                }
-                targets <- c(
-                  rep("agriculture", n_to_agri),
-                  rep("industry", n_to_ind)
-                )
-                if (length(targets) > 0 && length(targets) == length(candidates)) {
-                  reallocations <- rbind(
-                    reallocations,
-                    data.frame(
-                      worker = candidates[seq_along(targets)],
-                      from_sector = "services",
-                      to_sector = targets,
-                      stringsAsFactors = FALSE
-                    )
-                  )
-                }
-              }
+              mv <- move_rows(
+                which(working & svy$services == 1L), min(surplus_serv, deficit_agri + deficit_ind),
+                "agriculture", deficit_agri, "industry", deficit_ind
+              )
+              if (!is.null(mv)) add_moves(mv, "services")
             }
 
             # Execute reallocations: clear all sector flags for movers then assign
