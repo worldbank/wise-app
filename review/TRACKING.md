@@ -33,4 +33,3 @@ Status: `☐` todo, `◐` in progress, `blocked` awaiting a named dependency. Cl
 | ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
 |---|---|---|---|---|---|
 | CR-CQ-01 | M | L | ☐ | Move static builders out and split the three giant server functions. Delete dead code first; keep changes per file with characterization tests. | `archive/REVIEW-2026-10-06.md`, CR-CQ-01; `code_hygiene.md`. |
-| CR-CQ-02 | M | L | ☐ | Extract a shared Results-pane module for Steps 2 and 3, preserving each step's behaviour with characterization tests. | `archive/REVIEW-2026-10-06.md`, CR-CQ-02. |

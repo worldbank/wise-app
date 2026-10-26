@@ -120,6 +120,7 @@ Current Log moved verbatim from TRACKING.md (historical status/commit wording re
 
 ### Closed and deferred list (reopen triggers)
 
+- CR-CQ-02 (archived as deferred 2026-10-26, user): shared Results-pane module is an optional refactor, not a demonstrated defect fix. Reopen when common features repeatedly need parallel edits or a concrete cross-step inconsistency shows harmful drift. Start with shared presentation pieces; preserve distinct provisional-result and policy-comparison contracts. Full row and rationale below.
 - OPT-02 (archived as deferred 2026-10-26, user): low startup/Step 3 pain. Reopen on reported slow Connect startup, a slow Step 3 run or metric switch, or Linux/Connect measurements showing the Shiny process is memory-bound. No deployment change or current Connect cold-start measurement claimed; full row below.
 - R2-PERF-01 (archived with remaining work deferred 2026-10-26, user): implemented memory savings retained; artifact redesign, small payload cleanups and remaining validation deferred, not verified. Reopen on memory pressure/OOM, result-adoption latency, a release-related scenario/export/engine failure, or changes to the artifact/release contract. Full row, evidence limits and revert path below.
 - OPT-03 (archived as deferred 2026-10-26, user): hex-engine lazy loading needs map-container restructuring; no measured user-facing benefit justifies it now. Reopen when browser profiling shows map assets or initialization materially delay startup on a representative connection/device, or a planned map-container change makes deferral straightforward. Full row in the closure addendum below.
@@ -531,6 +532,20 @@ Reopen R2-PERF-01 on memory pressure/OOM, result-adoption latency, a release-rel
 B6 context moved verbatim from the tracker:
 
 Work stopped by decision 2026-10-24 (user agreed): the rows below have no measured pain behind them. Baselines and measurements are in the archive. Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepwise fits, SQL `ORDER BY` for survey sort, `bw.SJ` subsampling, batched gemm (1.8x regression with reference BLAS), `shared_period` plan, reference weather as default, shared SSP monthly cache, sort-once materialisation of the period relation (no gain: 3.35 s against 3.23 s for 16 members), unsorted per-member collect with a key-order check (DuckDB does not return key order, so it collects twice: 2x2 40.0 s to 43.1 s), R-side rounding rewrite (identical, saves only 4 ms per member).
+
+### CR-CQ-02 archived: shared Results-pane refactor deferred (2026-10-26)
+
+Row as it stood:
+
+| ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
+|---|---|---|---|---|---|
+| CR-CQ-02 | M | L | ☐ | Extract a shared Results-pane module for Steps 2 and 3, preserving each step's behaviour with characterization tests. | `archive/REVIEW-2026-10-06.md`, CR-CQ-02. |
+
+Decision (user, 2026-10-26): remove from active maintenance and mark `✗` (deferred), not fixed. The original duplication finding remains valid, but the assessment found no current defect attributable to it. Shared aggregation choices, metric metadata, heading helpers and `echart_exceedance()` already avoid some duplication. `.results_content_ui()` in `R/mod_2_02_results.R` and `.results_pane_ui()` in `R/fct_policy_sim_compare.R` still have parallel controls and annual-distribution, adverse-year, exceedance and return-period sections.
+
+The server contracts differ materially: Step 2 supports streaming provisional displays, pending scenarios, control gating and committed-only exports; Step 3 adds paired baseline/policy effects, policy-specific availability, summary and stale-state handling. Consolidating them is not simply choosing an arm label. Existing characterization/provisional tests and Step 3 UI/API tests reflect these differences. No code change, new tests or browser verification performed for this scope decision; this is not a claim that duplication has been removed.
+
+Reopen when a common Results feature repeatedly requires parallel edits or a concrete cross-step inconsistency demonstrates harmful drift. Prefer narrowly shared controls or section scaffolding first; retain separate provisional-result and policy-comparison logic unless their contracts genuinely converge. Any refactor needs characterization tests and running-app checks for both steps.
 
 ### MR-05 and MR-06 closed (2026-10-26)
 
