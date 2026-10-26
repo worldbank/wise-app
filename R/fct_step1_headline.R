@@ -92,7 +92,7 @@
   cand[1]
 }
 
-.s1_modx_label <- function(mf, snap, modx_var, label_fun = identity) {
+.s1_modx_label <- function(modx_var, label_fun = identity) {
   lab <- tryCatch(label_fun(modx_var), error = function(e) modx_var)
   if (is.null(lab) || is.na(lab) || !nzchar(lab)) lab <- modx_var
   lab
@@ -1141,7 +1141,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       })
       imax <- which.max(abs(vapply(sc, function(s) s$estimate, numeric(1))))
       i_rng <- paste0(fmts[[1]]$value, " vs ", fmts[[length(sc)]]$value)
-      ml <- .s1_modx_label(mf, snap, modx_var, label_fun)
+      ml <- .s1_modx_label(modx_var, label_fun)
       imax_lab <- sc[[imax]]$label %||% "extreme value"
       # Binary moderator levels are labelled yes/no; keep the separator
       # readable either way ("Urban: yes" / "Urban = 1.25").

@@ -726,8 +726,7 @@ mod_2_02_results_server <- function(id,
       simulation_summary_card(
         hist_sim = summary_hist,
         saved_scenarios = summary_scn,
-        selected_hist = if (!is.null(selected_hist)) selected_hist() else NULL,
-        selected_weather = if (is.function(selected_weather)) selected_weather() else selected_weather
+        selected_hist = if (!is.null(selected_hist)) selected_hist() else NULL
       )
     })
 

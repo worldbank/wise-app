@@ -157,8 +157,7 @@ mod_2_03_diagnostics_server <- function(id,
       simulation_summary_card(
         hist_sim = hist_sim(),
         saved_scenarios = if (!is.null(saved_scenarios)) saved_scenarios() else list(),
-        selected_hist = if (is.function(selected_hist)) selected_hist() else selected_hist,
-        selected_weather = if (!is.null(selected_weather)) selected_weather() else NULL
+        selected_hist = if (is.function(selected_hist)) selected_hist() else selected_hist
       )
     })
 

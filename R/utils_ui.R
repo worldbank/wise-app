@@ -155,8 +155,7 @@ selection_summary_card <- function(title, rows, badge = NULL, info = NULL,
 #'
 #' @noRd
 simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
-                                    selected_hist = NULL,
-                                    selected_weather = NULL) {
+                                    selected_hist = NULL) {
   if (is.null(hist_sim) || is.null(hist_sim$so)) {
     return(NULL)
   }
@@ -457,11 +456,7 @@ format_prediction_count <- function(count, analysis_unit = NULL) {
 #'
 #' @noRd
 policy_summary_card <- function(selected_policies = NULL,
-                                baseline_hist_sim = NULL,
-                                policy_saved_scenarios = list(),
-                                selected_weather = NULL,
                                 sp_scenario = NULL,
-                                policy_scenarios = list(),
                                 infra_scenario = NULL,
                                 digital_scenario = NULL,
                                 labor_scenario = NULL,

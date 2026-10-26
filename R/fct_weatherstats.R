@@ -109,7 +109,7 @@ merge_survey_weather <- function(survey_data, weather_data) {
 
 # Label used for the historical series across both plots.
 #' @noRd
-.wx_hist_lab <- function(year_from, year_to) {
+.wx_hist_lab <- function() {
   "Historical"
 }
 
@@ -1502,7 +1502,7 @@ echart_weather_bins_compare <- function(df, hv, label, hist_df = NULL,
     as.data.frame()
   samp$source <- .wx_sample_lab
 
-  hist_lab <- .wx_hist_lab(year_from, year_to)
+  hist_lab <- .wx_hist_lab()
   hist_bins <- .hist_bin_counts(hist_df, hv, breaks, year_from, year_to)
   has_hist <- !is.null(hist_bins) && nrow(hist_bins) > 0
   if (has_hist) hist_bins$source <- hist_lab
@@ -1614,7 +1614,7 @@ echart_weather_ridges_compare <- function(df, hv, label, hist_df = NULL,
     stringsAsFactors = FALSE
   )
 
-  hist_lab <- .wx_hist_lab(year_from, year_to)
+  hist_lab <- .wx_hist_lab()
   hist_use <- NULL
   if (!is.null(hist_df) && !is.na(hv) && hv %in% names(hist_df) &&
     all(c("n_hh", "countryyear") %in% names(hist_df))) {

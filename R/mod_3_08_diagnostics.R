@@ -1201,15 +1201,11 @@ mod_3_08_diagnostics_server <- function(id,
     output$policy_summary_ui <- shiny::renderUI({
       policy_summary_card(
         selected_policies = selected_policies(),
-        baseline_hist_sim = baseline_hist_sim(),
-        selected_weather = selected_weather(),
         sp_scenario = sp_scenario(),
         infra_scenario = infra_scenario(),
         digital_scenario = digital_scenario(),
         labor_scenario = labor_scenario(),
-        education_scenario = education_scenario(),
-        policy_saved_scenarios = policy_saved_scenarios(),
-        policy_scenarios = policy_scenarios()
+        education_scenario = education_scenario()
       )
     })
 

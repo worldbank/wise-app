@@ -2190,15 +2190,11 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     req(bh)
     policy_summary_card(
       selected_policies = selected_policies(),
-      baseline_hist_sim = bh,
-      policy_saved_scenarios = policy_saved_scenarios(),
-      selected_weather = bh$sim_summary$weather %||% NULL,
       sp_scenario = sp_scenario(),
       infra_scenario = infra_scenario(),
       digital_scenario = digital_scenario(),
       labor_scenario = labor_scenario(),
-      education_scenario = education_scenario(),
-      policy_scenarios = policy_scenarios()
+      education_scenario = education_scenario()
     )
   })
 

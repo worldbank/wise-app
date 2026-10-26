@@ -318,11 +318,8 @@ collect_deterministic <- function(data, keys = NULL) {
 #' permanently cached.
 #'
 #' @param ext        Extension name e.g. "httpfs", "h3".
-#' @param db_token   Bearer token - only required on Posit Connect.
-#' @param ext_base_url Databricks Files API URL to the folder containing
-#'   pre-uploaded .duckdb_extension binaries. Only required on Posit Connect.
 #' @noRd
-.duck_load_ext <- function(ext, db_token = NULL, ext_base_url = NULL) {
+.duck_load_ext <- function(ext) {
   if (ext %in% (.duck$extensions %||% character(0))) {
     return(invisible(NULL))
   }
@@ -870,14 +867,7 @@ load_data <- function(
       })
     }
 
-    # Build the base URL for bundled DuckDB extensions.
-    vol_path <- db_params$volume_path
-    ext_base_url <- paste0(
-      host, "/api/2.0/fs/files",
-      sub("/$", "", vol_path), "/duckdb_extensions"
-    )
-
-    .duck_load_ext("httpfs", db_token, ext_base_url)
+    .duck_load_ext("httpfs")
     .register_db_secret(con, db_token, params_hash,
                         scope = paste0(host, "/api/2.0/fs/files"))
   }
