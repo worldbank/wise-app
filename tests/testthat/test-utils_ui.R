@@ -265,3 +265,12 @@ test_that("the Step 2 summary card names an applied residual rule that differs f
   hs$sim_summary$residuals_effective <- "original"
   expect_no_match(as.character(simulation_summary_card(hs)), "Residuals applied")
 })
+
+test_that("with_grid_num sets the explicit grid count on an ionRangeSlider", {
+  slider <- shiny::sliderInput("s", "S", min = 0, max = 60, value = c(5, 60), step = 1)
+  html <- as.character(with_grid_num(slider, 11))
+  expect_match(html, 'data-grid-num="11"', fixed = TRUE)
+  # A tag without a grid attribute is returned unchanged.
+  plain <- shiny::tags$div(shiny::tags$span("x"))
+  expect_identical(with_grid_num(plain, 5), plain)
+})

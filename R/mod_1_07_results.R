@@ -334,50 +334,10 @@ mod_1_07_results_server <- function(id,
           identical(as.character(sw_snap$cont_binned[sw_snap$name == mf$weather_terms[i]][1]), "Binned")
         }, logical(1))
         effect_y_lab <- function(i) {
-          binned <- is_bin_vec[i]
           un <- as.character(sw_snap$units[sw_snap$name == mf$weather_terms[i]][1])
-          if (is.na(un) || !nzchar(un)) un <- "unit"
-          if (identical(as.character(outcome_snap$name[1]), "poor")) {
-            line <- suppressWarnings(as.numeric(outcome_snap$povline[1]))
-            if (is.finite(line)) {
-              if (binned) {
-                return("Effect size (percentage points vs reference bin)")
-              }
-              return(paste0("Effect size (percentage points per +1 ", un, ")"))
-            }
-          }
-          if (binned) {
-            if (is_logit) {
-              if (is.finite(profile_eta0)) {
-                paste0(
-                  "Effect size (percentage points vs reference bin)"
-                )
-              } else {
-                "Effect size (log-odds vs reference bin)"
-              }
-            } else if (is_lpm) {
-              "Effect size (probability vs reference bin)"
-            } else if (is_log_out) {
-              "Effect size (log points vs reference bin)"
-            } else {
-              "Effect size (outcome units vs reference bin)"
-            }
-          } else {
-            # Continuous shapes draw the marginal effect (slope vs weather).
-            if (is_logit) {
-              if (is.finite(profile_eta0)) {
-                paste0("Effect size (percentage points per +1 ", un, ")")
-              } else {
-                paste0("Effect size (log-odds per +1 ", un, ")")
-              }
-            } else if (is_lpm) {
-              paste0("Effect size (probability per +1 ", un, ")")
-            } else if (is_log_out) {
-              paste0("Effect size (% change per +1 ", un, ")")
-            } else {
-              paste0("Effect size (outcome units per +1 ", un, ")")
-            }
-          }
+          .effect_y_lab(
+            is_bin_vec[i], un, outcome_snap, is_logit, is_lpm, is_log_out, profile_eta0
+          )
         }
         # Effect transform per shape: binned logit contrasts map through
         # plogis at the reference profile ("pp"); binned LPM contrasts are

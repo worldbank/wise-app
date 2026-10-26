@@ -3366,3 +3366,51 @@ echart_welfare_quantile_hist <- function(y, taus, x_label, height = "400px") {
     )
   wise_echart_theme(e)
 }
+
+# Effect-plot y-axis label: continuous shapes draw predicted levels or slopes,
+# binned shapes draw bin-vs-reference contrasts - these need different labels.
+.effect_y_lab <- function(binned, un, outcome_snap, is_logit, is_lpm, is_log_out,
+                          profile_eta0) {
+  if (is.na(un) || !nzchar(un)) un <- "unit"
+  if (identical(as.character(outcome_snap$name[1]), "poor")) {
+    line <- suppressWarnings(as.numeric(outcome_snap$povline[1]))
+    if (is.finite(line)) {
+      if (binned) {
+        return("Effect size (percentage points vs reference bin)")
+      }
+      return(paste0("Effect size (percentage points per +1 ", un, ")"))
+    }
+  }
+  if (binned) {
+    if (is_logit) {
+      if (is.finite(profile_eta0)) {
+        paste0(
+          "Effect size (percentage points vs reference bin)"
+        )
+      } else {
+        "Effect size (log-odds vs reference bin)"
+      }
+    } else if (is_lpm) {
+      "Effect size (probability vs reference bin)"
+    } else if (is_log_out) {
+      "Effect size (log points vs reference bin)"
+    } else {
+      "Effect size (outcome units vs reference bin)"
+    }
+  } else {
+    # Continuous shapes draw the marginal effect (slope vs weather).
+    if (is_logit) {
+      if (is.finite(profile_eta0)) {
+        paste0("Effect size (percentage points per +1 ", un, ")")
+      } else {
+        paste0("Effect size (log-odds per +1 ", un, ")")
+      }
+    } else if (is_lpm) {
+      paste0("Effect size (probability per +1 ", un, ")")
+    } else if (is_log_out) {
+      paste0("Effect size (% change per +1 ", un, ")")
+    } else {
+      paste0("Effect size (outcome units per +1 ", un, ")")
+    }
+  }
+}

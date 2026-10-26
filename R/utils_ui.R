@@ -1351,3 +1351,22 @@ wave_plot_labels <- function(wave_df) {
   chart_keys <- paste0(wave_df$economy, ", ", wave_df$year)
   stats::setNames(names(choices), chart_keys)
 }
+
+# Patch an ionRangeSlider grid so major tick labels land exactly on the
+# slider's step values. shiny's auto-grid (grid_num = n_steps /
+# ceiling(n_steps / 10)) produces a fractional grid count for > 10 steps,
+# which renders tick labels at irregular, off-step positions (e.g. a
+# 5-60% slider showing a label at 54.5%). An explicit grid_num of the
+# intended interval count keeps them evenly spaced and meaningful.
+with_grid_num <- function(slider_tag, n) {
+  for (i in seq_along(slider_tag$children)) {
+    ch <- slider_tag$children[[i]]
+    if (is.list(ch) && !is.null(ch$attribs) &&
+      "data-grid-num" %in% names(ch$attribs)) {
+      ch$attribs[["data-grid-num"]] <- n
+      slider_tag$children[[i]] <- ch
+      break
+    }
+  }
+  slider_tag
+}

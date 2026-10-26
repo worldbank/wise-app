@@ -49,19 +49,6 @@
 mod_2_01_weathersim_ui <- function(id) {
   ns <- NS(id)
   d <- wise_default_sim()
-  step2_with_grid_num <- function(slider_tag, n) {
-    for (i in seq_along(slider_tag$children)) {
-      ch <- slider_tag$children[[i]]
-      if (is.list(ch) && !is.null(ch$attribs) &&
-        "data-grid-num" %in% names(ch$attribs)) {
-        ch$attribs[["data-grid-num"]] <- n
-        slider_tag$children[[i]] <- ch
-        break
-      }
-    }
-    slider_tag
-  }
-
   tags$div(
     class = "step2-sidebar",
     # Settings summary banner (always visible) ----
@@ -109,7 +96,7 @@ mod_2_01_weathersim_ui <- function(id) {
       ),
       shiny::tags$div(
         class = "step2-projection-period",
-        step2_with_grid_num(
+        with_grid_num(
           shiny::sliderInput(
             ns("fut_period_1"),
             label = shiny::tags$span(class = "visually-hidden", "Projection period 1"),
@@ -161,7 +148,7 @@ mod_2_01_weathersim_ui <- function(id) {
       shiny::tags$div(
         class = "step2-projection-period",
         shiny::tags$span("Period 2", class = "step2-projection-label"),
-        step2_with_grid_num(
+        with_grid_num(
           shiny::sliderInput(
             ns("fut_period_2"),
             label = shiny::tags$span(class = "visually-hidden", "Projection period 2"),
@@ -174,7 +161,7 @@ mod_2_01_weathersim_ui <- function(id) {
       shiny::tags$div(
         class = "step2-projection-period",
         shiny::tags$span("Period 3", class = "step2-projection-label"),
-        step2_with_grid_num(
+        with_grid_num(
           shiny::sliderInput(
             ns("fut_period_3"),
             label = shiny::tags$span(class = "visually-hidden", "Projection period 3"),

@@ -225,3 +225,32 @@ test_that("make_regtable_df returns NULL when there is nothing to export", {
                                rif_grid = data.frame(model = 1L, term = "x",
                                                      tau = 0.5, estimate = 1)))
 })
+
+test_that(".effect_y_lab words the y axis by outcome type, shape and unit", {
+  out <- function(name = "welfare", povline = NA_real_) {
+    data.frame(name = name, povline = povline)
+  }
+  lab <- function(binned, un = "C", o = out(), logit = FALSE, lpm = FALSE,
+                  log_out = FALSE, eta0 = NA_real_) {
+    .effect_y_lab(binned, un, o, logit, lpm, log_out, eta0)
+  }
+  # Poverty outcome with a line: percentage points whatever the fit.
+  poor <- out("poor", 2.15)
+  expect_equal(lab(TRUE, o = poor), "Effect size (percentage points vs reference bin)")
+  expect_equal(lab(FALSE, o = poor), "Effect size (percentage points per +1 C)")
+  # Binned shapes.
+  expect_equal(lab(TRUE, logit = TRUE, eta0 = 0.1), "Effect size (percentage points vs reference bin)")
+  expect_equal(lab(TRUE, logit = TRUE), "Effect size (log-odds vs reference bin)")
+  expect_equal(lab(TRUE, lpm = TRUE), "Effect size (probability vs reference bin)")
+  expect_equal(lab(TRUE, log_out = TRUE), "Effect size (log points vs reference bin)")
+  expect_equal(lab(TRUE), "Effect size (outcome units vs reference bin)")
+  # Continuous shapes; a missing unit reads "unit".
+  expect_equal(lab(FALSE, logit = TRUE, eta0 = 0.1), "Effect size (percentage points per +1 C)")
+  expect_equal(lab(FALSE, logit = TRUE), "Effect size (log-odds per +1 C)")
+  expect_equal(lab(FALSE, lpm = TRUE), "Effect size (probability per +1 C)")
+  expect_equal(lab(FALSE, log_out = TRUE), "Effect size (% change per +1 C)")
+  expect_equal(lab(FALSE, un = NA_character_), "Effect size (outcome units per +1 unit)")
+  expect_equal(lab(FALSE, un = ""), "Effect size (outcome units per +1 unit)")
+  # A poverty outcome without a finite line falls through to the model-based label.
+  expect_equal(lab(FALSE, o = out("poor", NA_real_), lpm = TRUE), "Effect size (probability per +1 C)")
+})
