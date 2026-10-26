@@ -533,6 +533,18 @@ B6 context moved verbatim from the tracker:
 
 Work stopped by decision 2026-10-24 (user agreed): the rows below have no measured pain behind them. Baselines and measurements are in the archive. Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepwise fits, SQL `ORDER BY` for survey sort, `bw.SJ` subsampling, batched gemm (1.8x regression with reference BLAS), `shared_period` plan, reference weather as default, shared SSP monthly cache, sort-once materialisation of the period relation (no gain: 3.35 s against 3.23 s for 16 members), unsorted per-member collect with a key-order check (DuckDB does not return key order, so it collects twice: 2x2 40.0 s to 43.1 s), R-side rounding rewrite (identical, saves only 4 ms per member).
 
+### UX-01 closed: user in-app spot-check (2026-10-26)
+
+Row as it stood:
+
+| ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
+|---|---|---|---|---|---|
+| UX-01 | L | S | ☐ | Complete remaining browser spot-checks: column-chart hover tips and `.wx-tip` Escape; map pointer cursor; empty tabs; SPI/SPEI choices; quantile decile-movement card; DOC-02 survey-identification warnings; weights/LCU notes; changed-palette contrast. Record which checks pass and which remain. | Carried from the former "Waiting on the user" checklist, 2026-10-26; earlier browser evidence in the archive. Decile card needs a quantile-model run. |
+
+Verification and closure (user, 2026-10-26): "I have checked it in app and everything seems ok." Accepted as completion of this manual spot-check checklist; no remaining issue reported. This is user-reported in-app evidence, not an agent rerun or automated regression result. Browser/version, data/specification, tested revision and per-check measurements were not supplied; no quantitative contrast measurement, formal WCAG conformance or automated axe result is inferred. CR-A11Y-09 remains separate and open. No runtime change or new tests for this tracker-only closure; commit pending.
+
+Reopen on a reproducible regression in one of the listed interactions or when a change to the affected UI requires fresh browser verification.
+
 ### CR-CQ-02 archived: shared Results-pane refactor deferred (2026-10-26)
 
 Row as it stood:

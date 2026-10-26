@@ -26,7 +26,6 @@ Status: `☐` todo, `◐` in progress, `blocked` awaiting a named dependency. Cl
 | ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
 |---|---|---|---|---|---|
 | CR-A11Y-09 | M | M | blocked | Confirm one successful GitHub run of the expanded 16-screen axe scan after an authorized push; run a real-data pass through Steps 1-3 and result tabs. | `tests/e2e/smoke.R`; `.github/workflows/e2e-smoke.yaml`; archive CR-A11Y-09. Green locally with `WISEAPP_AXE_FAIL=1`; four violation types fixed. Earlier green CI covered two screens only. Navbar upstream exception and transient-toast exclusion remain documented. `main` requires `e2e-smoke`; `dev` is unprotected by decision. |
-| UX-01 | L | S | ☐ | Complete remaining browser spot-checks: column-chart hover tips and `.wx-tip` Escape; map pointer cursor; empty tabs; SPI/SPEI choices; quantile decile-movement card; DOC-02 survey-identification warnings; weights/LCU notes; changed-palette contrast. Record which checks pass and which remain. | Carried from the former "Waiting on the user" checklist, 2026-10-26; earlier browser evidence in the archive. Decile card needs a quantile-model run. |
 
 ## Engineering and Tests
 
