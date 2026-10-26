@@ -416,3 +416,55 @@ wise_labor_config <- function(x, defaults) {
     sector_agriculture = max(0L, 100L - mfg - services)
   )
 }
+
+# Keep the last successful result/context pair intact until the next run has
+# completed all work. A failed run therefore has no publication side effect.
+.publish_decomposition_bundle <- function(previous, context, success) {
+  if (!isTRUE(success)) {
+    return(previous)
+  }
+  list(context = context)
+}
+
+# R2-BUG-14: Step 3 combines the live Step 1 fit with the stored Step 2
+# result. The Step 2 run signature records the fit signature it was built
+# from, so a different live fit means Step 2 is stale for the current model
+# and the policy run must not start. Results without a recorded signature
+# are not judged.
+.step2_model_mismatch <- function(mf, hs) {
+  if (is.null(mf) || is.null(hs) || !is.list(hs$.sig)) {
+    return(FALSE)
+  }
+  !identical(mf$.sig, hs$.sig$fit_sig)
+}
+
+# First missing prerequisite of a policy run as a message for the user, or NULL
+# when the run can start. Order matters: it is the order the checks were made
+# in mod_3_06_policy_sim_server()'s run().
+.step3_run_prerequisite_error <- function(mf, hs, sw, svy) {
+  if (is.null(mf)) {
+    return(paste(
+      "No fitted model. Run the Step 1 model before simulating policy",
+      "scenarios."
+    ))
+  }
+  if (is.null(hs)) {
+    return("Step 2 simulation must be run before policy simulation.")
+  }
+  if (.step2_model_mismatch(mf, hs)) {
+    return(paste(
+      "The Step 1 model changed after the Step 2 simulation ran.",
+      "Re-run the Step 2 simulation before simulating policy scenarios."
+    ))
+  }
+  if (is.null(sw)) {
+    return(paste(
+      "No weather variables selected. Configure them in Step 1 before",
+      "simulating policy scenarios."
+    ))
+  }
+  if (is.null(svy)) {
+    return("Survey data not available.")
+  }
+  NULL
+}

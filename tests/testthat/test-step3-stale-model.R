@@ -46,3 +46,18 @@ test_that("a policy run on a Step 2 result from an older model is blocked", {
     expect_null(baseline_hist_sim_rv())
   })
 })
+
+test_that(".step3_run_prerequisite_error returns the first missing prerequisite", {
+  fit <- list(.sig = "a")
+  hs <- list(.sig = list(fit_sig = "a"))
+  sw <- data.frame(name = "tx")
+  svy <- data.frame(x = 1)
+  expect_null(.step3_run_prerequisite_error(fit, hs, sw, svy))
+  expect_match(.step3_run_prerequisite_error(NULL, hs, sw, svy), "No fitted model")
+  expect_match(.step3_run_prerequisite_error(fit, NULL, sw, svy), "Step 2 simulation must be run")
+  expect_match(.step3_run_prerequisite_error(list(.sig = "b"), hs, sw, svy), "Step 1 model changed")
+  expect_match(.step3_run_prerequisite_error(fit, hs, NULL, svy), "No weather variables selected")
+  expect_equal(.step3_run_prerequisite_error(fit, hs, sw, NULL), "Survey data not available.")
+  # The first failing check wins.
+  expect_match(.step3_run_prerequisite_error(NULL, NULL, NULL, NULL), "No fitted model")
+})
