@@ -4633,6 +4633,9 @@
     "R/fct_sp_shock.R": {
       "checksum": "955aab66a334be01a71a8bf233175815"
     },
+    "R/fct_sp_ui.R": {
+      "checksum": "1ceac7535e52d2ae38b1c92493fbc01a"
+    },
     "R/fct_spec_defaults.R": {
       "checksum": "ebdfe68cf84e458d227f6043571c41b3"
     },
@@ -4670,7 +4673,7 @@
       "checksum": "e3a00e749f44edec040f6f68f167e85d"
     },
     "R/fct_step3_input.R": {
-      "checksum": "5deee16291820526d528fd8ba881857a"
+      "checksum": "d9bf3b7c1c2af74205d676e36ab9bd41"
     },
     "R/fct_step3_tables.R": {
       "checksum": "7f6e2b07a4c1dad6523bc045715414e8"
@@ -4736,7 +4739,7 @@
       "checksum": "1635bad43e613277099a7e78d0d79488"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "e9e29da38792f9be3fb07c7129a44cec"
+      "checksum": "d323e9001c9496b89bc1661e98cbfed7"
     },
     "R/mod_3_02_infra.R": {
       "checksum": "2200dbc9564786d1989465dd0bb70c42"
@@ -4751,7 +4754,7 @@
       "checksum": "86af31454391b66ca03a90507cfd828a"
     },
     "R/mod_3_06_policy_sim.R": {
-      "checksum": "f427dd86382c79fa49c9b4a9f204c3af"
+      "checksum": "fbc5e8958d443498d0c002ba66cf42d0"
     },
     "R/mod_3_07_results.R": {
       "checksum": "3572f8115b26b726db9913ec5d7af3b5"
