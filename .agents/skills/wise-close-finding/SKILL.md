@@ -1,7 +1,7 @@
 ---
 name: wise-close-finding
 description: >
-  Close an item of the review remediation tracker (review/REVIEW-2026-10-06-tracking.md):
+  Close an item of the review remediation tracker (review/REVIEW-tracking.md):
   the evidence a finding needs, the commit convention, and how to move the row
   to the archive, update the counts and add the Log line. Also covers closing as
   won't fix or deferred.
@@ -15,7 +15,7 @@ argument-hint: "[finding id, e.g. R2-PERF-01]"
 
 # Closing a review finding
 
-Open work is in `review/REVIEW-2026-10-06-tracking.md`. The findings text is
+Open work is in `review/REVIEW-tracking.md`. The findings text is
 `review/REVIEW-2026-10-06.md` (immutable: read it by id, never edit it). The
 record of finished work is `review/archive/REVIEW-2026-10-06-tracking-full.md`.
 The tracker's "Working rules" are the authority; this skill is the procedure.

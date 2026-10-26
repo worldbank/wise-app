@@ -8,7 +8,7 @@ Status: **standard** (rules to follow) · **open** (work in progress, may change
 |---|---|---|
 | `code_hygiene.md` | standard | Writing or cleaning `R/` code; defines protected areas |
 | `optimization_guidelines.md` | standard | Any performance, caching, async or UI-table/figure work (section 9: benchmark gate) |
-| `REVIEW-2026-10-06-tracking.md` | open | Choosing or closing a finding; "Where things stand" is the current status |
+| `REVIEW-tracking.md` | open | Choosing or closing a finding; "Where things stand" is the current status |
 | `REVIEW-2026-10-06.md` | lookup | Reading the text of a finding by id (`grep -n "<ID>"`). Immutable; 120 KB |
 | `agent_setup_review.md` | open | Changing `AGENTS.md`, `ARCHITECTURE.md`, skills or `dev/agents_check.R` |
 | `methodology_review_2026-10-26.md` | open | Methods implementation review of 2026-10-26 |

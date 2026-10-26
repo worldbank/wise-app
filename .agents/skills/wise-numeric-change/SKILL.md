@@ -106,7 +106,7 @@ commit household-level frames.
   was not changed, and what was not checked (for example "the Step 3 pane was
   not driven in the browser"). New entries go in the addendum of
   `review/archive/REVIEW-2026-10-06-tracking-full.md` or as a row in
-  `review/REVIEW-2026-10-06-tracking.md`; the last two (DOC-11) are the model.
+  `review/REVIEW-tracking.md`; the last two (DOC-11) are the model.
 - **Log line** in the tracking file: date, finding id, one sentence on what
   moved and by how much.
 - **Methods page**: update the equation or text in `docs/`, set

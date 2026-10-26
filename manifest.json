@@ -4493,7 +4493,7 @@
       "checksum": "e4182d1f463faf7408c7aa1366d05ad0"
     },
     "NAMESPACE": {
-      "checksum": "abe64957dee71f696a92423df3222e1d"
+      "checksum": "0dba8aaccc2dbc2f6d05ae74dc9d078c"
     },
     "R/_disable_autoload.R": {
       "checksum": "1178c335d6c11555fd1c4ec6098dfee6"
@@ -4508,19 +4508,19 @@
       "checksum": "43acbdd8427452b1f89bbfe539e0370f"
     },
     "R/fct_aggregation_delta.R": {
-      "checksum": "e2e93f7817e331c187ac9bd759033334"
+      "checksum": "8fa333f5c317df206072a3ba5dc43ce9"
     },
     "R/fct_aggregation_kernel.R": {
       "checksum": "4abe86f039622d06119d43d43a7369d3"
     },
     "R/fct_aggregation.R": {
-      "checksum": "6f1f6d1d74d42638afa91c254d234fac"
+      "checksum": "98406dec799b513c946f4af2e49d9bc7"
     },
     "R/fct_batch_spec.R": {
       "checksum": "13a6c898f0d8e1d54ce97002a53d1fd3"
     },
     "R/fct_batch_targets.R": {
-      "checksum": "dec43795e39601e8b126bf21530f1105"
+      "checksum": "8bdd95d10862a5bc85c17868dd2ff5df"
     },
     "R/fct_connection.R": {
       "checksum": "b9998b4ee3699c9389744a7528c84685"
@@ -4577,7 +4577,7 @@
       "checksum": "5cb2abc76dc3f110a9a54c846e0ce4fa"
     },
     "R/fct_policy_metric_decompose.R": {
-      "checksum": "17482b3dce5b19e111671f07bb9b675f"
+      "checksum": "4b58ea77b058d454f8fd9aa319070f70"
     },
     "R/fct_policy_registry.R": {
       "checksum": "d4624d6698ac611c18eb04782e88ce14"
@@ -4589,16 +4589,16 @@
       "checksum": "d542b85de986244c24eaea4572ce84fc"
     },
     "R/fct_predict_outcomes.R": {
-      "checksum": "111469956f2f7ae240ba96b7f3d3775a"
+      "checksum": "8e428c674ab97db0e37aceedb306916e"
     },
     "R/fct_provenance.R": {
-      "checksum": "5f4700b82e24dcead1d8f88c7feb0373"
+      "checksum": "8d1dea95ff6044575186ce51d0bbf51e"
     },
     "R/fct_results_table2.R": {
       "checksum": "6e306a0df04cbeb6b5bf392e186e2814"
     },
     "R/fct_results.R": {
-      "checksum": "4ed5864bc800b50e2445184a49276a3e"
+      "checksum": "bb9b9fc90fc4e3ba9ee8a2b16d0d8708"
     },
     "R/fct_rif_sim.R": {
       "checksum": "362ed2519908d45109788a263e7f43ff"
@@ -4610,13 +4610,13 @@
       "checksum": "03df4b5be896b9d5d31ca296428c4276"
     },
     "R/fct_sim_compare.R": {
-      "checksum": "08bcddf5b2ca525a073e312f73bef861"
+      "checksum": "c57e4aae8f58a5eced72d647b088dd48"
     },
     "R/fct_sim_diag.R": {
       "checksum": "e3ceaf8e87c7aa065e9f677490b5c47d"
     },
     "R/fct_simulations.R": {
-      "checksum": "fa55b08621a791961ed07c39073efdee"
+      "checksum": "c1a2d8742645fee2520c3a1abaea872e"
     },
     "R/fct_sp_ce_charts.R": {
       "checksum": "f030fd6392ab900c078f537ec7706473"
@@ -4628,7 +4628,7 @@
       "checksum": "141489944077ec410367dc7d12f424e0"
     },
     "R/fct_spec_defaults.R": {
-      "checksum": "d50173260e4d2bf36fe4902486931005"
+      "checksum": "ebdfe68cf84e458d227f6043571c41b3"
     },
     "R/fct_step1_data.R": {
       "checksum": "582b96bf6d762aac2c99f1b056fc8c50"
@@ -4649,16 +4649,16 @@
       "checksum": "f7da06311b19de3afafebb65105ee4f5"
     },
     "R/fct_step2_compute.R": {
-      "checksum": "1389c571c67e852bf2ad8eab4c23b314"
+      "checksum": "82be2c9771663313dccfe7b74bbd2ba9"
     },
     "R/fct_step2_input.R": {
-      "checksum": "12cc3c09968a1ef50ab10d51fd94edab"
+      "checksum": "98b5f9b58ee99e3127a27a9b246cd3a6"
     },
     "R/fct_step2_payload.R": {
       "checksum": "a0b09e843e838fbfa7eb9343ba23d0ea"
     },
     "R/fct_step2_tables.R": {
-      "checksum": "13b5c5fd2caeb79653651add01cf3a66"
+      "checksum": "fa0c8236ec4ae677da2d1050f34f10cf"
     },
     "R/fct_step3_async.R": {
       "checksum": "8fe1769dc2c0a2b6c22f0cd534cf82ec"
@@ -4718,10 +4718,10 @@
       "checksum": "38470f5047f98fcaee239887a2c8798a"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "caa24b8547e29f5ab109039bf4611b4e"
+      "checksum": "0cb3dc94f0c149de6401bd5362bae1e5"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "031b23bef14d6d044c0be1f5a6deb3ff"
+      "checksum": "6dafe0f3c757433afd524257fc221e98"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "cfc0c89b78ac7b8e9dd0943873b7b013"
@@ -4787,7 +4787,7 @@
       "checksum": "e715b6a866363f28ad4d8af629e9bda0"
     },
     "R/utils_ui.R": {
-      "checksum": "c004d31b75583f7d10bae9d0894c5556"
+      "checksum": "d5b924fff62577821aabc266b11fc127"
     },
     "src/RcppExports.cpp": {
       "checksum": "b5983a083dc1aea52d08f9c00d2378b7"

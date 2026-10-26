@@ -17,7 +17,7 @@ Guidance for coding agents (Claude Code, Kilo, Codex and others) working in this
 - **Errors in the UI** go through `wise_user_error()`; never show `conditionMessage()` in modules.
 - **UI stack:** tables `reactable`, charts `echarts4r` (`echart_*` builders), maps only the MapLibre bridge (`fct_hexmap.R`).
 - **Style:** native pipe `|>`, `<-`, no `library()` in `R/`, ASCII quotes and hyphens in code and comments, 120-character lines. Full conventions: `review/code_hygiene.md`.
-- **Numbers that move:** a change to model or simulation outputs needs a Decision log entry with before/after BFA headline numbers (`review/REVIEW-2026-10-06-tracking.md`, Working rules).
+- **Numbers that move:** a change to model or simulation outputs needs a Decision log entry with before/after BFA headline numbers (`review/REVIEW-tracking.md`, Working rules).
 - **Speed claims** need before/after timing and peak memory per `review/optimization_guidelines.md` section 9 (skill `wise-benchmark`).
 
 ## Commands
@@ -43,7 +43,7 @@ Install dependencies with `pak::local_install_deps()` or from `DESCRIPTION` `Imp
 | `src/welfare_stats.cpp` | Rcpp kernel for aggregation statistics |
 | `docs/` | Methods pages (equations, assumptions); index `docs/README.md`. Each ends with an Implementation map and records `verified_against` |
 | `batch/` | Batch runs (`targets`): `batch/README.md`, table reference `batch/docs/tables.md` |
-| `review/` | Standards, open items and plans; index with status in `review/README.md`. Current status: "Where things stand" in `review/REVIEW-2026-10-06-tracking.md`; finished work in `review/archive/` |
+| `review/` | Standards, open items and plans; index with status in `review/README.md`. Current status: "Where things stand" in `review/REVIEW-tracking.md`; finished work in `review/archive/` |
 | `dev/` | `run_dev.R`, `00_make_manifest.R` (Connect manifest), `ui_drive.R` (headless-Chrome driver), `docs_check.R` / `docs_index.R`, `agents_check.R` (paths, functions and sizes named in these instructions; run in CI), parity scripts `batch_parity_bfa*.R`, benchmarks in `dev/bench/` |
 | `tests/testthat/` | Unit tests; `tests/e2e/smoke.R` browser smoke with axe-core |
 | `.agents/skills/` | Skills, the one shared copy (see Skills) |
@@ -65,7 +65,7 @@ Step 0 Overview, Step 1 Modelling, Step 2 Simulation, Step 3 Policy scenarios; d
 | Performance | Skill `wise-benchmark` |
 | `R/`, `inst/` or dependencies, before a deploy | `Rscript dev/00_make_manifest.R`; settings in `DEPLOYMENT.md` |
 | DuckDB version | Rebuild `inst/duckdb_extensions/`, update the pin, the version constant and the SHA-256 values in `R/fct_load_data.R` together (`DEPLOYMENT.md`) |
-| A review finding | Close it per the Working rules in `review/REVIEW-2026-10-06-tracking.md` |
+| A review finding | Close it per the Working rules in `review/REVIEW-tracking.md` |
 
 ## Skills
 

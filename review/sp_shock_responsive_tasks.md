@@ -47,7 +47,7 @@ Plan invariants extended and audited against the tests; two new tests (all Phase
 
 ## 3. Owed by the user
 
-Record in `review/REVIEW-2026-10-06-tracking.md`:
+Record in `review/REVIEW-tracking.md`:
 
 - Browser checks for every `◐` row above: done 19 Oct 2026, with `tests/e2e/smoke.R`.
 - BFA before and after headline numbers for P0-8 (synthetic check: realised weighted inclusion 15.8 % / exclusion 12.2 % before, 15.0 % / 10.0 % after, for 15 % / 10 % sliders).

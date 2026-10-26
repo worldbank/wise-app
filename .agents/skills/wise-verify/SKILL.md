@@ -80,7 +80,7 @@ Do the rows that apply.
 | UI (module, CSS, chart, map, tab) | Skill `wise-ui-check`; larger UI changes also `Rscript tests/e2e/smoke.R` (about 5 minutes, needs Chrome) |
 | A speed or memory claim | Skill `wise-benchmark` |
 | Model or simulation numbers move | Skill `wise-numeric-change` |
-| A review finding | Close it per Working rules in `review/REVIEW-2026-10-06-tracking.md` |
+| A review finding | Close it per Working rules in `review/REVIEW-tracking.md` |
 | Dependencies, `R/` or `inst/` before a deploy | `Rscript dev/00_make_manifest.R` after committing (it reads `HEAD`) |
 
 `devtools::check()` is for releases and dependency changes, not every task.

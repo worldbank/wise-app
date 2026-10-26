@@ -48,7 +48,7 @@ jobs:
 
       # Fails on errors only for now: the roxygen blocks of about 25 functions
       # lack @param entries, which R CMD check reports as WARNINGs (tracked in
-      # review/REVIEW-2026-10-06-tracking.md, R2-CQ-01). Tighten to "warning"
+      # review/REVIEW-tracking.md, R2-CQ-01). Tighten to "warning"
       # once those are documented.
       - uses: r-lib/actions/check-r-package@v2
         with:
