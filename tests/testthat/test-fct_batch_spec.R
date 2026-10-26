@@ -1,5 +1,5 @@
 # Batch run spec: defaults, validation, hashing, resolution, YAML grid and
-# app configuration import (review/batch_pipeline_plan.md, layer L1).
+# app configuration import (review/archive/batch_pipeline_plan.md, layer L1).
 
 fixture_metadata <- function() {
   list(

@@ -9,8 +9,12 @@ Work shared between runs (a sample, a weather variable, a fit, a simulation) is
 computed once and cached by `targets`.
 
 Table columns: `batch/docs/tables.md`. App input to spec field map:
-`batch/docs/spec_inventory.md`. Design: `review/batch_pipeline_plan.md`. The old
+`batch/docs/spec_inventory.md`. Design: `review/archive/batch_pipeline_plan.md`. The old
 scripts in `batch/legacy/` are not maintained.
+
+Figures and model/spec selection are downstream work in each study's
+reproducibility package, using these tables; they are not a planned shared
+pipeline stage.
 
 ## Requirements
 

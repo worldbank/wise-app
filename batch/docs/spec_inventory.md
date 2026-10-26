@@ -6,7 +6,7 @@ post-processing) or **UI** only (not carried). The spec fields and defaults for
 users are in `batch/README.md`; the defaults live in `R/fct_spec_defaults.R` and
 the app's controls read their initial values from there. A configuration
 exported from the app names inputs `<step>-<module>-<input>`
-(`wise_spec_from_config()` reads them). Design: `review/batch_pipeline_plan.md`.
+(`wise_spec_from_config()` reads them). Design: `review/archive/batch_pipeline_plan.md`.
 
 The glue that both a module and batch call is Shiny-free and lives in `R/fct_*`;
 the module-to-core pairs are listed under each step.

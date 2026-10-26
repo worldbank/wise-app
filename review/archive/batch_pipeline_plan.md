@@ -1,6 +1,8 @@
 # Batch pipeline rebuild - plan
 
-Status: Phases 1 to 4 implemented (2026-10-20); Phase 5 planned.
+Archived 2026-10-26; open and deferred items are in `review/TRACKING.md` (B13; input fingerprints in MR-05).
+Status: Phases 1 to 4 implemented; reproducibility template and checker implemented. Figures and model/spec selection belong in downstream, study-specific reproducibility packages (user decision 2026-10-26), not a shared Phase 5 implementation.
+The dated plan and progress notes below are historical, not the current backlog. Early-stage artifact stamps and survey fingerprints have since been implemented; the Export-bundle parity check remains open.
 Supersedes: `docs/batch_pipeline.md` (legacy) and the scripts in `batch/`.
 
 ## 1. Goal

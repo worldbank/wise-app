@@ -17,6 +17,7 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B10 | Uncertainty and residuals | 2 |
 | B11 | Social protection (deferred) | 8 |
 | B12 | Methodology review follow-ups | 12 |
+| B13 | Batch pipeline follow-ups | 3 |
 
 B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
 
@@ -115,6 +116,18 @@ Source: `review/archive/methodology_review_2026-10-26.md` (closed 2026-10-26). D
 | MR-11 | M | S | ☐ | RIF joint covariance, owed checks: drive the Step 2 and Step 3 panes in the browser; a covariate lever (infrastructure) on real data; adequacy of the number of clusters against 9 times the active coefficients in other countries (a singular block falls back to independent equations); timing and peak memory of the 9-fold wider loading (decided not to measure, 2026-10-26; do it if a large country runs slowly). |
 | MR-12 | M | M | ☐ | RIF policy-effect bands widened by about an order of magnitude under the joint covariance (headcount effect of a transfer: -0.0017, half-width 0.00007 before, 0.0008 after). The cause is the repositioning term `x (b(tau_post) - b(tau_pre))`, with `x` the weather level. Decide whether this is the intended coefficient uncertainty for a transfer, and check it against a Monte Carlo of the full pipeline. |
 
+## B13 - Batch pipeline follow-ups
+
+Source: `review/archive/batch_pipeline_plan.md` (archived 2026-10-26). Phases 1 to 4, the reproducibility template/checker, early-stage artifact stamps and local survey fingerprints are implemented. Broader source-input fingerprints remain MR-05; do not duplicate that task here.
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| BP-01 | L | M | ☐ | Per-release parity against a downloaded headless-app Export bundle. Existing `dev/batch_parity_bfa*.R` checks compare module-server tables with batch, not the downloaded bundle. Compare the same spec and seed through Steps 1 to 3, including policy tables. |
+| BP-02 | L | S | ✗ | Separate policy-stage crew controller; policy currently shares the bounded `sim` controller. Defer until a measured batch workload needs different Step 2/3 concurrency or memory limits. |
+| BP-03 | L | M | ✗ | A frame key independent of descriptive-statistics options, which currently enter `data_id` and invalidate downstream fits. Defer until changing statistics causes material rerun cost; preserve table identity and cache correctness if split. |
+
+Closed scope decision (user, 2026-10-26): figures and model/spec selection are supported downstream in study-specific reproducibility packages, not a shared Phase 5. Extract `weather_effect_data()` only if a concrete app or downstream consumer needs it; no standalone batch task. Each study owns its `renv.lock` and software pins.
+
 ## Decision log (uncertainty and residuals, 2026-10-26)
 
 Numerical changes, BFA unless stated, "original" rule unless stated. Evidence and tables are in the archived review.
@@ -157,3 +170,4 @@ Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (move
 - 2026-10-25 - DOC-11 follow-up: the quantile model (RIF) now adds the transfer after repositioning (`E * exp(c + rho) + T`) and the level channels add it once with another lever active. RIF outputs move when a transfer combines with another lever or repositioning. Decision log in the archive addendum; real-BFA RIF before/after (transfer alone +1.8% gain, transfer plus electricity -0.7%) and the Decomposition tab driven in the browser, both in the archive. Also: `test-bench-step3.R` timing assertion made `expect_gte` (1 ms clock resolution made it flaky).
 - 2026-10-26 - Uncertainty and residuals review closed and archived (B10 opened with 2 low-severity rows): residual key (F0), logistic loading (F8), own residual bar and median reference (F2, F1), poverty-rate residual variance (F9), the all-covariates control removed (F3), the applied residual rule recorded in the run summary, Step 2 provenance and batch provenance, the "normal" rule removed, docs 30, 32, 33, 40, 43, 50. Commits `c5ccb9e`, `1ecc93e`, `f84b9e3`, `235bce2`. Decision log rows above.
 - 2026-10-26 - `REVIEW-2026-10-06.md`, the shock-responsive SP plan and tasks and the cost-effectiveness plan moved to `review/archive/` (code comments, tests, `ARCHITECTURE.md` and the `wise-close-finding` skill re-pointed). Their open or deferred items are B11 (8 rows, none scheduled).
+- 2026-10-26 - Batch pipeline plan archived with incoming references updated; B13 retains the Export-bundle parity check and two demand-driven optimization deferrals. Phase 5 figures and selection are downstream study work; implemented reproducibility support stays in the batch template. Source fingerprint coverage remains MR-05.

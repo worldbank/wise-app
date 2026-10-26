@@ -1,7 +1,7 @@
 # Batch output tables - column reference
 
 All tables of a batch run: 11 result tables and the run-level files. The user
-guide is `batch/README.md`; the design is `review/batch_pipeline_plan.md`.
+guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md`.
 
 ## Conventions
 
