@@ -156,3 +156,31 @@ test_that("quantile policy arm loading reproduces the correction's response to t
   expect_gt(max(abs(response)), 1e-3)
   expect_equal(as.numeric(F_pol %*% z), response, tolerance = 1e-4)
 })
+
+test_that("a RIF fit records the fallback to independent equations, and only then", {
+  skip_if_not_installed("fixest")
+  set.seed(78)
+  n <- 300L
+  baseline <- data.frame(
+    code = "BFA", year = "2018", survname = "w", loc_id = seq_len(n), int_month = 1L,
+    temp = rnorm(n, 3, 1), weight = 1
+  )
+  baseline$welfare <- exp(1 - 0.1 * baseline$temp + rnorm(n, 0, 0.4))
+  so <- list(name = "welfare", type = "numeric", transform = "log")
+  sw <- data.frame(name = "temp", cont_binned = "Continuous", stringsAsFactors = FALSE)
+  fit_with <- function(cluster) {
+    sm <- build_selected_model(model_type = "Unconditional quantile regression (RIF)",
+      engine = "rif", cluster = cluster)
+    suppressWarnings(fit_model(baseline, so, sw, sm))
+  }
+  kinds <- function(mf) vapply(mf$fallbacks, function(x) x$kind, "")
+  # clustered: the joint covariance is built and stored, no fallback
+  clustered <- fit_with("loc_id")
+  expect_false("rif_joint_covariance" %in% kinds(clustered))
+  expect_false(is.null(attr(clustered$fit3, "wise_joint_vcov")))
+  # no clustering: the stacked sandwich cannot match the fit's covariance
+  plain <- fit_with(NULL)
+  expect_true("rif_joint_covariance" %in% kinds(plain))
+  expect_null(attr(plain$fit3, "wise_joint_vcov"))
+  expect_true(any(grepl("independent quantile equations", model_fit_table(plain)$text, fixed = TRUE)))
+})

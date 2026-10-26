@@ -23,14 +23,11 @@ weighted_baseline_deciles <- function(svy, outcome, weight = NULL) {
   out
 }
 
-# The one place that decides which survey column carries the weights. Known
-# aliases are taken in a fixed priority order (not column order), so every
-# consumer (Step 2 run, decomposition, incidence) picks the same column.
+# The one place that decides which survey column carries the weights: the
+# column named `weight`, as every weighted statistic reads. Other names
+# (`hhweight`, `wgt`, `pw`) are not weights here; docs/10_data.md, Section 7.
 survey_weight_column <- function(cols) {
-  aliases <- c("weight", "hhweight", "wgt", "pw")
-  hit <- match(aliases, tolower(cols))
-  hit <- hit[!is.na(hit)]
-  if (length(hit)) cols[[hit[[1L]]]] else NULL
+  if ("weight" %in% cols) "weight" else NULL
 }
 
 baseline_weight_column <- function(svy) {

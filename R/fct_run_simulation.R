@@ -537,7 +537,7 @@ fct_run_simulation <- function(sw,
   if (length(wt_detected) > 1L) {
     warning(sprintf(
       "[wiseapp] Multiple weight columns detected: %s. Using '%s'.",
-      paste(wt_detected, collapse = ", "), weight_col_sim
+      paste(wt_detected, collapse = ", "), weight_col_sim %||% "none (unweighted)"
     ))
   }
 

@@ -256,7 +256,8 @@ aggregate_with_uncertainty_delta <- function(y_point,
   } else {
     thr <- pov_line - y
   }
-  p <- stats::ecdf(resid)(thr)
+  # Poverty is strict (welfare < line), so a residual equal to the cut-off is not poor
+  p <- findInterval(thr, sort(resid), left.open = TRUE) / length(resid)
   sum(w_tilde^2 * p * (1 - p))
 }
 

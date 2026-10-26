@@ -553,3 +553,11 @@ test_that("the poverty-rate residual variance matches a Monte Carlo over residua
   with_sp <- .headcount_resid_variance(y, w, z, resid, TRUE, sp, sp_log = rep(0, n))
   expect_false(isTRUE(all.equal(with_sp, closed)))
 })
+
+test_that("the poverty-rate residual variance counts a tie at the cut-off as not poor", {
+  # Prediction 0 on the log scale, line 1, residuals {0, 1}: welfare is 1 or e,
+  # never below the line, so no draw is poor and the variance is 0 (it was 0.25).
+  expect_equal(.headcount_resid_variance(0, 1, 1, c(0, 1)), 0)
+  # Residuals {-1, 0}: only -1 is poor (p = 0.5), a tie at 0 is not.
+  expect_equal(.headcount_resid_variance(0, 1, 1, c(-1, 0)), 0.25)
+})

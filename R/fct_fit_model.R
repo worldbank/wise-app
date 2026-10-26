@@ -1071,7 +1071,37 @@ fit_model <- function(df, selected_outcome, selected_weather, selected_model,
   # that slimming removes, so it is built here and stored on fit3.
   rif_joint_vcov <- if (is_rif && inherits(fit3, "fixest_multi")) {
     cl_var <- cluster_vars[cluster_vars %in% names(df)]
-    compute_rif_joint_vcov(fit3, cluster = if (length(cl_var) == 1L) df[[cl_var]])
+    why <- NULL
+    jv_ok <- TRUE
+    jv <- withCallingHandlers(
+      compute_rif_joint_vcov(fit3, cluster = if (length(cl_var) == 1L) df[[cl_var]]),
+      warning = function(w) why <<- conditionMessage(w)
+    )
+    if (!is.null(jv)) {
+      # Step 2 factors the block of the weather coefficients; if it is not
+      # positive definite (few clusters), simulation falls back as well
+      act <- build_active_coef_mask(names(stats::coef(fit3[[1L]])), weather_vars)
+      if (!is.null(act) && is.null(tryCatch(
+        chol(jv[rep(act, length(fit3)), rep(act, length(fit3)), drop = FALSE]),
+        error = function(e) NULL
+      ))) {
+        why <- "joint covariance of the weather coefficients is not positive definite"
+        warning("[fit_model] ", why, "; simulation treats the quantile equations as independent.",
+          call. = FALSE)
+        jv_ok <- FALSE
+      }
+    }
+    if (is.null(jv) || identical(jv_ok, FALSE)) {
+      # Recorded with the result, so tables and exports say the bands treat
+      # the quantile equations as independent (a lower bound)
+      fallbacks <- c(fallbacks, list(list(
+        kind = "rif_joint_covariance",
+        requested = "joint covariance of the quantile equations",
+        used = "independent quantile equations",
+        reason = sub("^\\[compute_rif_joint_vcov\\] ", "", why %||% "joint covariance unavailable")
+      )))
+    }
+    jv
   }
 
   fit1 <- .slim_fit(fit1)
