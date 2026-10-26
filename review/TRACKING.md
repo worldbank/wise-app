@@ -1,16 +1,15 @@
 # Maintenance Tracker
 
-The single list of actionable app and repository work. Group by maintenance area, not review date or batch. Keep existing IDs stable; use git history for routine progress, not a rolling log here. Finished work, deferred decisions, numerical Decision log entries and detailed evidence live in `review/archive/REVIEW-2026-10-06-tracking-full.md` (look up by ID). Original review findings are in `review/archive/REVIEW-2026-10-06.md` (immutable).
+Open app/repo maintenance only. Use git for routine history; look up closure evidence, deferrals and numerical decisions by ID in `review/archive/REVIEW-2026-10-06-tracking-full.md`. Original findings: `review/archive/REVIEW-2026-10-06.md` (immutable).
 
 ## Working rules
 
-- **Add:** check this file and the archive for duplicates or a reopen trigger. Add one independently closable row under the relevant category, with an observable problem, next action or acceptance condition, and a source or code/test reference. Use an existing finding ID; for new work use `<AREA>-NN` (for example `CI-01`, `DATA-01`, `UX-01`), choosing an unused number across tracker and archive. Never reuse or renumber an ID.
-- **Organize:** use Data and Methods; UX and Accessibility; Engineering and Tests; Security and Deployment; Performance, as needed. Omit empty categories. Order by severity, then actionable work before blocked work. Do not maintain counts or duplicate an issue in a separate waiting list.
-- **Update:** keep only the current remainder. Mark work in progress when started; for blocked work name the dependency and concrete unblock action in the row. Put long evidence in the archive or linked review, not in the task cell.
-- **Close a fix:** show a regression test failing before and passing after, or a reproducible docs/config check; run the narrowest relevant tests. Append the full row and dated outcome to the archive with commit/reference, verification and unchecked paths, then remove the active row. Do not close from code reading alone.
-- **Defer or drop:** obtain the user's scope decision; archive the full row with reason, date, decision and a concrete reopen trigger, then remove it here. Do not describe deferred work or waived checks as implemented or verified. On reopening, restore the same ID and link the decision.
-- **Verification:** numerical changes require a Decision log entry with BFA before/after (`wise-numeric-change`); speed claims require timing and peak memory (`wise-benchmark`). Follow `wise-verify` for tests, browser checks, documentation, full-suite/check and manifest follow-ups. Keep numerical decisions in the archive, not in this file.
-- **Git:** work on `dev` or a branch off it; keep changes scoped and put the issue ID in the commit subject where applicable. Commit, push, deploy or upload only when requested. No tracker Log entry is required; git records routine edits.
+- **Add:** check tracker/archive for duplicates. Use a stable existing ID or unused `<AREA>-NN`; one closable issue per row, with next action/acceptance condition and source. Never reuse IDs.
+- **Group:** Data and Methods; UX and Accessibility; Engineering and Tests; Security and Deployment; Performance. Add a category and copy the table header when needed; no empty tables, placeholder rows, counts or separate waiting list. Sort by severity, then actionable before blocked.
+- **Update:** retain only the open remainder; mark started work `◐`. For `blocked`, name the dependency and unblock action. Link long evidence rather than embedding it.
+- **Close:** demonstrate the fix with regression tests or reproducible docs/config checks; run relevant tests (`wise-verify`). Archive the full row, dated outcome, commit/reference, evidence and unchecked paths, then remove it here. Code reading alone is not verification.
+- **Defer/reopen:** user-approved deferrals need an archived reason, date and reopen trigger, not a claim of completion. Restore the same ID and link that decision when reopening. Procedure: `wise-close-finding`.
+- **Gates:** numerical changes need archived BFA before/after and a Decision log (`wise-numeric-change`); speed claims need timing and peak memory (`wise-benchmark`). Follow `AGENTS.md` for Git/permissions and `wise-verify` for remaining checks. No rolling Log.
 
 Status: `☐` todo, `◐` in progress, `blocked` awaiting a named dependency. Closed and deferred items belong only in the archive. Sev: C critical, H high, M medium, L low, I informational. Eff: S < 1 day, M 1-3 days, L > 3 days; `?` means untriaged.
 
