@@ -697,7 +697,7 @@ wise_batch_sim <- function(item, connection_params = NULL) {
         step2_baseline_label(
           step2_baseline_choices(w$survey_weather, d$selected_surveys), sim$baseline_survey
         ),
-        baseline$dropped
+        baseline$dropped, attr(input, "residual_match")
       )
       tables <- step2_batch_tables(result, skip_coef = input$skip_coef_draws, selected_weather = sw)
       code <- paste(spec$sample$countries, collapse = "+")
@@ -731,6 +731,8 @@ wise_batch_sim <- function(item, connection_params = NULL) {
           n_failed_keys = length(failures),
           n_baseline_dropped = baseline$dropped$n_dropped,
           weight_share_dropped = baseline$dropped$weight_share_dropped,
+          n_residual_matched = attr(input, "residual_match")$n_matched %||% NA_integer_,
+          n_residual_unmatched = attr(input, "residual_match")$n_unmatched %||% NA_integer_,
           r_peak_mb = sum(gc_max[, ncol(gc_max)]),
           seconds = as.numeric(difftime(Sys.time(), t0, units = "secs")),
           stringsAsFactors = FALSE

@@ -851,6 +851,8 @@ aggregate_pipeline_table <- function(pipelines,
       numeric(1L)
     ), 0))
 
+    var_resid_all <- vapply(per_year, function(x) x$var_resid %||% 0, numeric(1L))
+
     gradients <- lapply(per_year, `[[`, "F_agg")
     F_mat <- if (all(vapply(gradients, is.null, logical(1L)))) {
       NULL
@@ -877,6 +879,7 @@ aggregate_pipeline_table <- function(pipelines,
       model_id   = ids,
       value_all  = values,
       value_all_sd = sds,
+      var_resid_all = var_resid_all,
       F_agg_all  = F_mat,
       var_within = var_within,
       var_across = var_across
@@ -902,6 +905,7 @@ aggregate_pipeline_table <- function(pipelines,
     model_id     = col("model_id"),
     value_all    = col("value_all"),
     value_all_sd = col("value_all_sd"),
+    var_resid_all = col("var_resid_all"),
     F_agg_all    = col("F_agg_all"),
     var_within   = unlist(col("var_within")),
     var_across   = unlist(col("var_across")),
@@ -1012,6 +1016,7 @@ aggregate_pipeline_tables_multi <- function(pipelines,
         function(x) (x$var_coef %||% 0) + (x$var_resid %||% 0),
         numeric(1L)
       ), 0))
+      var_resid_all <- vapply(per_year, function(x) x$var_resid %||% 0, numeric(1L))
       gradients <- lapply(per_year, `[[`, "F_agg")
       F_mat <- if (all(vapply(gradients, is.null, logical(1L)))) {
         NULL
@@ -1036,6 +1041,7 @@ aggregate_pipeline_tables_multi <- function(pipelines,
         model_id = ids,
         value_all = values,
         value_all_sd = sds,
+        var_resid_all = var_resid_all,
         F_agg_all = F_mat,
         var_within = var_within,
         var_across = var_across

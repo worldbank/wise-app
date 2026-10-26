@@ -525,3 +525,31 @@ test_that("level outcomes: unweighted gradients have one entry per row", {
     expect_true(is.finite(res$var_coef), info = m)
   }
 })
+
+
+# F9: closed-form residual variance of the poverty rate under "resample" ----
+
+test_that("the poverty-rate residual variance matches a Monte Carlo over residual draws", {
+  set.seed(5)
+  n <- 300
+  y <- stats::rnorm(n, log(4), 0.6)
+  w <- stats::runif(n, 1, 3)
+  resid <- stats::rnorm(500, 0, 0.55)
+  z <- 3
+  closed <- .headcount_resid_variance(y, w, z, resid)
+  wt <- w / sum(w)
+  draws <- replicate(3000, sum(wt * (exp(y + sample(resid, n, replace = TRUE)) < z)))
+  expect_equal(closed, stats::var(draws), tolerance = 0.1)
+  # The aggregator uses it for "resample" and leaves the other rules alone.
+  train_aug <- data.frame(.resid = resid)
+  F <- matrix(0, n, 1)
+  res <- aggregate_with_uncertainty_delta(
+    y, F, "headcount_ratio", weights = w, pov_line = z, residuals = "resample",
+    train_aug = train_aug, id_col = NULL
+  )
+  expect_equal(res$var_resid, closed)
+  # A transfer added after the residual lowers the room below the line.
+  sp <- rep(1, n)
+  with_sp <- .headcount_resid_variance(y, w, z, resid, TRUE, sp, sp_log = rep(0, n))
+  expect_false(isTRUE(all.equal(with_sp, closed)))
+})

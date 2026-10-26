@@ -87,7 +87,7 @@ test_that("annual has one row per scenario, metric, member and year", {
   agg <- step2_fixture_agg()
   a <- step2_annual_table(agg)
   expect_identical(names(a), c(
-    "policy_id", "scenario", "metric", "member", "sim_year", "value", "sd", "var_within",
+    "policy_id", "scenario", "metric", "member", "sim_year", "value", "sd", "sd_resid", "var_within",
     "var_across", "weighted"
   ))
   expect_true(all(is.na(a$policy_id)))
@@ -181,7 +181,7 @@ test_that("summary holds the stored views of every metric", {
 
   # Uncertainty sources and the dot plot.
   u <- s[s$metric == "mean" & s$section == "uncertainty", ]
-  expect_setequal(u$measure, c("var_coef", "var_within", "var_across"))
+  expect_setequal(u$measure, c("var_coef", "var_resid", "var_within", "var_across"))
   expect_identical(u$estimate[u$measure == "var_coef"], views$variance$var_coef)
   dot <- s[s$metric == "mean" & s$section == "adverse_dot", ]
   expect_setequal(dot$measure, as.character(views$adverse_dot$rp_label))
@@ -274,4 +274,69 @@ test_that("step2_batch_tables builds the three tables of an annotated run", {
   expect_named(t, c("annual", "summary", "sim_weather"))
   expect_identical(t$annual, step2_annual_table(step2_fixture_agg()))
   expect_identical(t, step2_batch_tables(res, FALSE, step2_tables_weather()))
+})
+
+
+# F2: the residual variance is its own component ----
+
+f2_table <- function(resid = c(0.04, 0.09)) {
+  F_mat <- rbind(c(0.3, 0.4), c(0, 0.5)) # coefficient variance 0.25 for both members
+  tibble::tibble(
+    sim_year = 2030L, value = 1, model_id = list(c("a", "b")), value_all = list(c(1, 2)),
+    value_all_sd = list(sqrt(0.25 + resid)), var_resid_all = list(resid),
+    F_agg_all = list(F_mat), var_within = 0, var_across = 0
+  )
+}
+
+test_that("the breakdown separates the residual variance from the coefficient variance", {
+  mm <- function(tbl) NULL
+  b <- step2_variance_breakdown(list(Historical = f2_table()), mm)
+  expect_equal(b$var_coef, 0.25)
+  expect_equal(b$var_resid, mean(c(0.04, 0.09)))
+  # Without the column the whole `value_all_sd` is coefficient variance, as before.
+  old <- f2_table()
+  old$var_resid_all <- NULL
+  b0 <- step2_variance_breakdown(list(Historical = old), mm)
+  expect_equal(b0$var_coef, mean(0.25 + c(0.04, 0.09)))
+  expect_equal(b0$var_resid, 0)
+})
+
+test_that("a contrast replaces the coefficient part and keeps the stored residual variance", {
+  tbl <- f2_table()
+  out <- step2_contrast_sd(tbl, F_ref = c(0.3, 0.4))
+  expect_equal(out$value_all_sd[[1]], sqrt(c(0, 0.09 + 0.01) + c(0.04, 0.09)))
+  # The same result when the column is absent and the residual is derived.
+  tbl$var_resid_all <- NULL
+  expect_equal(step2_contrast_sd(tbl, F_ref = c(0.3, 0.4))$value_all_sd[[1]], out$value_all_sd[[1]])
+})
+
+test_that("the variance chart labels the coefficient bar by reference and adds a residual bar", {
+  vb <- data.frame(
+    scenario = "Historical", var_coef = 1, var_resid = 0.5, var_within = 4, var_across = 0,
+    is_historical = TRUE
+  )
+  ch <- echart_variance_contribution(vb, reference = "mean")
+  nm <- vapply(ch$x$opts$series, `[[`, "", "name")
+  expect_true("Residual draws" %in% nm)
+  expect_true("Coefficient uncertainty (difference from historical mean)" %in% nm)
+  vb$var_resid <- 0
+  nm0 <- vapply(echart_variance_contribution(vb)$x$opts$series, `[[`, "", "name")
+  expect_false("Residual draws" %in% nm0)
+  expect_true("Coefficient uncertainty (level)" %in% nm0)
+})
+
+test_that("a median reference adds its own residual variance to a contrast, the mean reference does not (F1)", {
+  ht <- tibble::tibble(
+    sim_year = 1991:1993, value = c(1, 2, 3),
+    F_agg_all = list(matrix(c(0.1, 0.2), 1), matrix(c(0.3, 0.4), 1), matrix(c(0.5, 0.6), 1)),
+    var_resid_all = list(0.01, 0.04, 0.09)
+  )
+  med <- step2_hist_f_ref(ht, "median")
+  expect_equal(as.numeric(med), c(0.3, 0.4))
+  expect_equal(attr(med, "var_resid"), 0.04)
+  expect_null(attr(step2_hist_f_ref(ht, "mean"), "var_resid"))
+  scen <- f2_table(resid = c(0.04, 0.09))
+  by_median <- step2_contrast_sd(scen, med)$value_all_sd[[1]]
+  by_median_wo <- step2_contrast_sd(scen, as.numeric(med))$value_all_sd[[1]]
+  expect_equal(by_median^2 - by_median_wo^2, rep(0.04, 2))
 })

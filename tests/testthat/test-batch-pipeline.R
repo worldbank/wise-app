@@ -433,7 +433,7 @@ test_that("simulations run per sim_id, write the three Step 2 tables and are reu
     names(annual)[names(annual) != "code"],
     c(
       "sim_id", "policy_id", "scenario", "metric", "member", "sim_year", "value", "sd",
-      "var_within", "var_across", "weighted"
+      "sd_resid", "var_within", "var_across", "weighted"
     )
   )
   expect_setequal(unique(annual$sim_id), g$sim_id)
@@ -710,7 +710,7 @@ test_that("policies run per policy_id on the stored Step 2 run, write the Step 3
     names(annual)[names(annual) != "code"],
     c(
       "sim_id", "policy_id", "scenario", "metric", "member", "sim_year", "value", "sd",
-      "var_within", "var_across", "weighted"
+      "sd_resid", "var_within", "var_across", "weighted"
     )
   )
   expect_setequal(annual$policy_id, c(NA, g$policy_id[g$policy != "none"]))

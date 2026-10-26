@@ -72,7 +72,7 @@ test_that("the policy tables have their schema and every metric", {
   expect_setequal(names(out$tables), c("annual", "summary", "decomposition", "policy_measures"))
   expect_identical(
     names(out$tables$annual),
-    c("policy_id", "scenario", "metric", "member", "sim_year", "value", "sd", "var_within", "var_across", "weighted")
+    c("policy_id", "scenario", "metric", "member", "sim_year", "value", "sd", "sd_resid", "var_within", "var_across", "weighted")
   )
   expect_identical(
     names(out$tables$summary),

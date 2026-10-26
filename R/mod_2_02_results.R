@@ -355,13 +355,17 @@
         shiny::p(
           paste0(
             "Coefficient uncertainty is the analytic delta-method standard error from the fitted model's ",
-            "coefficient covariance matrix"
-          ),
-          paste0(
-            "(plus residual-draw variance when stochastic residuals are enabled). It is shown as one standard ",
+            "coefficient covariance matrix. It follows the Results view: a level, or the difference from the ",
+            "historical mean or median, as the bar label says. It is shown as one standard ",
             "deviation, not a 95% confidence interval;"
           ),
           "an approximate normal 95% interval would be estimate +/- 1.96 times this value."
+        ),
+        shiny::p(
+          paste0(
+            "Residual draws have their own bar when the residual rule is \"resample\". Their year-to-year ",
+            "noise is also part of the inter-annual bar, so under \"resample\" that bar is not weather alone."
+          )
         ),
         shiny::p(
           "Because standard deviations are not additive, bars are displayed side-by-side on a common scale."
@@ -385,7 +389,8 @@
           "Inter-annual variability is the within-model standard deviation across simulated weather years; ",
           "inter-model spread is the standard deviation of model means across climate models; ",
           "coefficient uncertainty is the analytic delta-method SE from the fitted model covariance ",
-          "(plus any enabled stochastic residual variance)."
+          "for the selected view (level or difference from the historical mean or median); ",
+          "residual draws, when the \"resample\" rule is on, are shown separately."
         )
       )
     )
@@ -1908,7 +1913,8 @@ mod_2_02_results_server <- function(id,
         variance_breakdown_rv(), height = "300px",
         percent = identical(metric_metadata(
           .selected_method(), results_source()$so
-        )$format, "percent")
+        )$format, "percent"),
+        reference = input$cmp_deviation %||% "none"
       )
     }
     output$uncertainty_sources_plot <- echarts4r::renderEcharts4r({

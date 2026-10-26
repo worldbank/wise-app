@@ -130,6 +130,35 @@ test_that("a finished run is described by its historical label and summary", {
   expect_identical(res$hist_sim_result$a, 1)
 })
 
+test_that("the original rule keys baseline and estimation rows by round and economy (F0)", {
+  fit <- step2_input_fit()
+  fit$train_data <- data.frame(
+    hhid = c(1, 2, 3, 1), code = c("AAA", "AAA", "AAA", "BBB"), year = c(2019L, 2019L, 2020L, 2020L),
+    survname = "SRV"
+  )
+  make <- function(residuals) {
+    wise_step2_input(
+      step2_input_weather(), step2_input_outcome(), step2_input_survey(), step2_input_surveys(),
+      fit, list(type = "local", path = "/data"), c(2000, 2002), list(), character(0),
+      residuals = residuals
+    )
+  }
+  x <- make("original")
+  expect_true(RESID_KEY_COL %in% names(x$svy))
+  expect_true(RESID_KEY_COL %in% names(x$mf$train_data))
+  expect_false(RESID_KEY_COL %in% names(fit$train_data))
+  rm_ <- attr(x, "residual_match")
+  expect_identical(c(rm_$n_matched, rm_$n_unmatched, rm_$n_total), c(2L, 4L, 6L))
+  expect_match(step2_residual_match_note(rm_), "^4 of 6 baseline households have no estimation row")
+  # Other rules draw no matched residual: no key, no counts.
+  y <- make("resample")
+  expect_false(RESID_KEY_COL %in% names(y$svy))
+  expect_null(attr(y, "residual_match"))
+  res <- wise_step2_annotate(list(hist_sim_result = list(), total_runs = 1L),
+    step2_input_weather(), c(1991, 2020), "A 2020", residual_match = rm_)
+  expect_identical(res$hist_sim_result$sim_summary$residual_match, rm_)
+})
+
 # Baseline without weather ----
 
 step2_gap_survey <- function() {

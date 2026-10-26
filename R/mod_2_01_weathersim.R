@@ -18,6 +18,16 @@
   invisible(NULL)
 }
 
+# Tell the user when baseline households have no estimation row for the
+# "original" residual rule (`step2_residual_match_note()`). Silent otherwise.
+.notify_residual_match <- function(residual_match) {
+  msg <- step2_residual_match_note(residual_match)
+  if (!is.null(msg)) {
+    shiny::showNotification(paste("Residuals:", msg), type = "warning", duration = 15)
+  }
+  invisible(NULL)
+}
+
 #' 2_01_weathersim UI Function
 #'
 #' @description A shiny Module. Unified sidebar for configuring and running
@@ -1094,7 +1104,8 @@ mod_2_01_weathersim_server <- function(id,
             }
             result <- wise_step2_annotate(
               .wise_step2_async_read_manifest(manifest, job),
-              sw, unlist(sh$year_range), captured_baseline, baseline$dropped
+              sw, unlist(sh$year_range), captured_baseline, baseline$dropped,
+              attr(step2_input, "residual_match")
             )
              result$hist_sim_result$.sig <- job$dependency_signature
              committed <- .wise_step2_async_commit(job, function() {
@@ -1159,6 +1170,7 @@ mod_2_01_weathersim_server <- function(id,
               )
             }
             .notify_baseline_dropped(baseline$dropped)
+            .notify_residual_match(attr(step2_input, "residual_match"))
             .notify_data_quality(result$data_quality)
              invisible(TRUE)
            }),
@@ -1310,7 +1322,7 @@ mod_2_01_weathersim_server <- function(id,
             step2_baseline_label(
               baseline_survey_choices(), input$baseline_survey %||% baseline_default()
             ),
-            baseline$dropped
+            baseline$dropped, attr(step2_input, "residual_match")
           )
           # INT-08: the immutable run signature travels with the result so
           # Step 3 can detect that it is consuming a superseded simulation.
@@ -1367,6 +1379,7 @@ mod_2_01_weathersim_server <- function(id,
           )
         }
         .notify_baseline_dropped(baseline$dropped)
+        .notify_residual_match(attr(step2_input, "residual_match"))
         .notify_data_quality(result$data_quality)
       },
       ignoreInit = TRUE

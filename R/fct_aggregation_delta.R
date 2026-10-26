@@ -62,6 +62,9 @@
 #'   taken on the welfare without it. \code{sp_log} is needed only when
 #'   \code{prepared_mu} is not supplied.
 #'
+#' @param rate_band Logical. The outcome is a binary rate from a logistic fit
+#'   (the loading is already on the probability scale): the mean's band is
+#'   built on the logit scale so it stays inside [0, 1].
 #' @return Named list:
 #'   \describe{
 #'     \item{value}{Numeric scalar. Point estimate.}
@@ -93,7 +96,8 @@ aggregate_with_uncertainty_delta <- function(y_point,
                                              prepared_order = NULL,
                                              F_row_ss = NULL,
                                              sp_level = NULL,
-                                             sp_log = NULL) {
+                                             sp_log = NULL,
+                                             rate_band = FALSE) {
   N <- length(y_point)
   stopifnot(is.numeric(y_point) && N > 0)
 
@@ -191,7 +195,18 @@ aggregate_with_uncertainty_delta <- function(y_point,
     !is.null(train_aug) && ".resid" %in% names(train_aug)) {
     sigma_e2 <- resid_sigma2 %||%
       stats::var(train_aug$.resid, na.rm = TRUE)
-    if (is.finite(sigma_e2)) sigma_e2 * sum(h * h, na.rm = TRUE) else 0
+    if (identical(method, "headcount_ratio") && identical(residuals, "resample") && !is.null(pov_line)) {
+      # F9: a residual draw is a large shift, so the kernel gradient overstates
+      # the variance of the poverty rate; the draws are independent across
+      # households, so the exact variance is sum(w^2 p (1 - p)).
+      .headcount_resid_variance(
+        y_point, weights, pov_line, train_aug$.resid, is_log, sp_level, sp_log
+      )
+    } else if (is.finite(sigma_e2)) {
+      sigma_e2 * sum(h * h, na.rm = TRUE)
+    } else {
+      0
+    }
   } else {
     0
   }
@@ -202,7 +217,7 @@ aggregate_with_uncertainty_delta <- function(y_point,
   # Band via method-appropriate transform
   z_lo <- stats::qnorm(band_q[["lo"]])
   z_hi <- stats::qnorm(band_q[["hi"]])
-  band <- apply_band_transform(method, value_pt, se, z_lo, z_hi)
+  band <- apply_band_transform(method, value_pt, se, z_lo, z_hi, rate = rate_band)
 
   list(
     value       = value_pt,
@@ -215,6 +230,34 @@ aggregate_with_uncertainty_delta <- function(y_point,
     n_coef_dropped = n_coef_dropped,
     draw_values = NULL
   )
+}
+
+# Variance of the weighted headcount ratio over independent residual draws
+# `e` resampled from `resid` (F9): household i is poor with probability
+# p_i = P(welfare_i < pov_line), the headcount is sum(w_i 1[poor_i]) with
+# normalised weights, and the variance is sum(w_i^2 p_i (1 - p_i)). With a
+# cash transfer added after the residual (`sp_level`, `sp_log`; DOC-11) the
+# welfare below the line is the one without it.
+.headcount_resid_variance <- function(y_point, weights, pov_line, resid, is_log = TRUE,
+                                      sp_level = NULL, sp_log = NULL) {
+  resid <- resid[is.finite(resid)]
+  ok <- is.finite(y_point)
+  w <- if (is.null(weights)) rep(1, length(y_point)) else weights
+  ok <- ok & is.finite(w)
+  if (!length(resid) || !any(ok)) {
+    return(0)
+  }
+  w_tilde <- w[ok] / sum(w[ok])
+  y <- y_point[ok]
+  if (is_log) {
+    base <- if (!is.null(sp_log)) y - sp_log[ok] else y
+    room <- if (!is.null(sp_level)) pov_line - sp_level[ok] else rep(pov_line, length(y))
+    thr <- ifelse(room > 0, log(pmax(room, .Machine$double.xmin)) - base, -Inf)
+  } else {
+    thr <- pov_line - y
+  }
+  p <- stats::ecdf(resid)(thr)
+  sum(w_tilde^2 * p * (1 - p))
 }
 
 # Avoid gradient and band calculations when only deterministic point estimates
@@ -416,12 +459,13 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
 # positive (mean welfare). Build bands on a transformed scale and invert so
 # they respect natural bounds.
 
-apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
+apply_band_transform <- function(method, value_pt, se, z_lo, z_hi, rate = FALSE) {
   if (!is.finite(se) || se == 0 || !is.finite(value_pt)) {
     return(list(lo = value_pt, hi = value_pt))
   }
 
-  use_logit <- method %in% c("headcount_ratio", "gap", "fgt2")
+  # `rate`: the mean of a binary outcome is a rate in [0, 1] (F8)
+  use_logit <- method %in% c("headcount_ratio", "gap", "fgt2") || (isTRUE(rate) && identical(method, "mean"))
   use_log <- method %in% c("median", "avg_poverty")
 
   if (use_logit && value_pt > 0 && value_pt < 1) {
@@ -757,7 +801,8 @@ aggregate_pipeline_per_year <- function(pipe,
         resid_lookup = NULL,
         resid_sigma2 = sg2,
         prepared_mu = prep$mu[[i]],
-        sp_level = prep$sp_level[[i]]
+        sp_level = prep$sp_level[[i]],
+        rate_band = isTRUE(pipe$logit_link)
       )
     }
     m$sim_year <- yr
@@ -918,7 +963,8 @@ aggregate_pipeline_per_year_multi <- function(pipe,
           prepared_value = picked$value,
           prepared_order = picked$order,
           F_row_ss = F_row_ss,
-          sp_level = prep$sp_level[[i]]
+          sp_level = prep$sp_level[[i]],
+          rate_band = isTRUE(pipe$logit_link)
         )
       }
       value$sim_year <- yr

@@ -165,6 +165,25 @@ step2_baseline_run <- function(survey_weather, selection, sw, mf = NULL, so = NU
   step2_baseline_complete(step2_baseline_svy(survey_weather, selection), sw, mf, so)
 }
 
+#' Note on the baseline households without an estimation row
+#'
+#' Under the "original" residual rule a baseline household keeps the residual of
+#' its own estimation row; one without a row gets a hash-keyed draw. Silent
+#' when every household was matched.
+#' @param residual_match The `residual_match` attribute of `wise_step2_input()`.
+#' @return A string, or `NULL`.
+#' @noRd
+step2_residual_match_note <- function(residual_match) {
+  if (is.null(residual_match) || !isTRUE(residual_match$n_unmatched > 0)) {
+    return(NULL)
+  }
+  sprintf(
+    "%s of %s baseline households have no estimation row (matched on %s) and get a drawn residual",
+    format(residual_match$n_unmatched, big.mark = ","), format(residual_match$n_total, big.mark = ","),
+    paste(residual_match$key, collapse = " + ")
+  )
+}
+
 #' Note on the households left out of the baseline
 #' @param dropped `dropped` element of `step2_baseline_complete()`.
 #' @return A string, or `NULL` when nothing was left out.
@@ -218,7 +237,10 @@ step2_hist_label <- function(hist_years) {
 #'   that are incomplete, empty or start before the SSP projections are left
 #'   out.
 #' @param ssps SSP codes; without a valid period there is no future run.
-#' @param residuals Residual rule requested by the user.
+#' @param residuals Residual rule requested by the user. For `"original"` the
+#'   baseline survey and the estimation sample get a residual key column
+#'   (`step2_add_residual_key()`); the match counts are the `residual_match`
+#'   attribute of the result (a field would reach `fct_run_simulation()`).
 #' @param coef_uncertainty Include coefficient uncertainty.
 #' @param propagate_all Propagate uncertainty of all covariates.
 #' @param stored_breaks Bin breaks stored at weather load.
@@ -234,7 +256,17 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
   has_future <- length(ssps) > 0L && length(periods) > 0L
   is_rif <- identical(mf$engine %||% "fixest", "rif")
   mf_run <- if (isTRUE(slim)) step2_slim_model_fit(mf) else mf
-  list(
+  residuals <- if (is_rif) "none" else residuals
+  # F0: the "original" rule matches a household to its estimation row on a key
+  # that includes the round and economy, not on the household id alone.
+  residual_match <- NULL
+  if (identical(residuals, "original") && is.data.frame(mf_run$train_data)) {
+    keyed <- step2_add_residual_key(mf_run$train_data, svy)
+    mf_run$train_data <- keyed$train_data
+    svy <- keyed$svy
+    residual_match <- keyed$match
+  }
+  out <- list(
     sw = sw, so = so, svy = svy, ss = ss, mf = mf_run, cp = cp,
     fp_list = if (has_future) {
       lapply(periods, function(yr) c(paste0(yr[1], "-01-01"), paste0(yr[2], "-12-31")))
@@ -242,7 +274,7 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
       list()
     },
     ssps = if (has_future) unique(as.character(ssps)) else character(0),
-    residuals = if (is_rif) "none" else residuals,
+    residuals = residuals,
     skip_coef_draws = !isTRUE(coef_uncertainty),
     sim_dates = build_hist_sim_dates(svy, unlist(hist_years)),
     perturbation_method = if (has_future) build_perturbation_method(sw) else NULL,
@@ -252,6 +284,8 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
     taus = if (is_rif) mf$taus else NULL,
     weather_cols = if (is_rif) mf$weather_terms else NULL
   )
+  attr(out, "residual_match") <- residual_match
+  out
 }
 
 #' Describe a finished Step 2 run on its historical result
@@ -265,16 +299,19 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
 #' @param baseline_label Label of the baseline survey (`step2_baseline_label()`).
 #' @param baseline_dropped Households left out of the baseline
 #'   (`step2_baseline_complete()$dropped`), or `NULL`.
+#' @param residual_match Baseline households with and without an estimation row
+#'   (`attr(wise_step2_input(), "residual_match")`), or `NULL`.
 #' @return `result`, with the two fields set on `hist_sim_result`.
 #' @noRd
 wise_step2_annotate <- function(result, sw, hist_years, baseline_label,
-                                baseline_dropped = NULL) {
+                                baseline_dropped = NULL, residual_match = NULL) {
   result$hist_sim_result$hist_label <- step2_hist_label(hist_years)
   result$hist_sim_result$sim_summary <- list(
     weather = sw,
     historical_years = unlist(hist_years, use.names = FALSE),
     baseline_survey = baseline_label,
     baseline_dropped = baseline_dropped,
+    residual_match = residual_match,
     total_runs = result$total_runs
   )
   result

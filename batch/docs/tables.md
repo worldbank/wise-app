@@ -175,6 +175,7 @@ this table.
 | `member` | Climate model as named in the projection files (`model_<n>` if none), or `Historical`. |
 | `value` | The member's annual aggregate in outcome units (back-transformed for log outcomes). |
 | `sd` | Delta-method standard deviation: coefficient uncertainty plus residual variance (residual only with `sim.coef_uncertainty: false`). |
+| `sd_resid` | The residual-draw part of `sd`: the standard deviation of the residual component alone (0 under the `original` rule and for the quantile model); `sd` is unchanged and still holds both parts. |
 | `var_within`, `var_across` | Variance of the year's aggregate within a member and across members; repeated on each member row; `var_across` is 0 for the historical run. |
 | `weighted` | The aggregate uses survey weights. |
 
@@ -185,7 +186,7 @@ coefficient uncertainty are in `summary`.
 **Policy arm.** Same columns for the policy pipelines; the effect of a policy on
 a member-year is the policy `value` minus the baseline `value`. For a
 shock-responsive program the table also holds per member-year rows as metrics
-`shock_<column>` (with `sd`, `var_within`, `var_across`, `weighted` `NA`):
+`shock_<column>` (with `sd`, `sd_resid`, `var_within`, `var_across`, `weighted` `NA`):
 `shock_activated` (1 if any household is paid), `shock_exposed_share`,
 `shock_transfer_cost`, `shock_admin_cost`, `shock_total_cost`,
 `shock_pop_tp`, `_fp`, `_fn`, `_tn` (population weight of locations paid or not
@@ -205,7 +206,7 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `expected` | `expected` / `interannual`, `intermodel` | Equal-model mean (`estimate`) with the range of weather years within models (`lo`, `hi`, averaged across models) or of the model means. `n` = climate models. |
 | `adverse_year` | `adverse_year_outcome` / `coefficient`, `ensemble`, `pooled` | Outcome in an adverse year of the `return_period`; `lo`, `hi` the coefficient, ensemble and pooled bands. The historical run has the coefficient band only. `n` = weather years. |
 | `adverse_dot` | `Expected`, `Adverse 1-in-5` ... `1-in-50` / `ensemble` | Values behind the adverse-year dot plot, only the decision return periods the record supports. |
-| `uncertainty` | `var_coef`, `var_within`, `var_across` | Variance components (coefficient including residual; weather year within models; between models). |
+| `uncertainty` | `var_coef`, `var_resid`, `var_within`, `var_across` | Variance components: coefficient (for the stored view, a level; no residual part), residual draws (0 under `original`), weather year within models (under `resample` it also holds the year-to-year residual noise), between models. |
 | `headline` | `Expected change`, `Adverse weather years`, `Signal vs noise`, `Year-to-year range`, `Simulation years` / `historical`, `focus`, `difference`, `range`, `count` | Headline cards for the focus scenario (the first future scenario, else historical). `text` holds the displayed value on the `focus` row. |
 | `incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean effect of the scenario on each fixed baseline decile, in outcome units; `n` = households. |
 
@@ -293,7 +294,7 @@ Long form: `section`, `scenario`, `metric` (where the section has them),
 |---|---|
 | `runs.parquet` | One row per run: `run_id`, the stage ids (`wxvar_ids` is a list), axis labels (`axis_<name>`), the flattened spec, `spec_json`. |
 | `specs/<run_id>.json` | Full normalised spec of each run; read with `wise_spec_read()`. |
-| `provenance.parquet` | One row per finished stage (a simulation row also records `n_baseline_dropped`, the baseline households left out for missing weather or model data, and `weight_share_dropped`, their share of the survey weight; weights of the others are not rescaled): `stage`, `id`, `n_rows`, `n_surveys`, `source_type`, `source_origin`, `source_files` (names and sizes), `location_panel`, `n_no_panel`, `n_scenarios`, `n_failed_keys`, `n_baseline_dropped`, `weight_share_dropped`, `r_peak_mb`, `seconds`, `wiseapp_version`, `completed_at` (columns a stage does not have are `NA`). |
+| `provenance.parquet` | One row per finished stage (a simulation row also records `n_baseline_dropped`, the baseline households left out for missing weather or model data, and `weight_share_dropped`, their share of the survey weight; weights of the others are not rescaled; also `n_residual_matched` and `n_residual_unmatched`, the baseline households with and without an estimation row for the `original` residual rule): `stage`, `id`, `n_rows`, `n_surveys`, `source_type`, `source_origin`, `source_files` (names and sizes), `location_panel`, `n_no_panel`, `n_scenarios`, `n_failed_keys`, `n_baseline_dropped`, `weight_share_dropped`, `n_residual_matched`, `n_residual_unmatched`, `r_peak_mb`, `seconds`, `wiseapp_version`, `completed_at` (columns a stage does not have are `NA`). |
 | `failures.parquet` | `stage`, `id`, `run_ids` (comma-separated), `n_runs`, `error_class`, `message`. Empty when everything ran. Partial results have `error_class` `partial_simulation_failure` or `partial_policy_failure`. |
 | `manifest.json` | `schema_version`, `wiseapp_version`, `wiseapp_git_sha`, `r_version`, `duckdb_version`, `renv_lock_sha256`, `data_source`, `data_files` (SHA-256 of the survey files, local data), `started_at`, `finished_at`, counts, `tables`. Values that could not be recorded are `null`. |
 

@@ -276,6 +276,22 @@ compute_factor_loading <- function(X_nonFE, chol_obj) {
 }
 
 
+# F8: a logistic fit predicts probabilities, but the coefficients (and so the
+# loading F = x'L) live on the link scale. The derivative of the prediction
+# p = plogis(eta) with respect to eta is p (1 - p); scaling the loading rows by
+# it puts F on the scale of the prediction, where the metric gradients act.
+# NULL for any other model. With the "original" rule the factor is taken at the
+# simulated prediction, a first-order treatment of the anchored difference.
+.logit_link_derivative <- function(model, y_point) {
+  is_logit <- inherits(model, "fixest") && identical(model$method, "feglm") &&
+    identical(model$family$family, "binomial") && identical(model$family$link, "logit")
+  if (!is_logit) {
+    return(NULL)
+  }
+  y_point * (1 - y_point)
+}
+
+
 # `model.matrix()` can omit valid coefficient columns when a prediction slice
 # has no observations for a factor level, and some model classes return the
 # same columns in a different order. Align by coefficient name before applying
@@ -330,10 +346,59 @@ align_factor_loading_matrix <- function(X_nonFE, beta_names) {
 #' ID-based residual matching when `residuals = "original"`.
 #' @noRd
 resolve_id_col <- function(a, b) {
-  candidates <- c("pid", "hhid", "fid")
+  candidates <- c(RESID_KEY_COL, "pid", "hhid", "fid")
   shared <- intersect(names(a), names(b))
   match <- candidates[candidates %in% shared]
   if (length(match) == 0L) NULL else match[[1L]]
+}
+
+# F0: household ids repeat across survey rounds and economies, so a residual
+# (and the anchor design row) is matched on a key that identifies the
+# estimation row: the economy, survey and year, then the household id. The key
+# columns are those both frames carry.
+RESID_KEY_COL <- ".wiseapp_rowkey"
+RESID_KEY_PARTS <- c("code", "survname", "year")
+
+.resid_key <- function(df, id_col, parts) {
+  key <- do.call(paste, c(lapply(df[c(parts, id_col)], as.character), sep = "|"))
+  key[is.na(df[[id_col]])] <- NA_character_
+  key
+}
+
+# Adds the key column to the estimation frame and the baseline survey, so the
+# existing id matching (`resolve_id_col()`) uses it. Frames come back unchanged
+# when there is no id or the key is not unique in the estimation frame (a
+# warning is raised for the latter). `match` counts the baseline households
+# whose estimation row is found under the key in use.
+step2_add_residual_key <- function(train_data, svy) {
+  id_col <- resolve_id_col(train_data, svy)
+  if (is.null(id_col)) {
+    return(list(train_data = train_data, svy = svy, match = NULL))
+  }
+  parts <- intersect(RESID_KEY_PARTS, intersect(names(train_data), names(svy)))
+  key_train <- .resid_key(train_data, id_col, parts)
+  key_svy <- .resid_key(svy, id_col, parts)
+  if (anyDuplicated(key_train[!is.na(key_train)])) {
+    warning(
+      "[wiseapp] The estimation sample has households that repeat under ",
+      paste(c(parts, id_col), collapse = " + "), "; residuals are matched on '", id_col, "' alone.",
+      call. = FALSE
+    )
+    key_train <- as.character(train_data[[id_col]])
+    key_svy <- as.character(svy[[id_col]])
+    parts <- character(0)
+  } else {
+    train_data[[RESID_KEY_COL]] <- key_train
+    svy[[RESID_KEY_COL]] <- key_svy
+  }
+  matched <- !is.na(match(key_svy, key_train))
+  list(
+    train_data = train_data, svy = svy,
+    match = list(
+      key = c(parts, id_col), n_matched = sum(matched), n_unmatched = sum(!matched),
+      n_total = length(matched)
+    )
+  )
 }
 
 .prediction_profile_enabled <- function() {
@@ -757,6 +822,7 @@ run_sim_pipeline <- function(weather_raw,
   # moment of this function. X_nonFE is dropped as soon as F_loading exists,
   # and survey_wd_sim right after the block (train_aug does not read it).
   F_loading <- NULL
+  logit_link <- FALSE
   if (is_rif) {
     # RIF path - F_loading computed inside predict_rif() via interpolate_F_loading()
     F_loading <- attr(out, "F_loading")
@@ -795,6 +861,11 @@ run_sim_pipeline <- function(weather_raw,
         }
       }
       rm(X_nonFE)
+    }
+    link_derivative <- .logit_link_derivative(model, y_point)
+    if (!is.null(link_derivative)) {
+      logit_link <- TRUE
+      if (is.matrix(F_loading)) F_loading <- F_loading * link_derivative
     }
   }
 
@@ -842,6 +913,8 @@ run_sim_pipeline <- function(weather_raw,
     weather_raw = weather_full,
     train_aug   = train_aug
   )
+  # Only a logistic fit adds the field, so the pipeline of any other model keeps its shape.
+  if (logit_link) result$logit_link <- TRUE
   if (!is.null(sp_added)) result[names(sp_added)] <- sp_added
   if (!is.null(prediction_profile)) {
     .prediction_profile_record(

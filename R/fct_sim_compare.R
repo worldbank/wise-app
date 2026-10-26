@@ -1806,7 +1806,7 @@ echart_pointrange_climate <- function(bands_tbl,
 #' per (scenario, source) on the same sqrt-of-variance statistics, Okabe-Ito
 #' source colours, legend bottom (the static chart showed one).
 #' @noRd
-echart_variance_contribution <- function(var_tbl, height = "300px", percent = FALSE) {
+echart_variance_contribution <- function(var_tbl, height = "300px", percent = FALSE, reference = "none") {
   if (is.null(var_tbl) || nrow(var_tbl) == 0L) {
     return(echart_blank("Run a simulation to see SD contributions.", height = height))
   }
@@ -1815,17 +1815,29 @@ echart_variance_contribution <- function(var_tbl, height = "300px", percent = FA
   df$sd_within <- sqrt(pmax(df$var_within, 0))
   df$sd_across <- sqrt(pmax(df$var_across, 0))
 
-  src_levels <- c(
-    "Inter-model spread", "Inter-annual variability", "Coefficient uncertainty"
+  # The coefficient bar follows the Results reference: a level, or a contrast
+  # with the historical mean or median. Residual draws get their own bar when
+  # the run has any (the "resample" rule); the year spread contains their
+  # year-to-year noise as well.
+  coef_label <- switch(reference %||% "none",
+    mean = "Coefficient uncertainty (difference from historical mean)",
+    median = "Coefficient uncertainty (difference from historical median)",
+    "Coefficient uncertainty (level)"
   )
-  src_cols <- c(.wise_cat[[3]], .wise_cat[[2]], .wise_cat[[1]])
+  has_resid <- "var_resid" %in% names(df) && any(df$var_resid > 0, na.rm = TRUE)
+  df$sd_resid <- if ("var_resid" %in% names(df)) sqrt(pmax(df$var_resid, 0)) else 0
+  src_levels <- c(
+    "Inter-model spread", "Inter-annual variability", coef_label,
+    if (has_resid) "Residual draws"
+  )
+  src_cols <- c(.wise_cat[[3]], .wise_cat[[2]], .wise_cat[[1]], if (has_resid) .wise_cat[[4]])
   # Horizontal rows: scenarios top-down in first-appearance order (static plot
   # coord_flip with levels rev(unique(df$scenario)) puts Historical on top).
   cats <- rev(unique(as.character(df$scenario)))
   cat_idx <- setNames(seq_along(cats) - 1L, cats)
 
   e <- .e_step2_base(height)
-  sd_cols <- c("sd_across", "sd_within", "sd_coef")
+  sd_cols <- c("sd_across", "sd_within", "sd_coef", if (has_resid) "sd_resid")
   series <- lapply(seq_along(src_levels), function(i) {
     vals <- vapply(cats, function(sc) {
       v <- df[[sd_cols[[i]]]][df$scenario == sc]

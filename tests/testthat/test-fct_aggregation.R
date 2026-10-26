@@ -10,6 +10,7 @@ legacy_rows_table <- function(rows, method, weighted, scenario = NULL) {
       model_id     = list(r$model_id),
       value_all    = list(r$value_all),
       value_all_sd = list(r$value_all_sd),
+      var_resid_all = list(r$var_resid_all),
       F_agg_all    = list(r$F_agg_all),
       var_within   = r$var_within,
       var_across   = r$var_across,
@@ -31,6 +32,7 @@ make_row <- function(year, n_models, with_gradient) {
     model_id = ids,
     value_all = vals,
     value_all_sd = stats::setNames(sqrt(vals), ids),
+    var_resid_all = stats::setNames(vals / 100, ids),
     F_agg_all = if (with_gradient) {
       matrix(seq_len(n_models * 3L) / 7, nrow = n_models)
     } else {

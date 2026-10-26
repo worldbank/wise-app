@@ -211,6 +211,14 @@ wise_provenance <- function(step, result, connection_params = NULL,
     }, character(1))
   }
 
+  # F0: Step 2 baseline households with and without an estimation row for the
+  # "original" residual rule.
+  rm_ <- result$sim_summary$residual_match
+  if (!is.null(rm_)) {
+    rec$residual_matched <- rm_$n_matched
+    rec$residual_unmatched <- rm_$n_unmatched
+  }
+
   c(rec, extra)
 }
 

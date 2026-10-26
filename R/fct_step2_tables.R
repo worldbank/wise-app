@@ -34,7 +34,8 @@ step2_hist_ref <- function(hist_tbl, deviation = "none") {
 #'
 #' When deviation = mean: average of per-year F_agg across historical years.
 #' When deviation = median: F_agg at the historical year closest to the
-#' median. Used by `step2_contrast_sd()` to switch the coefficient SE from
+#' median, with that year's residual variance as attribute `var_resid` (F1).
+#' Used by `step2_contrast_sd()` to switch the coefficient SE from
 #' level-CI (||F_s||) to contrast-CI (||F_s - F_ref||), the correct SE for
 #' paired counterfactual analysis on the same population.
 #' @noRd
@@ -66,8 +67,33 @@ step2_hist_f_ref <- function(ht, deviation = "none") {
     if (length(med_idx) == 0L) {
       Reduce(`+`, F_list) / length(F_list)
     } else {
-      F_list[[med_idx]]
+      # F1: a single reference year carries its own residual draw, so its
+      # variance enters the contrast (the mean over years averages it away).
+      ref <- F_list[[med_idx]]
+      resid_ref <- if ("var_resid_all" %in% names(ht) && length(ht$var_resid_all) >= med_idx) {
+        as.numeric(ht$var_resid_all[[med_idx]])[1L]
+      } else {
+        0
+      }
+      attr(ref, "var_resid") <- if (is.finite(resid_ref)) resid_ref else 0
+      ref
     }
+  }
+}
+
+# Residual variance of the members of row `k` of an aggregation table: the stored
+# `var_resid_all`, or, for a table without it, what `value_all_sd` holds beyond
+# the coefficient part `||F_agg||^2`.
+.step2_var_resid <- function(tbl, k, F_mat) {
+  stored <- if ("var_resid_all" %in% names(tbl)) as.numeric(tbl$var_resid_all[[k]]) else NULL
+  if (length(stored) == nrow(F_mat)) {
+    return(stored)
+  }
+  sd_level <- as.numeric(tbl$value_all_sd[[k]])
+  if (length(sd_level) == nrow(F_mat)) {
+    pmax(sd_level^2 - rowSums(F_mat * F_mat), 0)
+  } else {
+    0
   }
 }
 
@@ -91,13 +117,8 @@ step2_contrast_sd <- function(tbl, F_ref) {
     F_diff <- sweep(F_mat, 2L, F_ref, "-")
     # value_all_sd is sqrt(var_coef + var_resid). The contrast replaces
     # only the coefficient part; residual variance of the scenario stays.
-    sd_level <- as.numeric(tbl$value_all_sd[[k]])
-    var_resid <- if (length(sd_level) == nrow(F_mat)) {
-      pmax(sd_level^2 - rowSums(F_mat * F_mat), 0)
-    } else {
-      0
-    }
-    tbl$value_all_sd[[k]] <- sqrt(rowSums(F_diff * F_diff) + var_resid)
+    var_resid <- .step2_var_resid(tbl, k, F_mat)
+    tbl$value_all_sd[[k]] <- sqrt(rowSums(F_diff * F_diff) + var_resid + (attr(F_ref, "var_resid") %||% 0))
   }
   tbl
 }
@@ -256,8 +277,13 @@ step2_variance_breakdown <- function(series, mm_fn = by_model_matrix) {
       return(NULL)
     }
     sds_flat <- as.numeric(unlist(tbl$value_all_sd))
+    # value_all_sd is sqrt(var_coef + var_resid); the residual-draw part gets
+    # its own component (zero for the "original" rule and without the column).
+    resid_flat <- if ("var_resid_all" %in% names(tbl)) as.numeric(unlist(tbl$var_resid_all)) else numeric(0)
+    if (length(resid_flat) != length(sds_flat)) resid_flat <- numeric(length(sds_flat))
+    var_resid <- if (length(sds_flat)) mean(resid_flat, na.rm = TRUE) else 0
     var_coef <- if (length(sds_flat)) {
-      mean(sds_flat^2, na.rm = TRUE)
+      max(mean(sds_flat^2 - resid_flat, na.rm = TRUE), 0)
     } else {
       0
     }
@@ -284,6 +310,7 @@ step2_variance_breakdown <- function(series, mm_fn = by_model_matrix) {
     tibble::tibble(
       scenario      = scenario_label,
       var_coef      = var_coef,
+      var_resid     = var_resid,
       var_within    = var_within,
       var_across    = var_across,
       is_historical = is_hist
@@ -698,7 +725,8 @@ step2_run_aggregates <- function(hs, scenarios, skip_coef, pov_line = NULL, band
 #' The unnested `value_all` / `value_all_sd` of the aggregation tables, so each
 #' climate-model member keeps its own value and standard deviation. `sd` is
 #' the delta-method standard deviation of the member's annual aggregate
-#' (coefficient uncertainty plus residual variance); `var_within` and
+#' (coefficient uncertainty plus residual variance), `sd_resid` its residual-draw
+#' part alone; `var_within` and
 #' `var_across` are the ensemble variances of the year and repeat on each
 #' member row. The coefficient gradients (`F_agg_all`) are not kept.
 #'
@@ -720,10 +748,16 @@ step2_annual_table <- function(agg) {
       s <- as.numeric(tbl$value_all_sd[[k]])
       if (length(s) == n[[k]]) s else rep(s, length.out = n[[k]])
     })
+    # the residual-draw part of `sd` (0 under the "original" rule)
+    sd_resid <- lapply(seq_along(vals), function(k) {
+      v <- if ("var_resid_all" %in% names(tbl)) as.numeric(tbl$var_resid_all[[k]]) else numeric(0)
+      sqrt(pmax(if (length(v) == n[[k]]) v else rep(0, n[[k]]), 0))
+    })
     data.frame(
       policy_id = NA_character_, scenario = scenario, metric = metric,
       member = unlist(ids, use.names = FALSE), sim_year = rep(as.integer(tbl$sim_year), n),
       value = unlist(vals, use.names = FALSE), sd = unlist(sds, use.names = FALSE),
+      sd_resid = unlist(sd_resid, use.names = FALSE),
       var_within = rep(as.numeric(tbl$var_within), n), var_across = rep(as.numeric(tbl$var_across), n),
       weighted = rep(as.logical(tbl$weighted), n), stringsAsFactors = FALSE
     )
@@ -877,7 +911,7 @@ step2_summary_table <- function(agg, hs, scenarios, selected_weather = NULL) {
     }
 
     if (nrow(var)) {
-      for (component in c("var_coef", "var_within", "var_across")) {
+      for (component in c("var_coef", "var_resid", "var_within", "var_across")) {
         out[[length(out) + 1L]] <- row(var$scenario, m, "uncertainty", component, NA, NA, var[[component]])
       }
     }

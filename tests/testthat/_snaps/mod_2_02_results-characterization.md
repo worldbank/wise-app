@@ -61,7 +61,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted", "scenario"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted", "scenario"]
                     }
                   },
                   "value": [
@@ -425,6 +425,122 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.09401454]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
                         }
                       ]
                     },
@@ -1039,7 +1155,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
                     }
                   },
                   "value": [
@@ -1388,6 +1504,117 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.04780984, 0.06918961, 0.06084996]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
                         }
                       ]
                     },
@@ -1975,7 +2202,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
                     }
                   },
                   "value": [
@@ -2324,6 +2551,117 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.04019549, 0.08207707]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
                         }
                       ]
                     },
@@ -3113,7 +3451,7 @@
         "names": {
           "type": "character",
           "attributes": {},
-          "value": [".nrow", "scenario", "var_coef", "var_within", "var_across", "is_historical"]
+          "value": [".nrow", "scenario", "var_coef", "var_resid", "var_within", "var_across", "is_historical"]
         }
       },
       "value": [
@@ -3131,6 +3469,11 @@
           "type": "double",
           "attributes": {},
           "value": [0.00346035, 0.00432613, 0.00262732]
+        },
+        {
+          "type": "double",
+          "attributes": {},
+          "value": [0, 0, 0]
         },
         {
           "type": "double",
@@ -4421,7 +4764,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted", "scenario"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted", "scenario"]
                     }
                   },
                   "value": [
@@ -4785,6 +5128,122 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.08839818]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
                         }
                       ]
                     },
@@ -5399,7 +5858,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
                     }
                   },
                   "value": [
@@ -5748,6 +6207,117 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.04997306, 0.07447706, 0.06654225]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
                         }
                       ]
                     },
@@ -6335,7 +6905,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
                     }
                   },
                   "value": [
@@ -6684,6 +7254,117 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.0427908, 0.07873246]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
                         }
                       ]
                     },
@@ -7473,7 +8154,7 @@
         "names": {
           "type": "character",
           "attributes": {},
-          "value": [".nrow", "scenario", "var_coef", "var_within", "var_across", "is_historical"]
+          "value": [".nrow", "scenario", "var_coef", "var_resid", "var_within", "var_across", "is_historical"]
         }
       },
       "value": [
@@ -7491,6 +8172,11 @@
           "type": "double",
           "attributes": {},
           "value": [0.00339496, 0.00450316, 0.00273297]
+        },
+        {
+          "type": "double",
+          "attributes": {},
+          "value": [0, 0, 0]
         },
         {
           "type": "double",
@@ -8781,7 +9467,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted", "scenario"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted", "scenario"]
                     }
                   },
                   "value": [
@@ -9145,6 +9831,122 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.12076702]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0]
                         }
                       ]
                     },
@@ -9759,7 +10561,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
                     }
                   },
                   "value": [
@@ -10108,6 +10910,117 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.09583842, 0.00920393, 0.01609166]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0, 0]
                         }
                       ]
                     },
@@ -10695,7 +11608,7 @@
                     "names": {
                       "type": "character",
                       "attributes": {},
-                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
+                      "value": [".nrow", "sim_year", "value", "model_id", "value_all", "value_all_sd", "var_resid_all", "F_agg_all", "var_within", "var_across", "agg_method", "weighted"]
                     }
                   },
                   "value": [
@@ -11044,6 +11957,117 @@
                           "type": "double",
                           "attributes": {},
                           "value": [0.03815264, 0.03638986]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "attributes": {},
+                      "value": [
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
+                        },
+                        {
+                          "type": "double",
+                          "attributes": {},
+                          "value": [0, 0]
                         }
                       ]
                     },
@@ -11833,7 +12857,7 @@
         "names": {
           "type": "character",
           "attributes": {},
-          "value": [".nrow", "scenario", "var_coef", "var_within", "var_across", "is_historical"]
+          "value": [".nrow", "scenario", "var_coef", "var_resid", "var_within", "var_across", "is_historical"]
         }
       },
       "value": [
@@ -11851,6 +12875,11 @@
           "type": "double",
           "attributes": {},
           "value": [0.00150633, 0.00151195, 0.00272833]
+        },
+        {
+          "type": "double",
+          "attributes": {},
+          "value": [0, 0, 0]
         },
         {
           "type": "double",

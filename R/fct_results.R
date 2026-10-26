@@ -461,7 +461,7 @@ attach_active_mask <- function(chol_obj,
   reference <- svy_reference %||% train_data
 
   id_col <- intersect(
-    c("pid", "hhid", "fid"),
+    c(RESID_KEY_COL, "pid", "hhid", "fid"),
     intersect(names(svy_modified), names(reference))
   )
   id_col <- if (length(id_col) > 0L) id_col[[1L]] else NULL
