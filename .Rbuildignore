@@ -17,10 +17,13 @@
 ^CLAUDE\.md$
 ^batch$
 ^review$
+^\.agents$
 ^\.claude$
 ^\.kilo$
 ^\.posit$
 ^AGENTS\.md$
+^ARCHITECTURE\.md$
+^DEPLOYMENT\.md$
 ^docs$
 ^\.github$
 ^\.lintr$

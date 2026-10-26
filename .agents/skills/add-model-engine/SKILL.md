@@ -64,7 +64,7 @@ and `xgboost` are future-engine candidates only.
   `fct_step2_compute.R`, `fct_step2_async.R`, `fct_policy_decompose.R`,
   `fct_policy_metric_decompose.R`, `fct_decomposition_summary.R`, the
   `ENGINE_REGISTRY` and metric-registry fields, `.wiseapp_*` columns, and the
-  `year` type contract (`AGENTS.md`, CR-CQ-07). Edits there are deliberate
+  `year` type contract (`ARCHITECTURE.md`, CR-CQ-07). Edits there are deliberate
   feature work, not drive-by changes; keep them minimal and covered by tests.
 - **Determinism.** The registry passes `seed` to `make_spec()`. Engines must be
   reproducible and single-threaded (ranger sets `num.threads = 1L`, xgboost

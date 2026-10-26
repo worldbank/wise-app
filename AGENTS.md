@@ -1,216 +1,90 @@
 # AGENTS.md
 
-This file provides guidance to coding agents (Kilo, Claude Code, Codex, etc.) when working with code in this repository.
+Guidance for coding agents (Claude Code, Kilo, Codex and others) working in this repository. This file holds the rules and a map; the detail lives in the files it points to. Read those only when the task needs them.
 
-**Performance/optimization work**: read and follow `review/optimization_guidelines.md` — it defines the app's optimization standards, app-specific constraints, and benchmarking requirements.
+## What this is
 
-**Code hygiene work**: follow `review/code_hygiene.md`. **Open review items** (security, performance, accessibility, code quality) are tracked in `review/REVIEW-2026-10-06-tracking.md`; finished work is in `review/archive/`.
+**WISE-APP** (Weather Impact Simulation and Evaluation for Adaptation Policy and Planning) is an R Shiny app built by the World Bank. It estimates how weather affects household welfare (Step 1), simulates welfare under historical and future climate (Step 2) and evaluates policies (Step 3). R package `wiseapp`, built with [Golem](https://thinkr-open.github.io/golem/), deployed on Posit Connect, MIT licence. `DESCRIPTION` requires R >= 4.4.0; development uses R 4.5.3.
 
-**Methods reference**: `docs/README.md` indexes the methods pages (estimators, simulation, metrics, uncertainty, policy mechanics). Each page ends with an Implementation map from equations to code and records the commit it was checked against (`verified_against`); update the page when a change alters a method.
+## Rules
 
-## What This Is
+- **Git:** work on `dev` or a branch off it (`origin` is `worldbank/wise-app`). Do not push, deploy or upload without an explicit go-ahead.
+- **Secrets and data:** never open or print `.Renviron` or credentials. Real data is at `WISEAPP_DATA_PATH`; read it from R (`Sys.getenv("WISEAPP_DATA_PATH")`), because the shell does not load `.Renviron`. The sibling repo `wise-app-data` is data-prep code only, with no produced datasets.
+- **Pinned tools:** `devtools::document()` only with roxygen2 7.3.3 (`RoxygenNote`; 8.x rewrites `NAMESPACE`). `duckdb` must be exactly the version pinned in `DESCRIPTION`; the bundled extensions are built for it.
+- **Version:** `DESCRIPTION` and `inst/golem-config.yml` must match; regenerate `manifest.json` after.
+- **Protected areas** (numerics, async code, contract surface; list in `review/code_hygiene.md`): change only deliberately, with tests that cover the change.
+- **`year` type contract:** do not unify the type of `year` across stages without parity runs on every engine (CR-CQ-07, see `ARCHITECTURE.md`).
+- **Errors in the UI** go through `wise_user_error()`; never show `conditionMessage()` in modules.
+- **UI stack:** tables `reactable`, charts `echarts4r` (`echart_*` builders), maps only the MapLibre bridge (`fct_hexmap.R`).
+- **Style:** native pipe `|>`, `<-`, no `library()` in `R/`, ASCII quotes and hyphens in code and comments, 120-character lines. Full conventions: `review/code_hygiene.md`.
+- **Numbers that move:** a change to model or simulation outputs needs a Decision log entry with before/after BFA headline numbers (`review/REVIEW-2026-10-06-tracking.md`, Working rules).
+- **Speed claims** need before/after timing and peak memory per `review/optimization_guidelines.md` section 9 (skill `wise-benchmark`).
 
-**WISE-APP** (Weather Impact Simulation and Evaluation for Adaptation Policy and Planning) is an R Shiny web application built by the World Bank. It estimates relationships between weather and household welfare, simulates welfare outcomes under climate scenarios, and evaluates policy/adaptation strategies.
-
-- R package name: `wiseapp`
-- Framework: [Golem](https://thinkr-open.github.io/golem/) (production-ready Shiny scaffolding)
-- Version: 0.5.0 (`DESCRIPTION` and `inst/golem-config.yml` must match; `manifest.json` checksums follow)
-- R version: 4.5.3 (configured by the local development environment); `DESCRIPTION` requires R >= 4.4.0
-- License: MIT
-
-## Development Commands
+## Commands
 
 ```r
-# Install dependencies from DESCRIPTION
-install.packages(read.dcf("DESCRIPTION")[1, "Imports"] |>
-  gsub("\\s*\\([^)]*\\)", "", x = _) |>
-  strsplit(",\\s*") |>
-  unlist() |>
-  trimws())
-# duckdb must be exactly the version pinned in DESCRIPTION (bundled extensions)
-
-# Run the app locally
-wiseapp::run_app()
-# or from the R console:
-source("R/run_app.R"); run_app()
-
-# Document (regenerate man/ and NAMESPACE)
-# Use the roxygen2 version in DESCRIPTION's RoxygenNote (7.3.3); CI pins it,
-# and 8.x rewrites the NAMESPACE layout.
-devtools::document()
-
-# Load all R code during development
-devtools::load_all()
-
-# Check package
-devtools::check()
-
-# Run tests
-testthat::test_dir("tests")
-# or
-devtools::test()
+devtools::load_all()     # load the package from source
+wiseapp::run_app()       # run the app (dev/run_dev.R also documents and reloads)
+devtools::document()     # regenerate man/ and NAMESPACE (roxygen2 7.3.3)
+devtools::test()         # full suite from the source tree, 4 to 6 minutes
+devtools::test(filter = "fct_hexmap")   # one file: tests/testthat/test-fct_hexmap.R
+devtools::check()        # R CMD check (runs with --no-tests in CI)
 ```
 
-**Real data**: `WISEAPP_DATA_PATH` is set in the user's `.Renviron` and points to the produced datasets. Read it from R (`Sys.getenv("WISEAPP_DATA_PATH")`), not from the shell: Bash does not load `.Renviron`. Do not open or print `.Renviron` itself (it holds credentials). The sibling repository `wise-app-data` is the data-prep code only and has no produced datasets. Benchmarks, batch runs and `dev/ui_drive.R` read the real data from that path. To compare two builds in a batch run, install each into its own library and run `targets::tar_make()` in the main process (remove `controller` in `_targets.R`) with `.libPaths()` set first: `crew` workers load the default installed `wiseapp`, not the one you meant.
+Install dependencies with `pak::local_install_deps()` or from `DESCRIPTION` `Imports`, then install the pinned `duckdb` version.
 
-Development scripts are in `dev/`: `run_dev.R` (run the app), `00_make_manifest.R` (Connect manifest), the benchmark harnesses in `dev/bench/` (`bench_*.R`, `run_step2_benchmark.sh`) `docs_index.R` and `docs_check.R` (rebuild `docs/index.yml`; check the methods pages: front matter, links, Implementation maps, index current) and `ui_drive.R` (start the app and drive it in headless Chrome one command per call: tabs, inputs, hover, key presses, screenshots, errors; usage in `.claude/skills/wise-ui-check/SKILL.md`).
+## Where things live
 
-## Architecture
+| Path | What |
+|---|---|
+| `ARCHITECTURE.md` | Map of `R/` by pipeline step, contracts that span files (engines, `year`, levers, transfers, UI), testing details |
+| `DEPLOYMENT.md` | Posit Connect deployment, bundled DuckDB extensions, resource limits and all environment variables |
+| `R/` | `mod_*` Shiny modules, `fct_*` Shiny-free logic, `utils_*` shared helpers, `app_*` wiring |
+| `src/welfare_stats.cpp` | Rcpp kernel for aggregation statistics |
+| `docs/` | Methods pages (equations, assumptions); index `docs/README.md`. Each ends with an Implementation map and records `verified_against` |
+| `batch/` | Batch runs (`targets`): `batch/README.md`, table reference `batch/docs/tables.md` |
+| `review/` | Standards (`code_hygiene.md`, `optimization_guidelines.md`), open items (`REVIEW-2026-10-06-tracking.md`, its "Where things stand" block is the current status), plans; finished work in `review/archive/` |
+| `dev/` | `run_dev.R`, `00_make_manifest.R` (Connect manifest), `ui_drive.R` (headless-Chrome driver), `docs_check.R` / `docs_index.R`, `agents_check.R` (paths, functions and sizes named in these instructions; run in CI), parity scripts `batch_parity_bfa*.R`, benchmarks in `dev/bench/` |
+| `tests/testthat/` | Unit tests; `tests/e2e/smoke.R` browser smoke with axe-core |
+| `.agents/skills/` | Skills, the one shared copy (see Skills) |
 
-### Pipeline (tabs in the UI: Overview plus three steps)
+## Pipeline
 
-1. **Step 0 – Overview** (`mod_0_overview`): Data source configuration (local/S3/GCS/Azure/HuggingFace/Databricks), loads survey metadata.
-2. **Step 1 – Modelling** (`mod_1_modelling` + 8 sub-modules): Select sample → explore data → define outcome variable → pick weather variables → configure model → view results.
-3. **Step 2 – Simulation** (`mod_2_simulation` + 3 sub-modules): Define historical/future weather scenarios (including CMIP6 climate models), generate welfare predictions.
-4. **Step 3 – Policy Scenarios** (`mod_3_scenario` + 10 sub-modules): Model social protection, infrastructure, digital, labor market, and education interventions (`mod_3_01`-`mod_3_05`), then run the policy simulation, results, diagnostics, and decomposition (`mod_3_06`-`mod_3_09`), and the cash-transfer cost-effectiveness tab (`mod_3_10`).
+Step 0 Overview, Step 1 Modelling, Step 2 Simulation, Step 3 Policy scenarios; data flows forward. Map of the code by step: `ARCHITECTURE.md`. Methods: `docs/README.md`.
 
-Reactive data flows forward through the pipeline: Step 0 outputs feed Step 1, which feeds Steps 2 and 3.
+## After you change X, also do Y
 
-### Code Organization
+| Change | Also |
+|---|---|
+| Any `R/` file | Run the matching test file (`test-<file>.R`; some use hyphens, so also try `filter = "<topic>"`) |
+| Roxygen block or exports | `devtools::document()`; check the `NAMESPACE` and `man/` diff |
+| A method (estimator, simulation, metric, policy mechanics) | Update the methods page in `docs/`, its `verified_against`; run `Rscript dev/docs_check.R` |
+| Model or simulation outputs | Determinism tests; Decision log with BFA before/after |
+| A batch table builder | `batch/docs/tables.md`; batch tests (`ARCHITECTURE.md`, Testing details) |
+| UI (modules, CSS, charts, maps) | Check in the running app (skill `wise-ui-check`); `tests/e2e/smoke.R` for larger changes |
+| Performance | Skill `wise-benchmark` |
+| `R/`, `inst/` or dependencies, before a deploy | `Rscript dev/00_make_manifest.R`; settings in `DEPLOYMENT.md` |
+| DuckDB version | Rebuild `inst/duckdb_extensions/`, update the pin, the version constant and the SHA-256 values in `R/fct_load_data.R` together (`DEPLOYMENT.md`) |
+| A review finding | Close it per the Working rules in `review/REVIEW-2026-10-06-tracking.md` |
 
-```
-R/
-├── app_ui.R / app_server.R    # Top-level app wiring
-├── app_config.R               # Environment detection (dev/Posit Connect/Databricks)
-├── run_app.R                  # Entry point
-├── mod_*.R                    # 25 Shiny modules (each has a UI and server function)
-├── fct_*.R                    # 45 business logic files (no Shiny dependencies)
-└── utils_*.R                  # 5 files: shared math, UI, plot-theme, logging, and Step 1 helpers
-src/welfare_stats.cpp          # Rcpp kernel: all aggregation statistics in one sort per group
-```
+## Skills
 
-**`fct_` files are the core engine:**
-- `fct_connection.R` – builds connection params for each storage backend
-- `fct_load_data.R` – data ingestion and validation via DuckDB
-- `fct_fit_model.R` – **engine registry**: pluggable modeling backends (fixest, ranger, xgboost, RIF)
-- `fct_predict_outcomes.R` – prediction pipeline for fitted models
-- `fct_simulations.R` – orchestrates the simulation pipeline (historical + future weather)
-- `fct_sim_compare.R` – visualization and comparison functions (exceedance curves, threshold tables)
-- `fct_results.R` – output formatting, coefficient plots, tables
-- `fct_policy_registry.R` – **policy lever registry**: levers are the variables with a `policy` code in the variable list (columns `policy`, `policy_group`, written by wise-app-data); `policy_registry(variable_list)` gives code, variable, label, group, slot (`infra`, `digital`, `education`, `labor`, `other`), type and behaviour. The lever code is the identity everywhere (scenario key, control id `<code>_universal`/`<code>_pct`, spec field stem); variable names are data. Type decides behaviour (`logical`: binary access, `numeric`: percent change); only `POLICY_SPECIAL_BEHAVIOURS` (`health`, the coupled labour levers) differ, and adding one is a code change. A list without `policy` values falls back to `POLICY_FALLBACK` (the earlier names). `POLICY_KEY_ALIASES` (letters `A` to `M`) and `POLICY_STEM_ALIASES` (`elec`, `imp_wat_san`, `primary`, ...) translate earlier specs when read. `mod_3_levers.R` builds the controls of the access-lever modules (`mod_3_02`, `mod_3_03`, `mod_3_05`, `mod_3_11` for other groups); `wise_access_config()` (`fct_step3_input.R`) builds the scenario lists, which carry `lever_vars` so the simulation needs no registry. Levers of other groups run in the `infra` scenario (`step3_merge_access()`)
-- `fct_policy_sim.R` – policy scenario variable discovery and placeholder UI
-- `fct_sp_effectiveness.R` – social protection cost and targeting metrics (coverage, leakage, adequacy, realised errors) shown in the Step 3 diagnostics (for a shock program: who can be paid and the cost of a year with payments), plus the effect-per-cost engine of the cost-effectiveness tab (`sp_cost_effectiveness()`: cost per person lifted for a poverty rate, gain per $1 otherwise, average and 1-in-20 year)
-- `fct_sp_shock.R` – **shock-responsive social protection**: spec validation (`.sp_shock_problem()`), trigger thresholds from the historical exposure (`sp_trigger_thresholds()`: weather level or 1-in-N return period, N-year record rule), trigger state and payout scope (`sp_trigger_state()`), the run-level `sp_shock_plan()` (plain data), the dynamic per-row transfer, run outputs (`sp_shock_pipeline_rows()`, `sp_shock_summary()`: activation, annual cost distribution, basis risk, leakage, budget and cap, anticipatory breakeven) and the Step 3 summary-card preview (`sp_shock_preview()`); it also holds the response check (`sp_response_check()`), impact triggers (`.sp_impact_column()`), layered dynamic targeting (`.sp_dyn_scope()`) and the timing design (`.sp_forecast_fire()`, `.sp_timing_effect()`)
-- `fct_policy_decompose.R` – **policy effect decomposition** (direct effect, code name `main`, + resilience: repositioning + interaction)
-- `fct_policy_metric_decompose.R` / `fct_decomposition_summary.R` – metric-aware Step 3 decomposition (per-metric channels) and its summaries
-- `fct_metric_registry.R` – metric metadata (labels, units, direction, change kind, supported engines and uncertainty sources)
-- `fct_rif_sim.R` – Recentered Influence Function (RIF) quantile regression helpers
-- `fct_weatherstats.R` – weather statistics computation
-- `fct_hexmap.R` – **hex-map engine bridge**: vendored MapLibre GL + h3-js (`inst/app/vendor/` — outside the `bundle_resources()` scan tree, served once via the explicit dependency; browser side `hexmap.js`), columnar payload contract (`hexmap_payload()`, senders `hexmap_update`/`hexmap_clear`/`hexmap_fit`), container `hexmap_ui()`. Used by mod_1_02, mod_1_03, mod_1_05; no Leaflet fallback — MapLibre is the only map surface. Asset pins and behavior details live in-file.
-- `fct_step2_compute.R` – pure, serial Step 2 compute boundary (reference numerics remain in `fct_run_simulation()`)
-- `fct_export.R` / `fct_provenance.R` – export bundles (config, tables, figures, metadata) and the immutable run-provenance record
-- `fct_step2_async.R` – process-wide mirai async coordinator for Step 2 (FIFO queue, worker snapshots, secrets scrubbing) and the shared daemon pool for Overview metadata loads (credentials policy: see `review/optimization_guidelines.md` §0)
-- `fct_step1_data.R` / `fct_spec_defaults.R` / `fct_step1_tables.R` – **batch pipeline, Step 0/1 side**: the Shiny-free glue that `mod_1_01`-`mod_1_05` and batch both call (survey load and preparation, outcome data, weather fetch and merge), the app defaults the controls start from (`wise_spec_defaults()`), and the `variable_stats`, `interview_dates` and `weather_stats` table builders
-- `fct_step1_model.R` / `fct_step1_model_tables.R` – **batch pipeline, Step 1 model side**: the Shiny-free Model/Results glue that `mod_1_06` and `mod_1_07` and batch both call (valid variables, Lasso, model specification, `wise_fit()`, `wise_model_from_spec()`), the translated effects of the Results tab and the `model_terms`, `model_fit`, `model_vcov` builders (reference `batch/docs/tables.md`)
-- `fct_step2_input.R` / `fct_step2_tables.R` – **batch pipeline, Step 2 side**: the Shiny-free glue that `mod_2_01` and batch both call (baseline survey, periods, scenarios, residual rule and model snapshot of the `step2_compute()` input: `wise_step2_input()`), and the Results views of `mod_2_02` as pure functions (`step2_pointrange_bands()`, `step2_threshold_table()`, `step2_variance_breakdown()`, ...) plus the `annual`, `summary` and `sim_weather` table builders (reference `batch/docs/tables.md`)
-- `fct_step3_input.R` / `fct_step3_tables.R` – **batch pipeline, Step 3 side**: the Shiny-free glue that `mod_3_01`-`mod_3_06` and batch both call (lever configurations from control values: `wise_sp_config()`, `wise_infra_config()`, ...; the `step3_compute()` arguments: `wise_step3_input()`), the Results-pane views of a policy run as pure functions (`step3_series()`, `step3_threshold_table()`, `step3_paired_*()`, the diagnostics and cost-effectiveness helpers `mod_3_08` and `mod_3_10` call) and `step3_batch_tables()`, which builds the policy arm of `annual` and `summary`, `decomposition` and `policy_measures` (reference `batch/docs/tables.md`)
-- `fct_batch_spec.R` / `fct_batch_targets.R` – batch run spec (defaults, validation, stage ids, YAML grid, app-config import; sections `source` to `policy`) and the `targets` runner (`wise_targets()`); project template in `inst/batch/`. User guide `batch/README.md`, design `review/batch_pipeline_plan.md`. `targets`, `crew` and `yaml` are Suggests.
+Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If your tool does not load skills from there, read the `SKILL.md` before doing that kind of task. To make a tool load them, link or copy the folder into the tool's own skills folder (not tracked by git); Claude Code, from the repo root: `ln -s ../.agents/skills .claude/skills` (`.claude/skills` is git-ignored). Edit skills only in `.agents/skills/`. Setup for other tools: README, "Agent skills".
 
-### Modeling Engine Registry
+| Skill | Use when |
+|---|---|
+| `wise-ui-check` | A change touches the UI, or the user asks to run, screenshot or inspect the app |
+| `wise-benchmark` | Benchmarking or claiming a speed or memory improvement |
+| `wise-hygiene-pass` | Cleanup, style, lint or dead-code pass over `R/` with no behaviour change |
+| `add-model-engine` | Adding or extending a model engine |
 
-`fct_fit_model.R` defines `ENGINE_REGISTRY` with six fields per engine:
-- `$requires` – package dependencies
-- `$model_types` – supported model types (Linear regression, Logistic regression, Quantile regression)
-- `$build_formulas` – creates nested formulae for progressive models
-- `$fit_one` – fits a single model with the backend's API
-- `$make_spec` – creates parsnip model spec (NULL for fixest/RIF)
-- `$prepare_outcome` – coerces outcome to required type
+## Testing essentials
 
-**Engines:**
-| Engine | Description | Model Types |
-|--------|-------------|-------------|
-| `fixest` | High-dimensional fixed effects (feols/feglm) | Linear, Logistic |
-| `ranger` | Random forest via parsnip + ranger | Linear |
-| `xgboost` | XGBoost via parsnip | Linear, Logistic |
-| `rif` | Unconditional quantile regression via RIF (Firpo et al. 2009) | Quantile |
+- Run from the source tree, as CI does. The environment is pinned by `tests/testthat/setup-env.R` (caches in a temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R`; do not rely on the developer's `.Renviron`.
+- New tests go in `test-<R file>.R`. A fixture builder moves into a `helper-*.R` file only when two or more test files use it.
+- Not covered by R tests: MapLibre rendering, `conditionalPanel` visibility, `update*Input()` on config import and the real Step 0 to 3 flow. Check them with `dev/ui_drive.R` (skill `wise-ui-check`).
+- Coverage, browser smoke and batch test details: `ARCHITECTURE.md`, Testing details.
 
-### Data Backends
+## Keeping these instructions current
 
-DuckDB is the unified query engine with extension-based storage support:
-
-| Backend | Required DuckDB Extension | Auth Method |
-|---------|---------------------------|-------------|
-| S3 | httpfs | AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY |
-| GCS | httpfs | GCS_ACCESS_KEY_ID / GCS_SECRET_ACCESS_KEY |
-| Azure | azure + delta (not bundled; installed on first use, local/dev runs only) | Account key or service principal |
-| Databricks | httpfs | OAuth2 M2M (DATABRICKS_HOST/CLIENT_ID/SECRET) |
-| Local | none | File paths |
-
-See `fct_connection.R` and `fct_load_data.R` for implementation details.
-
-## Key Patterns
-
-### Shiny Architecture
-- **Shiny modules**: Every major UI section is a Golem-style module (`mod_NAME_ui()` / `mod_NAME_server()`). Sub-modules are nested inside parent modules.
-- **Reactive chain**: Outputs of one module (model object, selection state) are passed as reactive inputs to downstream modules.
-
-### Modeling Pipeline
-- **Progressive models**: Three nested specifications (weather only → + FE → + FE + controls) fitted identically for comparison.
-- **Log-transform handling**: When welfare outcome is log-transformed, predictions are automatically back-transformed (`exp()`) throughout the pipeline.
-- **Coefficient uncertainty propagation**: Cholesky factor of VCV matrix (`compute_chol_vcov`) enables fast Monte Carlo draws via factor loading matrix (`compute_factor_loading`), ~200x speedup over full-dimension draws.
-
-### UI Conventions
-- **Tables** are `reactable` with client-side CSV download (raw values exported; rounding lives in the column format). **Charts** are `echarts4r` built by `echart_*` functions, with the ggplot builders kept as static, export and test references; registered on-screen figures export through the echarts closure. Shared styling is in `utils_plot_theme.R`. Maps use only the MapLibre bridge (`fct_hexmap.R`). See `review/optimization_guidelines.md` sections 6 and 7.
-- User-facing error text goes through `wise_user_error()` (full condition logged with an id, short classified message shown); do not show `conditionMessage()` directly in modules.
-- Stage timing is logged one line per stage by `.wise_log_stage()` (`utils_log.R`).
-
-### Policy Analysis
-- **Policy decomposition**: Total effect = Direct effect (code name `main`) + Resilience effect (Repositioning + Interaction) — see `fct_policy_decompose.R`.
-- **RIF (Recentered Influence Function)**: Unconditional quantile regression for distributional impact estimation (Firpo, Fortin & Lemieux 2009).
-- **Cash transfer amount**: `transfer_amount_usd` is the amount per payment in the outcome's currency (the id is historical). A regular `transfer_first` program can set it from a welfare percentile (`transfer_amount_mode == "pctile"`, `transfer_pctile`): `wise_sp_resolve_amount()` (`fct_step3_input.R`) writes the amount once per run from the baseline survey the run uses (`.sp_welfare_quantile()`, x 365 / `transfer_n_payments`, LCU via `ppp2021`) and records `amount_resolved`; the module's `sp_scenario_spec()` and batch `wise_policy_configs(svy =)` are the two callers, so everything downstream reads a fixed amount. Batch `policy_measures` has a `transfer_amount` section for it.
-- **SP cash transfer column**: `.wiseapp_sp_transfer` is the single source of truth for social protection transfers of a regular program.
-- **Shock-responsive SP** (`sp_type == "shock"`): ex post only; the trigger is evaluated per survey round, location and interview month on the historical thresholds (fixed under climate change); `apply_policy_to_svy()` writes the static eligibility `.wiseapp_sp_eligible` and no transfer. The transfer is paid per prediction row inside the annual correction: `apply_policy_delta_to_baseline(sp =, analysis_unit =)` builds the plan once, stores it on `prepared$shock`, and the one shared hook (`.policy_annual_channel_block(sp_dynamic =)`, fed by `.policy_sp_dynamic()` in all three consumers) adds it into `delta_sp`, `delta_main` and `delta_total` and returns it as `delta_sp_shock`. The amount is a fixed amount per activation or, with `budget_rule == "loss_share"`, a share of the modelled loss (plan rule 7) of the paid households of each triggered cell; an optional `annual_cap` on total cost scales a year's payments down pro rata (`sp_shock_pipeline_transfer()` is the one place that builds the per-row transfer, used by the run and the preview). RIF repositioning does not respond to the dynamic transfer (approximation). Run outputs travel as `pol_out$shock` (`rows`, `summary`, `paid_historical`) and are published as `shock_summary`; the published `policy_svy` marks households paid in at least one historical year in `.wiseapp_sp_transfer` so reach and diagnostics keep one definition of "treated". Phase 2 additions, all optional spec fields that leave the Phase 1 path unchanged at their defaults (the plan part is `NULL`): `budget_rule = "loss_share"` and `annual_cap` (budgets linked to modelled loss, pro-rata cap); `trigger_metric` other than `"weather"` (modelled loss, poverty rate or number of poor, read nationally, by GAUL admin level or by survey location; the metric becomes an exposure column so thresholds and scopes are the weather trigger's own code; poverty uses the trigger's own line (`trigger_pov_line` in the spec, prefilled from the outcome's poverty line, fixed per run)); `dyn_geo` / `dyn_welfare` (worst-affected share of triggered locations, predicted-welfare oracle with seeded errors); `transfer_timing = "anticipatory"` (forecast POD / FAR draws keyed by the unit the trigger is read at (survey cell, area, or the country for a national gate or national impact) and simulation year, shared by all members; multiplier `m` scales the welfare effect of hits only, never cost; `state$effect` is applied in `.policy_sp_shock_eval()` and cost keeps the nominal transfer; delay inputs scale ex-post welfare). Pass `seed` and `hist_exposure_map` (and `level_factor`) to `sp_shock_plan()`; `pov_line` is only a fallback for specs without `trigger_pov_line`. Plan: `review/sp_shock_responsive_plan.md`; tasks: `review/sp_shock_responsive_tasks.md`.
-
-### Simulation Pipeline
-- **`year` type contract**: `year` is a fixed-effect factor in the fitted models. Survey-weather frames carry it as a factor (`merge_survey_weather`), Step 2 projections and policy joins as character (`.step2_survey_projection`, `fct_simulations.R`), and period/sample helpers as numeric. fixest predicts identically from factor, character or integer `year`, but base-R and `model.matrix` engines (ranger, xgboost, lm-style fits) reject or mis-encode a type that differs from training, so do not unify the type without parity runs on every engine (CR-CQ-07).
-- **Historical simulation**: Weather data joined to survey panel (one first-of-month date per (survey month × year) combination).
-- **Future simulation**: SSP scenarios (SSP2-4.5, SSP3-7.0, SSP5-8.5) with additive/multiplicative perturbations per variable units.
-- **Residual handling**: Options for display-time residual simulation (`original`, `normal`, `resample`, `none`).
-
-### Config
-- **Config via `config` package**: `inst/golem-config.yml` holds environment-specific settings; `app_config.R` reads them plus environment variables for deployment detection.
-
-## Deployment
-
-Target platform: **Posit Connect**. Automatic startup data-source selection is controlled by `WISEAPP_DATA_SOURCE`; see the environment variables below and the deployment scripts for deployment steps.
-
-Runtime egress: the app serves its fonts locally (`inst/app/fonts/`), but the hex map loads its basemap style and tiles from CARTO (`tiles.basemaps.cartocdn.com`, see `inst/app/vendor/hexmap.js`). The server must allow HTTPS to that host for map views; everything else needs only the configured data source.
-
-Bundled DuckDB extensions (`inst/duckdb_extensions/`: `h3` and `httpfs`) are built for the exact `duckdb` version pinned in `DESCRIPTION` (currently 1.5.6) and are checked against pinned SHA-256 values in `R/fct_load_data.R` before they are installed on Connect. To upgrade DuckDB, rebuild the binaries and update the pin, the version constant and the checksums together.
-
-Optional resource limits (unset = package/DuckDB defaults). Every Connect process runs a main R process plus a mirai daemon, each with its own in-memory DuckDB, so cap them on shared hosts:
-- `WISEAPP_DUCKDB_MEMORY_LIMIT` (for example `4GB`) and `WISEAPP_DUCKDB_THREADS` (per DuckDB instance); `WISEAPP_DUCKDB_TEMP_DIR` (spill directory, default a per-process temp dir)
-- `WISEAPP_THREADS` (fixest and collapse threads)
-- `WISEAPP_ASYNC_TIMEOUT_MIN` (Step 2 run limit, default 90), `WISEAPP_ASYNC_STEP3_TIMEOUT_MIN` (Step 3 run and metric jobs, default 90) and `WISEAPP_ASYNC_METADATA_TIMEOUT_SEC` (default 300); `0` disables
-- `WISEAPP_ASYNC_STEP3=0` runs the Step 3 policy run and metric decomposition in the main process. By default they run on the shared mirai daemon and read the adopted Step 2 result and the Step 3 policy result from retained qs2 files under `WISEAPP_ASYNC_ARTIFACT_ROOT` (default a per-process temp dir, `retained/`). Budget temp disk per session: about 0.4-0.6 GB at a 3x3 Step 2 payload (BFA 2x2: 178 MB plus 216 MB). The files are removed when the result is replaced and at session end.
-- `WISEAPP_STAGE_LOG=0` turns off the one-line-per-run stage log
-- Weather disk cache: `WISEAPP_WEATHER_CACHE_DIR` (location, created 0700), `WISEAPP_WEATHER_CACHE_MAX_MB` (LRU budget), `WISEAPP_WEATHER_CACHE_DISABLE=1` (off)
-- `WISEAPP_ASYNC_QUEUE_MEMORY_MB` (default 512; `0` disables): the mirai dispatcher's memory cap and the size limit for one job snapshot. A Step 2 or Step 3 snapshot over the cap is refused with a message instead of retried, and queued Step 2 snapshots may total at most twice the cap.
-- `WISEAPP_ASYNC_SYNC=1` runs Step 2 and metadata tasks in the main process (debugging only; this removes the async protection)
-
-Data-source allowlists (CR-SEC-02): `WISEAPP_ALLOWED_SOURCES` (comma-separated source types) restricts which sources the app accepts. Unset, a configured `WISEAPP_DATA_SOURCE` is the only enabled type, and on Posit Connect without one only `databricks` is; local and dev runs allow every type. For connections typed into the UI, `WISEAPP_ALLOWED_LOCAL_ROOTS`, `WISEAPP_ALLOWED_BUCKETS` (S3/GCS buckets, Azure containers, Hugging Face repos) and `WISEAPP_ALLOWED_VOLUME_ROOTS` (Databricks volume paths) restrict the location; an unset list does not restrict that field. Values containing control characters or `..` segments are always refused for UI connections. Environment-configured connections are trusted.
-
-Key environment variables for production:
-- `WISEAPP_DATA_SOURCE` (automatic source selector: `local`, `s3`, `gcs`, `azure`, `hf`, or `databricks`)
-- `WISEAPP_DATA_PATH` (local data backend)
-- `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`, `DATABRICKS_VOLUME_PATH` (for Databricks backend)
-- `S3_BUCKET`, `S3_PREFIX`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (for S3)
-- `GCS_BUCKET`, `GCS_PREFIX`, `GCS_ACCESS_KEY_ID`, `GCS_SECRET_ACCESS_KEY` (for GCS)
-- `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_CONTAINER`, `AZURE_STORAGE_PREFIX`, `AZURE_STORAGE_KEY` or `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` (for Azure)
-- `HF_REPO`, `HF_SUBDIR` (for public Hugging Face datasets)
-
-## Git Remotes
-
-- `origin`: official World Bank repo dev branch (`worldbank/wise-app:dev`)
-
-## Testing
-
-Tests are in `tests/testthat/` (124 files, named after the `fct_`/`mod_` file or concept they cover, e.g. `test-fct_hexmap.R`, `test-active-mask.R`) plus `tests/spelling.R`. New tests go in `test-<R file>.R`. Areas with dedicated coverage: connection/data loading, model fitting + coefficient uncertainty decomposition, prediction, aggregation delta, RIF helpers, hexmap payload contract, policy decomposition uncertainty, metric-aware decomposition, Step 3 lever modules, `app_server` wiring (stubbed step modules), weather selection/stats, export bundles, determinism.
-
-- **Run from the source tree**, as CI does: `devtools::test()` or `testthat::test_local()` (about 4 to 6 minutes serial). `R CMD check` runs with `--no-tests`.
-- **Environment is pinned** by `tests/testthat/setup-env.R` (weather caches in a per-run temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R` (UTF-8). Do not rely on the developer's `.Renviron`.
-- **Fixtures:** a builder moves into a `helper-*.R` file only when two or more test files use it.
-- **Coverage:** use `covr::package_coverage(type = "none", code = ...)` with `testthat::test_dir("tests/testthat", load_package = "installed", package = "wiseapp", ...)`, excluding the files that start real mirai workers or headless Chrome (`step2-async*`, `fct-overview-metadata`, `export-bundle`, `mod-0-overview`); their trace files corrupt covr. Code run inside workers is not counted.
-- **Browser smoke:** `tests/e2e/smoke.R` boots the app with `shinytest2`, checks one `conditionalPanel` and runs axe-core on 16 screens: Overview, Step 1 (sample, the three stats tabs, Results, Model fit), Step 2 (settings, Results, Diagnostics) and Step 3 (policy form and the four result tabs). Steps 1 to 3 run end to end on the fixture data folder of `helper-batch-fixture.R` (`Rscript tests/e2e/smoke.R` from the repo root; needs Chrome, `arrow` and the DuckDB `h3` extension, about 5 minutes). It is not part of `devtools::test()` or R CMD check; the CI job `.github/workflows/e2e-smoke.yaml` is blocking (a required status check on `main`). `WISEAPP_AXE_FAIL=1` (set in CI) fails it on serious or critical violations.
-- **Batch tests:** `test-fct_batch_spec.R`, `test-fct_step1_tables.R`, `test-fct_step1_model.R`, `test-fct_step2_input.R`, `test-fct_step2_tables.R`, `test-fct_step3_input.R`, `test-fct_step3_tables.R` (the Step 3 tables need the `dev/bench/` helpers, so they run in a source checkout) and `test-batch-pipeline.R` (a `targets` run on a fixture data folder from `helper-batch-fixture.R`; skipped without `targets`, `arrow` or `yaml`, or the DuckDB `h3` extension). `dev/batch_parity_bfa.R` and `dev/batch_parity_bfa_models.R` compare the batch tables with the module servers on real data (per release, not in CI).
-- **Not covered by R tests:** MapLibre rendering, `conditionalPanel` visibility, `update*Input()` on config import, and the real Step 0 to 3 flow (they need a browser). Check these in the running app with `dev/ui_drive.R` (skill `wise-ui-check`, `.claude/skills/wise-ui-check/SKILL.md`): it can click, hover, press keys, read state and take screenshots.
+If an instruction in this file, `ARCHITECTURE.md`, a skill or a `review/` standard was wrong, missing or misleading during your task, fix it in the same change and say so in your report. Record a trap you hit in the skill's Traps or notes section. Do not add counts or line numbers; they go stale. Keep this file short: detail goes to `ARCHITECTURE.md`, `docs/` or a skill. After editing any instruction file, run `Rscript dev/agents_check.R`.

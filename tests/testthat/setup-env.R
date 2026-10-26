@@ -15,7 +15,7 @@ withr::defer({
 withr::local_envvar(
   WISEAPP_WEATHER_CACHE_DIR = file.path(.wise_test_root, "weather-cache"),
   WISEAPP_PREPARED_WEATHER_CACHE_DIR = file.path(.wise_test_root, "prepared-weather-cache"),
-  # Data-source selection and credentials (see AGENTS.md).
+  # Data-source selection and credentials (see ARCHITECTURE.md).
   WISEAPP_DATA_SOURCE = NA, WISEAPP_DATA_PATH = NA,
   DATABRICKS_HOST = NA, DATABRICKS_CLIENT_ID = NA, DATABRICKS_CLIENT_SECRET = NA,
   DATABRICKS_VOLUME_PATH = NA,

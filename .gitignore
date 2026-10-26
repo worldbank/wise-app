@@ -1,164 +1,24 @@
-########################################################################
-#
-# Based on DIME .gitignore template version 2.0
-#
-########################################################################
+# Everything is tracked unless ignored here. Each section says why.
+# To keep a file that a pattern below ignores, add a "!" line after it.
 
-#######################
-# Start by ignoring everything, and below we are explicitly saying
-# what to not ignore
-*
+# Operating system and editors
+.DS_Store
+Thumbs.db
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.vscode/
+.idea/
+.posit/
+__pycache__/
+*.pyc
 
-#######################
-# List of files with GitHub functionality anywhere in the repo
-# that we do not want to ignore
-
-# These files include GitHub settings
-!.gitignore
-!.gitattributes
+# Secrets and credentials. Never commit these.
+.env
+.env.*
 !.env.example
-
-!.reproducibility_report_RR_2024_WLD_175-v02.pdf
-
-# Keep description and namespace
-!DESCRIPTION
-!NAMESPACE
-
-# Compiled welfare kernel (Rcpp): sources tracked, build artifacts ignored.
-# *.cpp has no other whitelisted extension, and this section must precede
-# the trailing re-ignores (*.o etc. re-ignored at the bottom).
-!/**/*.cpp
-!/**/*.hpp
-*.o
-*.so
-*.dll
-
-# Keep R CMD build/check ignore rules (not matched by !/**/*.R since it
-# has no .R extension; without this line the file exists on disk but is
-# never tracked by git)
-!.Rbuildignore
-
-# Keep the lintr configuration
-!.lintr
-
-# Keep Posit Connect deploy manifest and its exclude list
-!.rscignore
-!manifest.json
-
-# Git placeholder file (to commit empty folders)
-!/**/*.gitkeep
-
-# Keep markdown files used for documentation on GitHub
-!README.md
-!CONTRIBUTING.md
-!LICENSE*
-
-* Unignore reproot files - see https://dime-worldbank.github.io/repkit/articles/reproot-files.html
-!reproot*.yaml
-
-#######################
-# For performance reasons, if a folder is already ignored, then
-# GitHub does not check the content for that folder for matches
-# with additional rules. The line below includes folder in the
-# top folder (but not their content), so that anything matching
-# the rules below will still not be ignored.
-!*/
-
-#######################
-# The following file types are code that should always be
-# included no matter where in the repository folder they are
-# located unless you explicitly ignore that folder
-
-# Data
-!/**/data/pins/**/*.csv
-
-# Stata
-!/**/*.do
-!/**/*.ado
-!/**/*.sthlp
-!/**/*.smcl
-
-# R
-!/**/*.R
-!/**/*.Rmd
-!/**/*.Rproj
-!/**/*.qmd
-# !/**/*.Rprofile
-
-# Still ignore user file for R projects
-.Rproj.user
-
-# LaTeX
-!/**/*.tex
-!/**/*.bib
-
-# Python
-!/**/*.py
-!/**/*.ipynb
-!/**/requirements.txt
-!/**/Pipfile
-!/**/Pipfile.lock
-# !/**/*.toml
-# Still ignore .ipynb files in checkpoint folders
-.ipynb_checkpoints
-
-# Matlab
-!/**/*.m
-
-# Markdown
-!/**/*.md
-
-# Julia
-!/**/*.jl
-
-#Files to create custom layout and functionality
-# in dashboards, markdown notebooks, bookdown etc.
-!/**/*.css
-!/**/*.js
-!/**/*.json
-
-#Bash scripts
-!/**/*.sh
-
-# Citations
-!/**/*.cff
-
-# .yml and .yaml files
-# These files sometimes have credentials, so only unignore these lines by removing
-# the "#" below after you checked your .yml/.yaml files for sensitive content
-!/**/*.yml
-!/**/*.yaml
-
-#######################
-# Include some additional file formats in any output folder. You might have
-# to change the name of the Output folder to whatever it is called in your
-# project, but we strongly recommend that you only include these files in
-# a subset of the folders where you are certain no private data is ever stored.
-!/**/Output/**/*.txt
-!/**/Output/**/*.csv
-!/**/Output/**/*.xml
-!/**/images/**/*.eps
-!/**/images/**/*.svg
-!/**/inst/app/www/**/*.png
-!/**/inst/app/www/**/*.ico
-# DuckDB extension binaries: loaded at runtime on Posit Connect via
-# system.file() (R/fct_load_data.R); must be committed for the git-backed
-# deployment to work. Ship the .gz versions (DuckDB INSTALL decompresses
-# them automatically); uncompressed binaries stay untracked.
-!/**/*.duckdb_extension.gz
-!/**/*.duckdb_extension
-
-# Self-hosted brand font (inst/app/_brand.yml). The page cannot render offline
-# without these files, so they must be committed for the git-backed deployment.
-!/**/inst/app/fonts/*.woff2
-!/**/inst/app/fonts/OFL.txt
-
-#######################
-# Include all the files with passwords or tokens here. All files named
-# password or passwords are with this template ignored no matter which
-# format you are using. Additionally, all content in any folder called
-# password or passwords are also ignored. NOTE that your project might be
-# using different names and then you must edit the lines below accordingly.
+.Renviron
 password.*
 passwords.*
 password/
@@ -169,14 +29,57 @@ token/
 tokens/
 rsconnect/
 
-# Other
-.claude/settings.local.json
-.posit/
+# Local agent and tool state
 .kilo/
+# .claude/ holds local state and the link to the shared skills folder
+# (.agents/skills, see README). Only a shared settings.json would be tracked.
+.claude/*
+!.claude/settings.json
 
+# Build artifacts
+# man/ is generated by devtools::document() and not tracked; CI documents
+# before it checks (.github/workflows/R-CMD-check.yaml).
+man/
+src/*.o
+src/*.so
+src/*.dll
+# Uncompressed DuckDB extension binaries stay untracked; the .gz versions in
+# inst/duckdb_extensions/ are committed because Posit Connect loads them at
+# runtime through system.file() (R/fct_load_data.R).
+*.duckdb_extension
+
+# Run outputs and test artifacts
 dev/outputs/
 dev/output/
-.DS_Store
-
-# Browser smoke output (tests/e2e/smoke.R)
 tests/e2e/out/
+tests/testthat/testthat-problems.rds
+_targets/
+*.log
+
+# Data and binary files. Raw and produced datasets are never committed.
+*.parquet
+*.csv
+*.qs
+*.qs2
+*.rds
+*.RDS
+*.rda
+*.RData
+*.dta
+*.xls
+*.xlsx
+*.zip
+*.duckdb
+*.db
+*.sqlite
+*.feather
+*.arrow
+
+# Rendered reports, design sketches and images
+*.html
+*.pdf
+*.png
+*.jpg
+*.jpeg
+# App assets that must be committed (the page cannot render without them)
+!inst/app/www/*.png

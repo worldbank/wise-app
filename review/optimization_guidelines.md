@@ -6,7 +6,7 @@ These guidelines reflect current best practice and package versions as of Septem
 
 ## 0. App-Specific Context
 
-Architecture overview is in `AGENTS.md`; constraints it does not cover:
+Architecture overview is in `ARCHITECTURE.md`; constraints it does not cover:
 
 - No `global.R` — Section 8's one-time daemon-pool setup belongs in `run_app()` / top-level `app_server.R`.
 - Ingestion is already DuckDB over `.parquet` (`fct_load_data.R`): optimize query/fetch paths, not storage format.

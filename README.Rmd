@@ -30,3 +30,19 @@ Launch the application with:
 ```r
 wiseapp::run_app()
 ```
+
+## Agent skills
+
+Task guides for coding agents (Claude Code, Kilo, Codex and others) are in
+[`.agents/skills/`](.agents/skills). This is the only copy in the repository;
+`AGENTS.md` lists them. A tool that reads skills from another folder can use them
+in one of two ways:
+
+- link the folder (macOS and Linux, from the repository root), for example for
+  Claude Code: `ln -s ../.agents/skills .claude/skills`; `.claude/skills` is
+  git-ignored;
+- or copy `.agents/skills/*` into the tool's skills folder (for example
+  `.claude/skills/`, `.kilocode/skills/`), and repeat after a skill changes.
+  This is the option on Windows.
+
+Edit skills only in `.agents/skills/`.

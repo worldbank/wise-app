@@ -1,0 +1,45 @@
+# WISE-APP architecture map
+
+Where things are and the contracts that span files. Details live elsewhere, so this file does not repeat them: methods and equations in `docs/` (each page ends with an Implementation map), the design of one area in the header comment of its `R/` file, deployment settings in `DEPLOYMENT.md`, batch runs in `batch/README.md`. Rules for agents are in `AGENTS.md`.
+
+## Pipeline
+
+Step 0 Overview (`mod_0_overview`) picks the data source and loads survey metadata. Step 1 (`mod_1_*`) selects sample, outcome and weather and fits models. Step 2 (`mod_2_*`) simulates welfare under historical and SSP weather. Step 3 (`mod_3_*`) applies policy levers: `mod_3_01` to `mod_3_05` and `mod_3_11` are the lever modules, `mod_3_06` to `mod_3_09` run, show and decompose the policy simulation, `mod_3_10` is cost-effectiveness. Data flows forward: Step 0 feeds Step 1, which feeds Steps 2 and 3, as reactives passed between modules. Every UI section is a Golem module (`mod_NAME_ui()` / `mod_NAME_server()`).
+
+`R/` splits into `mod_*` (Shiny), `fct_*` (logic, no Shiny) and `utils_*` (shared helpers); `app_*` and `run_app.R` wire the app and `app_config.R` detects the environment (`inst/golem-config.yml` plus environment variables). `src/welfare_stats.cpp` is the Rcpp kernel for aggregation statistics.
+
+## The `fct_` files
+
+One line each; the file header and its roxygen hold the design.
+
+| Area | Files |
+|---|---|
+| Data | `fct_connection.R` (storage-backend parameters), `fct_load_data.R` (ingestion and validation through DuckDB), `fct_weatherstats.R`, `fct_get_weather.R` |
+| Models | `fct_fit_model.R` (`ENGINE_REGISTRY`), `fct_predict_outcomes.R`, `fct_rif_sim.R` (RIF quantile regression) |
+| Step 2 | `fct_simulations.R` (pipeline), `fct_run_simulation.R` and `fct_step2_compute.R` (reference numerics, pure and serial), `fct_step2_async.R` (mirai coordinator, also the Overview metadata pool), `fct_sim_compare.R` (comparison views), `fct_metric_registry.R` (metric metadata) |
+| Step 3 | `fct_policy_registry.R` (levers), `fct_policy_sim.R`, `fct_policy_sim_compare.R`, `fct_sp_effectiveness.R` (cost and targeting metrics, cost-effectiveness engine), `fct_sp_shock.R` (shock-responsive transfers), `fct_policy_decompose.R`, `fct_policy_metric_decompose.R`, `fct_decomposition_summary.R` |
+| Output | `fct_results.R`, `fct_export.R` (export bundles), `fct_provenance.R` (immutable run record), `fct_hexmap.R` (MapLibre bridge) |
+| Batch glue | `fct_step1_data.R`, `fct_spec_defaults.R`, `fct_step1_tables.R`, `fct_step1_model.R`, `fct_step1_model_tables.R`, `fct_step2_input.R`, `fct_step2_tables.R`, `fct_step3_input.R`, `fct_step3_tables.R`: Shiny-free code that the modules and the batch pipeline both call (table reference `batch/docs/tables.md`), plus `fct_batch_spec.R` and `fct_batch_targets.R` (run spec and `targets` runner, template in `inst/batch/`) |
+
+## Contracts that span files
+
+- **Engines:** `ENGINE_REGISTRY` has six fields per engine (`requires`, `model_types`, `build_formulas`, `fit_one`, `make_spec`, `prepare_outcome`). `fixest` and `rif` run through Steps 1 to 3. `ranger` and `xgboost` are registered but not offered in the UI, and Steps 2 and 3 are blocked for them (skill `add-model-engine`).
+- **`year` type:** a fixed-effect factor in the fitted models. Survey-weather frames carry it as a factor (`merge_survey_weather`), Step 2 projections and policy joins as character (`.step2_survey_projection`), period and sample helpers as numeric. fixest predicts identically from any of them, but `model.matrix`-based engines reject or mis-encode a type that differs from training. Do not unify without parity runs on every engine (CR-CQ-07).
+- **Residual rule:** the UI offers `original` and `resample` (`residual_choices()`); `normal` and `none` exist internally (`none` for the RIF engine). Method: `docs/30_simulation.md`.
+- **Levers:** variables with a `policy` code in the variable list. The lever code is the identity everywhere (scenario key, control id `<code>_universal` / `<code>_pct`, spec field stem); variable names are data. Design: header of `fct_policy_registry.R`, method `docs/41_policy_levers.md`. `wise_access_config()` (`fct_step3_input.R`) builds the scenario lists, which carry `lever_vars`, so the simulation needs no registry. Levers of other groups run in the `infra` scenario (`step3_merge_access()`).
+- **Cash transfers:** `.wiseapp_sp_transfer` is the single source of truth for a regular program's transfer. `transfer_amount_usd` is the amount per payment in the outcome's currency (the id is historical); with `transfer_amount_mode == "pctile"`, `wise_sp_resolve_amount()` fixes the amount once per run from the baseline survey and records `amount_resolved`. Its two callers are the module's `sp_scenario_spec()` and batch `wise_policy_configs(svy =)`, so everything downstream reads a fixed amount. Method: `docs/42_social_protection.md`.
+- **Shock-responsive transfers** (`sp_type == "shock"`, method `docs/43_shock_responsive_sp.md`): `apply_policy_to_svy()` writes only the static eligibility `.wiseapp_sp_eligible`. `apply_policy_delta_to_baseline(sp =, analysis_unit =)` builds the plan once (`sp_shock_plan()`, pass `seed`, `hist_exposure_map` and `level_factor`), stores it on `prepared$shock`, and the one shared hook `.policy_annual_channel_block(sp_dynamic =)` adds the per-row transfer into `delta_sp`, `delta_main` and `delta_total`, returning it as `delta_sp_shock`. `sp_shock_pipeline_transfer()` is the one place that builds the per-row transfer (run and preview). Run outputs travel as `pol_out$shock` (`rows`, `summary`, `paid_historical`) and are published as `shock_summary`; the published `policy_svy` marks households paid in at least one historical year in `.wiseapp_sp_transfer`, so reach and diagnostics keep one definition of "treated". RIF repositioning does not respond to the dynamic transfer (approximation). Optional spec fields that leave the Phase 1 path unchanged at their defaults: `budget_rule`, `annual_cap`, `trigger_metric`, `trigger_pov_line`, `dyn_geo`, `dyn_welfare`, `transfer_timing`. Plan and tasks: `review/sp_shock_responsive_plan.md`, `review/sp_shock_responsive_tasks.md`.
+- **Decomposition:** total = direct (`main`) + resilience (repositioning + interaction); the metric-aware version is per metric channel. Method: `docs/44_decomposition.md`.
+- **Uncertainty:** coefficient draws use the Cholesky factor of the VCV (`compute_chol_vcov`) and a factor loading matrix (`compute_factor_loading`), about 200x faster than full-dimension draws. Method: `docs/33_uncertainty.md`.
+- **UI:** `reactable` tables with client-side CSV download (raw values; rounding lives in the column format); `echarts4r` charts built by `echart_*` functions, with the ggplot builders kept as static, export and test references; styling in `utils_plot_theme.R`; maps only through `fct_hexmap.R`. Errors go through `wise_user_error()`. Stage timing is one log line per stage from `.wise_log_stage()` (`utils_log.R`). See `review/optimization_guidelines.md` sections 6 and 7.
+
+## Data backends
+
+DuckDB is the one query engine. S3, GCS and Databricks use the `httpfs` extension; Azure needs `azure` and `delta` (not bundled, installed on first use, local and dev runs only); local needs none. Auth variables and the allowlists: `DEPLOYMENT.md`. Code: `fct_connection.R`, `fct_load_data.R`.
+
+## Testing details
+
+- **Coverage:** `covr::package_coverage(type = "none", code = ...)` with `testthat::test_dir("tests/testthat", load_package = "installed", package = "wiseapp", ...)`, excluding the files that start real mirai workers or headless Chrome (`step2-async*`, `fct-overview-metadata`, `export-bundle`, `mod-0-overview`); their trace files corrupt covr. Code run inside workers is not counted.
+- **Browser smoke:** `Rscript tests/e2e/smoke.R` (needs Chrome, `arrow` and the DuckDB `h3` extension, about 5 minutes; screens and checks are in its header). Not part of `devtools::test()` or R CMD check; the CI job `.github/workflows/e2e-smoke.yaml` is blocking on `main`. `WISEAPP_AXE_FAIL=1` (set in CI) fails it on serious or critical axe violations.
+- **Batch tests:** the `test-fct_step*` and `test-fct_batch_spec.R` files, and `test-batch-pipeline.R` (a `targets` run on the fixture of `helper-batch-fixture.R`; skipped without `targets`, `arrow`, `yaml` or the DuckDB `h3` extension). The Step 3 tables tests need the `dev/bench/` helpers, so they run in a source checkout. `dev/batch_parity_bfa*.R` compare the batch tables with the module servers on real data (per release, not in CI).
+- **Comparing two builds in a batch run:** install each into its own library and run `targets::tar_make()` in the main process (remove `controller` in `_targets.R`) with `.libPaths()` set first; `crew` workers load the default installed `wiseapp`, not the one you meant.
