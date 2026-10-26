@@ -6,7 +6,7 @@ depends_on: [notation, framework, weather-measures, linear-model, rif-model, cli
 symbols: [i, r, s, m, mu, W, y, Y, omega, T, epsilon]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare
 code: [R/fct_step2_input.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_simulations.R, R/fct_predict_outcomes.R, R/fct_aggregation.R, R/fct_sim_diag.R, R/fct_sim_compare.R, R/fct_spec_defaults.R]
-verified_against: 1c2834e
+verified_against: 1ecc93e
 ---
 
 # Simulation of welfare under historical and future weather
@@ -22,7 +22,7 @@ verified_against: 1c2834e
 | Future periods | up to three periods inside 2015 to 2100 | 2025 to 2035 |
 | Emissions pathway | SSP2-4.5, SSP3-7.0, SSP5-8.5 | SSP3-7.0 |
 | Residual rule | own residual (original), resampled residual | original |
-| Coefficient uncertainty | on or off, and whether to include all covariates | on, weather terms only |
+| Coefficient uncertainty | on or off | on, weather terms only |
 
 The run produces one **historical series** and, for each pathway, future period and climate model member, one **future series**. A series has one value of a statistic per simulation year $r$. Symbols are in [00_notation](00_notation.md).
 
@@ -62,14 +62,14 @@ The residual term $e_i^{(r)}$ follows the residual rule. Let $\hat\varepsilon_j$
 
 | Rule | Residual term | In the app |
 |---|---|---|
-| Original | $e_i = \hat\varepsilon_{j(i)}$, the residual of the same unit in the estimation sample. If the unit is not in that sample, a residual chosen from the estimation residuals by a fixed function of the unit's identifier. The same value is used in every year. | Offered, default |
-| Resample | $e_i^{(r)}$ drawn with replacement from $\lbrace \hat\varepsilon_j\rbrace $, independently across households | Offered |
+| Original | $e_i = \hat\varepsilon_{j(i)}$, the residual of the same unit in the estimation sample, matched on survey code, survey name, year and household identifier. If the unit is not in that sample, a residual chosen from the estimation residuals by a fixed function of the unit's identifier. The same value is used in every year. Each household keeps its own unexplained component, so the simulated distribution stays close to the observed one and the coefficient band covers only the change from the weather at the interview. | Offered, default |
+| Resample | $e_i^{(r)}$ drawn with replacement from $\lbrace \hat\varepsilon_j\rbrace $, independently across households, locations and years. It adds noise and changes the level and spread of the simulated distribution, so it does not reproduce the observed one ([33_uncertainty](33_uncertainty.md), A7). The coefficient band of a level then uses all covariates and is several times wider than under the original rule. | Offered |
 | Normal | $e_i^{(r)} \sim N(0,\hat\sigma^2)$ | Not offered |
 | None | $e_i = 0$ | Not offered; used for the quantile model |
 
 The draws are seeded by the run seed and the simulation year only. The historical series, all future scenarios and all climate models therefore use the same residual draws, and differences between series come from weather alone. For the quantile model, no residual is added and the rule is set to "none".
 
-With the original rule and unchanged weather, a household in the estimation sample returns its observed welfare. A binary outcome has no retransformation. The residual is added to the predicted probability on the response scale.
+With the original rule and unchanged weather, a household in the estimation sample returns its observed welfare. A binary outcome has no retransformation. The residual is added to the predicted probability on the response scale. Under the original rule the residual is the response residual $y-\hat p$, so household values of a binary outcome can leave $[0,1]$ while the weighted mean is unaffected.
 
 A cash transfer from a policy is added in Step 3 after the residual, as in Eq. (5.2) of [42_social_protection](42_social_protection.md).
 
@@ -141,7 +141,7 @@ User guide: [Simulating welfare](https://github.com/worldbank/wise-app-docs/blob
 | Survey-weather join and prediction | (3.1) | `R/fct_simulations.R` `run_sim_pipeline()`; `R/fct_predict_outcomes.R` `predict_outcome()` |
 | Quantile-model prediction | 3 | `R/fct_rif_sim.R` `predict_rif()` |
 | Training residuals | 4 | `R/fct_run_simulation.R` `fct_run_simulation()` |
-| Residual rules | (4.1) | `R/fct_aggregation.R` `draw_residuals_vec()`; `R/fct_simulations.R` `residual_choices()` |
+| Residual rules | (4.1) | `R/fct_aggregation.R` `draw_residuals_vec()`; `R/fct_simulations.R` `residual_choices()`, `step2_add_residual_key()` |
 | Annual statistics | (5.1) | `R/fct_aggregation_delta.R` `aggregate_pipeline_per_year()` |
 | Excluded household-years | 5 | `R/fct_run_simulation.R` `step2_data_quality_notice()` |
 | Weather support | 6 | `R/fct_sim_diag.R` `weather_support_reference()`, `weather_support_scenario()`, `weather_support_pool()` |

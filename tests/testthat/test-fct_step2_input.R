@@ -130,6 +130,18 @@ test_that("a finished run is described by its historical label and summary", {
   expect_identical(res$hist_sim_result$a, 1)
 })
 
+test_that("the applied residual rule is recorded and noted only when it differs from the request", {
+  res <- wise_step2_annotate(
+    list(hist_sim_result = list(), total_runs = 1L),
+    step2_input_weather(), c(1991, 2020), "A 2020",
+    residuals_requested = "original", residuals_effective = "none")
+  run <- res$hist_sim_result$sim_summary
+  expect_identical(run$residuals_effective, "none")
+  expect_identical(step2_residual_rule_note(run), "none (requested original)")
+  expect_null(step2_residual_rule_note(list(residuals_requested = "resample", residuals_effective = "resample")))
+  expect_null(step2_residual_rule_note(list()))
+})
+
 test_that("the original rule keys baseline and estimation rows by round and economy (F0)", {
   fit <- step2_input_fit()
   fit$train_data <- data.frame(

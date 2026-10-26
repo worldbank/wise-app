@@ -219,6 +219,14 @@ wise_provenance <- function(step, result, connection_params = NULL,
     rec$residual_unmatched <- rm_$n_unmatched
   }
 
+  # The residual rule that was applied, next to the one requested: a demotion
+  # to "none" (quantile model, missing estimation residuals) is otherwise silent.
+  ss <- result$sim_summary
+  if (!is.null(ss$residuals_effective)) {
+    rec$residuals_requested <- ss$residuals_requested %||% NA_character_
+    rec$residuals_effective <- ss$residuals_effective
+  }
+
   c(rec, extra)
 }
 

@@ -318,6 +318,12 @@
           "Summary of central expected outcomes and severe weather-year thresholds",
           "for each scenario across return periods, with climate model and econometric uncertainty bounds."
         ),
+        shiny::p(
+          "With 30 simulated years a 1-in-20 value rests on the two most extreme years, and its sampling",
+          "error is not in the bounds. The climate-model members share the same sequence of observed",
+          "template years, so they are not independent years: the spread across members measures",
+          "disagreement in the climate signal, not more weather variability."
+        ),
         docs = TRUE
       ),
       style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"

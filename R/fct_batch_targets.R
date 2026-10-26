@@ -703,7 +703,8 @@ wise_batch_sim <- function(item, connection_params = NULL) {
         step2_baseline_label(
           step2_baseline_choices(w$survey_weather, d$selected_surveys), sim$baseline_survey
         ),
-        baseline$dropped, attr(input, "residual_match")
+        baseline$dropped, attr(input, "residual_match"),
+        sim$residuals, input$residuals
       )
       tables <- step2_batch_tables(result, skip_coef = input$skip_coef_draws, selected_weather = sw)
       code <- paste(spec$sample$countries, collapse = "+")

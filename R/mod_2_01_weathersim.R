@@ -1097,7 +1097,8 @@ mod_2_01_weathersim_server <- function(id,
             result <- wise_step2_annotate(
               .wise_step2_async_read_manifest(manifest, job),
               sw, unlist(sh$year_range), captured_baseline, baseline$dropped,
-              attr(step2_input, "residual_match")
+              attr(step2_input, "residual_match"), sh$residuals,
+              step2_input$residuals
             )
              result$hist_sim_result$.sig <- job$dependency_signature
              committed <- .wise_step2_async_commit(job, function() {
@@ -1313,7 +1314,8 @@ mod_2_01_weathersim_server <- function(id,
             step2_baseline_label(
               baseline_survey_choices(), input$baseline_survey %||% baseline_default()
             ),
-            baseline$dropped, attr(step2_input, "residual_match")
+            baseline$dropped, attr(step2_input, "residual_match"),
+            sh$residuals, step2_input$residuals
           )
           # INT-08: the immutable run signature travels with the result so
           # Step 3 can detect that it is consuming a superseded simulation.

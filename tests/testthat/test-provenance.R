@@ -172,3 +172,11 @@ test_that("connection params are read without blocking on an unmet req()", {
   expect_equal(read_connection_params(function() db_params())$client_secret,
                "TOP-SECRET-VALUE")
 })
+
+test_that("the record carries the residual rule that was applied next to the request", {
+  res <- fake_fit(sim_summary = list(residuals_requested = "original", residuals_effective = "none"))
+  p <- wise_provenance(2L, res)
+  expect_equal(p$residuals_requested, "original")
+  expect_equal(p$residuals_effective, "none")
+  expect_null(wise_provenance(2L, fake_fit())$residuals_effective)
+})

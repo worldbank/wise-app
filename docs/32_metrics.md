@@ -6,7 +6,7 @@ depends_on: [notation, outcomes, simulation]
 symbols: [Y, omega, z, T, G, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#interpreting-the-results-tab
 code: [R/fct_aggregation.R, R/fct_metric_registry.R, R/fct_sim_compare.R, R/fct_step2_tables.R, R/fct_uncertainty_helpers.R, R/fct_incidence.R, R/fct_simulations.R]
-verified_against: 8592a9d
+verified_against: 1ecc93e
 ---
 
 # Welfare metrics and how annual results are summarised
@@ -86,11 +86,11 @@ and is infinite if no model-year reaches the level.
 
 ### 5. Sources of variation
 
-The breakdown of the variation of a scenario into three variances is
+The breakdown of the variation of a scenario into variances is
 
-$$\sigma^2_{\text{coef}} = \overline{\text{sd}_{m,r}^2}, \qquad \sigma^2_{\text{annual}} = \frac1M\sum_m \mathrm{Var}_r\big(T^{(r,m)}\big), \qquad \sigma^2_{\text{model}} = \mathrm{Var}_m\big(\bar T^{m}\big) \qquad \text{(5.1)}$$
+$$\sigma^2_{\text{coef}} = \overline{\text{sd}_{m,r}^2}, \qquad \sigma^2_{\text{resid}} = \overline{\text{sd}_{\text{resid},m,r}^2}, \qquad \sigma^2_{\text{annual}} = \frac1M\sum_m \mathrm{Var}_r\big(T^{(r,m)}\big), \qquad \sigma^2_{\text{model}} = \mathrm{Var}_m\big(\bar T^{m}\big) \qquad \text{(5.1)}$$
 
-where $\text{sd}_{m,r}$ is the coefficient standard deviation of the annual value ([33_uncertainty](33_uncertainty.md)), and $\sigma^2_{\text{model}}$ is zero for the historical series. The three are shown side by side. They are not added.
+where $\text{sd}_{m,r}$ is the coefficient standard deviation of the annual value and $\text{sd}_{\text{resid},m,r}$ its residual-draw standard deviation ([33_uncertainty](33_uncertainty.md)). $\sigma^2_{\text{resid}}$ is zero except under the "resample" rule, and $\sigma^2_{\text{model}}$ is zero for the historical series. The four are shown side by side. They are not added. Under "resample" the annual spread $\sigma^2_{\text{annual}}$ also contains the year-to-year noise of the residual draws, not weather alone. The coefficient part follows the reference chosen in Results: it is computed on the series as displayed, so it is the SD of a level, or of a difference from the historical mean or median, and the Diagnostics bar is labelled accordingly.
 
 ### 6. Incidence by baseline decile
 
@@ -106,6 +106,8 @@ The simulated historical expected value is compared with the same metric compute
 
 - The expected value is an average over weather years. The median year of the threshold table is a different summary and need not equal it.
 - A 1-in-10 adverse year is the annual value that is as bad as or worse than the rest in one year out of ten, in the simulated record. With 30 years, it rests on three years.
+- With 30 years, a 1-in-20 value rests on the two most extreme years. Its sampling error is not in the "Coef" or "Pooled" rows of the threshold table, which hold coefficient and model uncertainty only.
+- The 20 members of a future scenario share the same sequence of observed template years, shifted by each model's monthly change. They are not 600 independent years. The variance across members at a return period measures disagreement in the climate signal, not more weather variability.
 - Rates are changed in percentage points. A 2 percentage point rise in the poverty rate is not a 2 per cent rise.
 - Decile effects show who bears the change, at a fixed ranking by baseline welfare.
 - Poverty measures depend on the line. A line in local currency and a line in dollars must match the currency of the outcome.

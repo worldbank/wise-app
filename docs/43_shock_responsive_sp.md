@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, social-protection, simulation, climate-
 symbols: [omega, T, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release
 code: [R/fct_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decompose.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
-verified_against: 8592a9d
+verified_against: 1ecc93e
 ---
 
 # Shock-responsive cash transfers: triggers, payments and basis risk
@@ -152,6 +152,7 @@ where $V^{\text{hit}}$ and $V^{\text{false}}$ are the weighted values of payment
 - The response of rank-based repositioning in the quantile model to the shock payment: the repositioning effect is computed from the static transfer only, not from the payment made in a year ([44_decomposition](44_decomposition.md)).
 - Changes in household behaviour from an expectation of payment.
 - Differences among climate models in forecast skill.
+- Variation between random draws. Targeting errors, forecast hits and false alarms, and the errors of the predicted-welfare layer are drawn once per run from the run seed. The bands of Step 3 do not include this variation. On BFA (SSP3-7.0 2025 to 2035, a cash transfer of 60 per person on a 1-in-5 return-period trigger, targeting the poorest 30 per cent, 20 seeds), the mean annual cost and the average effect on mean welfare varied by about 1.1 per cent between seeds (standard deviation of the cost 0.47 million on 42.3 million), the effect on the poverty rate by about 17 per cent of its small value (-0.0003), and the activation frequency not at all. The forecast and predicted-welfare layers were not switched on in that run, so their share is not measured.
 
 ## In the app
 

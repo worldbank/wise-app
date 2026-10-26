@@ -6,7 +6,7 @@ depends_on: [notation, model-specification, linear-model, rif-model, simulation,
 symbols: [Sigma, L, F, h, T, Y, omega, z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations
 code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_simulations.R, R/fct_results.R, R/fct_rif_sim.R, R/fct_step2_tables.R, R/fct_sim_compare.R, R/fct_uncertainty_helpers.R]
-verified_against: d4fcbf1
+verified_against: 1ecc93e
 ---
 
 # Uncertainty propagation
@@ -15,7 +15,7 @@ verified_against: d4fcbf1
 
 ## Setup
 
-For a metric $T$ computed on household welfare $Y_i = \exp(y_i)$, the delta method needs three things: the covariance $\hat\Sigma$ of the coefficients, the design row $x_i$ of each household under the scenario, and the derivative of the metric with respect to each household's welfare. Symbols are in [00_notation](00_notation.md). Metric definitions are in [32_metrics](32_metrics.md). Let $\kappa_i = \partial Y_i/\partial y_i$, which is $Y_i$ for a log outcome and $1$ for an outcome in levels, and let $\tilde\omega_i$ be the normalised weights.
+For a metric $T$ computed on household welfare $Y_i = \exp(y_i)$, the delta method needs three things: the covariance $\hat\Sigma$ of the coefficients, the design row $x_i$ of each household under the scenario, and the derivative of the metric with respect to each household's welfare. Symbols are in [00_notation](00_notation.md). Metric definitions are in [32_metrics](32_metrics.md). Let $\kappa_i = \partial Y_i/\partial y_i$, which is $Y_i$ for a log outcome, $1$ for an outcome in levels and $p_i(1-p_i)$ for a logistic model (below), and let $\tilde\omega_i$ be the normalised weights.
 
 | Source | How it is represented |
 |---|---|
@@ -38,7 +38,7 @@ which is the usual variance of a linear prediction. The app does not draw $z$. I
 
 $$F_i = (x_i - x_i^{0})^{\prime}L \qquad \text{(1.2)}$$
 
-with $x_i^{0}$ the design row of the household in the estimation sample that its residual is matched to. The band of a level is then zero when the simulated weather equals the weather of the interview, and grows with the distance from it. Using $x_i^{\prime}L$ instead would treat the part of the prediction that the observed outcome already fixes as uncertain, and over-state the band of a level by an order of magnitude when the weather change is small. Households whose residual is not matched to an estimation row (it is a hash-keyed draw) and the other residual rules keep $x_i^{\prime}L$. Paired differences are not affected when the aggregate is linear in the predictions, because $x_i^{0}$ cancels. For a non-linear aggregate of a log outcome the gradient $h_i$ differs between the arms, and the anchored loading is the correct one in $F^{\prime}h$.
+with $x_i^{0}$ the design row of the household in the estimation sample that its residual is matched to. The match uses the survey code, survey name, year and household identifier together, because household identifiers repeat across survey rounds and economies. The number of matched and unmatched households is reported with the run. The band of a level is then zero when the simulated weather equals the weather of the interview, and grows with the distance from it. Using $x_i^{\prime}L$ instead would treat the part of the prediction that the observed outcome already fixes as uncertain, and over-state the band of a level by an order of magnitude when the weather change is small. Households whose residual is not matched to an estimation row (it is a hash-keyed draw) and the other residual rules keep $x_i^{\prime}L$. Paired differences are not affected when the aggregate is linear in the predictions, because $x_i^{0}$ cancels. For a non-linear aggregate of a log outcome the gradient $h_i$ differs between the arms, and the anchored loading is the correct one in $F^{\prime}h$.
 
 ### 2. Delta method for a metric
 
@@ -46,7 +46,9 @@ The metric changes with the prediction of household $i$ through the gradient $h_
 
 $$F_{\text{agg}} = F^{\prime}h, \qquad \mathrm{Var}(T) \approx \underbrace{\Vert F_{\text{agg}}\Vert ^2}_{\text{coefficients}} + \underbrace{\sigma_\varepsilon^2\textstyle\sum_i h_i^2}_{\text{residuals}} \qquad \text{(2.1)}$$
 
-The residual term is present only for the "resample" and "normal" rules, with $\sigma^2_\varepsilon$ the variance of the estimation residuals. For the "original" and "none" rules it is zero, because a household's own residual is a fixed shift. The standard deviation is $\mathrm{SD}(T)=\sqrt{\mathrm{Var}(T)}$. Households whose welfare, weight or loading row is not finite are left out of both the gradient and $F$, and counted.
+The residual term is present only for the "resample" and "normal" rules, with $\sigma^2_\varepsilon$ the variance of the estimation residuals. For the "original" and "none" rules it is zero, because a household's own residual is a fixed shift. For the poverty rate under "resample" the residual term is not $\sigma^2_\varepsilon\sum_i h_i^2$ but its closed form $\sum_i\tilde\omega_i^2\,p_i(1-p_i)$, with $p_i=P(y_i+e<\log z)$ taken from the empirical distribution of the estimation residuals. A residual draw is a large shift, for which the kernel gradient of the poverty rate overstates the variance (about 1.2 times on the BFA data); the closed form agrees with a Monte Carlo over residual draws to within 3 per cent.
+
+**Logistic models.** The loading $F_i$ is on the link scale, but the metric is a function of the probability $p_i$. The chain rule gives $\kappa_i = \partial p_i/\partial\eta_i = p_i(1-p_i)$, so $F_i$ is scaled by $p_i(1-p_i)$ before it enters Eq. (2.1). The band of the mean of a binary outcome is built on the logit scale, so it stays inside $[0,1]$. Under the "original" rule the factor is taken at the simulated prediction, which is the first-order treatment of the anchored difference of Eq. (1.2). Without the factor the coefficient SD of a rate was about five times too large (BFA, agriculture employment: 0.50 before, 0.11 after, against 0.11 by Monte Carlo on the link scale). The standard deviation is $\mathrm{SD}(T)=\sqrt{\mathrm{Var}(T)}$. Households whose welfare, weight or loading row is not finite are left out of both the gradient and $F$, and counted.
 
 ### 3. Gradients of the metrics
 
@@ -88,7 +90,8 @@ A household's coefficient uncertainty is mostly irrelevant to a change in weathe
 - **Active coefficients.** Every coefficient whose name involves a weather variable, or involves a variable that the scenario changes, including interactions. Intercepts are excluded. For the linear model the policy arm of Step 3 adds the coefficients on the policy variables to the block as extra columns ([40_policy_framework](40_policy_framework.md), Section 5). For the quantile model it adds the interpolated gradient of the correction in the same way ([40_policy_framework](40_policy_framework.md), Section 5).
 - **Block factor.** The loading uses only the active block of the covariance, $F_i = x_{a,i}^{\prime}L_{a}$ with $L_aL_a^{\prime}=\hat\Sigma_{aa}$, a fresh Cholesky factor of that block. Selecting columns of $x_i^{\prime}L$ would give a wrong variance when active and inactive coefficients are correlated.
 - **When it applies.** For the linear model, only with the "original" residual rule. For the quantile model, with any residual rule, because the observed baseline outcome plays the role of the fixed residual.
-- **Switch.** "Include uncertainty on all covariates" removes the restriction and uses the full covariance.
+
+With the "original" rule the anchored loading is already zero on every column that does not change, so the restricted and the full covariance give the same variance for every matched household. With "resample" the linear engine uses the full covariance and a level band holds the uncertainty of every covariate, which is several times wider (BFA, historical mean: 0.53 against 0.10). A difference between two results is much closer under both rules. The Step 2 setting that once forced the full covariance was removed because it had no effect.
 
 The restricted variance is not guaranteed to be smaller than the full one, because the covariance between active and inactive coefficients can be negative.
 
@@ -116,14 +119,22 @@ When two results use the same coefficients, their errors are correlated. The sta
 
 $$\mathrm{SD}\big(T^{s}-T^{\text{ref}}\big) = \big\Vert F_{\text{agg}}^{s} - F_{\text{agg}}^{\text{ref}}\big\Vert  \qquad \text{(8.1)}$$
 
-and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference of year-averaged values, the gradients are first averaged over the years, because the coefficient error is shared by all years and does not shrink with their number. Where a result is shown as a difference from the historical mean, the reference gradient is the average of the historical gradients, and any residual variance of the scenario is kept. The same rule gives the interval of the policy effect in Step 3, where both arms use the same loading ([40_policy_framework](40_policy_framework.md)).
+and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference of year-averaged values, the gradients are first averaged over the years, because the coefficient error is shared by all years and does not shrink with their number. Where a result is shown as a difference from the historical mean, the reference gradient is the average of the historical gradients, and the residual variance of the scenario year is kept. The same rule gives the interval of the policy effect in Step 3, where both arms use the same loading ([40_policy_framework](40_policy_framework.md)).
+
+**Why the residual variance stays for some contrasts and goes for others.** Under "resample" the residual draw of year $r$ is shared by every series, because the draws are seeded by the run seed and the year only. Whether the noise cancels in a contrast depends on how many of the draws on each side are shared:
+
+- *Scenario year minus the historical mean* (the "difference from the historical mean" view). The draw of scenario year $r$ is shared with historical year $r$ only, which has weight $1/R$ in the mean. The noise does not cancel: its variance is $(1-1/R)$ times the variance of a level, so the full residual variance of the scenario year is kept. A Monte Carlo over 150 residual seeds on BFA gives a residual SD of 0.059 for the contrast and 0.061 for the level.
+- *Scenario year minus the historical median year.* The reference is a single historical year with its own independent draw, so its residual variance adds to that of the scenario year. The band is wider by about $\sqrt2$ in its residual part (Monte Carlo: 0.092 against 0.061).
+- *Same-year contrasts* (a policy arm minus the baseline arm, per year). Both arms use the same draw, which cancels. Only the coefficient part $F_{\text{agg}}^{s}-F_{\text{agg}}^{\text{ref}}$ remains (Monte Carlo residual SD of the mean 0.003, against a coefficient SD of the paired difference of 0.016 to 0.039).
+- *Year-averaged contrasts* (the headline cards and the average effect in Step 3). Every year's draw is shared with the reference, so the residual part of the shift is negligible (0.0005 against a coefficient SD of 0.025) and is dropped.
 
 ## Interpretation
 
 - A coefficient band answers: how different could this statistic be if the weather coefficients were a little different? It is conditional on the specification.
 - The spread across years is not an estimation error. It is the variability that the stress test is designed to show.
 - The spread across members measures the disagreement between climate models, not the probability of a scenario.
-- The three variances are shown side by side in the Diagnostics tab. They do not add as standard deviations.
+- The Diagnostics tab shows the components side by side: the coefficient band, the residual draws (only when non-zero, under "resample"), the spread across years, and the spread across climate models. They do not add as standard deviations. Under "resample" the spread across years contains residual noise as well as weather: the year-to-year SD of the Gini doubles from 0.0025 to 0.0056 on BFA, and the added part is residual-draw noise. The coefficient bar follows the reference chosen in Results and is labelled by it: a level, or a difference from the historical mean or median. Switching the reference changes the bar (BFA SSP3-7.0, mean, "original": 0.122 as a level, 0.061 as a difference from the historical mean).
+- Under "resample" a per-year value contains one realisation of the residual draw. The SD of one year's mean welfare across 150 seeds is about 1.3 per cent of the level, and the 30-year average is stable to about 0.2 per cent.
 - Under the default scope, a band on a level of welfare is narrower than the band of the full prediction, because coefficients on unchanged variables are held at their estimates.
 
 ## Assumptions
@@ -134,7 +145,7 @@ and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference 
 - **A4. Cancellation through the residual.** The household's unexplained component is fixed (original rule), and the model is additive in changed and unchanged terms.
 - **A5. Independent quantile equations.** The nine quantile equations are treated as independent.
 - **A6. Exchangeable members.** Climate models are equally informative and independent.
-- **A7. Independent sources.** The residual and coefficient errors are independent, and members' coefficient errors are of similar size.
+- **A7. Independent sources.** The residual and coefficient errors are independent, and members' coefficient errors are of similar size. The residual draws are also independent, homoskedastic and unweighted. They are drawn with replacement from the pooled estimation residuals, ignoring location, the fitted value and the survey weights. In BFA, 24 per cent of the residual variance lies between location panels (design effect of a weighted mean 11.8), the variance rises from 0.24 in the lowest quintiles of the fitted value to 0.42 in the top one, and the weighted mean residual of the baseline households is -0.027 while the pooled draw has mean zero. "Resample" therefore changes the level and the spread of the simulated distribution, not only its noise: the simulated historical Gini is 0.410 against 0.373 under "original" and 0.374 observed, and the mean is 4.78 against 4.36 and 4.48. The spread across years shows weather-driven variability (and, under "resample", independent draw noise). It does not show common non-weather shocks, which an iid draw understates by a factor of about $\sqrt{11.8}$ for a national statistic.
 
 ## Limitations and what is not quantified
 
@@ -149,7 +160,7 @@ and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference 
 
 ## In the app
 
-- Step 2 > Simulation settings: **Include coefficient uncertainty**, and **Include uncertainty on all covariates**.
+- Step 2 > Simulation settings: **Include coefficient uncertainty**.
 - Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source.
 
 User guide: [Sources of uncertainty](https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations).
@@ -164,11 +175,13 @@ User guide: [Sources of uncertainty](https://github.com/worldbank/wise-app-docs/
 |---|---|---|
 | Covariance factor | 1 | `R/fct_simulations.R` `compute_chol_vcov()`, `COEF_VCOV_SPEC` |
 | Factor loading | (1.1) | `R/fct_simulations.R` `compute_factor_loading()` |
-| Anchored loading | (1.2) | `R/fct_simulations.R` `.anchor_design_shift()` |
+| Anchored loading | (1.2) | `R/fct_simulations.R` `.anchor_design_shift()`, `step2_add_residual_key()` |
+| Logistic link factor | 2 | `R/fct_simulations.R` `.logit_link_derivative()` |
 | Delta-method aggregation | (2.1) | `R/fct_aggregation_delta.R` `aggregate_with_uncertainty_delta()` |
 | Gradients | 3 | `R/fct_aggregation_delta.R` `gradient_for_method()` |
 | Bands | 4 | `R/fct_aggregation_delta.R` `apply_band_transform()`; `R/fct_sim_compare.R` `resolve_band_q()` |
-| Residual draws | (2.1) | `R/fct_aggregation.R` `draw_residuals_vec()` |
+| Residual draws | (2.1) | `R/fct_aggregation.R` `draw_residuals_vec()`, `.residual_lookup()` |
+| Poverty-rate residual variance | 2 | `R/fct_aggregation_delta.R` `.headcount_resid_variance()` |
 | Active scope and block factor | 5 | `R/fct_results.R` `attach_active_mask()`, `build_active_coef_mask()`, `detect_modified_cols()` |
 | Quantile-model loading | (6.1) | `R/fct_rif_sim.R` `interpolate_F_loading()` |
 | Pooling members | (7.1) | `R/fct_aggregation.R` `combine_ensemble_results()` |

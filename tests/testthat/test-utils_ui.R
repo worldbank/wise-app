@@ -255,3 +255,13 @@ test_that("wise_reactable_csv_button wires the client-side export call", {
   expect_false(grepl("onclick", html, fixed = TRUE))
   expect_match(html, "wise-csv-btn", fixed = TRUE)
 })
+
+test_that("the Step 2 summary card names an applied residual rule that differs from the request", {
+  hs <- list(so = list(name = "welfare"), sim_summary = list(
+    historical_years = c(1991, 2020), residuals_requested = "original", residuals_effective = "none"))
+  html <- as.character(simulation_summary_card(hs))
+  expect_match(html, "Residuals applied")
+  expect_match(html, "none (requested original)", fixed = TRUE)
+  hs$sim_summary$residuals_effective <- "original"
+  expect_no_match(as.character(simulation_summary_card(hs)), "Residuals applied")
+})

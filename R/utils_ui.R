@@ -220,6 +220,7 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
   }
   separator <- shiny::tags$span(class = "step2-summary-separator", "\u00b7")
   left_out <- step2_dropped_note(run$baseline_dropped)
+  rule_note <- step2_residual_rule_note(run)
   summary_row <- c(
     scenario_items,
     list(separator),
@@ -245,6 +246,16 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
           class = "step2-summary-item",
           shiny::tags$span(class = "step2-summary-label", "Left out"),
           shiny::tags$span(class = "step2-summary-value", left_out)
+        )
+      )
+    },
+    if (!is.null(rule_note)) {
+      list(
+        separator,
+        shiny::tags$span(
+          class = "step2-summary-item",
+          shiny::tags$span(class = "step2-summary-label", "Residuals applied"),
+          shiny::tags$span(class = "step2-summary-value", rule_note)
         )
       )
     }

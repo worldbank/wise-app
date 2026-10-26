@@ -184,6 +184,22 @@ step2_residual_match_note <- function(residual_match) {
   )
 }
 
+#' Note on a residual rule that differs from the request
+#'
+#' The quantile model and a missing estimation residual demote the rule to
+#' "none" without a message. Silent when the applied rule is the requested one.
+#' @param run Step 2 run summary (`sim_summary`).
+#' @return A string, or `NULL`.
+#' @noRd
+step2_residual_rule_note <- function(run) {
+  req <- run$residuals_requested
+  eff <- run$residuals_effective
+  if (is.null(req) || is.null(eff) || identical(req, eff)) {
+    return(NULL)
+  }
+  sprintf("%s (requested %s)", eff, req)
+}
+
 #' Note on the households left out of the baseline
 #' @param dropped `dropped` element of `step2_baseline_complete()`.
 #' @return A string, or `NULL` when nothing was left out.
@@ -301,10 +317,14 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
 #'   (`step2_baseline_complete()$dropped`), or `NULL`.
 #' @param residual_match Baseline households with and without an estimation row
 #'   (`attr(wise_step2_input(), "residual_match")`), or `NULL`.
+#' @param residuals_requested The rule the user asked for, or `NULL`.
+#' @param residuals_effective The rule the run used (`input$residuals` of
+#'   `wise_step2_input()`, which forces "none" for RIF), or `NULL`.
 #' @return `result`, with the two fields set on `hist_sim_result`.
 #' @noRd
 wise_step2_annotate <- function(result, sw, hist_years, baseline_label,
-                                baseline_dropped = NULL, residual_match = NULL) {
+                                baseline_dropped = NULL, residual_match = NULL,
+                                residuals_requested = NULL, residuals_effective = NULL) {
   result$hist_sim_result$hist_label <- step2_hist_label(hist_years)
   result$hist_sim_result$sim_summary <- list(
     weather = sw,
@@ -312,6 +332,8 @@ wise_step2_annotate <- function(result, sw, hist_years, baseline_label,
     baseline_survey = baseline_label,
     baseline_dropped = baseline_dropped,
     residual_match = residual_match,
+    residuals_requested = residuals_requested,
+    residuals_effective = residuals_effective,
     total_runs = result$total_runs
   )
   result

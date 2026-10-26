@@ -276,7 +276,7 @@ pages:
       - "Step 2 > Results: annual series, scenario bands, threshold tables. Step 2 > Diagnostics: weather distributions and the sources of uncertainty."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare"
     code: ["R/fct_step2_input.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_simulations.R", "R/fct_predict_outcomes.R", "R/fct_aggregation.R", "R/fct_sim_diag.R", "R/fct_sim_compare.R", "R/fct_spec_defaults.R"]
-    verified_against: "1c2834e"
+    verified_against: "1ecc93e"
   - id: "climate-scenarios"
     file: "31_climate_scenarios.md"
     title: "Climate scenarios (monthly delta method)"
@@ -326,7 +326,7 @@ pages:
       - "Step 2 > Results: choose the metric, the poverty line, a difference from the historical mean or median, and the band widths. The tabs show the expected outcome, annual curves, the return-period table, the sources of uncertainty and the effects by decile."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#interpreting-the-results-tab"
     code: ["R/fct_aggregation.R", "R/fct_metric_registry.R", "R/fct_sim_compare.R", "R/fct_step2_tables.R", "R/fct_uncertainty_helpers.R", "R/fct_incidence.R", "R/fct_simulations.R"]
-    verified_against: "8592a9d"
+    verified_against: "1ecc93e"
   - id: "uncertainty"
     file: "33_uncertainty.md"
     title: "Uncertainty propagation"
@@ -350,11 +350,11 @@ pages:
       - {tag: "(8.1)", section: "8. Paired contrasts"}
     symbols: ["Sigma", "L", "F", "h", "T", "Y", "omega", "z"]
     ui:
-      - "Step 2 > Simulation settings: Include coefficient uncertainty, and Include uncertainty on all covariates."
+      - "Step 2 > Simulation settings: Include coefficient uncertainty."
       - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
     code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
-    verified_against: "d4fcbf1"
+    verified_against: "1ecc93e"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"
@@ -382,7 +382,7 @@ pages:
       - "Step 3 > Results, Diagnostics, Decomposition and Cost-effectiveness: the policy and baseline series side by side, the before-and-after summary of the changed variables, the channels and the cost per outcome gained."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model"
     code: ["R/fct_policy_sim.R", "R/fct_policy_registry.R", "R/fct_step3_input.R", "R/fct_step3_async.R", "R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_policy_sim_compare.R"]
-    verified_against: "d4fcbf1"
+    verified_against: "1ecc93e"
   - id: "policy-levers"
     file: "41_policy_levers.md"
     title: "Policy levers: access, percent change, travel time and labour market"
@@ -467,7 +467,7 @@ pages:
       - "Step 3 > Diagnostics and Cost-effectiveness: the run outputs of Section 6."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release"
     code: ["R/fct_sp_shock.R", "R/fct_policy_sim.R", "R/fct_policy_metric_decompose.R", "R/fct_step3_input.R", "R/mod_3_01_sp.R"]
-    verified_against: "8592a9d"
+    verified_against: "1ecc93e"
   - id: "decomposition"
     file: "44_decomposition.md"
     title: "Decomposition of the policy effect into direct and resilience channels"
@@ -530,7 +530,7 @@ pages:
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
     code: []
-    verified_against: "8592a9d"
+    verified_against: "1ecc93e"
   - id: "reproducibility"
     file: "51_reproducibility.md"
     title: "Seeds, run provenance and exports"

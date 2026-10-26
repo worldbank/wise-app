@@ -6,7 +6,7 @@ depends_on: [notation, framework, linear-model, rif-model, simulation, metrics, 
 symbols: [D, Delta, T, y, W, tau, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model
 code: [R/fct_policy_sim.R, R/fct_policy_registry.R, R/fct_step3_input.R, R/fct_step3_async.R, R/fct_policy_decompose.R, R/fct_policy_metric_decompose.R, R/fct_policy_sim_compare.R]
-verified_against: d4fcbf1
+verified_against: 1ecc93e
 ---
 
 # Policy scenarios as a change to the simulated population
@@ -85,7 +85,7 @@ The central values of the policy series are exact given Eq. (2.1). The coefficie
 
 $$F_i^{\text{pol}} = F_i + \nabla_{\beta}\,\Delta y_i \qquad \text{(5.1)}$$
 
-The coefficients of the policy variables are outside the block of weather coefficients and their interactions that the baseline loading covers (unless the Step 2 setting propagates all covariates). They are added as extra columns in the Cholesky basis of the covered block plus the policy coefficients. The leading block of that basis is the baseline's own, so the baseline arm is unchanged, and the covariance between the policy coefficients and the weather coefficients is kept. Two things follow.
+The coefficients of the policy variables are outside the block of weather coefficients and their interactions that the baseline loading covers. They are added as extra columns in the Cholesky basis of the covered block plus the policy coefficients. The leading block of that basis is the baseline's own, so the baseline arm is unchanged, and the covariance between the policy coefficients and the weather coefficients is kept. Two things follow.
 
 - The bands on the policy series and on the effect include the sampling error of the policy coefficients and of the interactions at the weather of the row. A run without a covariate lever (for example a cash transfer only) has the baseline loading, because the cash transfer is a fixed amount.
 - For the quantile model the correction is also linear in the coefficient curves once the household's positions before and after the main effect are fixed (the positions depend on the outcome, not on the coefficients). Its gradient is the same interpolation of the grid coefficients that the correction uses, and the loading rows are interpolated between the quantile equations in the same way as the baseline loading, in the Cholesky basis of each equation extended by the policy coefficients. A cash transfer then also carries coefficient uncertainty, through the weather coefficients at the shifted position.
@@ -120,7 +120,6 @@ where $T^{\text{hist}}$ is the historical baseline value, $T^{s}$ the baseline v
 - General-equilibrium effects, such as prices, wages or crowding of services.
 - Delivery capacity, service quality, take-up, and the costs of levers other than the cash transfer.
 - Behavioural responses to a transfer beyond what the fitted coefficients contain.
-- Uncertainty in the coefficients of the policy variables, in the bands of the policy series (Section 5).
 - Policy arms for logistic regression, binary outcomes and the machine-learning models.
 - A causal reading of any lever effect.
 
