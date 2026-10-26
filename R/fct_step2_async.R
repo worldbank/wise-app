@@ -121,7 +121,7 @@
     return(params)
   }
   # R2-SEC-01: a UI connection carries the user's own credentials to the
-  # local daemon (guidelines section 0; .wise_step2_async_launch() only starts
+  # local daemon (optimization guidelines section 8; .wise_step2_async_launch() only starts
   # local daemons, never url= ones, and dispatch re-checks this with
   # .wise_async_require_local_daemon()). The worker never fills a missing UI
   # field from its environment (.connection_field()).
@@ -673,7 +673,7 @@
 }
 
 # R2-SEC-01: credentials typed in the UI may only be sent to local daemons
-# (guidelines section 0). Environment connections carry no credentials.
+# (optimization guidelines section 8). Environment connections carry no credentials.
 .wise_async_require_local_daemon <- function(params) {
   if (is.list(params) && identical(params$origin, "ui") &&
       !.wise_async_daemons_local()) {

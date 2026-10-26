@@ -54,9 +54,9 @@ as `fit_model()`. Step 2 and Step 3 are gated to `fixest` and `rif`:
    not a checklist item. Read `review/optimization_guidelines.md` and the
    relevant plans in `review/` first.
 
-`optimization_guidelines.md` section 3 also says: do not migrate existing
-`fixest` workflows to other engines without an explicit decision; `lightgbm`
-and `xgboost` are future-engine candidates only.
+`review/optimization_guidelines.md` section 3 requires an explicit decision
+before migrating existing `fixest` workflows to another estimator; preserve
+sample, weighting and prediction semantics when comparing implementations.
 
 ## Constraints that apply to every engine
 

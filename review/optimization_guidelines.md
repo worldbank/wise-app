@@ -1,119 +1,70 @@
-# R Shiny App Optimization Guidelines for Coding Agents
+# Optimization guidelines
 
-Standards for optimizing this R Shiny app (golem framework). **Goal: make the app as fast and responsive as possible**, for every concurrent session, not just the one triggering a given computation. The main risk to guard against: blocking the single-threaded main R process, and duplicating memory unnecessarily across reactive boundaries or worker processes.
-
-These guidelines reflect current best practice and package versions as of September 2026 and should be revisited periodically, as this space (mirai/crew, polars-R, Arrow interop, DuckDB) is evolving quickly.
+Optimize measured bottlenecks without changing results or blocking other sessions. Prefer the smallest change that improves end-to-end time or process-tree peak memory; a faster isolated operation is not enough.
 
 ## 0. App-Specific Context
 
-Architecture overview is in `ARCHITECTURE.md`; constraints it does not cover:
+- Read `ARCHITECTURE.md` for pipeline and cross-file contracts, `review/code_hygiene.md` for protected areas, and `DEPLOYMENT.md` for resource limits. Do not duplicate those inventories here.
+- Profile before choosing a target. Archived opportunity lists in `review/archive/` are evidence and traps, not an optimization backlog; reopen rejected experiments only with new evidence.
+- Preserve the existing engine, `year`, residual, policy and artifact contracts. Deliberate numerical changes need skill `wise-numeric-change`; they are not performance-only changes.
 
-- No `global.R` — Section 8's one-time daemon-pool setup belongs in `run_app()` / top-level `app_server.R`.
-- Ingestion is already DuckDB over `.parquet` (`fct_load_data.R`): optimize query/fetch paths, not storage format.
-- Extend the existing process-wide mirai singleton in `fct_step2_async.R` for async work (queue memory cap, `try_mirai()`, `onStop()` teardown); never create a second pool. In dev, workers load the package via `pkgload::load_all()`.
-- Credentials may cross to workers by explicit decision (2026-09-18): Step 2 snapshots are still scrubbed (`.wise_step2_async_connection_params()`) and workers resolve secrets from their own environment; the Overview metadata task passes connection params verbatim because user-entered credentials exist only in the params list. Never ship credentials to remote (`url=`-based) daemons — env-based resolution only.
-- Model fitting runs through `ENGINE_REGISTRY` (`fct_fit_model.R`) fitting 3 progressive specs across 4 engines — respect the contract; don't special-case one engine outside it.
-- Maps run on the custom hexmap bridge (`fct_hexmap.R`) — this is why Section 7 excludes maps; do not migrate or replace it.
-- Existing bounded caches (e.g. the aggregation preparation cache in `fct_aggregation.R`) must stay bounded per Section 4.
-- `DT`, `ggplot2`, and synchronous `future.apply` are still in use, so Sections 6–8 describe migration targets, not the status quo.
+## 1. Data Layer
 
-**Archived opportunity lists**: the earlier ranked speed-opportunity lists (`optimize_get_weather.md`, `optimize_rif.md`, `optimize_aggregation_welfare.md`) are in `review/archive/`. They are history, not current guidance: read the relevant one for parity risks and traps before touching that area, verify against the current code, and benchmark per Section 9 before adopting anything from them.
+- Push filtering, projection, joins and aggregation into DuckDB where appropriate; collect only the rows and columns the next stage needs. Avoid repeated conversions and materialization.
+- Use the exact DuckDB pin in `DESCRIPTION`; bundled extensions must match (`DEPLOYMENT.md`). Do not change storage formats or dependencies as incidental optimizations.
+- Compare SQL, existing R kernels and compiled code on the actual workload. Arrow and alternative engines are candidates, not mandatory faster paths; include conversion and transfer costs.
 
-## 1. Data Layer: Zero-Copy & Out-of-Core Processing
+## 2. Simulation and RNG
 
-Do not load full datasets into R session memory when the operation can be pushed to an engine that works on disk or in columnar memory instead.
+- Optimize measured hot loops, not every loop. Keep compute kernels Shiny-free and usable both in-process and in workers.
+- Preserve RNG kind, seeds, draw order and caller RNG state. Follow the existing `wise_seed()` and scoped-seed patterns; worker execution must reproduce the reference computation. Base RNG is not inherently unsafe in separate processes, but parallel streams need deliberate management.
+- Changing RNG libraries, reduction order or threading can change numbers. Run determinism and relevant engine-parity tests; do not assume vectorized or compiled code is numerically equivalent.
 
-- Store raw data as `.parquet` (via `nanoparquet` or `arrow`), not `.csv`. Loads 10–15x faster and compresses far better.
-- For aggregation/transformation, benchmark and use whichever of the following is fastest in production for the specific workload: `duckdb` (SQL pushdown, out-of-core), `collapse` (fast C-based in-memory manipulation), `data.table`, or a compiled Rcpp routine. There is no single mandated engine — pick per-workload based on measured performance, not assumption.
-- Pin the DuckDB engine/R package to the current LTS release line (`1.4.x`, e.g. 1.4.5+) for production, not the latest non-LTS minor (`1.5.x`). DuckDB 2.0.0 is expected around October 2026; hold off adopting it in production until it (or a subsequent LTS) has stabilized.
-- `polars` (R bindings, LazyFrame + Arrow) is still not on CRAN as of September 2026 (install via R-multiverse/R-universe) and remains younger/less battle-tested in R specifically than `duckdb`/`data.table`, though the underlying engine is mature. Treat it as an experimental candidate in benchmarks, not a default choice, and re-evaluate as the R package matures toward a CRAN release.
-- Never call `collect()`, `as.data.frame()`, or `dbFetch()` earlier than necessary. Filter/join/aggregate in the engine; only pull the already-reduced result into R.
-- Where a materialized R object (data.table, matrix, vector) must be shared across multiple `mirai` workers or reused across concurrent sessions, consider `mori` (Posit, shared-memory R objects via ALTREP, first released ~April 2026) instead of letting each worker serialize its own copy. All processes map the same physical memory; only a small handle is passed across the boundary. It's new, so validate behavior/stability for this app's object types before relying on it broadly — see also Section 8.
+## 3. Model Fitting
 
-## 2. Fast Simulation & RNG
+- Work through `ENGINE_REGISTRY`; supported engine paths and extension rules are in `ARCHITECTURE.md` and skill `add-model-engine`. Do not migrate existing fixest workflows to another estimator without an explicit decision.
+- Preserve formulas, fixed effects, weights, sample selection, row alignment and prediction semantics. A faster least-squares solver is not automatically a substitute for the fitted model.
+- Reuse prepared inputs where valid. Native DuckDB fetch beat the proposed Arrow conversion on the investigated workload; do not revive that conversion recipe without new evidence. Package upgrades require their own compatibility and benchmark checks.
 
-- Move hot loops (matrix transforms, Monte Carlo, iterative simulation) out of interpreted R and into Rcpp/RcppArmadillo.
-- Use `dqrng` instead of base `runif()`/`rnorm()` for any simulation that runs in parallel — base RNG is single-threaded and not safe across workers; `dqrng`'s PCG generators are thread-safe.
-- Simulation kernels should take plain numeric/matrix inputs so they can run identically on the main session or inside a background worker without extra marshaling.
+## 4. Caching
 
-## 3. Model Fitting Optimization: fixest (current priority)
+- Reuse existing bounded caches before adding another. Keys must cover all result-affecting inputs, including data/model identity, display settings where relevant, and RNG configuration for stochastic results.
+- Define invalidation, ownership, eviction and session isolation. Bound retained memory or disk; measure key construction, serialization and peak memory as well as cache-hit time.
+- Cache stable plain inputs and outputs, not reactive expressions or live connections. Do not add memoization, hashing or shared-memory dependencies without a measured need.
 
-The app fits models via `fixest`. Optimization effort should focus here first.
+## 5. Session State and Resources
 
-- `fixest` ultimately requires a standard `data.frame`/`data.table` input, so a literal zero-copy transfer into `feols()` isn't possible — but the *path* to that structure matters. Avoid manual, row-wise, or type-coercing conversions from a DuckDB result. Instead, fetch via Arrow's optimized fetch path (e.g. `duckdb_fetch_arrow()`) and convert to `data.table` using Arrow's native converter, which is materially faster and lower-memory than a generic `as.data.frame()` on a DBI result:
+- Minimize large-object duplication across reactives, snapshots, workers and result adoption. Reuse existing artifact and released-weather contracts rather than adding parallel storage paths.
+- Keep main-thread work bounded, including artifact reads and result publication. Async computation does not make synchronous adoption free.
+- Release session-owned connections, files and cache entries on replacement and session end. Respect shared-pool ownership and artifact leases; never destroy a process-wide resource when one session ends.
 
-```r
-# DuckDB -> Arrow (optimized fetch) -> data.table -> fixest
-con |>
-  dbSendQuery("SELECT ...") |>
-  duckdb::duckdb_fetch_arrow() |>
-  as.data.frame() |>          # Arrow's optimized converter, not a generic DBI fetch
-  data.table::setDT() |>
-  fixest::feols(y ~ x1 + x2 | fe1 + fe2, data = _)
-```
+## 6. Tables
 
-  Verify exact function names against installed `duckdb`/`fixest`/`arrow` versions — the requirement is: minimize copies and avoid a slow/generic conversion step between DuckDB and `feols()`.
-  - **Evidence note (2026-09-18 investigation, see tracking log)**: on duckdb ≥ 1.5 the Arrow pairing is `dbSendQueryArrow()` + `dbFetchArrow()` (the older `duckdb_fetch_arrow()` on a `dbSendQuery()` result errors with `Invalid query result`). On this app's payloads the native duckdb DBI fetch is already column-vectorized: Arrow conversion measured ≈ `dplyr::collect()` (0.495 vs 0.547 s at 730k rows) and plain `dbGetQuery()` was fastest (0.462 s). In the real pipeline the collect stage is ~75% SQL execution (sort/window/join) and ~25% conversion, so the Arrow path cannot buy more than ~0.1 s of a 1.4 s stage — not adopted. The native fetch/dbGetQuery path is the correct choice here; do not re-test without new evidence (e.g. a much wider string-heavy frame).
-- Where many small/fast regressions are run in a loop (e.g., cell-by-cell), prefer `collapse` or `RcppArmadillo::fastLm()` over repeated `lm()`/`feols()` calls if `fixest`'s own vectorized multi-estimation (`feols()` with multiple LHS/fixed-effect combinations) doesn't already cover the case.
-- Keep `fixest` current (0.14.x+). The 0.14 line reworked the internal demeaning algorithm for meaningfully faster fixed-effects estimation on large data — upgrading the package itself is a valid, low-effort optimization independent of any data-pipeline change.
-- `lightgbm`/`xgboost` are flagged as a **future** modeling engine only. Do not migrate existing `fixest` workflows to them without an explicit decision to do so; this is not a current optimization target.
+- Use `reactable` and the existing client-side CSV download helper. Export raw values; apply rounding through column formats.
+- Reduce and prepare table data outside renderers where possible. Preserve sorting, filtering, downloads and accessibility when optimizing updates.
 
-## 4. Smart Caching
+## 7. Figures and Maps
 
-- Wrap expensive, pure functions (simulation runs, model fits, heavy aggregations) in `memoise::memoise()`, backed by `cachem::cache_mem()` (in-memory) or a disk cache if results should persist across restarts or sessions.
-- Memoised functions must receive plain, hashable arguments (numbers, strings, vectors) — not reactive expressions, connections, or environments — or cache-hit detection breaks.
-- For cache-key hashing, use `secretbase` (fast, zero-copy streaming hashes; e.g. SHA-256/XXH3) instead of `memoise`'s default digest backend when memoising large objects (big data.tables, matrices). It hashes without fully serializing the object into memory first, avoiding a memory spike on every cache lookup, and produces cross-platform-reproducible hashes. `secretbase` is already the hashing engine behind the `targets` package's caching, so it's a proven approach for this exact problem.
-- Set cache size/eviction limits; an unbounded cache on a long-running server is itself a memory leak.
-
-## 5. Application & Session Architecture
-
-- Never store large data frames in `reactiveVal()`/`reactiveValues()`. Store file paths or DuckDB connection objects instead, and materialize data only at the output layer (the render function that needs actual rows).
-- Close every DuckDB connection and remove every temp file on session end, via `session$onSessionEnded()`. Leaked connections/files degrade the server over time and can exhaust file handles or disk.
-
-## 6. Tables (UI Layer)
-
-- Use `reactable` for all rendered tables. There are no multi-million-row table use cases in this app, so `DT`/server-side pagination is not needed.
-- Every rendered table must include a CSV download button, implemented client-side via `Reactable.downloadDataCSV()` (JavaScript), not an R-side download handler.
-
-## 7. Figures (UI Layer)
-
-- Convert existing `ggplot2` outputs to `echarts4r`. This offloads pan/zoom/tooltip/legend interaction to the browser and keeps the Shiny event loop free for compute, and gives a native download button for free. `echarts4r` is the current best-performing choice among mainstream interactive R charting libraries (ahead of `plotly` at scale; `highcharter` also carries a commercial licensing requirement not applicable here). It is actively maintained (0.5.x line as of 2026, now wrapping ECharts JS v6) — keep it current to pick up renderer performance improvements.
-- Where a chart updates in response to an input change but doesn't need a full re-render (e.g., highlighting, filtering a series), use `echarts4r` proxies (`echarts4rProxy()`) to patch the existing chart client-side instead of re-rendering it server-side.
-- Exclude maps from this migration. Map rendering is already optimized; the remaining cost there is data preparation, which should instead be addressed through Section 1 (data layer), not a charting library swap.
+- Use `echarts4r` through the existing `echart_*` builders. Keep ggplot builders needed for static output, exports and tests; no blanket migration or deletion.
+- Use proxies for compatible incremental updates when they avoid redundant work. Verify actual browser rendering and interactions, not just R construction time (skill `wise-ui-check`).
+- Maps stay on the MapLibre bridge in `fct_hexmap.R`. Optimize data preparation or payload size without replacing the map stack.
 
 ## 8. Asynchronous Execution
 
-Standard: `ExtendedTask` (UI/session layer) + `mirai` (worker backend).
-
-- Do not use `future`/`future_promise()` for high-throughput paths; `mirai` resolves via event-driven NNG sockets with materially lower overhead and is Shiny's recommended async backend.
-- Never create workers inside a `server()` function. Create the daemon pool once at app startup (`global.R` or golem's equivalent app-startup hook), not per-session. Register a shutdown hook (`onStop()`) so daemons terminate cleanly when the app stops.
-- Create, use, and destroy any resource needed inside a task (DB connections, file handles) entirely within the `mirai()`/task code block. Do not share connections or sockets from the parent session into a worker.
-- Pass minimal environments into workers — explicit `.args` or `environment()` with only the required variables, never the full main-session environment. For large shared objects (e.g. a common reference dataset all tasks need), prefer a `mori` shared-memory object over passing/serializing the object itself through `.args` on every task dispatch (see Section 1).
-- Use `crew` (built on `mirai`) only when workload is spiky/unpredictable and autoscaling genuinely helps — e.g., unpredictable bursts of concurrent simulations across sessions. For steady, predictable load, a fixed `mirai` daemon pool sized to Posit Connect's max processes (see Section 10) is simpler and avoids `crew`'s scale-up/scale-down overhead. Don't add `crew` by default; justify it against the actual load pattern first. If used, size workers to the deployment's available cores (leave at least one free for the main process) and set `seconds_idle`/`tasks_max` to reclaim idle or long-lived workers. Use the controller's `autoscale()`/`descale()`/`started()` methods (current `crew` API) for Shiny integration rather than manually managing worker counts.
-- For backpressure under heavy concurrent load, prefer newer `mirai` features where available — a queue memory cap (`daemons(memory = ...)`) and non-blocking submission (`try_mirai()`) — over letting tasks queue unbounded, since an unbounded queue degrades responsiveness for all users, not just the requester.
-- Use `bslib::input_task_button()` to trigger long-running tasks: prevents double-submission and provides a built-in loading indicator without hand-rolled debounce/spinner logic.
+- Reuse the lazy, process-wide mirai coordinator in `fct_step2_async.R`, shared by Steps 2 and 3 and Overview metadata. Preserve queue limits, cancellation, timeouts, stale-result rejection and shutdown cleanup; do not add a second pool or nested parallelism by default.
+- Workers receive minimal plain snapshots, not reactive environments or live connections. Create and close task-local resources inside the worker. Environment-sourced credentials are resolved in workers; UI-supplied credentials may cross only to verified local daemons, never remote ones.
+- Do not introduce `ExtendedTask`, `crew`, `future` or shared-memory machinery merely as a modernization. Justify coordinator changes against responsiveness, concurrent-session memory and end-to-end measurements.
 
 ## 9. Benchmarking
 
-Benchmark optimizations against real app data before merging, using the local dataset folder given by `WISEAPP_DATA_PATH` (set in `.Renviron`).
-
-- Reuse the existing benchmark harness (`dev/bench/bench_*.R`, `dev/bench/run_step2_benchmark.sh`, results under `dev/outputs/`) rather than writing ad-hoc timing scripts.
+- Use real app data from `Sys.getenv("WISEAPP_DATA_PATH")` in R; never open or print `.Renviron`. Synthetic smoke fixtures are not production performance evidence.
+- Reuse `dev/bench/` harnesses and skill `wise-benchmark`; write each run under a distinct `dev/outputs/` directory. Compare baseline and candidate on the same machine with equal seeds, threads, cache states and repetitions.
 - **Default payload**: BFA surveys (all years), 1x1 OLS (`WISEAPP_STEP2_WORKLOADS=one_ssp_one_period`, `WISEAPP_STEP2_MODELS=ols`), unless the change needs a larger or different payload (user decision 2026-10-07).
-- **Workload ceiling**: 2x2 (`WISEAPP_STEP2_WORKLOADS=two_ssps_two_periods`) for benchmarks and profiling; do not run 3x3 (user decision 2026-10-08). IRN or multi-period/multi-SSP runs are needed only when relevant to the change, within this ceiling.
-- **Step 3**: use `dev/bench/bench_step2.R` with `WISEAPP_STEP2_INCLUDE_STEP3=1 WISEAPP_STEP3_POLICIES=targeted_sp`; the `covariate` fixture needs an electricity column in the fitted model.
+- **Workload ceiling**: 2x2 (`WISEAPP_STEP2_WORKLOADS=two_ssps_two_periods`) for benchmarks and profiling; do not run 3x3 (user decision 2026-10-08). Use IRN or additional scenarios only when relevant, within this ceiling.
+- **Step 3**: `dev/bench/bench_step2.R` with `WISEAPP_STEP2_INCLUDE_STEP3=1 WISEAPP_STEP3_POLICIES=targeted_sp`; the `covariate` fixture needs an electricity column in the fitted model.
+- Report exact commands, baseline/candidate revisions, environment, repeated wall times and process-tree peak RSS, numerical parity and anything unmeasured. Stage-boundary memory samples are not peak RSS. Distinguish cold/warm caches and main-process/worker costs; archived timings are not a local baseline.
+- Run the relevant regression and determinism tests. Require identical outputs for performance-only changes unless a numerical tolerance is explicitly justified and approved; report any difference, not just headline agreement.
 
-Report before/after timings, process-tree peak RSS, repetitions and numerical parity for each selected payload. Archived report timings came from a 4-vCPU container; re-measure locally rather than treating them as a local baseline.
+## 10. Deployment and Runtime
 
-## 10. Deployment / Runtime Parameters
-
-The production web app is deployed on Posit Connect with the following runtime settings. These are editable and should be considered part of the optimization surface, not fixed constraints — e.g., worker/daemon pool sizing (Section 8) should be chosen with these in mind, and changes to them may themselves be a valid optimization.
-
-- Max RAM: `0 GiB` (no limit)
-- Min processes: `1`
-- Max processes: `8`
-- Max connections per process: `1`
-- Load factor: `0.5`
-- Initial timeout: `120 s`
-- Idle timeout per process: `60 s`
-- Connection timeout: `3600 s`
-- Read timeout: `3600 s`
+Use `DEPLOYMENT.md` for configured resource controls; verify actual Connect settings before tuning. Budget main-process, daemon, DuckDB, thread and temporary-disk costs across concurrent sessions. Do not infer safe concurrency from one session or duplicate unverified server settings here. Deployment or upload still requires explicit approval.
