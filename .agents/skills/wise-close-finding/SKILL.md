@@ -1,31 +1,34 @@
 ---
 name: wise-close-finding
 description: >
-  Close an item of the review remediation tracker (review/REVIEW-tracking.md):
-  the evidence a finding needs, the commit convention, and how to move the row
-  to the archive, update the counts and add the Log line. Also covers closing as
-  won't fix or deferred.
+  Work with the single open-work list (review/TRACKING.md): close an item
+  (the evidence it needs, the commit convention, moving the row to the archive,
+  the counts and the Log line), close it as won't fix or deferred, and fold the
+  open items of a finished review or plan into the list.
 when_to_use: >
-  When the user asks to fix, close, defer or drop a review finding by id (for
-  example CR-CQ-01, R2-PERF-01), or to update the tracker after finishing one.
+  When the user asks to fix, close, defer or drop a tracked item by id (for
+  example CR-CQ-01, R2-PERF-01, UR-01), to update TRACKING.md after finishing
+  one, or to archive a finished review or plan and carry its open items over.
 user-invocable: true
 allowed-tools: Read Grep Glob Edit Bash
-argument-hint: "[finding id, e.g. R2-PERF-01]"
+argument-hint: "[item id, e.g. R2-PERF-01, or a review to fold in]"
 ---
 
-# Closing a review finding
+# Closing a tracked item
 
-Open work is in `review/REVIEW-tracking.md`. The findings text is
-`review/archive/REVIEW-2026-10-06.md` (immutable: read it by id, never edit it). The
-record of finished work is `review/archive/REVIEW-2026-10-06-tracking-full.md`.
-The tracker's "Working rules" are the authority; this skill is the procedure.
+All open work is in `review/TRACKING.md`, whatever review it came from. The
+text of the first review's findings (batches B1 to B9) is
+`review/archive/REVIEW-2026-10-06.md` (immutable: read it by id, never edit it);
+the source of any other item is named in its section header. The record of
+finished work is `review/archive/REVIEW-2026-10-06-tracking-full.md`. The
+tracker's "Working rules" are the authority; this skill is the procedure.
 
 Status marks: `☐` todo, `◐` in progress (the open remainder is listed), `✗`
 won't fix or deferred (the reason is given).
 
 ## 1. Before the work
 
-- Read the row and the finding text (`grep -n "<ID>" review/archive/REVIEW-2026-10-06.md`).
+- Read the row and, for a B1 to B9 id, the finding text (`grep -n "<ID>" review/archive/REVIEW-2026-10-06.md`); for other ids read the source named in the section header.
 - Work on a branch off `dev`, one commit per finding id, the id in the
   subject (`R2-PERF-01: share household-constant vectors`). Do not push.
 - Check the work type and use the matching skill: numbers move
@@ -64,7 +67,23 @@ Performance changes need before/after timing and peak RSS.
 5. If the item closes as won't fix or deferred: set `✗`, give the reason and
    a reopen trigger, and add it to "Closed and deferred list" in the archive.
 
-## 4. Finish
+## 4. Fold a finished review into the tracker
+
+When a review or plan is done (built, or only deferred items left):
+
+1. Add a section to `review/TRACKING.md` (next free batch letter and number)
+   named for the area, with the source file in the header, one row per item
+   that is still open, deferred or owed (`☐`, `◐`, `✗` with the reason), and a
+   line for decisions that are closed and not to be reopened.
+2. Add its row to the batch table in "Where things stand", and a Decision log
+   entry for any change that moved numbers.
+3. Move the document to `review/archive/`, put "Archived <date>; open items
+   are in `review/TRACKING.md` (<batch>)" under its title, re-point the
+   references in code comments, tests, `ARCHITECTURE.md` and `review/README.md`,
+   and add one Log line.
+4. `Rscript dev/agents_check.R` and `Rscript dev/docs_check.R`.
+
+## 5. Finish
 
 - Skill `wise-verify` for follow-ups; `Rscript dev/agents_check.R` if you
   edited an instruction file.

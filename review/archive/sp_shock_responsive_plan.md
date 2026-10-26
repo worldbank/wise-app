@@ -1,6 +1,6 @@
 # Social protection: shock-responsive scenarios, design and remaining plan
 
-Archived 2026-10-26; open items are in `review/REVIEW-tracking.md` (B11).
+Archived 2026-10-26; open items are in `review/TRACKING.md` (B11).
 
 Scope: the Step 3 social protection (SP) module (`mod_3_01_sp`). Phase 0 (design options for the regular program) and Phase 1 (shock-responsive MVP) are built, verified and committed on `dev` (495ae85 to 7545ab3). This document keeps the design rules the code must follow and the plan for Phases 2 and 3. Work items are in `review/archive/sp_shock_responsive_tasks.md`; what each finished task did is in the git history.
 
@@ -22,7 +22,7 @@ Evidence note: statements about the code come from reading the files cited. Lite
 - The dynamic effect is folded into Main (`delta_sp`, `delta_main`, `delta_total`) and kept as its own vector `delta_sp_shock`, so the Phase 2 channel split is a presentation change.
 - Sidebar order: Trigger (own section, shock only), Amount with Payment settings beneath it (the amount basis, per household or per person, is shown there), Targeting.
 
-**Owed outside the build** (tracker `review/REVIEW-tracking.md`): BFA before and after headline numbers for P0-8; the BFA Step 3 benchmark figures with the shock fixtures (harness: `dev/bench_step3_helpers.R`, fixtures `shock_sp`, `shock_sp_budget`); the BFA LCU re-run entry. The browser pass and `tests/e2e/smoke.R` are done (19 October 2026); the IRN benchmark is dropped.
+**Owed outside the build** (tracker `review/TRACKING.md`): BFA before and after headline numbers for P0-8; the BFA Step 3 benchmark figures with the shock fixtures (harness: `dev/bench_step3_helpers.R`, fixtures `shock_sp`, `shock_sp_budget`); the BFA LCU re-run entry. The browser pass and `tests/e2e/smoke.R` are done (19 October 2026); the IRN benchmark is dropped.
 
 ## 2. Design rules that still bind the code
 

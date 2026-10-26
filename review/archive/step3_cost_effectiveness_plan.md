@@ -1,6 +1,6 @@
 # Step 3 cost-effectiveness results: initial plan
 
-Archived 2026-10-26; open items are in `review/REVIEW-tracking.md` (B11).
+Archived 2026-10-26; open items are in `review/TRACKING.md` (B11).
 
 Status: decisions taken 8 October 2026 (section 10); work is task P2-2 in `review/archive/sp_shock_responsive_tasks.md`. Static metrics (P0-5) are built; the tab, effect-per-cost metrics and shock-program support are not. Where this note says "Results section", read "dedicated Step 3 tab" (decision 4). The summary-card version of cost-effectiveness is deferred (see `review/headline_cards_review.md`, section 11.4C); this note plans the fuller results that the cards would later point to.
 

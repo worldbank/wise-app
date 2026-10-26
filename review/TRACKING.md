@@ -1,6 +1,6 @@
-# Review remediation tracking (REVIEW-2026-10-06)
+# Tracking: open work
 
-Source of truth for findings: `review/archive/REVIEW-2026-10-06.md` (immutable; reviewed commit `df37cdb`). This file tracks **open work only**. The full record of finished, closed and deferred work (commits, verification, measurements, Decision log, dated Log, performance baselines, reopen triggers) is in `review/archive/REVIEW-2026-10-06-tracking-full.md`; read it only for the evidence behind a finished or closed item. Compacted 2026-10-24.
+The single list of open work in this repository. Every review feeds it: when a review or plan is finished, its remaining items are added here (with the source named in the section header) and the review moves to `review/archive/`. New findings from later reviews get a row here, not a new tracker. This file tracks **open work only**. Findings of the first review (batches B1 to B9) are described in `review/archive/REVIEW-2026-10-06.md` (immutable; reviewed commit `df37cdb`). The full record of finished, closed and deferred work (commits, verification, measurements, Decision log, dated Log, performance baselines, reopen triggers) is in `review/archive/REVIEW-2026-10-06-tracking-full.md`; read it only for the evidence behind a finished or closed item. Compacted 2026-10-24.
 
 Status: `☐` todo · `◐` in progress (remainder listed) · `✗` won't fix / deferred (reason given). Sev: C critical · H high · M medium · L low. Effort: S < 1 day · M 1-3 days · L > 3 days.
 

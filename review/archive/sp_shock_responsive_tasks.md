@@ -1,6 +1,6 @@
 # Social protection: remaining tasks
 
-Archived 2026-10-26; open items are in `review/REVIEW-tracking.md` (B11).
+Archived 2026-10-26; open items are in `review/TRACKING.md` (B11).
 
 Companion to `review/archive/sp_shock_responsive_plan.md` (design rules, Phase 2 and 3 design). Updated 2026-10-19.
 
@@ -49,7 +49,7 @@ Plan invariants extended and audited against the tests; two new tests (all Phase
 
 ## 3. Owed by the user
 
-Record in `review/REVIEW-tracking.md`:
+Record in `review/TRACKING.md`:
 
 - Browser checks for every `◐` row above: done 19 Oct 2026, with `tests/e2e/smoke.R`.
 - BFA before and after headline numbers for P0-8 (synthetic check: realised weighted inclusion 15.8 % / exclusion 12.2 % before, 15.0 % / 10.0 % after, for 15 % / 10 % sliders).
