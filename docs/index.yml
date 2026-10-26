@@ -208,7 +208,7 @@ pages:
       - "Step 1 > Model: choose \"Unconditional quantile regression (RIF)\" when the outcome is continuous. Results shows the quantile curve with its 95 per cent band; Model fit reports fit statistics for each quantile."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif"
     code: ["R/fct_fit_model.R", "R/fct_rif_sim.R", "R/fct_step1_headline.R", "R/fct_results.R"]
-    verified_against: "72a2fdb"
+    verified_against: "d5a8be4"
   - id: "ml-models"
     file: "23_model_ml.md"
     title: "Tree-based models (random forest, gradient boosting)"
@@ -346,6 +346,7 @@ pages:
       - {tag: "(1.2)", section: "1. Factor loading"}
       - {tag: "(2.1)", section: "2. Delta method for a metric"}
       - {tag: "(6.1)", section: "6. Quantile model"}
+      - {tag: "(6.2)", section: "6. Quantile model"}
       - {tag: "(7.1)", section: "7. Combining members"}
       - {tag: "(8.1)", section: "8. Paired contrasts"}
     symbols: ["Sigma", "L", "F", "h", "T", "Y", "omega", "z"]
@@ -354,7 +355,7 @@ pages:
       - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
     code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
-    verified_against: "72a2fdb"
+    verified_against: "d5a8be4"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"
@@ -530,7 +531,7 @@ pages:
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
     code: []
-    verified_against: "72a2fdb"
+    verified_against: "d5a8be4"
   - id: "reproducibility"
     file: "51_reproducibility.md"
     title: "Seeds, run provenance and exports"

@@ -130,9 +130,11 @@ COEF_VCOV_SPEC <- ~loc_id_panel
 compute_chol_vcov <- function(fit, vcov_spec = COEF_VCOV_SPEC) {
   # fixest_multi: iterate over sub-models (needed for RIF quantile fits)
   if (inherits(fit, "fixest_multi")) {
-    return(lapply(seq_along(fit), function(i) {
+    out <- lapply(seq_along(fit), function(i) {
       compute_chol_vcov(fit[[i]], vcov_spec = vcov_spec)
-    }))
+    })
+    attr(out, "joint_vcov") <- attr(fit, "wise_joint_vcov")
+    return(out)
   }
 
   stopifnot("fit must be a fixest model" = inherits(fit, "fixest"))
@@ -171,6 +173,150 @@ compute_chol_vcov <- function(fit, vcov_spec = COEF_VCOV_SPEC) {
     }
   )
   list(L = L, K = nrow(L), beta = beta, spec = vcov_spec)
+}
+
+
+#' Joint cross-equation covariance of the RIF quantile equations
+#'
+#' The nine RIF equations share the sample, the design and the clusters, so
+#' their coefficient estimates are correlated. The stacked cluster sandwich is
+#' \eqn{V_{kl} = c\,H^{-1}(\sum_g s_{kg} s_{lg}')H^{-1}}, with \eqn{H} the
+#' residualised \eqn{X'X}, \eqn{s_{kg}} the cluster sum of the scores of
+#' equation \eqn{k}, and \eqn{c} the small-sample scalar of the fit's own
+#' covariance. Needs the fit's \code{scores}, so it runs before the fits are
+#' slimmed.
+#'
+#' Returns \code{NULL} with a warning when the equations differ in sample,
+#' coefficients or design, or when the diagonal blocks do not reproduce
+#' \code{vcov()} of each equation (for example another clustering).
+#'
+#' @param fit_multi A \code{fixest_multi} object (one fit per quantile).
+#' @param cluster Vector of cluster ids aligned with the data the fits were
+#'   estimated on, or \code{NULL} for row-level scores.
+#'
+#' @return A (K * p) square matrix, block \eqn{(k, l)} holding
+#'   \eqn{\mathrm{Cov}(\hat\beta_k, \hat\beta_l)}, with dimnames
+#'   \code{"k|coefficient"}; or \code{NULL}.
+#' @keywords internal
+compute_rif_joint_vcov <- function(fit_multi, cluster = NULL) {
+  fail <- function(why) {
+    warning("[compute_rif_joint_vcov] joint covariance unavailable (", why,
+      "); quantile equations are treated as independent.", call. = FALSE)
+    NULL
+  }
+  K <- length(fit_multi)
+  if (K < 2L) return(fail("fewer than two equations"))
+  fits <- lapply(seq_len(K), function(i) fit_multi[[i]])
+  f1 <- fits[[1L]]
+  nm <- names(stats::coef(f1))
+  scores <- lapply(fits, function(f) f$scores)
+  if (any(vapply(scores, is.null, NA))) return(fail("scores missing"))
+  same <- vapply(fits, function(f) {
+    identical(names(stats::coef(f)), nm) && identical(f$nobs, f1$nobs) &&
+      identical(f$obs_selection, f1$obs_selection) &&
+      isTRUE(all.equal(f$hessian, f1$hessian, tolerance = 1e-8))
+  }, NA)
+  if (!all(same)) return(fail("equations differ in sample or design"))
+  n <- nrow(scores[[1L]])
+  if (is.null(cluster)) {
+    cl <- seq_len(n)
+  } else {
+    cl <- cluster
+    for (sel in f1$obs_selection) cl <- cl[sel]
+    if (length(cl) != n) return(fail("cluster ids do not align with the fitted rows"))
+  }
+  cl <- as.character(cl)
+  cl[is.na(cl)] <- paste0(".row", which(is.na(cl)))
+  S <- lapply(scores, function(s) rowsum(s, cl, reorder = FALSE))
+  Hi <- tryCatch(solve(f1$hessian), error = function(e) NULL)
+  if (is.null(Hi)) return(fail("X'X not invertible"))
+  p <- length(nm)
+  V <- matrix(0, K * p, K * p)
+  blk <- function(k) (k - 1L) * p + seq_len(p)
+  for (k in seq_len(K)) {
+    for (l in k:K) {
+      B <- Hi %*% crossprod(S[[k]], S[[l]]) %*% Hi
+      V[blk(k), blk(l)] <- B
+      V[blk(l), blk(k)] <- t(B)
+    }
+  }
+  # Small-sample scalar of each equation, from its own fit-time covariance
+  mismatch <- numeric(K)
+  cc <- vapply(seq_len(K), function(k) {
+    ref <- unclass(stats::vcov(fits[[k]]))
+    attributes(ref) <- list(dim = dim(ref))
+    raw <- V[blk(k), blk(k)]
+    ck <- sum(ref * raw) / sum(raw * raw)
+    mismatch[k] <<- max(abs(ck * raw - ref)) / max(abs(ref))
+    if (!is.finite(ck) || !is.finite(mismatch[k]) || mismatch[k] > 1e-6) NA_real_ else ck
+  }, numeric(1))
+  if (anyNA(cc)) {
+    return(fail(sprintf("diagonal blocks do not match vcov() of the equations; largest relative difference %.3g",
+      max(mismatch, na.rm = TRUE))))
+  }
+  scale <- sqrt(outer(rep(cc, each = p), rep(cc, each = p)))
+  V <- V * scale
+  V <- (V + t(V)) / 2
+  dimnames(V) <- list(paste0(rep(seq_len(K), each = p), "|", nm),
+    paste0(rep(seq_len(K), each = p), "|", nm))
+  V
+}
+
+
+#' Joint factor of the RIF quantile equations
+#'
+#' Resolves which covariance the quantile loadings use and returns its lower
+#' Cholesky factor over the rows selected by `mask` (the active coefficients,
+#' repeated in every equation block). Uses the joint cross-equation covariance
+#' stored on the fit; when it is missing or its block is not positive definite,
+#' falls back to independent per-quantile blocks, with a warning.
+#'
+#' @param chol_obj List of per-quantile \code{compute_chol_vcov()} results,
+#'   with attribute \code{joint_vcov}.
+#' @param mask Logical vector over the coefficients of one equation, or
+#'   \code{NULL} for all coefficients.
+#'
+#' @return List: \code{L} (lower factor, block-major over equations and the
+#'   selected coefficients), \code{V} (the covariance it factors),
+#'   \code{V_full} (the same covariance over all coefficients),
+#'   \code{independent} (logical), \code{p} (selected width per equation).
+#' @keywords internal
+rif_joint_factor <- function(chol_obj, mask = NULL) {
+  K <- length(chol_obj)
+  p_all <- nrow(chol_obj[[1L]]$L)
+  if (is.null(mask)) mask <- rep(TRUE, p_all)
+  mask_j <- rep(mask, times = K)
+  Vj <- attr(chol_obj, "joint_vcov")
+  if (is.matrix(Vj) && nrow(Vj) == K * p_all) {
+    Va <- Vj[mask_j, mask_j, drop = FALSE]
+    L <- tryCatch(t(chol(Va)), error = function(e) NULL)
+    if (!is.null(L)) {
+      return(list(L = L, V = Va, V_full = Vj, independent = FALSE, p = sum(mask)))
+    }
+    warning("[rif_joint_factor] joint covariance is not positive definite; ",
+      "quantile equations are treated as independent.", call. = FALSE)
+  }
+  if (is.null(Vj)) {
+    warning("[rif_joint_factor] no joint covariance stored with the model fit; ",
+      "quantile equations are treated as independent.", call. = FALSE)
+  }
+  V_k <- lapply(chol_obj, function(x) {
+    Lk <- x$L[mask, , drop = FALSE]
+    tcrossprod(Lk)
+  })
+  Va <- matrix(0, K * sum(mask), K * sum(mask))
+  pa <- sum(mask)
+  for (k in seq_len(K)) {
+    ix <- (k - 1L) * pa + seq_len(pa)
+    Va[ix, ix] <- V_k[[k]]
+  }
+  L <- t(chol(Va))
+  Vf <- matrix(0, K * p_all, K * p_all)
+  for (k in seq_len(K)) {
+    ix <- (k - 1L) * p_all + seq_len(p_all)
+    Vf[ix, ix] <- tcrossprod(chol_obj[[k]]$L)
+  }
+  list(L = L, V = Va, V_full = Vf, independent = TRUE, p = pa)
 }
 
 
@@ -664,6 +810,11 @@ run_sim_pipeline <- function(weather_raw,
         }
       })
       if (use_active) attr(tmp, "active_mask") <- active_mask
+      # One joint factor over all equations: loadings of different quantiles
+      # carry their estimated covariance (see rif_joint_factor()).
+      attr(tmp, "joint_L") <- rif_joint_factor(
+        chol_src, if (use_active) active_mask
+      )$L
       tmp
     } else {
       NULL

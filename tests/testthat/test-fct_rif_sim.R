@@ -15,6 +15,9 @@ test_that("interpolate_delta works correctly", {
 })
 
 test_that("grouped RIF loading interpolation preserves endpoints and row order", {
+  # Without a joint factor the equations are independent: the loading has one
+  # block of columns per quantile and each household fills its two bracketing
+  # blocks (the former blend added the two into shared columns).
   set.seed(20260916)
   n <- 80L
   K <- 5L
@@ -25,29 +28,141 @@ test_that("grouped RIF loading interpolation preserves endpoints and row order",
   })
   chol_list <- lapply(seq_len(K), function(k) diag(3L))
 
-  legacy <- function() {
+  expected <- function() {
     idx <- findInterval(tau_i, taus, all.inside = TRUE)
     idx_hi <- pmin(idx + 1L, K)
-    tau_lo <- taus[idx]
-    tau_hi <- taus[idx_hi]
-    w <- ifelse(tau_hi > tau_lo, (tau_i - tau_lo) / (tau_hi - tau_lo), 0)
-    out <- matrix(NA_real_, nrow = n, ncol = 3L)
-    pair_key <- idx + idx_hi * (K + 1L)
-    for (key in unique(pair_key)) {
-      rows <- which(pair_key == key)
-      a <- idx[rows[1L]]
-      b <- idx_hi[rows[1L]]
-      fa <- X_diff[[a]][rows, , drop = FALSE] %*% chol_list[[a]]
-      fb <- if (a == b) fa else X_diff[[b]][rows, , drop = FALSE] %*% chol_list[[b]]
-      out[rows, ] <- (1 - w[rows]) * fa + w[rows] * fb
+    w <- ifelse(taus[idx_hi] > taus[idx], (tau_i - taus[idx]) / (taus[idx_hi] - taus[idx]), 0)
+    out <- matrix(0, nrow = n, ncol = 3L * K)
+    for (i in seq_len(n)) {
+      out[i, (idx[i] - 1L) * 3L + 1:3] <- (1 - w[i]) * X_diff[[idx[i]]][i, ]
+      out[i, (idx_hi[i] - 1L) * 3L + 1:3] <- out[i, (idx_hi[i] - 1L) * 3L + 1:3] +
+        w[i] * X_diff[[idx_hi[i]]][i, ]
     }
     out
   }
 
   actual <- interpolate_F_loading(X_diff, chol_list, taus, tau_i)
-  expect_identical(actual, legacy())
-  expect_identical(actual[1L, ], X_diff[[1L]][1L, ])
-  expect_identical(actual[2L, ], X_diff[[K]][2L, ])
+  expect_equal(actual, expected())
+  expect_equal(actual[1L, 1:3], X_diff[[1L]][1L, ])
+  expect_equal(actual[2L, 3L * (K - 1L) + 1:3], X_diff[[K]][2L, ])
+  # Quantiles 1 and 5 share no columns: zero covariance between them
+  expect_equal(sum(actual[1L, ] * actual[2L, ]), 0)
+})
+
+test_that("RIF loadings carry the joint covariance, also between distant quantiles", {
+  set.seed(20261026)
+  K <- 9L
+  p <- 3L
+  taus <- seq(0.1, 0.9, by = 0.1)
+  A <- matrix(rnorm(K * p * K * p), K * p)
+  V <- crossprod(A) / (K * p) + diag(0.1, K * p)
+  L_joint <- t(chol(V))
+  chol_list <- lapply(seq_len(K), function(k) {
+    ix <- (k - 1L) * p + seq_len(p)
+    t(chol(V[ix, ix]))
+  })
+  attr(chol_list, "joint_L") <- L_joint
+  tau_i <- c(0.1, 0.9, 0.35, 0.72)
+  n <- length(tau_i)
+  X <- matrix(rnorm(n * p), n)
+  X_fn <- function(k, rows) X[rows, , drop = FALSE]
+  Fm <- interpolate_F_loading(X_fn, chol_list, taus, tau_i)
+  expect_equal(dim(Fm), c(n, K * p))
+
+  # Exact: F F' = B V B' with B the interpolation of the design into blocks
+  B <- matrix(0, n, K * p)
+  idx <- findInterval(tau_i, taus, all.inside = TRUE)
+  w <- (tau_i - taus[idx]) / 0.1
+  for (i in seq_len(n)) {
+    B[i, (idx[i] - 1L) * p + seq_len(p)] <- (1 - w[i]) * X[i, ]
+    B[i, idx[i] * p + seq_len(p)] <- w[i] * X[i, ]
+  }
+  expect_equal(tcrossprod(Fm), B %*% V %*% t(B), tolerance = 1e-10)
+  # households at tau 0.1 and 0.9 are correlated through block (1, 9)
+  expect_gt(abs(tcrossprod(Fm)[1L, 2L]), 0)
+
+  # Monte Carlo draws from the target joint covariance
+  draws <- matrix(rnorm(2e5 * K * p), ncol = K * p) %*% t(L_joint)
+  eff <- draws %*% t(B)
+  expect_equal(cov(eff), tcrossprod(Fm), tolerance = 0.03)
+})
+
+test_that("RIF loading covariance does not depend on coefficient column order", {
+  set.seed(20261027)
+  K <- 4L
+  p <- 3L
+  taus <- c(0.2, 0.4, 0.6, 0.8)
+  A <- matrix(rnorm(K * p * K * p), K * p)
+  V <- crossprod(A) + diag(0.5, K * p)
+  tau_i <- c(0.2, 0.5, 0.8, 0.63)
+  n <- length(tau_i)
+  X <- matrix(rnorm(n * p), n)
+  cov_for <- function(perm) {
+    pj <- as.vector(outer(perm, (seq_len(K) - 1L) * p, `+`))
+    Vp <- V[pj, pj]
+    chol_list <- lapply(seq_len(K), function(k) {
+      ix <- (k - 1L) * p + seq_len(p)
+      t(chol(Vp[ix, ix]))
+    })
+    attr(chol_list, "joint_L") <- t(chol(Vp))
+    Fm <- interpolate_F_loading(function(k, rows) X[rows, perm, drop = FALSE],
+      chol_list, taus, tau_i)
+    tcrossprod(Fm)
+  }
+  expect_equal(cov_for(1:3), cov_for(c(3L, 1L, 2L)), tolerance = 1e-10)
+})
+
+test_that("stacked RIF covariance matches a brute-force cluster sandwich", {
+  skip_if_not_installed("fixest")
+  set.seed(20261028)
+  n <- 600L
+  d <- data.frame(x1 = rnorm(n), x2 = rnorm(n), g = rep(1:40, length.out = n),
+    f = sample(1:6, n, TRUE))
+  d$y1 <- d$x1 + rnorm(n)
+  d$y2 <- d$y1 + 0.5 * rnorm(n)
+  d$y3 <- d$x2 + d$y1 + rnorm(n)
+  m <- fixest::feols(c(y1, y2, y3) ~ x1 + x2 | f, d, cluster = ~g, warn = FALSE)
+  V <- compute_rif_joint_vcov(m, cluster = d$g)
+  expect_equal(dim(V), c(6L, 6L))
+  expect_equal(V, t(V))
+  # diagonal blocks reproduce each equation's own cluster covariance
+  for (k in 1:3) {
+    ix <- (k - 1L) * 2L + 1:2
+    expect_equal(unname(V[ix, ix]), unname(as.matrix(unclass(stats::vcov(m[[k]])))),
+      tolerance = 1e-8, ignore_attr = TRUE)
+  }
+  # brute force: full design with FE dummies, cluster sandwich per pair
+  X <- stats::model.matrix(~ x1 + x2 + factor(f), d)
+  Bi <- solve(crossprod(X))
+  res <- lapply(c("y1", "y2", "y3"), function(v) stats::resid(stats::lm.fit(X, d[[v]])))
+  sc <- function(e) rowsum(X * e, d$g)
+  meat <- function(k, l) crossprod(sc(res[[k]]), sc(res[[l]]))
+  brute <- function(k, l) unname((Bi %*% meat(k, l) %*% Bi)[2:3, 2:3])
+  cc <- vapply(1:3, function(k) {
+    ref <- unname(as.matrix(unclass(stats::vcov(m[[k]]))))
+    sum(ref * brute(k, k)) / sum(brute(k, k)^2)
+  }, numeric(1))
+  for (kl in list(c(1, 2), c(1, 3), c(2, 3))) {
+    ix <- (kl[1] - 1L) * 2L + 1:2
+    jx <- (kl[2] - 1L) * 2L + 1:2
+    expect_equal(unname(V[ix, jx]), sqrt(cc[kl[1]] * cc[kl[2]]) * brute(kl[1], kl[2]),
+      tolerance = 1e-8, ignore_attr = TRUE)
+  }
+})
+
+test_that("joint RIF covariance falls back to independent blocks with a warning", {
+  skip_if_not_installed("fixest")
+  set.seed(1)
+  d <- data.frame(x = rnorm(100), g = rep(1:10, 10), y1 = rnorm(100), y2 = rnorm(100))
+  m <- fixest::feols(c(y1, y2) ~ x, d, cluster = ~g, warn = FALSE)
+  # clustering that does not match the fit: the diagonal blocks differ from vcov()
+  expect_warning(out <- compute_rif_joint_vcov(m, cluster = NULL), "independent")
+  expect_null(out)
+  chol_obj <- compute_chol_vcov(m)
+  expect_warning(fac <- rif_joint_factor(chol_obj), "independent")
+  expect_true(fac$independent)
+  expect_equal(fac$L %*% t(fac$L), fac$V)
+  expect_equal(fac$V[1:2, 3:4], matrix(0, 2, 2))
 })
 
 legacy_compute_rif_multi <- function(y, taus, bw = NULL, dens = NULL) {

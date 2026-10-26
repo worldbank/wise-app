@@ -1067,9 +1067,17 @@ fit_model <- function(df, selected_outcome, selected_weather, selected_model,
 
   fit3 <- .cache_mm(fit3)
 
+  # Joint cross-equation covariance of the RIF equations: needs the scores
+  # that slimming removes, so it is built here and stored on fit3.
+  rif_joint_vcov <- if (is_rif && inherits(fit3, "fixest_multi")) {
+    cl_var <- cluster_vars[cluster_vars %in% names(df)]
+    compute_rif_joint_vcov(fit3, cluster = if (length(cl_var) == 1L) df[[cl_var]])
+  }
+
   fit1 <- .slim_fit(fit1)
   fit2 <- .slim_fit(fit2)
   fit3 <- .slim_fit(fit3)
+  if (!is.null(rif_joint_vcov)) attr(fit3, "wise_joint_vcov") <- rif_joint_vcov
 
   # 9. Build RIF grid (beta curves) from all three model specifications ----
 

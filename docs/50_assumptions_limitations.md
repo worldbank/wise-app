@@ -6,7 +6,7 @@ depends_on: [notation, framework, data, outcomes, weather-measures, model-specif
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: []
-verified_against: 72a2fdb
+verified_against: d5a8be4
 ---
 
 # Assumptions and limitations in one place
@@ -61,7 +61,7 @@ The app produces three kinds of statements ([01_framework](01_framework.md)): a 
 | Coefficients are jointly normal; residual and coefficient errors are independent | [33_uncertainty](33_uncertainty.md#assumptions) A2, A7 | Few clusters violate normality. |
 | Residual draws under "resample" are independent, homoskedastic and unweighted | [33_uncertainty](33_uncertainty.md#assumptions) A7 | "Resample" changes the level and spread of the simulated distribution, not only its noise. The year spread shows weather-driven variability only, not common non-weather shocks. A per-year value holds one residual realisation; 30-year averages are stable to about 0.2 per cent. |
 | The residual is fixed so that unchanged terms cancel | [33_uncertainty](33_uncertainty.md#assumptions) A4 | The restricted scope applies only to the original residual rule for the linear model. |
-| Rank stability of the Gini; independent quantile equations; exchangeable models | [33_uncertainty](33_uncertainty.md#assumptions) A3, A5, A6 | |
+| Rank stability of the Gini; joint normality of the quantile equations (independent equations only as a fallback); exchangeable models | [33_uncertainty](33_uncertainty.md#assumptions) A3, A5, A6 | |
 
 ## Policy
 

@@ -183,7 +183,7 @@
 # (for a binned weather variable x is the indicator of the row's bin). Each
 # curve b(tau) is the linear interpolation of the grid coefficients, so the
 # loading is the same interpolation of the rows of the per-quantile Cholesky
-# basis, in the baseline's own convention (common z across the quantiles).
+# basis of the joint covariance of the quantile equations.
 
 # The curves the correction uses: lever main terms, weather terms and their
 # interactions with the levers, resolved as `.compute_rif_channels()` does.
@@ -245,15 +245,68 @@
   out
 }
 
-# Rows of the basis [A, P] for `names` in every quantile equation; NULL when a
-# term is missing from an equation or the baseline basis cannot be rebuilt.
+# Rows of the basis [A, P] for `names` in every quantile equation, from the
+# joint covariance of the equations (the same one the baseline loading uses:
+# `rif_joint_factor()`). The leading block A is the baseline's own factor of the
+# active block, the policy coefficients P outside it add columns, and their
+# covariance with A, within and across equations, is kept. NULL when a term is
+# missing from an equation or the baseline basis cannot be rebuilt.
 .policy_loading_rows_rif <- function(context, k_base, names) {
-  lapply(context$coef_chol_list, function(obj) {
-    sub <- list(coef_L = obj$L, coef_names = names(obj$beta),
-      weather_vars = context$weather_vars)
-    if (!all(names %in% sub$coef_names)) return(NULL)
-    .policy_loading_rows(sub, k_base, names)
+  chol_obj <- context$coef_chol_list
+  K <- length(chol_obj)
+  coef_names <- names(chol_obj[[1L]]$beta)
+  if (!all(names %in% coef_names)) return(NULL)
+  mask <- build_active_coef_mask(coef_names, context$weather_vars)
+  if (is.null(mask)) return(NULL)
+  if (k_base != K * sum(mask)) mask <- NULL
+  fac <- tryCatch(rif_joint_factor(chol_obj, mask), error = function(e) NULL)
+  if (is.null(fac)) return(NULL)
+  jn <- paste0(rep(seq_len(K), each = length(coef_names)), "|", rep(coef_names, K))
+  V <- fac$V_full
+  dimnames(V) <- list(jn, jn)
+  if (is.null(mask)) {
+    # Full propagation: every coefficient is in the baseline basis
+    L <- tryCatch(t(chol(V)), error = function(e) NULL)
+    if (is.null(L)) return(NULL)
+    rownames(L) <- jn
+    rows_all <- L
+  } else {
+    active <- jn[rep(mask, K)]
+    want <- paste0(rep(seq_len(K), each = length(names)), "|", rep(names, K))
+    rows_all <- .policy_loading_rows_cov(V, active, want, k_base, fac$L)
+  }
+  lapply(seq_len(K), function(k) {
+    r <- rows_all[paste0(k, "|", names), , drop = FALSE]
+    rownames(r) <- names
+    r
   })
+}
+
+# Rows of the basis [A, P] for coefficients `want` of a joint covariance `V`
+# (dimnames = coefficient labels), `active` the labels in the baseline's block
+# and `L_aa` the lower factor of that block, as in `.policy_loading_rows()`.
+.policy_loading_rows_cov <- function(V, active, want, k_base, L_aa) {
+  extra <- setdiff(want, active)
+  rows <- matrix(0, length(want), k_base + length(extra), dimnames = list(want, NULL))
+  in_a <- want %in% active
+  rows[in_a, seq_len(k_base)] <- L_aa[match(want[in_a], active), , drop = FALSE]
+  if (length(extra)) {
+    sigma_pa <- V[extra, active, drop = FALSE]
+    l_pa <- t(forwardsolve(L_aa, t(sigma_pa)))
+    rest <- V[extra, extra, drop = FALSE] - tcrossprod(l_pa)
+    rest <- (rest + t(rest)) / 2
+    l_pp <- tryCatch(t(chol(rest)), error = function(err) {
+      # Collinear coefficients: use the positive part
+      eig <- eigen(rest, symmetric = TRUE)
+      keep <- eig$values > sqrt(.Machine$double.eps) * max(eig$values, 1)
+      m <- eig$vectors[, keep, drop = FALSE] %*% diag(sqrt(eig$values[keep]), sum(keep))
+      cbind(m, matrix(0, nrow(m), nrow(m) - sum(keep)))
+    })
+    where <- match(want[!in_a], extra)
+    rows[!in_a, seq_len(k_base)] <- l_pa[where, , drop = FALSE]
+    rows[!in_a, k_base + seq_along(extra)] <- l_pp[where, , drop = FALSE]
+  }
+  rows
 }
 
 # Interpolated loading rows of curve `term` at positions `tau`.

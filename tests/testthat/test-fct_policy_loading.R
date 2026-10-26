@@ -103,7 +103,8 @@ test_that("quantile policy arm loading reproduces the correction's response to t
   policy <- baseline
   policy$electricity <- 1L
   sm <- build_selected_model(model_type = "Unconditional quantile regression (RIF)",
-    engine = "rif", interactions = "electricity", hh_covariates = "electricity")
+    engine = "rif", interactions = "electricity", hh_covariates = "electricity",
+    cluster = "loc_id")
   sw <- data.frame(name = "temp", cont_binned = "Continuous", stringsAsFactors = FALSE)
   so <- list(name = "welfare", type = "numeric", transform = "log")
   mf <- fit_model(baseline, so, sw, sm)
@@ -113,19 +114,20 @@ test_that("quantile policy arm loading reproduces the correction's response to t
   pipeline <- list(y_point = rep(0, 2L * n), svy_row_id = ids,
     sim_year = rep(c(2030L, 2031L), each = n), weight = NULL, id_vec = ids)
   pipeline <- .policy_test_attach_exposure(pipeline, baseline, list(temp = weather))
-  k_base <- 2L # temp and temp:electricity
-  pipeline$F_loading <- matrix(0, 2L * n, k_base)
-
   run_identity <- "loading-rif"
   context <- .build_decomposition_context(baseline, policy, mf, so,
     skip_coef = FALSE, run_identity = run_identity)
+  # temp and temp:electricity in each of the quantile equations (joint factor)
+  k_base <- 2L * length(context$taus)
+  pipeline$F_loading <- matrix(0, 2L * n, k_base)
   prepared <- .prepare_policy_annual_channels(context, run_identity)
   exposure <- .validate_policy_annual_exposure(pipeline, context)
   F_pol <- .policy_arm_loading_rif(pipeline, prepared, exposure, chunk_size = 200L)
   expect_false(is.null(F_pol))
   recipe <- prepared$loading_terms
   extra <- ncol(F_pol) - k_base
-  expect_equal(extra, 1L) # electricity is outside the active block
+  # electricity is outside the active block, in each quantile equation
+  expect_equal(extra, length(context$taus))
 
   # Move every grid coefficient along a shared draw z of the Cholesky basis
   # and compare the response of the correction with F z

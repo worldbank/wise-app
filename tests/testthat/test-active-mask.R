@@ -362,7 +362,8 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
     y = rnorm(n, 10, 2), temp = rnorm(n),
     urban = sample(0:1, n, TRUE), age = rnorm(n, 40, 10),
     hh_size = sample(1:8, n, TRUE),
-    loc = factor(sample(letters[1:4], n, TRUE))
+    loc = factor(sample(letters[1:4], n, TRUE)),
+    cl = sample(1:100, n, TRUE)
   )
   taus <- seq(0.1, 0.9, by = 0.2)
   for (i in seq_along(taus))
@@ -371,9 +372,12 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
                                  collapse = ", "), ")")
   fit_multi <- fixest::feols(
     stats::as.formula(paste(rif_lhs, "~ temp + urban + age + hh_size | loc")),
-    data = df, warn = FALSE
+    data = df, cluster = ~cl, warn = FALSE
   )
+  # Step 1 stores the joint covariance of the equations before slimming the fits
+  attr(fit_multi, "wise_joint_vcov") <- compute_rif_joint_vcov(fit_multi, cluster = df$cl)
   chol_obj <- compute_chol_vcov(fit_multi)
+  expect_false(is.null(attr(chol_obj, "joint_vcov")))
   svy <- df[1:50, ]
   svy$.svy_row_id <- seq_len(50)
   newdata <- svy
@@ -391,6 +395,7 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
     tmp <- lapply(chol_obj, function(x)
       if (use_active) x$L_active else x$L)
     if (use_active) attr(tmp, "active_mask") <- am
+    attr(tmp, "joint_L") <- rif_joint_factor(chol_obj, if (use_active) am)$L
     tmp
   }
 
@@ -423,8 +428,8 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
   )
   F_legacy <- attr(res_legacy, "F_loading")
   F_adit   <- attr(res_adit,   "F_loading")
-  expect_equal(ncol(F_legacy), 4L)  # all coefs
-  expect_equal(ncol(F_adit),   1L)  # temp only
+  expect_equal(ncol(F_legacy), 4L * length(taus))  # all coefs, in every equation
+  expect_equal(ncol(F_adit),   1L * length(taus))  # temp only, in every equation
 
   agg_legacy <- wiseapp:::aggregate_with_uncertainty_delta(
     y_point = res_legacy$.fitted, F_loading = F_legacy,

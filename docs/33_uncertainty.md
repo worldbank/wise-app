@@ -6,7 +6,7 @@ depends_on: [notation, model-specification, linear-model, rif-model, simulation,
 symbols: [Sigma, L, F, h, T, Y, omega, z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations
 code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_simulations.R, R/fct_results.R, R/fct_rif_sim.R, R/fct_step2_tables.R, R/fct_sim_compare.R, R/fct_uncertainty_helpers.R]
-verified_against: 72a2fdb
+verified_against: d5a8be4
 ---
 
 # Uncertainty propagation
@@ -97,11 +97,19 @@ The restricted variance is not guaranteed to be smaller than the full one, becau
 
 ### 6. Quantile model
 
-For the quantile model, $\hat\Sigma_k$ and $L_k$ come from the equation of each quantile $\tau_k$ ([22_model_rif](22_model_rif.md)). The loading of household $i$ is the interpolation between the two grid points around its position $\tau_i$ (Eq. (3.1) in [22_model_rif](22_model_rif.md)):
+For the quantile model, the nine equations are fitted on the same households with the same design and the same clusters, so their coefficient estimates are correlated. Let $\hat\beta=(\hat\beta_1^{\prime},\dots,\hat\beta_9^{\prime})^{\prime}$ stack the coefficients of the equations ([22_model_rif](22_model_rif.md)). The app estimates their joint covariance with the stacked cluster sandwich:
 
-$$F_i = (1-w_i)\ x_i^{*\prime}L_k + w_i\ x_i^{*\prime}L_{k+1} \qquad \text{(6.1)}$$
+$$\hat V_{kl} = c_{kl}\ (\ddot X^{\prime}\ddot X)^{-1}\Big(\sum_{g}\ \ddot X_g^{\prime}\hat e_{kg}\hat e_{lg}^{\prime}\ddot X_g\Big)(\ddot X^{\prime}\ddot X)^{-1} \qquad \text{(6.1)}$$
 
-with $x_i^{*}$ the design row under the scenario minus the design row at the weather of the interview, as in Eq. (1.2). Households outside the grid take the loading of the boundary quantile, with no extra penalty. The nine equations are **not** independent in the implementation. Every equation's coefficient deviation is drawn as $\beta_k-\hat\beta_k = L_k z$ with one shared standardised shock vector $z$ for all nine equations, so $\mathrm{Cov}(\beta_k,\beta_l) = L_kL_l^{\prime}$. This is an approximation, not an estimated covariance. It depends on the column order of the Cholesky factors, it applies to every pair of quantiles (not only neighbouring grid points), and it implies a correlation close to one when $L_k\approx L_l$. The equations are fitted on the same sample and design, so positive correlation is expected, but its size is not estimated. A joint cross-equation covariance, drawn from one factor of the joint active block, is the planned fix. There is no residual variance.
+where $\ddot X$ is the design after absorbing the fixed effects, $g$ runs over the clusters, $\hat e_{kg}$ are the residuals of equation $k$ in cluster $g$ and $c_{kl}$ is the geometric mean of the small-sample scalars of the two equations. For $k=l$ this is the covariance of equation $k$ that Step 1 shows, which is checked at fit time. The matrix is built in Step 1 before the fit objects are slimmed and stored with the model.
+
+Simulation uses one lower Cholesky factor $L_J$ of the active block of $\hat V$, $L_JL_J^{\prime}=\hat V_{aa}$, where the block collects the active coefficients of all nine equations. The loading of household $i$, with position $\tau_i$ between grid points $k$ and $k+1$ (Eq. (3.1) in [22_model_rif](22_model_rif.md)), is
+
+$$F_i = (1-w_i)\ x_i^{*\prime}L_J^{(k)} + w_i\ x_i^{*\prime}L_J^{(k+1)} \qquad \text{(6.2)}$$
+
+where $L_J^{(k)}$ are the rows of $L_J$ that belong to equation $k$, and $x_i^{*}$ is the design row under the scenario minus the design row at the weather of the interview, as in Eq. (1.2). The loading has nine times as many columns as the linear model's, and $FF^{\prime}=B\hat V_{aa}B^{\prime}$ with $B$ the interpolated design. The covariance between households at any two positions, adjacent or not, is therefore the estimated $\hat V_{kl}$, and does not depend on the order of the coefficient columns. Households outside the grid take the loading of the boundary quantile, with no extra penalty. Baseline and policy arms use the same factor ([40_policy_framework](40_policy_framework.md), Section 5), so their draws stay shared. There is no residual variance.
+
+**Fallback.** If the equations differ in estimation rows, coefficients or design, if the diagonal blocks do not reproduce the covariance of each equation, if the active block is not positive definite, or if a fit was stored without the joint covariance, the app uses independent equations ($\hat V_{kl}=0$ for $k\neq l$) and raises a warning. This is a lower bound for the variance of population aggregates, because the equations are positively correlated. Before this change the app drew all equations from one shared standardised shock vector, so $\mathrm{Cov}(\beta_k,\beta_l)=L_kL_l^{\prime}$, which depends on the column order and implies a correlation close to one between equations with similar covariance factors.
 
 ### 7. Combining members
 
@@ -143,7 +151,7 @@ and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference 
 - **A2. Gaussian coefficients.** The coefficient estimates are jointly normal with covariance $\hat\Sigma$.
 - **A3. Rank stability of the Gini.** Coefficient changes do not reorder households.
 - **A4. Cancellation through the residual.** The household's unexplained component is fixed (original rule), and the model is additive in changed and unchanged terms.
-- **A5. Shared shocks across quantile equations.** The nine quantile equations share one standardised shock vector, so $\mathrm{Cov}(\beta_k,\beta_l)=L_kL_l^{\prime}$ (Section 6). This depends on Cholesky column order and is not the estimated joint covariance, which is the planned fix.
+- **A5. Joint normality across quantile equations.** The coefficients of the nine quantile equations are jointly normal with the covariance of Eq. (6.1), which treats the transformed outcomes as given (the estimation of $q_\tau$ and $\hat f$ is ignored) and is estimated from the clusters of the sample. With few clusters relative to the number of active coefficients across the nine equations, the joint block is noisy or singular, and the app falls back to independent equations.
 - **A6. Exchangeable members.** Climate models are equally informative and independent.
 - **A7. Independent sources.** The residual and coefficient errors are independent, and members' coefficient errors are of similar size. The residual draws are also independent, homoskedastic and unweighted. They are drawn with replacement from the pooled estimation residuals, ignoring location, the fitted value and the survey weights. In BFA, 24 per cent of the residual variance lies between location panels (design effect of a weighted mean 11.8), the variance rises from 0.24 in the lowest quintiles of the fitted value to 0.42 in the top one, and the weighted mean residual of the baseline households is -0.027 while the pooled draw has mean zero. "Resample" therefore changes the level and the spread of the simulated distribution, not only its noise: the simulated historical Gini is 0.410 against 0.373 under "original" and 0.374 observed, and the mean is 4.78 against 4.36 and 4.48. The spread across years shows weather-driven variability (and, under "resample", independent draw noise). It does not show common non-weather shocks, which an iid draw understates by a factor of about $\sqrt{11.8}$ for a national statistic.
 
@@ -153,7 +161,7 @@ and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference 
 - Error in the weather data, and uncertainty about the interview month and location.
 - Poverty-line uncertainty and survey-weight uncertainty.
 - The estimation of the quantile density and of the quantiles themselves (the quantile model).
-- An estimated cross-quantile covariance (the implementation uses a shared-shock approximation, Section 6), and correlation between the baseline and the prediction of a household in the quantile model.
+- Correlation between the baseline and the prediction of a household in the quantile model, and the estimation of the quantile and density that define the transformed outcome.
 - Scenario uncertainty: the choice of pathway, horizon and policy design.
 - Coefficient uncertainty for non-linear and tree-based models.
 - Uncertainty in the bandwidth rules. The poverty rate and the median depend on the smoothing bandwidths.
@@ -183,7 +191,9 @@ User guide: [Sources of uncertainty](https://github.com/worldbank/wise-app-docs/
 | Residual draws | (2.1) | `R/fct_aggregation.R` `draw_residuals_vec()`, `.residual_lookup()` |
 | Poverty-rate residual variance | 2 | `R/fct_aggregation_delta.R` `.headcount_resid_variance()` |
 | Active scope and block factor | 5 | `R/fct_results.R` `attach_active_mask()`, `build_active_coef_mask()`, `detect_modified_cols()` |
-| Quantile-model loading | (6.1) | `R/fct_rif_sim.R` `interpolate_F_loading()` |
+| Joint covariance of the quantile equations | (6.1) | `R/fct_simulations.R` `compute_rif_joint_vcov()`; stored by `R/fct_fit_model.R` `fit_model()` |
+| Joint factor of the active block | 6 | `R/fct_simulations.R` `rif_joint_factor()` |
+| Quantile-model loading | (6.2) | `R/fct_rif_sim.R` `interpolate_F_loading()` |
 | Pooling members | (7.1) | `R/fct_aggregation.R` `combine_ensemble_results()` |
 | Per-model matrices | 7 | `R/fct_uncertainty_helpers.R` `by_model_matrix()` |
 | Paired contrasts | (8.1) | `R/fct_step2_tables.R` `step2_hist_f_ref()`, `step2_contrast_sd()`; `R/fct_sim_compare.R` `step2_delta_ci()`, `paired_effect_summary()` |

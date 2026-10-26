@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, model-specification, linear-model]
 symbols: [y, tau, q_tau, f_Y, beta_tau, W, X, F_hat]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif
 code: [R/fct_fit_model.R, R/fct_rif_sim.R, R/fct_step1_headline.R, R/fct_results.R]
-verified_against: 72a2fdb
+verified_against: d5a8be4
 ---
 
 # Unconditional quantile regression (RIF)
@@ -40,7 +40,7 @@ For each $\tau$ the app estimates the same Model 1, 2 and 3 as in [20_model_spec
 
 $$\text{RIF}(y_i;\ q_\tau) = W_i^{\prime}\beta_\tau + M_i^{\prime}\theta_\tau + (W_i\otimes M_i)^{\prime}\gamma_\tau + X_i^{\prime}\delta_\tau + \alpha_{g(i),\tau} + \lambda_{t(i),\tau} + \varepsilon_{i\tau} \qquad \text{(2.1)}$$
 
-The nine equations have the same regressors, fixed effects and sample, and are fitted by ordinary least squares in one stacked call. Standard errors are clustered at the location panel for each equation. The weather coefficient $\hat\beta_\tau$ is the approximate effect on the $\tau$-th quantile of the welfare distribution of a small shift in the distribution of weather.
+The nine equations have the same regressors, fixed effects and sample, and are fitted by ordinary least squares in one stacked call. Standard errors are clustered at the location panel for each equation, and the covariance between the equations is estimated jointly from the same clusters ([33_uncertainty](33_uncertainty.md), Section 6). The weather coefficient $\hat\beta_\tau$ is the approximate effect on the $\tau$-th quantile of the welfare distribution of a small shift in the distribution of weather.
 
 Plotted against $\tau$, $\hat\beta_\tau$ is the **quantile curve**. A flat curve means that weather moves the whole distribution by the same amount. A curve that is more negative at low $\tau$ means that the lower tail falls more than the upper tail.
 
@@ -102,7 +102,7 @@ The quantile model estimates movements of the **quantiles** of the distribution,
 - Nothing prevents estimated quantile functions from crossing, so adjacent quantile effects need not be ordered.
 - The bandwidth is chosen once for the full estimation sample. It is not adapted to a survey round or a group.
 - Standard errors treat the transformed outcome as given, so they ignore the estimation of $q_\tau$ and $\hat f$.
-- The nine equations are fitted on the same sample, but no cross-equation covariance is estimated. The uncertainty bands use one shared standardised shock vector $z$ across all nine equations, so $\mathrm{Cov}(\beta_k,\beta_l)=L_kL_l^{\prime}$, which depends on the column order of the Cholesky factors ([33_uncertainty](33_uncertainty.md), Section 6). A joint cross-equation covariance is the planned fix.
+- The nine equations are fitted on the same sample, with the same design and clusters, so their coefficient estimates are correlated. The uncertainty bands use the joint cross-equation covariance, estimated by the stacked cluster sandwich ([33_uncertainty](33_uncertainty.md), Section 6). Where it cannot be built (the equations differ in sample or design, the covariance is not positive definite on the active block, or a fit stored without it), the bands treat the equations as independent, which is a lower bound, and a warning is raised.
 - A weather effect in the simulation is available only for households that have an observed baseline outcome.
 - Diagnostics shown for the model use the median equation only.
 
@@ -123,6 +123,7 @@ User guide: [Unconditional quantile regression](https://github.com/worldbank/wis
 | RIF transformation | (1.1) | `R/fct_rif_sim.R` `compute_rif()`, `compute_rif_multi()` |
 | Bandwidth and density, shared across quantiles | (1.1) | `R/fct_fit_model.R` `ENGINE_REGISTRY` (`rif` entry, `prepare_outcome`) |
 | Stacked regression for the nine quantiles | (2.1) | `R/fct_fit_model.R` `ENGINE_REGISTRY` (`rif` entry, `fit_one`), `fit_model()` |
+| Joint covariance of the nine equations | (2.1) | `R/fct_simulations.R` `compute_rif_joint_vcov()`; `R/fct_fit_model.R` `fit_model()` stores it |
 | Quantile curve table | (2.1) | `R/fct_rif_sim.R` `build_rif_grid()` |
 | Position of a household | (3.1) | `R/fct_rif_sim.R` `predict_rif()` |
 | Weather effect at each grid point and interpolation | (4.1) to (4.3) | `R/fct_rif_sim.R` `predict_rif()`, `interpolate_delta()` |

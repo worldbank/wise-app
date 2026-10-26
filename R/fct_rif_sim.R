@@ -673,12 +673,11 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
     if (!is.null(F_loading)) {
       attr(newdata, "F_loading") <- F_loading
       # Diagnostic: confirm the additive-decomposition mask reached predict_rif.
-      # Compare ncol(F_loading) against the per-tau design width - if the mask
-      # is active, ncol should be < length(active_mask).
-      if (!is.null(active_mask) && ncol(F_loading) < length(active_mask)) {
+      # With the mask, ncol is K * (active coefficients), not K * all.
+      if (!is.null(active_mask) && ncol(F_loading) < K * length(active_mask)) {
         message(sprintf(
           "[predict_rif] additive-decomposition mask applied: F_loading is %d x %d (out of %d coefficients).",
-          nrow(F_loading), ncol(F_loading), length(active_mask)
+          nrow(F_loading), ncol(F_loading), K * length(active_mask)
         ))
       }
     }
@@ -693,25 +692,31 @@ predict_rif <- function(fit_multi, newdata, svy, train_data, taus, outcome,
 #' Interpolate factor loadings at arbitrary quantile positions
 #'
 #' For each household i, linearly interpolates between the two adjacent
-#' quantile factor-loading rows to produce a single N x P F_loading matrix.
+#' quantile loadings to produce a single N x (K * P) F_loading matrix, where K
+#' is the number of quantiles and P the coefficients per equation.
 #'
-#' Each per-quantile loading is \eqn{F_k = X\_diff_k \%*\% t(L_k)}, where
-#' \eqn{X\_diff_k = X_{scenario} - X_{baseline}} at quantile k.
+#' The loading of quantile k is \eqn{X\_diff_k} times the rows of the joint
+#' factor that belong to equation k, where
+#' \eqn{X\_diff_k = X_{scenario} - X_{baseline}} at quantile k. The joint
+#' factor \eqn{L_J}, \eqn{L_J L_J' = V_J}, carries the estimated covariance
+#' between the equations (\code{attr(chol_list, "joint_L")}). Without it the
+#' equations are treated as independent (block-diagonal factor).
 #'
 #' @param X_diff_fn  Function \code{(k, rows)} returning the quantile-k design
 #'   matrix (\code{length(rows) x p}) for the requested rows only - built on
 #'   demand so all K full N*p matrices never coexist in memory. (For backward
 #'   compatibility, a list of K full \code{n x p} matrices is also accepted and
 #'   wrapped automatically.)
-#' @param chol_list  List of K Cholesky factor matrices (p x p), one per quantile.
+#' @param chol_list  List of K Cholesky factor matrices (p x p), one per quantile;
+#'   optional attribute \code{joint_L}, the (K p) x (K p) joint factor.
 #' @param taus       Numeric vector of length K (sorted quantile grid).
 #' @param tau_i      Numeric vector of length n (household quantile positions).
 #' @param active_mask Optional logical vector of length p. When supplied,
 #'   each per-quantile loading is subset to the active columns before the
 #'   interpolation blend (additive-decomposition SE). NULL = no masking.
 #'
-#' @return Numeric n x p matrix of interpolated factor loadings (or
-#'   n x sum(active_mask) when masking is applied).
+#' @return Numeric n x (K p) matrix of interpolated factor loadings (or
+#'   n x (K sum(active_mask)) when masking is applied).
 #'
 #' @keywords internal
 interpolate_F_loading <- function(X_diff_fn, chol_list, taus, tau_i,
@@ -737,7 +742,7 @@ interpolate_F_loading <- function(X_diff_fn, chol_list, taus, tau_i,
   tau_hi <- taus[idx_hi]
   w <- ifelse(tau_hi > tau_lo, (tau_i - tau_lo) / (tau_hi - tau_lo), 0)
 
-  # F = X %*% L (lower triangular L with LL' = Sigma) so that
+  # Per equation: F = X %*% L (lower triangular L with LL' = Sigma) so that
   # F F' = X L L' X' = X Sigma X' - the correct level variance.
   # Earlier versions used t(L) here, which gives X L' L X' (not Sigma)
   # and inflated SEs by ~25% on realistic Sigma. The linear path
@@ -768,7 +773,22 @@ interpolate_F_loading <- function(X_diff_fn, chol_list, taus, tau_i,
   }
   p <- ncol(chol_list[[idx[1]]])
 
-  F <- matrix(NA_real_, nrow = n, ncol = p)
+  # Joint factor over the K equations: L_joint L_joint' is the (K p) x (K p)
+  # covariance of the stacked coefficients, block-major by quantile. Without
+  # one, the equations are independent (block-diagonal factor).
+  L_joint <- attr(chol_list, "joint_L")
+  if (is.null(L_joint)) {
+    L_joint <- matrix(0, K * p, K * p)
+    for (k in seq_len(K)) {
+      ix <- (k - 1L) * p + seq_len(p)
+      L_joint[ix, ix] <- chol_list[[k]]
+    }
+  }
+  stopifnot("joint factor must be (K * p) square" =
+    nrow(L_joint) == K * p && ncol(L_joint) == K * p)
+  block <- function(k) L_joint[(k - 1L) * p + seq_len(p), , drop = FALSE]
+
+  F <- matrix(NA_real_, nrow = n, ncol = K * p)
 
   # Group rows by their (lo, hi) quantile-index pair. Each group needs at
   # most two per-quantile matmuls, restricted to the group's rows.
@@ -779,8 +799,8 @@ interpolate_F_loading <- function(X_diff_fn, chol_list, taus, tau_i,
     b <- idx_hi[rows[1]]
     w_g <- w[rows]
 
-    F_a <- apply_mask(X_diff_fn(a, rows)) %*% chol_list[[a]]
-    F_b <- if (b == a) F_a else apply_mask(X_diff_fn(b, rows)) %*% chol_list[[b]]
+    F_a <- apply_mask(X_diff_fn(a, rows)) %*% block(a)
+    F_b <- if (b == a) F_a else apply_mask(X_diff_fn(b, rows)) %*% block(b)
 
     F[rows, ] <- (1 - w_g) * F_a + w_g * F_b
   }
