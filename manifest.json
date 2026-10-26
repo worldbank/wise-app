@@ -4513,6 +4513,9 @@
     "R/fct_aggregation_kernel.R": {
       "checksum": "4abe86f039622d06119d43d43a7369d3"
     },
+    "R/fct_aggregation_workspace.R": {
+      "checksum": "e719391277df3969a990deb3de4b2ee6"
+    },
     "R/fct_aggregation.R": {
       "checksum": "98406dec799b513c946f4af2e49d9bc7"
     },
@@ -4574,7 +4577,7 @@
       "checksum": "a2f3684c1ad685b547ff295a1668c97d"
     },
     "R/fct_policy_diagnostics.R": {
-      "checksum": "bba77df964f5d2e27a4c0a0e758d7e82"
+      "checksum": "68120508fdf8bdf1be2fbf2f8ebbff24"
     },
     "R/fct_policy_loading.R": {
       "checksum": "a9f784ef23d952a07b4966ffeaeb3d35"
@@ -4601,7 +4604,7 @@
       "checksum": "32fb1b4115a9cb9b0bf117a5c48ac5dc"
     },
     "R/fct_results.R": {
-      "checksum": "3d74f8cac6b5483613d2bfe59f03604e"
+      "checksum": "65c27dce80f8863bd1f29c68150d22c9"
     },
     "R/fct_rif_sim.R": {
       "checksum": "595a34c8706235b7e320d57cfcecc505"
@@ -4712,7 +4715,7 @@
       "checksum": "85dab460e11914f8ad7112ea776e1daa"
     },
     "R/mod_1_07_results.R": {
-      "checksum": "3fb6970616548a7127b21ddfc32b37e8"
+      "checksum": "11aff59b942652dff2697799ade8016d"
     },
     "R/mod_1_08_modelfit.R": {
       "checksum": "5e2fb605fc214d22f9740ef03a33b966"
@@ -4721,10 +4724,10 @@
       "checksum": "c5132511da603749f6125f12c3fe23cd"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "0cb3dc94f0c149de6401bd5362bae1e5"
+      "checksum": "1be45436d67d8f8240312c4a6140efc6"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "527e0590aaa114df107add1598ac8558"
+      "checksum": "9f0c41a753b6f9fa7a3bc3770d43832a"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "e038721dcba90779c09b862a4e93dd54"
@@ -4733,7 +4736,7 @@
       "checksum": "1635bad43e613277099a7e78d0d79488"
     },
     "R/mod_3_01_sp.R": {
-      "checksum": "9404cac243ab2064ef6f12136100c70b"
+      "checksum": "e9e29da38792f9be3fb07c7129a44cec"
     },
     "R/mod_3_02_infra.R": {
       "checksum": "2200dbc9564786d1989465dd0bb70c42"
@@ -4754,7 +4757,7 @@
       "checksum": "3572f8115b26b726db9913ec5d7af3b5"
     },
     "R/mod_3_08_diagnostics.R": {
-      "checksum": "7869686d9a8d6d05fcc6b833d33aa829"
+      "checksum": "81487c6a126eea97b91dcb2fdf062662"
     },
     "R/mod_3_09_decomposition.R": {
       "checksum": "23d7985f5226788b0dfaf6b520fe32ae"
@@ -4790,7 +4793,7 @@
       "checksum": "2513917e2ac78e69724b35ea0908807d"
     },
     "R/utils_ui.R": {
-      "checksum": "456fc5fe705b959efebb5d1d7311b4d6"
+      "checksum": "9645b064e9ea0c0ccd9150d1ff0ac0e5"
     },
     "src/RcppExports.cpp": {
       "checksum": "b5983a083dc1aea52d08f9c00d2378b7"
