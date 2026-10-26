@@ -6,7 +6,7 @@ depends_on: [notation, framework, weather-measures, linear-model, rif-model, cli
 symbols: [i, r, s, m, mu, W, y, Y, omega, T, epsilon]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare
 code: [R/fct_step2_input.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_simulations.R, R/fct_predict_outcomes.R, R/fct_aggregation.R, R/fct_sim_diag.R, R/fct_sim_compare.R, R/fct_spec_defaults.R]
-verified_against: 1ecc93e
+verified_against: 9881d96
 ---
 
 # Simulation of welfare under historical and future weather
@@ -82,12 +82,14 @@ where $\mathcal{A}$ is a metric of [32_metrics](32_metrics.md) and $\mathcal{B}^
 
 ### 6. Weather support
 
-A simulation extrapolates when the scenario weather lies outside the weather the model was estimated on. The app compares each scenario with a reference built from the historical-window weather at the baseline survey's locations and interview months.
+A simulation extrapolates when the scenario weather lies outside the weather the model was estimated on. The app compares each scenario with a reference built from the weather of the fitted sample, the complete-case estimation frame of Step 1 (`train_data`).
 
-- **Continuous weather.** The reference is the interval between the 1st and 99th percentiles of the reference weather. The share of scenario values outside it is reported for each variable, pooled over the climate models of the scenario.
-- **Binned weather.** The reference is the set of bins that occur in the reference weather. The share of scenario values in other bins is reported.
+- **Continuous weather.** The reference is the interval between the 1st and 99th percentiles of the fitted weather. The share of scenario values outside it is reported for each variable, pooled over the climate models of the scenario.
+- **Binned weather.** The reference is the set of bins that occur in the fitted sample. The share of scenario values in other bins is reported.
 
-A share above 5 per cent raises a warning.
+A share above 5 per cent raises a warning. The Diagnostics tab and the exported support table show the reference interval or the supported bins, the number of fitted observations behind it and the share outside, with the rule "fitted-sample interval" or "fitted-sample bins".
+
+The check is marginal: it looks at one weather variable at a time. It does not establish support for the joint combination of weather variables, or of weather and the moderators that interact with it. A scenario can pass every marginal check and still lie in an empty region of the joint space. The historical-window weather at the baseline locations is no longer a reference for the warning. The density panels of the Diagnostics tab still draw it, as context. Runs saved before this change recompute the table from the historical window when the Diagnostics tab is opened.
 
 ### 7. Calibration check
 

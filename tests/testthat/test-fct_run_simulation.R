@@ -80,7 +80,8 @@ make_ledger_pipeline_fn <- function() {
 run_ledger_sim <- function(weather_result,
                            pipeline_fn = make_ledger_pipeline_fn(),
                            weather_fn = function(...) weather_result,
-                           svy = make_ledger_svy(), ...) {
+                           svy = make_ledger_svy(),
+                           train_data = make_ledger_svy(), ...) {
   fct_run_simulation(
     sw                  = data.frame(name = "temp", stringsAsFactors = FALSE),
     so                  = data.frame(name = "welfare", type = "numeric",
@@ -89,7 +90,7 @@ run_ledger_sim <- function(weather_result,
     svy                 = svy,
     ss                  = NULL,
     mf                  = list(fit3 = NULL, engine = "fixest",
-                                train_data = make_ledger_svy(),
+                                train_data = train_data,
                                 weather_terms = "temp"),
     cp                  = list(type = "local", path = tempdir()),
     fp_list             = list(c("2030-01-01", "2040-12-31")),
@@ -522,10 +523,12 @@ test_that("profiling helpers are called without defensive exists() guards (CR-CQ
   expect_true(is.function(.prediction_profile_record))
 })
 
-test_that("scenarios carry a weather-support summary computed against the historical reference", {
+test_that("scenarios carry a weather-support summary computed against the fitted sample", {
   svy <- make_ledger_svy()
   svy$int_month <- 6L
-  # 100 historical Junes at loc01 with temperatures 1..100.
+  # The fitted sample has temperatures 1..100; the archive has 100 Junes at loc01 with the same values.
+  fitted <- make_ledger_svy(100L)
+  fitted$temp <- as.numeric(1:100)
   hist_wh <- data.frame(
     code = "TST", year = 2020L, survname = "SRV", loc_id = "loc01",
     temp = as.numeric(1:100),
@@ -546,7 +549,7 @@ test_that("scenarios carry a weather-support summary computed against the histor
     "ssp2_4_5_2030_2040_ensemble_hi" = mk_future(10),
     "ssp5_8_5_2030_2040_ensemble_mean" = mk_future(0)
   )
-  res <- suppressWarnings(run_ledger_sim(wr, svy = svy))
+  res <- suppressWarnings(run_ledger_sim(wr, svy = svy, train_data = fitted))
   ssp2 <- res$new_scenarios[["SSP2-4.5 / 2030-2040"]]$weather_support
   expect_s3_class(ssp2, "data.frame")
   expect_identical(ssp2$weather_variable, "temp")
@@ -560,7 +563,40 @@ test_that("scenarios carry a weather-support summary computed against the histor
   expect_false(ssp5$warning)
 })
 
-test_that("a run without usable survey cells still succeeds with no weather-support summary", {
-  res <- suppressWarnings(run_ledger_sim(make_ledger_weather_result()))
+test_that("the weather-support reference is the fitted sample, not the archive", {
+  svy <- make_ledger_svy()
+  svy$int_month <- 6L
+  # Fitted weather {0, 1}; archive {0, 1, 100}; every scenario value is 50.
+  fitted <- make_ledger_svy(10L)
+  fitted$temp <- rep(c(0, 1), 5L)
+  hist_wh <- data.frame(
+    code = "TST", year = 2020L, survname = "SRV", loc_id = "loc01",
+    temp = c(0, 1, 100),
+    timestamp = as.POSIXct(sprintf("%d-06-01", 2017:2019), tz = "UTC"),
+    stringsAsFactors = FALSE
+  )
+  fut <- data.frame(
+    code = "TST", year = 2030L, survname = "SRV", loc_id = "loc01",
+    temp = rep(50, 10L),
+    timestamp = as.POSIXct(sprintf("%d-06-01", 2001:2010), tz = "UTC"),
+    stringsAsFactors = FALSE
+  )
+  wr <- list(
+    historical = hist_wh,
+    "ssp2_4_5_2030_2040_ensemble_mean" = fut,
+    "ssp5_8_5_2030_2040_ensemble_mean" = fut
+  )
+  res <- suppressWarnings(run_ledger_sim(wr, svy = svy, train_data = fitted))
+  ws <- res$new_scenarios[["SSP2-4.5 / 2030-2040"]]$weather_support
+  expect_equal(c(ws$robust_lo, ws$robust_hi), c(0, 1))
+  expect_equal(ws$n_reference, 10)
+  expect_equal(ws$outside_share, 1)
+  expect_true(ws$warning)
+})
+
+test_that("a run whose fitted sample lacks the weather columns has no weather-support summary", {
+  fitted <- make_ledger_svy()
+  fitted$temp <- NULL
+  res <- suppressWarnings(run_ledger_sim(make_ledger_weather_result(), train_data = fitted))
   expect_null(res$new_scenarios[["SSP2-4.5 / 2030-2040"]]$weather_support)
 })

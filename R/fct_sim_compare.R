@@ -753,7 +753,7 @@ step2_headline_cards <- function(bands,
     card1$baseline_check <- baseline_check
   }
   # Weather support: how much of the simulated weather lies outside the
-  # historical reference interval (extrapolation). Always in the popover; a
+  # fitted-sample reference interval (extrapolation). Always in the popover; a
   # warning in the basis strip when any variable exceeds the 5% rule.
   if (is.data.frame(weather_support) && nrow(weather_support) &&
     all(c("weather_variable", "outside_share", "warning") %in% names(weather_support))) {
@@ -767,7 +767,7 @@ step2_headline_cards <- function(bands,
     ws_txt <- paste0(ws_name, " ", ws_pct, collapse = "; ")
     card1$info <- paste(
       card1$info,
-      paste0("Weather support (share of simulated weather outside the historical reference range): ",
+      paste0("Weather support (share of simulated weather outside the range of the fitted sample): ",
         ws_txt, "."),
       "Values outside that range are extrapolated by the fitted model; more than 5% is flagged.",
       "Details are on the Diagnostics tab."
@@ -776,7 +776,7 @@ step2_headline_cards <- function(bands,
       bad <- weather_support$warning & !is.na(weather_support$warning)
       card1$basis_text <- paste(
         card1$basis_text,
-        paste0("Weather outside historical range: ",
+        paste0("Weather outside fitted-sample range: ",
           paste0(ws_name[bad], " ", ws_pct[bad], collapse = ", "), " (see Diagnostics)"),
         sep = " \u00b7 "
       )

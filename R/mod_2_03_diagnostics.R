@@ -22,10 +22,12 @@ mod_2_03_diagnostics_ui <- function(id) {
       info_popover(
         title = "Weather support and overlap",
         shiny::p(
-          "The Step 1 regression input is the reference distribution. Future",
-          "scenario values are compared with its robust 1st-99th percentile",
-          "interval. Values outside that interval require extrapolation of the",
-          "estimated weather-outcome relationship."
+          "The weather of the Step 1 fitted sample is the reference distribution.",
+          "Future scenario values are compared with its robust 1st-99th percentile",
+          "interval, or with the bins it contains. Values outside that support",
+          "require extrapolation of the estimated weather-outcome relationship.",
+          "The check is marginal, one variable at a time: it does not establish",
+          "support for the joint weather and moderator combinations."
         ),
         docs = TRUE
       ),
@@ -403,7 +405,7 @@ mod_2_03_diagnostics_server <- function(id,
         class = "alert alert-warning", role = "alert",
         shiny::tags$strong("Weather support warning: "),
         paste(bad, collapse = ", "),
-        " has more than 5% of scenario values outside the reference support. Extrapolation may be required."
+        " has more than 5% of scenario values outside the support of the fitted sample. Extrapolation may be required."
       )
     })
 

@@ -6,7 +6,7 @@ depends_on: [notation, framework, data, outcomes, weather-measures, model-specif
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: []
-verified_against: b4f2807
+verified_against: 9881d96
 ---
 
 # Assumptions and limitations in one place
@@ -48,7 +48,7 @@ The app produces three kinds of statements ([01_framework](01_framework.md)): a 
 | Assumption | Where | What to check |
 |---|---|---|
 | Fixed population, prices, technology and behaviour | [01_framework](01_framework.md#assumptions) A2; [30_simulation](30_simulation.md#assumptions) A1 | Results are stress tests, not forecasts. |
-| The estimated response holds for counterfactual weather, including outside the observed range | [01_framework](01_framework.md#assumptions) A3; [30_simulation](30_simulation.md#assumptions) A2 | The weather-support diagnostic flags scenarios outside the 1st to 99th percentile of the historical-window weather at the baseline survey's locations and interview months. This is context, not a check against the weather of the fitted sample. A scenario can lie outside every fitted observation without a warning. |
+| The estimated response holds for counterfactual weather, including outside the observed range | [01_framework](01_framework.md#assumptions) A3; [30_simulation](30_simulation.md#assumptions) A2 | The weather-support diagnostic flags scenarios outside the 1st to 99th percentile of the weather of the fitted sample (or in a bin the fitted sample does not contain), when more than 5 per cent of the values fall outside. The check is marginal, one variable at a time: it does not establish support for the joint weather and moderator combinations. |
 | Climate change enters as a change in monthly weather, applied to the observed record | [01_framework](01_framework.md#assumptions) A5; [30_simulation](30_simulation.md#assumptions) A5; [31_climate_scenarios](31_climate_scenarios.md#assumptions) A1 to A3, A5 | Variance and day-to-day structure are those of the observed record. |
 | Equal weights for climate models | [31_climate_scenarios](31_climate_scenarios.md#assumptions) A4 | The spread across models is disagreement, not a probability. |
 | Survey weights are fixed; years are exchangeable; thresholds are meaningful for the outcome | [32_metrics](32_metrics.md#assumptions) A1 to A4 | Thirty years support a 1-in-10 return period with three years only. |

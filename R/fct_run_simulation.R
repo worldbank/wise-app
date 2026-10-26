@@ -778,22 +778,22 @@ fct_run_simulation <- function(sw,
   }
 
   # Weather support (extrapolation) check, computed while each key's weather is
-  # in memory: the historical key sets the reference interval, and every
-  # climate-model member is checked against it. Pooled per scenario at assembly
-  # and carried on the scenario entry for the Results headline. Best effort:
-  # any failure just leaves the scenario without a support summary.
+  # in memory: the weather of the fitted sample (`train_data`) sets the
+  # reference, and every climate-model member is checked against it. Pooled per
+  # scenario at assembly and carried on the scenario entry for the Results
+  # headline. Best effort: any failure just leaves the scenario without a
+  # support summary.
   support_refs <- NULL
   group_support <- list()
   record_weather_support <- function(key, is_hist, weather_input, key_group) {
     tryCatch(
       {
-        vars <- intersect(as.character(sw$name), names(weather_input))
-        if (!length(vars) || !is.data.frame(weather_input)) return(invisible(NULL))
-        if (is_hist) {
-          keep <- intersect(c("loc_id", "timestamp", "int_month", vars), names(weather_input))
-          ref_src <- .filter_hist_weather(weather_input[, keep, drop = FALSE], svy)
-          support_refs <<- weather_support_reference(ref_src, vars, weather_specs = sw)
-        } else if (length(support_refs)) {
+        if (is_hist || !is.data.frame(weather_input)) return(invisible(NULL))
+        if (is.null(support_refs)) {
+          vars <- intersect(as.character(sw$name), names(train_data))
+          support_refs <<- weather_support_reference(train_data, vars, weather_specs = sw)
+        }
+        if (length(support_refs)) {
           gk <- key_group$gk
           rows <- lapply(support_refs, function(r) {
             weather_support_scenario(r, weather_input[[r$variable]], key)

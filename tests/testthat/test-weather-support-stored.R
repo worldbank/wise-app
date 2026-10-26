@@ -27,7 +27,7 @@ test_that("the Diagnostics weather-support table reads the stored summary withou
     weather_variable = "temp", scenario = "SSP2 / 2030", n_reference = 100,
     n_scenario = 200, robust_lo = 1, robust_hi = 99, reference_label = NA_character_,
     is_binned = FALSE, outside_n = 20, outside_share = 0.10, warning = TRUE,
-    warning_rule = "Robust 1%-99% reference interval; warn above 5% outside",
+    warning_rule = "Robust 1%-99% fitted-sample interval; warn above 5% outside",
     stringsAsFactors = FALSE
   )
   scenarios <- list("SSP2 / 2030" = list(weather_support = stored))

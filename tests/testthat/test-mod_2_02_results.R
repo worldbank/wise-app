@@ -1441,7 +1441,7 @@ test_that("weather support is stated in the popover and warned about in the basi
     weather_support = support)
   expect_match(cards[[1]]$info, "Temperature 12.3%; rain 1.0%", fixed = TRUE)
   expect_match(cards[[1]]$basis_text,
-    "Weather outside historical range: Temperature 12.3% (see Diagnostics)", fixed = TRUE)
+    "Weather outside fitted-sample range: Temperature 12.3% (see Diagnostics)", fixed = TRUE)
   support$warning <- FALSE
   quiet <- step2_headline_cards(bands, hist_sim = list(so = so), method = "mean",
     weather_support = support)

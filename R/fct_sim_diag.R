@@ -101,7 +101,8 @@ weather_support_summary <- function(regression_weather, scenario_weather,
 }
 
 # Reference support of each weather variable: the robust (default 1%-99%)
-# interval of the historical values, or the set of supported bins. Computed
+# interval of the reference values (the fitted sample in a run), or the set of
+# supported bins. Computed
 # once so many scenarios can be checked without re-ranking the reference.
 weather_support_reference <- function(regression_weather, weather_vars,
                                       lower = 0.01, upper = 0.99,
@@ -175,11 +176,11 @@ weather_support_scenario <- function(ref, x_raw, scenario, warn_share = 0.05) {
     outside_n = sum(outside), outside_share = mean(outside),
     warning = mean(outside) > warn_share,
     warning_rule = if (ref$is_binned) {
-      paste0("Reference bins; warn above ", warn_share * 100, "% outside")
+      paste0("Fitted-sample bins; warn above ", warn_share * 100, "% outside")
     } else {
       paste0(
         "Robust ", ref$lower * 100, "%-", ref$upper * 100,
-        "% reference interval; warn above ", warn_share * 100, "% outside"
+        "% fitted-sample interval; warn above ", warn_share * 100, "% outside"
       )
     },
     stringsAsFactors = FALSE

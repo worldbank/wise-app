@@ -231,7 +231,7 @@ the reference), `section`, `member`, `variable`, `statistic`, `value`, `text`.
 |---|---|---|
 | `scenario` | `period_start`, `period_end`; `n_models`, `n_models_requested` | The projection period; models that ran and models requested (they differ when a model lacks coverage; see `failures.parquet`). |
 | `members` | `member` | One row per climate-model member (`value` = 1). |
-| `support` | `n_reference`, `n_scenario`, `robust_lo`, `robust_hi`, `outside_n`, `outside_share`, `warning`, `n_members`, `max_member_share`; `reference_label`, `warning_rule`, `is_binned` (`text`) | The weather-support summary of the Diagnostics tab per variable: historical and simulated value counts, the 1%-99% historical support, simulated values outside it (or in a bin the history never had), and `warning` = 1 when more than 5% are outside (the model extrapolates). |
+| `support` | `n_reference`, `n_scenario`, `robust_lo`, `robust_hi`, `outside_n`, `outside_share`, `warning`, `n_members`, `max_member_share`; `reference_label`, `warning_rule`, `is_binned` (`text`) | The weather-support summary of the Diagnostics tab per variable: fitted-sample and simulated value counts, the 1%-99% support of the fitted sample, simulated values outside it (or in a bin the fitted sample never had), and `warning` = 1 when more than 5% are outside (the model extrapolates). |
 
 ## Step 3: policy
 

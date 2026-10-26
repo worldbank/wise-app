@@ -250,7 +250,7 @@ test_that("weather support uses robust interval and warning share", {
   out <- wiseapp:::weather_support_summary(ref, sc, "temp")
   expect_equal(out$n_reference, 100)
   expect_true(out$warning)
-  expect_equal(out$warning_rule, "Robust 1%-99% reference interval; warn above 5% outside")
+  expect_equal(out$warning_rule, "Robust 1%-99% fitted-sample interval; warn above 5% outside")
 })
 
 test_that("log effects convert to percent without losing model-scale additivity", {

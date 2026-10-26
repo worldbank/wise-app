@@ -276,7 +276,7 @@ pages:
       - "Step 2 > Results: annual series, scenario bands, threshold tables. Step 2 > Diagnostics: weather distributions and the sources of uncertainty."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare"
     code: ["R/fct_step2_input.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_simulations.R", "R/fct_predict_outcomes.R", "R/fct_aggregation.R", "R/fct_sim_diag.R", "R/fct_sim_compare.R", "R/fct_spec_defaults.R"]
-    verified_against: "1ecc93e"
+    verified_against: "9881d96"
   - id: "climate-scenarios"
     file: "31_climate_scenarios.md"
     title: "Climate scenarios (monthly delta method)"
@@ -408,7 +408,7 @@ pages:
       - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. A moved lever whose variables are not in the survey or the model is reported when the policy runs (employment needs employed and unemployed; the sector shares need employed and the three sectors), and in a batch run as a partial policy failure. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect (20_model_specification)."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers"
     code: ["R/fct_policy_registry.R", "R/fct_policy_sim.R", "R/mod_3_levers.R", "R/fct_step3_input.R"]
-    verified_against: "b4f2807"
+    verified_against: "9881d96"
   - id: "social-protection"
     file: "42_social_protection.md"
     title: "Regular cash transfers: targeting, amount, cost and reach"
@@ -531,7 +531,7 @@ pages:
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
     code: []
-    verified_against: "b4f2807"
+    verified_against: "9881d96"
   - id: "reproducibility"
     file: "51_reproducibility.md"
     title: "Seeds, run provenance and exports"
