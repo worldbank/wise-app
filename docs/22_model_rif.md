@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, model-specification, linear-model]
 symbols: [y, tau, q_tau, f_Y, beta_tau, W, X, F_hat]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif
 code: [R/fct_fit_model.R, R/fct_rif_sim.R, R/fct_step1_headline.R, R/fct_results.R]
-verified_against: d5a8be4
+verified_against: b4f2807
 ---
 
 # Unconditional quantile regression (RIF)

@@ -6,7 +6,7 @@ depends_on: [notation, reproducibility, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
 code: [R/fct_batch_spec.R, R/fct_batch_targets.R, R/fct_spec_defaults.R, R/fct_step1_tables.R, R/fct_step2_tables.R, R/fct_step3_tables.R]
-verified_against: 8592a9d
+verified_against: b4f2807
 ---
 
 # Batch runs
@@ -30,7 +30,7 @@ Where the specification leaves a setting out, the run takes the app's default. T
 
 ### 2. Caching by stage
 
-Each stage of a run (the survey sample, a weather variable, a model fit, a simulation, a policy) has an identifier that is a hash of the parts of the specification it depends on. Runs with equal identifiers share the work, so a grid that varies only the policy runs the survey, the weather, the model and the simulation once. A stage is recomputed if its inputs change, or if a file that it read has been rebuilt. Every table carries the identifier of its stage, which is how results are joined to the settings of the runs that use them.
+Each stage of a run (the survey sample, a weather variable, a model fit, a simulation, a policy) has an identifier that is a hash of the parts of the specification it depends on. Runs with equal identifiers share the work, so a grid that varies only the policy runs the survey, the weather, the model and the simulation once. A stage is recomputed if its inputs change. The survey stage includes the name and SHA-256 checksum of each survey file of its countries in its work item, so a rebuilt survey file reruns it and everything downstream. The location (H3) files and the weather files are not part of any identifier: a rebuilt one does not rerun a stage on its own. Every table carries the identifier of its stage, which is how results are joined to the settings of the runs that use them.
 
 ### 3. Tables
 
@@ -66,6 +66,7 @@ A failed stage does not stop independent runs. It is listed in a failures table 
 - At most two weather variables, and one or two economies.
 - Rules that the app applies from the data after its controls appear are not applied. In a policy run, a trigger variable, its direction and its return period must be stated, and a proxy means test needs its variable and cut-off.
 - Household-level outputs and maps.
+- Cache invalidation by input file covers the survey files only. A changed H3 or weather file needs a cleared cache, or a changed specification, to rerun the stages that read it.
 
 ## In the app
 
@@ -84,6 +85,7 @@ None. Full entries for other pages are in [references](references.md).
 | Specification, defaults, validation | Setup | `R/fct_batch_spec.R` `wise_spec_read()`, `wise_spec_expand()`; `R/fct_spec_defaults.R` `wise_spec_defaults()` |
 | Start from an app configuration | Setup | `R/fct_batch_spec.R` `wise_spec_from_config()` |
 | Runner and caching by stage | Section 2 | `R/fct_batch_targets.R` `wise_targets()`, `wise_batch_controller()`, `wise_batch_template()` |
+| Survey-file fingerprints in the data work item | Section 2 | `R/fct_batch_targets.R` `.batch_item_files()` |
 | Step 0 and 1 tables | Section 3 | `R/fct_step1_tables.R`; `R/fct_step1_model_tables.R` |
 | Step 2 tables | Section 3 | `R/fct_step2_tables.R` |
 | Step 3 tables | Section 3 | `R/fct_step3_tables.R` `step3_batch_tables()` |

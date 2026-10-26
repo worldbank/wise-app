@@ -6,7 +6,7 @@ depends_on: [notation, data, weather-measures]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation
 code: [R/fct_get_weather.R, R/fct_simulations.R, R/fct_step2_input.R, R/fct_run_simulation.R]
-verified_against: b8d37e4
+verified_against: b4f2807
 ---
 
 # Climate scenarios (monthly delta method)
@@ -58,7 +58,7 @@ This is applied to the **raw** monthly series, before any window. The window, ag
 
 ### 4. Members and scenarios
 
-A member is used only if it has a change for every location-month of the period and every selected variable. A member with missing coverage is left out with a warning that names it. Each pathway-period-member combination is an independent weather series and gives one simulation series ([30_simulation](30_simulation.md)). All members have equal weight. Members are not selected for skill.
+A member is used only if it has a change for every expected location-month of the period and every selected variable. The expected location-months are the requested survey locations by the calendar months that the period covers. They do not depend on the members, so a location-month that no member has excludes every member. Each excluded member is reported with a warning that names it, the number of its missing location-months and the first few missing keys (code, year, survey, location, month), for every period before the run continues. If no member remains for a period, that period has no future series. Each pathway-period-member combination is an independent weather series and gives one simulation series ([30_simulation](30_simulation.md)). All members have equal weight. Members are not selected for skill.
 
 The simulation years of a future series are the years of the historical window. A future period only decides which climatology of the climate model is compared with the baseline.
 
@@ -86,6 +86,7 @@ The simulation years of a future series are the years of the historical window. 
 - Bias correction beyond the delta method, and spatial detail finer than the climate grid, except through the observed record.
 - Changes within a future period: each period uses a single mean climatology.
 - Weights for model skill or independence.
+- Survey locations with no climate cell. They make every member incomplete, so a single such location removes all members of the period.
 - Only the weather variables that the model uses are perturbed.
 
 ## In the app
@@ -107,5 +108,5 @@ User guide: [The delta method](https://github.com/worldbank/wise-app-docs/blob/m
 | Change factor and population-weighted location change | (2.1) | `R/fct_get_weather.R` `get_weather()` (internal `.make_delta_exprs`) |
 | Additive or multiplicative rule | (2.1) | `R/fct_simulations.R` `build_perturbation_method()` |
 | Perturbed monthly series, window, anomaly, bins | (3.1) | `R/fct_get_weather.R` `get_weather()` (internal `.make_perturb_exprs`), `.apply_transformations()`, `.apply_binning()` |
-| Exclusion of incomplete members | 4 | `R/fct_get_weather.R` `get_weather()` |
+| Exclusion of incomplete members | 4 | `R/fct_get_weather.R` `get_weather()`, `.cmip_expected_keys()`, `.cmip_member_coverage()`, `.cmip_missing_summary()` |
 | Scenario keys by pathway, period, member | 4 | `R/fct_run_simulation.R` `fct_run_simulation()` |

@@ -16,6 +16,7 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
 | B11 | Social protection (deferred) | 8 |
+| B12 | Methodology review follow-ups | 12 |
 
 B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
 
@@ -94,6 +95,25 @@ Sources: `review/archive/sp_shock_responsive_plan.md`, `review/archive/sp_shock_
 | SP-06 | L | M | ✗ | Cost-effectiveness for non-cash levers (`mod_3_02` to `mod_3_05`) and the cost-effectiveness summary card: need unit costs from the policy team. |
 | SP-07 | M | S | ☐ | Owed numbers: BFA before/after headline figures for P0-8 (synthetic check already recorded: realised weighted inclusion 15.8 % / exclusion 12.2 % before, 15.0 % / 10.0 % after, for 15 % / 10 % sliders), BFA Step 3 benchmark figures with the shock fixtures, and the BFA LCU re-run entry for R2-BUG-04 / CR-BUG-02. |
 | SP-08 | L | S | ✗ | Targeting errors are one seeded draw; the draw-to-draw variation of coverage and leakage, and of the shock forecast layers, is not shown (see UR-02). |
+
+## B12 - Methodology review follow-ups
+
+Source: `review/archive/methodology_review_2026-10-26.md` (closed 2026-10-26). Done: documentation corrections (`0d50062`), run-seed provenance, batch survey fingerprints and the climate-member grid check (`f9cdc08`), sector targets in survey weights (`52561c6`, Decision log above) and the RIF joint covariance (finding 2, Decision log above). Finding 1 (additive fixed effects) is documented, not changed. Open remainders:
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| MR-01 | M | M | ✗ | Cost-effectiveness mixes person weights (household sizes) with an equal-row poverty effect when the frame has no literal `weight` column or unequal weights (`R/fct_sp_effectiveness.R`, `R/fct_step3_tables.R`; `docs/45_cost_effectiveness.md`). Deferred by the user, 2026-10-26. Fix: recompute the scored effect with person weights on the cost support, or mark person-based scoring unavailable. Needs the unequal-household-size fixture (household sizes 1 and 9, baseline welfare 1 and 3, line 2, only the first lifted: reported count 5, should be 1). |
+| MR-02 | L | S | ☐ | Weight aliases: `survey_weight_column()` resolves `weight`, `hhweight`, `wgt`, `pw`, but the Step 2 and 3 aggregation, the cost-effectiveness population, the sector shares and `default_lcu_poverty_line()` read a literal `weight`. Latent: harmonised data always carry `weight`. Fix: rename the resolved alias to `weight` once at load, with an alias-only end-to-end test; or state in `docs/10_data.md` that `weight` is required. |
+| MR-03 | L | S | ☐ | `.headcount_resid_variance()` uses `ecdf(resid)(threshold)` (includes ties); poverty uses strict `<`. Variance 0.25 instead of 0 in the tie example (prediction 0, line 1, residuals {0, 1}). Lowest priority; fix when the function is next changed, with a tie test. |
+| MR-04 | L | M | ☐ | The weather-support diagnostic compares with the historical-window weather at baseline locations, not the fitted sample (`docs/30_simulation.md` Section 6 says so). Add a separate fitted-sample check if the result is to warn about regression extrapolation; a marginal check does not establish joint weather and moderator support. |
+| MR-05 | L | S | ☐ | The batch data work item fingerprints the survey files only. H3 and weather files do not enter any stage identifier (stated in `docs/52_batch_runs.md`). Add their fingerprints and a two-run integration test that changes one input file and checks the affected branches rerun. |
+| MR-06 | L | S | ☐ | Real-data check of the climate grid rule (expected location-months from the requested locations, independent of members): a location with no climate cell excludes every member. The BFA run of 2026-10-26 excluded 5 members with 7152 of 7152 location-months missing (all of their keys, so likely members without data for the period, not a partial grid); check which locations or members cause it and that no location lacks a cell. |
+| MR-07 | L | S | ☐ | Sector targets: working rows with no sector flag (about 4% of BFA 2021 working rows) stay in the denominator, so the services target falls short by their weight (`docs/41_policy_levers.md`). Decide whether they should be excluded from the working population or reported. |
+| MR-08 | L | S | ☐ | No model-level BFA before/after of welfare for the sector lever: the sector variables are not model variables in the batch run on BFA. Needs a spec or fixture where they are. |
+| MR-09 | M | M | ☐ | Finding 1 follow-up: add a specification test that distinguishes additive from interacted fixed effects, and assess an area-by-round specification as a separate methodological decision (identification and support diagnostics, numerical parity). Do not change the estimator silently. |
+| MR-10 | L | S | ☐ | RIF joint covariance (found in step 3b): a run that fell back to independent equations is not marked in the batch tables, `provenance` or the model tables (only a warning, in `tar_meta()` for batch). Mark it. Models fitted before 3b carry no joint covariance and fall back with a warning until refitted. |
+| MR-11 | M | S | ☐ | RIF joint covariance, owed checks: drive the Step 2 and Step 3 panes in the browser; a covariate lever (infrastructure) on real data; adequacy of the number of clusters against 9 times the active coefficients in other countries (a singular block falls back to independent equations); timing and peak memory of the 9-fold wider loading (decided not to measure, 2026-10-26; do it if a large country runs slowly). |
+| MR-12 | M | M | ☐ | RIF policy-effect bands widened by about an order of magnitude under the joint covariance (headcount effect of a transfer: -0.0017, half-width 0.00007 before, 0.0008 after). The cause is the repositioning term `x (b(tau_post) - b(tau_pre))`, with `x` the weather level. Decide whether this is the intended coefficient uncertainty for a transfer, and check it against a Monte Carlo of the full pipeline. |
 
 ## Decision log (uncertainty and residuals, 2026-10-26)
 

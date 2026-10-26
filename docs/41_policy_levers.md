@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, data]
 symbols: [D, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers
 code: [R/fct_policy_registry.R, R/fct_policy_sim.R, R/mod_3_levers.R, R/fct_step3_input.R]
-verified_against: 72a2fdb
+verified_against: b4f2807
 ---
 
 # Policy levers: access, percent change, travel time and labour market
@@ -108,6 +108,7 @@ With row counts the targets are rounded to whole rows. A sector with $n_k > n_k^
 
 - Take-up, quality of service and the cost of any lever other than the cash transfer.
 - Targeting of access by need, income or place.
+- Working rows with no sector flag. They count in the working population, but they belong to no sector and cannot move, so a services target can fall short by their weight (about 4 per cent of working rows in the BFA 2021 individual survey).
 - Interaction terms between two levers.
 - Whether the change in a variable is feasible. A universal option sets all units to 1 whatever the real constraints.
 

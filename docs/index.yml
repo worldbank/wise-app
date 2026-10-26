@@ -208,7 +208,7 @@ pages:
       - "Step 1 > Model: choose \"Unconditional quantile regression (RIF)\" when the outcome is continuous. Results shows the quantile curve with its 95 per cent band; Model fit reports fit statistics for each quantile."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif"
     code: ["R/fct_fit_model.R", "R/fct_rif_sim.R", "R/fct_step1_headline.R", "R/fct_results.R"]
-    verified_against: "d5a8be4"
+    verified_against: "b4f2807"
   - id: "ml-models"
     file: "23_model_ml.md"
     title: "Tree-based models (random forest, gradient boosting)"
@@ -296,7 +296,7 @@ pages:
       - "Step 2 > Simulation settings: historical window, projection periods (up to three) and pathways. The Diagnostics tab compares the weather distribution of each scenario with the weather used in estimation."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation"
     code: ["R/fct_get_weather.R", "R/fct_simulations.R", "R/fct_step2_input.R", "R/fct_run_simulation.R"]
-    verified_against: "b8d37e4"
+    verified_against: "b4f2807"
   - id: "metrics"
     file: "32_metrics.md"
     title: "Welfare metrics and how annual results are summarised"
@@ -355,7 +355,7 @@ pages:
       - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
     code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
-    verified_against: "d5a8be4"
+    verified_against: "b4f2807"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"
@@ -408,7 +408,7 @@ pages:
       - "A lever whose variable is not in the Step 1 model has no control. The panel lists the variables to add back. The Labour market panel also says which control is hidden: the sector sliders need all three of agriculture, industry and services in the model, and the note names the missing ones. A moved lever whose variables are not in the survey or the model is reported when the policy runs (employment needs employed and unemployed; the sector shares need employed and the three sectors), and in a batch run as a partial policy failure. The labour variables are not offered as covariates, because they are flagged as outcomes; add them to the model as moderators of the weather effect (20_model_specification)."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers"
     code: ["R/fct_policy_registry.R", "R/fct_policy_sim.R", "R/mod_3_levers.R", "R/fct_step3_input.R"]
-    verified_against: "72a2fdb"
+    verified_against: "b4f2807"
   - id: "social-protection"
     file: "42_social_protection.md"
     title: "Regular cash transfers: targeting, amount, cost and reach"
@@ -531,7 +531,7 @@ pages:
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
     code: []
-    verified_against: "d5a8be4"
+    verified_against: "b4f2807"
   - id: "reproducibility"
     file: "51_reproducibility.md"
     title: "Seeds, run provenance and exports"
@@ -550,7 +550,7 @@ pages:
       - "The summary cards at the top of each results tab record the settings behind its result."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/export.qmd"
     code: ["R/utils_math.R", "R/fct_provenance.R", "R/fct_export.R", "R/fct_aggregation.R", "R/fct_policy_sim.R", "R/fct_step2_compute.R"]
-    verified_against: "8592a9d"
+    verified_against: "b4f2807"
   - id: "batch"
     file: "52_batch_runs.md"
     title: "Batch runs"
@@ -566,7 +566,7 @@ pages:
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/export.qmd"
     code: ["R/fct_batch_spec.R", "R/fct_batch_targets.R", "R/fct_spec_defaults.R", "R/fct_step1_tables.R", "R/fct_step2_tables.R", "R/fct_step3_tables.R"]
-    verified_against: "8592a9d"
+    verified_against: "b4f2807"
   - id: "references"
     file: "references.md"
     title: "References"

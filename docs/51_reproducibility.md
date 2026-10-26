@@ -6,7 +6,7 @@ depends_on: [notation, framework, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
 code: [R/utils_math.R, R/fct_provenance.R, R/fct_export.R, R/fct_aggregation.R, R/fct_policy_sim.R, R/fct_step2_compute.R]
-verified_against: 8592a9d
+verified_against: b4f2807
 ---
 
 # Seeds, run provenance and exports
@@ -57,7 +57,7 @@ Numerical results can differ in the last digits across machines or thread settin
 For every step that has results, the app builds one record of what produced them. The record reads the stored result of the step and its settings at the time of the run, not whatever is selected when the record is read. It holds:
 
 - the step and a short **run signature**: a digest of the full list of inputs that the run used, so that two exports can be compared at a glance;
-- the random seed and the version of the app;
+- the random seed that the run used and the version of the app. The seed is stored with the result when the run starts (on the Step 1 fit, the Step 2 simulation and the Step 3 run), so the record names the seed of the run and not the seed in force when the record is read. A result that carries no seed takes the seed in force;
 - the data source, as a type (for example local or a named cloud service) and whether it came from the server configuration or the user interface. Hosts, buckets, paths and credentials are never included;
 - the survey version, the outcome, the weather pipeline, the model specification (type, engine, interactions, fixed effects, covariates, selection method, clustering) and the number of observations;
 - any **fallback**: a place where the fitted specification differs from the requested one, with the reason.
@@ -66,7 +66,7 @@ For every step that has results, the app builds one record of what produced them
 
 The Export menu offers a full bundle, the configuration alone, the tables alone and the figures alone. The bundle holds:
 
-- a **configuration file** with the version of the file format, the date, the app and R versions, the random seed, the provenance records and the values of the controls. It contains settings and no microdata. Controls that carry no setting (buttons, table selections, map views) are left out;
+- a **configuration file** with the version of the file format, the date, the app and R versions, the random seed, the provenance records and the values of the controls. The top-level seed is the common seed of the step records, so the file does not contradict them; it is the seed in force only when the records name different seeds or none; It contains settings and no microdata. Controls that carry no setting (buttons, table selections, map views) are left out;
 - every table as a CSV file and every figure as a PNG file;
 - a **manifest** that lists every file with its step, format, dimensions and description, and a README that explains the files and the provenance.
 
@@ -110,6 +110,7 @@ None. Full entries for other pages are in [references](references.md).
 | Policy draws by lever | Section 1 | `R/fct_policy_sim.R` `apply_policy_to_svy()` |
 | Provenance record | Section 3 | `R/fct_provenance.R` `wise_provenance()`, `.provenance_digest()`, `.provenance_model_spec()` |
 | Source description without credentials | Section 3 | `R/fct_provenance.R` `.provenance_source_label()`, `.provenance_source()` |
-| Configuration snapshot | Section 4 | `R/fct_export.R` `wise_config_snapshot()`, `.export_keep_input()` |
+| Seed stored with a result | Section 3 | `R/fct_provenance.R` `.provenance_result_seed()` |
+| Configuration snapshot and its top-level seed | Section 4 | `R/fct_export.R` `wise_config_snapshot()`, `.export_run_seed()`, `.export_keep_input()` |
 | Import checks | Section 4 | `R/fct_export.R` `.import_validate()`, `wise_config_apply()` |
 | Bundle, manifest and README | Section 4 | `R/fct_export.R` `wise_export_bundle()`, `.export_manifest_df()`, `wise_export_readme()` |
