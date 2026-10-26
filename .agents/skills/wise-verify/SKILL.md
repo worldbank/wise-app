@@ -52,9 +52,9 @@ Tests that start real mirai workers or Chrome (`step2-async*`,
 `fct-overview-metadata`, `export-bundle`, `mod-0-overview`) are slow: run them
 only when the change touches async, metadata or export code.
 
-Run the whole suite (`devtools::test()`, 4 to 6 minutes, use
-`run_in_background`) once at the end of a multi-file change, with the tree
-quiet.
+Run the whole suite (`devtools::test()`, 4 to 6 minutes, using the tool's
+background-process support if available) once at the end of a multi-file code
+change, with the tree quiet.
 
 Rules:
 - Never update snapshots or the characterization files (`tests/testthat/_snaps/`)

@@ -98,10 +98,11 @@ Standard: `ExtendedTask` (UI/session layer) + `mirai` (worker backend).
 Benchmark optimizations against real app data before merging, using the local dataset folder given by `WISEAPP_DATA_PATH` (set in `.Renviron`).
 
 - Reuse the existing benchmark harness (`dev/bench/bench_*.R`, `dev/bench/run_step2_benchmark.sh`, results under `dev/outputs/`) rather than writing ad-hoc timing scripts.
-- **Smaller payload**: BFA surveys (all years), default weather and climate scenario.
-- **Larger payload**: IRN surveys (all years), default weather and climate scenario. For this payload, also benchmark a multi-period, multi-SSP climate scenario combination, since that is the realistic worst-case load for climate-scenario processing.
+- **Default payload**: BFA surveys (all years), 1x1 OLS (`WISEAPP_STEP2_WORKLOADS=one_ssp_one_period`, `WISEAPP_STEP2_MODELS=ols`), unless the change needs a larger or different payload (user decision 2026-10-07).
+- **Workload ceiling**: 2x2 (`WISEAPP_STEP2_WORKLOADS=two_ssps_two_periods`) for benchmarks and profiling; do not run 3x3 (user decision 2026-10-08). IRN or multi-period/multi-SSP runs are needed only when relevant to the change, within this ceiling.
+- **Step 3**: use `dev/bench/bench_step2.R` with `WISEAPP_STEP2_INCLUDE_STEP3=1 WISEAPP_STEP3_POLICIES=targeted_sp`; the `covariate` fixture needs an electricity column in the fitted model.
 
-Report before/after timings and peak memory for both payloads when submitting a performance-related change.
+Report before/after timings, process-tree peak RSS, repetitions and numerical parity for each selected payload. Archived report timings came from a 4-vCPU container; re-measure locally rather than treating them as a local baseline.
 
 ## 10. Deployment / Runtime Parameters
 

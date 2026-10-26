@@ -12,11 +12,14 @@ Status: `✓` done · `☐` todo.
 | R2 | Fix stale facts | ✓ 2026-10-26 | See section 1. |
 | R3a | Skills findable by every agent | ✓ 2026-10-26 | Skills table in `AGENTS.md`; agents without native skill support read the `SKILL.md` on demand. |
 | R5 | Write-back rule | ✓ 2026-10-26 | "Keeping these instructions current" section in `AGENTS.md`. |
-| R4 | `dev/agents_check.R` in CI | ✓ 2026-10-26 | Job `agents-check` in `R-CMD-check.yaml`. Checks paths and functions named in `AGENTS.md`, `ARCHITECTURE.md`, skills and the two standards; skill front matter and listing in `AGENTS.md`; size budgets; version match. Budget for `ARCHITECTURE.md` is a ratchet just above today's size; lower it when trimmed. |
+| R4 | `dev/agents_check.R` in CI | ✓ 2026-10-26 | Job `agents-check` in `R-CMD-check.yaml`. Required inputs, heuristic path checks, root-guide function checks, skill metadata and bidirectional listing, size budgets and existing version match. Negative tests in `tests/testthat/test-agents_check.R`. README setup is outside checker scope. |
 | R6 | Missing skills | ✓ 2026-10-26 | `wise-verify`, `wise-numeric-change`, `wise-close-finding`, `add-policy-lever`, `add-metric`, `wise-release`. Listed in `AGENTS.md`. |
-| R7 | `review/README.md` index; archive finished plans | ✓ 2026-10-26 | Index with status written. No plan moved: `R/fct_sp_shock.R`, `R/fct_sp_effectiveness.R`, `batch/` docs and tests cite the plans by path. Move them when those comments are next edited. |
+| R7 | `review/README.md` index; archive finished plans | ✓ 2026-10-26 | Index records the current locations. Finished SP and cost-effectiveness plans are archived; the batch plan remains a cited reference. |
 | R3b | One shared skills folder, pointed to from the README; no copies in the repo | ✓ 2026-10-26 | Skills moved with `git mv` to `.agents/skills/`. `.claude/skills` is a git-ignored local link (`ln -s ../.agents/skills .claude/skills`); setup in README "Agent skills" and the Skills section of `AGENTS.md`. |
 | R9 | Trim `ARCHITECTURE.md` | ✓ 2026-10-26 | 23 KB to 9 KB. Deployment settings moved intact to `DEPLOYMENT.md`; per-file prose and the lever, uncertainty and decomposition detail now point to `docs/` pages and R file headers. Budgets in `dev/agents_check.R` lowered to match. |
+| R10 | Scope-aware write-back | ✓ 2026-10-26 | Correct instructions only within authorized scope; otherwise report and await approval. Prefer corrections, not extra rules. |
+| R11 | Standing user decisions | ✓ 2026-10-26 | Benchmark defaults, ceiling and harness notes consolidated in `review/optimization_guidelines.md` section 9; tracker and skill point there. Historical decisions remain in their records. |
+| R12 | Shared Claude allowlist | ✓ 2026-10-26 | `.claude/settings.json` allows `ui_drive.R` app automation and the agent/docs check and docs-index scripts; no blanket R or Git permission. |
 
 ## 1. Done on 2026-10-26
 
@@ -34,18 +37,28 @@ Six written 2026-10-26 (see R6). Candidates not written: none known. Add a skill
 
 Three levels, each building on the one before.
 
-1. **Write-back rule plus a staleness check (recommended).** The rule is in place (R5). Done (R4): `dev/agents_check.R`, modelled on `dev/docs_check.R`, run in CI. It checks that paths and `R/` functions named in `AGENTS.md`, `ARCHITECTURE.md`, skills and active `review/` standards exist; skill front matter (`name` matches folder, `description` present); generated skill copies match the source (R3b); size budgets (`AGENTS.md` lines, longest line). The scratch check used on 2026-10-26 is a starting point. Also move standing user decisions ("user instruction 2026-10-07" and similar in the tracking file) into one shared place; per-user agent memory is not shared with the team.
+1. **Write-back rule plus a staleness check (in place).** R4/R5/R10 cover authorized, minimal corrections and CI checks. Path checks inspect selected backtick references, not all links or commands; function checks cover only `AGENTS.md`, `ARCHITECTURE.md` and `DEPLOYMENT.md`. Skill copies are not managed or compared. Standing decisions consolidated in R11.
 2. **End-of-session hook (Claude Code only).** A `Stop` hook in a shared `.claude/settings.json` asks "did any instruction mislead you?". Consistent, but only one tool has it, and it can produce churn edits. Consider after a month of level 1.
 3. **Scheduled audit agent.** A periodic cloud agent runs the checks, compares recent commits with the instructions and opens PRs. Catches untouched drift, but is billed per run, needs a reviewer and care with credentials. Only if the team grows.
 
 ## 4. Skills location (R3b)
 
-Checked 2026-10-26, recheck before acting: Claude Code documents `.claude/skills/`; Kilo Code documents `.kilocode/skills/` (Kilo CLI uses `.kilo/`, skills path unconfirmed); Codex sources disagree (`.agents/skills/` or `.codex/skills/`). The `SKILL.md` format is portable; the Claude-only front matter fields are ignored elsewhere.
+Discovery resolved from official documentation, 2026-10-26 (not a runtime compatibility test):
+
+| Tool | Shared-source discovery | Refresh / confirmation |
+|---|---|---|
+| [Kilo CLI and current VS Code platform](https://kilo.ai/docs/customize/skills) | `.agents/skills/` loaded by default; `.kilo/skills/` and `skills.paths` also supported | `/reload` or new session; confirm the skill appears and is loaded through the skill tool |
+| [Codex CLI and IDE](https://developers.openai.com/codex/build-skills) | `.agents/skills/` from the current directory up to the repository root | `/skills` or `$` mention; restart if updates do not appear |
+| Claude Code | Local link or copy at `.claude/skills/` | New session; confirm skill availability |
+
+Kilo and Codex need no link or copy on Windows either. Other tools can read `SKILL.md` directly. Portable content and `name`/`description` do not imply portable tool names, invocation settings or permissions; do not rely on Claude-specific fields to enforce permissions elsewhere. Runtime discovery on the team's installed versions remains a setup smoke check.
 
 Decision (user, 2026-10-26): one shared skills folder in the repo, described in the README; each person points their tool at it or copies it into the tool folder. No copies or sync script in the repo. `dev/agents_check.R` checks `.agents/skills/`.
+
+`README.md` is now the editable source; the redundant `README.Rmd` (no executable chunks or build references) was removed.
 
 ## 5. Other recommendations
 
 - Large files (`fct_policy_sim_compare.R` 3,436 lines, `fct_results.R` 3,368, `fct_sim_compare.R` 2,756) are read in chunks by agents. Splitting is a refactor, not proposed; keep section headers current.
-- A tracked `.claude/settings.json` with an allowlist for common read-only commands (`Rscript dev/ui_drive.R`, `Rscript dev/docs_check.R`) would cut permission prompts for the team.
-- CI guards for rules agents often break: `DESCRIPTION` and `inst/golem-config.yml` versions match, `RoxygenNote` unchanged, no `%>%` in `R/`.
+- Implemented (R12): a tracked `.claude/settings.json` allowlist for common checks and app automation. `ui_drive.R` is deliberately included to run and drive the app; it is not read-only. Permission behavior still needs confirmation in Claude Code after workspace trust.
+- Deferred: further version-equality CI enforcement (user decision, 2026-10-26); the existing equality check remains unchanged. Optional guards for `RoxygenNote` and no `%>%` in executable `R/` code are also not implemented.

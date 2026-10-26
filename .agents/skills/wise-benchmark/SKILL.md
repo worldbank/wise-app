@@ -3,7 +3,7 @@ name: wise-benchmark
 description: >
   Benchmark a performance-related change to WISE-APP against real data using the
   existing dev/bench/bench_*.R harnesses. Produces before/after wall time and peak
-  memory for the small (BFA) and large (IRN) payloads, as required by
+  memory for the payloads selected under
   review/optimization_guidelines.md section 9.
 when_to_use: >
   When the user asks to benchmark, profile, or compare timing or memory of a
@@ -39,10 +39,8 @@ sections 0 and 9 first; they win over this summary if they differ.
 
 ## Payloads
 
-| Payload | Countries | Notes |
-|---|---|---|
-| Small | `BFA`, all survey years | Default weather and climate scenario |
-| Large | `IRN`, all survey years | Default weather and climate scenario, plus a second run with multiple periods and multiple SSPs (realistic worst case) |
+Choose payloads using `review/optimization_guidelines.md` section 9, including
+its workload ceiling. Do not expand to a larger country or scenario by default.
 
 Variables: `WISEAPP_STEP2_COUNTRIES`, `WISEAPP_STEP2_SURVEY_YEARS`,
 `WISEAPP_STEP2_PERIODS`, `WISEAPP_STEP2_SSPS`, `WISEAPP_STEP2_REPETITIONS`.
@@ -68,7 +66,7 @@ Open the chosen script header to confirm its env vars; they differ per harness.
 
 ## Procedure
 
-1. **Plan.** State the change, the area, the harness, and the two payloads.
+1. **Plan.** State the change, the area, the harness, and the selected payloads.
    Before touching weather, RIF or aggregation, skim the matching archived
    list in `review/archive/` (`optimize_get_weather.md`, `optimize_rif.md`,
    `optimize_aggregation_welfare.md`) for parity risks and traps. They are
@@ -76,12 +74,11 @@ Open the chosen script header to confirm its env vars; they differ per harness.
 2. **Clean tree check.** Run `git status`. Identify the baseline commit (usually
    `HEAD` before the change, or the branch point) and the candidate state.
 3. **Baseline run.** Check out the baseline in a way that does not lose work:
-   use `git stash` or a separate `git worktree`, never `reset --hard` or
-   `git clean` (denied in settings). Run the harness for the small payload, then
-   the large payload, then the large multi-period multi-SSP case. Use a
+   use a separate checkout or explicitly authorized worktree; do not stash or
+   reset a shared dirty tree. Run the harness for each selected payload. Use a
    distinct `WISEAPP_STEP2_OUTPUT_DIR` per run, for example
    `dev/outputs/<change>-baseline-bfa`.
-4. **Candidate run.** Restore the change and repeat the same three runs with the
+4. **Candidate run.** Repeat the selected payloads against the candidate with the
    same environment variables, seed (`WISEAPP_STEP2_SEED`) and repetitions.
    Keep everything else equal: same machine, nothing else heavy running, same
    `WISEAPP_THREADS` and DuckDB limits.
@@ -91,8 +88,8 @@ Open the chosen script header to confirm its env vars; they differ per harness.
    the determinism tests if the change touches numerics.
 6. **Report** (format below).
 
-Run long jobs with `run_in_background` and wait for the completion
-notification; do not poll.
+Run long jobs with the tool's background-process support and wait for the
+completion notification; do not poll.
 
 ## Memory
 
@@ -113,7 +110,7 @@ notification; do not poll.
 State plainly what was run and what was not.
 
 1. Change, baseline commit, candidate commit or state, machine, date.
-2. Table per payload (BFA, IRN, IRN multi-period multi-SSP):
+2. Table per selected payload:
 
    | Metric | Baseline | Candidate | Change |
    |---|---|---|---|

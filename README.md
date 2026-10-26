@@ -1,5 +1,3 @@
-<!-- README.md is generated from README.Rmd. Please edit that file -->
-
 # `{wiseapp}`
 
 ## Overview
@@ -31,14 +29,16 @@ wiseapp::run_app()
 
 Task guides for coding agents (Claude Code, Kilo, Codex and others) are in
 [`.agents/skills/`](.agents/skills). This is the only copy in the repository;
-`AGENTS.md` lists them. A tool that reads skills from another folder can use them
-in one of two ways:
+`AGENTS.md` lists them. Current Kilo and Codex discover this folder directly;
+no copy is needed. Kilo can refresh with `/reload`; Codex lists skills with
+`/skills` (restart if an update does not appear). For other tools:
 
 - link the folder (macOS and Linux, from the repository root), for example for
   Claude Code: `ln -s ../.agents/skills .claude/skills`; `.claude/skills` is
   git-ignored;
 - or copy `.agents/skills/*` into the tool's skills folder (for example
-  `.claude/skills/`, `.kilocode/skills/`), and repeat after a skill changes.
-  This is the option on Windows.
+  `.claude/skills/`), and repeat after a skill changes. On Windows, from the
+  repository root in PowerShell: `New-Item -ItemType Directory -Force .claude/skills`;
+  `Copy-Item .agents/skills/* .claude/skills/ -Recurse -Force`.
 
 Edit skills only in `.agents/skills/`.

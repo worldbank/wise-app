@@ -93,4 +93,4 @@ Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If y
 
 ## Keeping these instructions current
 
-If an instruction in this file, `ARCHITECTURE.md`, a skill or a `review/` standard was wrong, missing or misleading during your task, fix it in the same change and say so in your report. Record a trap you hit in the skill's Traps or notes section. Do not add counts or line numbers; they go stale. Keep this file short: detail goes to `ARCHITECTURE.md`, `docs/` or a skill. After editing any instruction file, run `Rscript dev/agents_check.R`.
+If an instruction here, in `ARCHITECTURE.md`, a skill or a `review/` standard misleads you, fix it only within the authorized editing scope; otherwise report it and wait for approval. Prefer correcting existing text over adding rules; record only reusable traps in a skill. Do not add counts or line numbers; they go stale. Keep this file short: detail belongs in the linked guides or skills. After editing instructions, run `Rscript dev/agents_check.R`.

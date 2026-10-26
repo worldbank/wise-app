@@ -1,8 +1,8 @@
-# Check the instructions that coding agents read (R5 of review/agent_setup_review.md).
+# Check the instructions that coding agents read (R4 of review/agent_setup_review.md).
 #
-# Checks: paths and R functions named in backticks in AGENTS.md, ARCHITECTURE.md,
-# the skills and the two review standards exist; every skill has a name that
-# matches its folder and a description, and is listed in AGENTS.md; size budgets
+# Checks: required documents and skills exist; heuristic backtick path checks in
+# those documents and skills; function checks in the three root guides only;
+# skill metadata and AGENTS.md listing agree in both directions; size budgets
 # keep AGENTS.md short; DESCRIPTION and inst/golem-config.yml carry one version.
 #
 # Usage (from the repo root): Rscript dev/agents_check.R
@@ -20,12 +20,17 @@ read_lines <- function(f) readLines(f, warn = FALSE, encoding = "UTF-8")
 
 # The shared folder; .claude/skills is only a local link to it.
 skill_dirs <- ".agents/skills"
-skill_files <- unlist(lapply(skill_dirs, list.files, pattern = "\\.md$", recursive = TRUE, full.names = TRUE))
-doc_files <- Filter(
-  file.exists,
-  c("AGENTS.md", "ARCHITECTURE.md", "DEPLOYMENT.md", "review/README.md", "review/code_hygiene.md",
-    "review/optimization_guidelines.md", skill_files)
+required_docs <- c(
+  "AGENTS.md", "ARCHITECTURE.md", "DEPLOYMENT.md", "review/README.md",
+  "review/code_hygiene.md", "review/optimization_guidelines.md", "DESCRIPTION", "inst/golem-config.yml"
 )
+for (f in required_docs[!file.exists(required_docs)]) report("MISSING REQUIRED FILE", f)
+if (!dir.exists(skill_dirs)) report("MISSING SKILLS DIRECTORY", skill_dirs)
+skill_md <- list.files(skill_dirs, pattern = "^SKILL\\.md$", recursive = TRUE, full.names = TRUE)
+if (!length(skill_md)) report("NO SKILLS", skill_dirs)
+if (problems > 0L) quit(status = 1L)
+skill_files <- list.files(skill_dirs, pattern = "\\.md$", recursive = TRUE, full.names = TRUE)
+doc_files <- c(setdiff(required_docs, c("DESCRIPTION", "inst/golem-config.yml")), skill_files)
 
 # Size budgets ----
 
@@ -116,8 +121,20 @@ for (f in doc_files) {
 
 # Skills ----
 
-agents_md <- paste(read_lines("AGENTS.md"), collapse = "\n")
-skill_md <- unlist(lapply(skill_dirs, list.files, pattern = "^SKILL\\.md$", recursive = TRUE, full.names = TRUE))
+agents_lines <- read_lines("AGENTS.md")
+skill_start <- match("## Skills", agents_lines)
+if (is.na(skill_start)) {
+  report("MISSING SKILLS SECTION", "AGENTS.md")
+  listed_skills <- character()
+} else {
+  skill_end <- which(seq_along(agents_lines) > skill_start & grepl("^## ", agents_lines))[1]
+  if (is.na(skill_end)) skill_end <- length(agents_lines) + 1L
+  skill_table <- agents_lines[seq.int(skill_start, skill_end - 1L)]
+  listed_skills <- sub("^\\| `([^`]+)`.*$", "\\1", grep("^\\| `[^`]+` \\|", skill_table, value = TRUE))
+}
+for (name in setdiff(listed_skills, basename(dirname(skill_md)))) {
+  report("LISTED SKILL MISSING", name)
+}
 for (f in skill_md) {
   x <- read_lines(f)
   fm_end <- which(x == "---")[2]
@@ -132,7 +149,7 @@ for (f in skill_md) {
     report("SKILL NAME != FOLDER", f, if (length(name)) name else "(none)")
   }
   if (!any(grepl("^description:", fm))) report("NO DESCRIPTION", f)
-  if (!grepl(paste0("`", folder, "`"), agents_md, fixed = TRUE)) {
+  if (!folder %in% listed_skills) {
     report("SKILL NOT IN AGENTS.md", folder)
   }
   if (length(x) > 300L) report("SKILL TOO LONG", f, length(x), "lines, budget 300")
