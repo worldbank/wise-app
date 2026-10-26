@@ -76,7 +76,7 @@ test_that(".aggregation_assemble_rows handles a single row, skipped years and no
 
 test_that("shared aggregation cache keys differ by seed, default 123", {
   key <- function(...) {
-    shared_aggregation_cache_key(list(run = 1), 3, 0.05, TRUE, "normal",
+    shared_aggregation_cache_key(list(run = 1), 3, 0.05, TRUE, "resample",
       FALSE, TRUE, c("mean", "gini"), ...)
   }
   expect_identical(key(), key(seed = 123L))

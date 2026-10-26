@@ -795,7 +795,6 @@
     cache$train_aug <- train_aug
     cache$id_col <- id_col
     cache$lookup <- .residual_lookup(train_aug, id_col)
-    cache$sigma2 <- .residual_sigma2(train_aug)
     cache$draws <- list()
   }
   key <- as.character(year)
@@ -806,7 +805,7 @@
   }
   value <- draw_residuals_vec(effective, train_aug, n, ids, id_col,
     seed = wise_seed(seed, "residual", year),
-    resid_lookup = cache$lookup, resid_sigma2 = cache$sigma2)
+    resid_lookup = cache$lookup)
   cache$draws[[key]] <- list(
     mode = effective, n = n, ids = ids, seed = seed, value = value
   )

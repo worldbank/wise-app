@@ -33,7 +33,7 @@
 #' @param weights Numeric vector length N or \code{NULL}.
 #' @param pov_line Numeric scalar or \code{NULL}. Required for poverty methods.
 #' @param residuals Character. One of \code{"none"}, \code{"original"},
-#'   \code{"normal"}, \code{"resample"}.
+#'   \code{"resample"}.
 #' @param train_aug Data frame with \code{.resid} column, or \code{NULL}.
 #' @param id_vec,id_col Vector and character. For \code{residuals = "original"}.
 #' @param is_log Logical. \code{TRUE} (default) back-transforms via \code{exp()}.
@@ -113,7 +113,7 @@ aggregate_with_uncertainty_delta <- function(y_point,
     resid_vec <- draw_residuals_vec(
       residuals, train_aug, N, id_vec, id_col,
       seed = seed,
-      resid_lookup = resid_lookup, resid_sigma2 = resid_sigma2
+      resid_lookup = resid_lookup
     )
     mu <- if (!is_log) {
       y_point + resid_vec
@@ -191,7 +191,7 @@ aggregate_with_uncertainty_delta <- function(y_point,
   # Residual variance (only for stochastic residual draws)
   # PERF-34: reuse a caller-supplied variance; identical value to the
   # per-call stats::var() this replaces.
-  var_resid <- if (residuals %in% c("normal", "resample") &&
+  var_resid <- if (identical(residuals, "resample") &&
     !is.null(train_aug) && ".resid" %in% names(train_aug)) {
     sigma_e2 <- resid_sigma2 %||%
       stats::var(train_aug$.resid, na.rm = TRUE)
@@ -639,7 +639,6 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi, rate = FALSE)
       id_col = id_col,
       seed = wise_seed(seed, "residual", years[[i]]),
       resid_lookup = lookup,
-      resid_sigma2 = sigma2,
       resid_pos = if (!is.null(id_pos)) id_pos$pos[id_pos$of[idx]]
     )
   })

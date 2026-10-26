@@ -191,7 +191,7 @@ resolve_agg_fn <- function(method) {
 #' invocation. Residuals are independent of coefficient uncertainty (Option A).
 #'
 #' @param residuals Character. One of \code{"none"}, \code{"original"},
-#'   \code{"normal"}, \code{"resample"}.
+#'   \code{"resample"}.
 #' @param train_aug Data frame. Augmented training data with \code{.resid}
 #'   column and optionally an id column for household matching. Returned by
 #'   \code{run_sim_pipeline()} as \code{$train_aug}. Required for all
@@ -203,8 +203,6 @@ resolve_agg_fn <- function(method) {
 #' @param seed Integer seed for stochastic residual modes.
 #' @param resid_lookup Optional pre-built named residual vector from
 #'   \code{.residual_lookup()} (PERF-34). When NULL it is built here.
-#' @param resid_sigma2 Optional pre-built residual variance from
-#'   \code{.residual_sigma2()} (PERF-34). When NULL it is computed here.
 #' @param resid_pos Optional integer vector, length N: position of each
 #'   \code{id_vec} element in \code{names(resid_lookup)} (NA when absent), as
 #'   \code{match(as.character(id_vec), names(resid_lookup))} gives. Lets a caller
@@ -221,7 +219,6 @@ draw_residuals_vec <- function(residuals,
                                id_col = NULL,
                                seed = WISEAPP_DEFAULT_SEED,
                                resid_lookup = NULL,
-                               resid_sigma2 = NULL,
                                resid_pos = NULL) {
   switch(residuals,
     none = rep(0, N),
@@ -255,19 +252,6 @@ draw_residuals_vec <- function(residuals,
         seed = wise_seed(seed, "original-unmatched")
       )
       out
-    },
-    normal = {
-      if (is.null(train_aug) || !".resid" %in% names(train_aug)) {
-        stop("[draw_residuals_vec] train_aug with .resid required for residuals = 'normal'.")
-      }
-      # sd(x) is sqrt(var(x)) in R, so sqrt of a cached var() is bit-identical
-      # to the per-call stats::sd() this replaces (PERF-34).
-      sigma_hat <- if (!is.null(resid_sigma2)) {
-        sqrt(resid_sigma2)
-      } else {
-        stats::sd(train_aug$.resid, na.rm = TRUE)
-      }
-      withr::with_seed(seed, stats::rnorm(N, mean = 0, sd = sigma_hat))
     },
     resample = {
       if (is.null(train_aug) || !".resid" %in% names(train_aug)) {

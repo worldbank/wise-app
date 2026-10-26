@@ -64,10 +64,9 @@ The residual term $e_i^{(r)}$ follows the residual rule. Let $\hat\varepsilon_j$
 |---|---|---|
 | Original | $e_i = \hat\varepsilon_{j(i)}$, the residual of the same unit in the estimation sample, matched on survey code, survey name, year and household identifier. If the unit is not in that sample, a residual chosen from the estimation residuals by a fixed function of the unit's identifier. The same value is used in every year. Each household keeps its own unexplained component, so the simulated distribution stays close to the observed one and the coefficient band covers only the change from the weather at the interview. | Offered, default |
 | Resample | $e_i^{(r)}$ drawn with replacement from $\lbrace \hat\varepsilon_j\rbrace $, independently across households, locations and years. It adds noise and changes the level and spread of the simulated distribution, so it does not reproduce the observed one ([33_uncertainty](33_uncertainty.md), A7). The coefficient band of a level then uses all covariates and is several times wider than under the original rule. | Offered |
-| Normal | $e_i^{(r)} \sim N(0,\hat\sigma^2)$ | Not offered |
-| None | $e_i = 0$ | Not offered; used for the quantile model |
+| None | $e_i = 0$ | Not offered; used for the quantile model and when no estimation residuals are available |
 
-The draws are seeded by the run seed and the simulation year only. The historical series, all future scenarios and all climate models therefore use the same residual draws, and differences between series come from weather alone. For the quantile model, no residual is added and the rule is set to "none".
+A parametric "normal" rule that once existed in the code was removed: the app and the batch pipeline never offered it. The draws are seeded by the run seed and the simulation year only. The historical series, all future scenarios and all climate models therefore use the same residual draws, and differences between series come from weather alone. For the quantile model, no residual is added and the rule is set to "none".
 
 With the original rule and unchanged weather, a household in the estimation sample returns its observed welfare. A binary outcome has no retransformation. The residual is added to the predicted probability on the response scale. Under the original rule the residual is the response residual $y-\hat p$, so household values of a binary outcome can leave $[0,1]$ while the weighted mean is unaffected.
 

@@ -303,7 +303,7 @@ test_that("aggregation residual modes remain accepted by the reference contract"
     )
   )
 
-  for (mode in c("none", "original", "normal", "resample")) {
+  for (mode in c("none", "original", "resample")) {
     out <- aggregate_pipeline_per_year(
       pipe, method = "mean", weighted = TRUE, residuals = mode, seed = 123L
     )

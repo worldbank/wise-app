@@ -1547,7 +1547,7 @@ test_that("a log-outcome transfer adds T after the residual, regular and shock (
   prepared <- list(
     regular = .prepare_policy_annual_channels(fx$ctx_regular, "annual-run"),
     shock = shk_prepared(fx))
-  for (kind in names(prepared)) for (mode in c("original", "normal", "resample")) {
+  for (kind in names(prepared)) for (mode in c("original", "resample")) {
     for (method in c("mean", "total")) {
       got <- doc11_gain(fx, prepared[[kind]], mode, method)
       expect_equal(got$gain, doc11_expected(fx, method), tolerance = 1e-10,

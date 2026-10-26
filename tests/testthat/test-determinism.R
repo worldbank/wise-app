@@ -381,18 +381,15 @@ test_that("residual draws are deterministic and restore caller RNG", {
   set.seed(903)
   before <- .Random.seed
   original_a <- draw_residuals_vec("original", train, length(ids), ids, "hhid")
-  normal_a <- draw_residuals_vec("normal", train, length(ids), seed = 123L)
   resample_a <- draw_residuals_vec("resample", train, length(ids), seed = 123L)
   expect_identical(.Random.seed, before)
 
   stats::runif(10)
   original_b <- draw_residuals_vec("original", train, length(ids), ids, "hhid")
-  normal_b <- draw_residuals_vec("normal", train, length(ids), seed = 123L)
   resample_b <- draw_residuals_vec("resample", train, length(ids), seed = 123L)
 
   expect_identical(original_a, original_b)
   expect_identical(original_a[2], original_a[3])
-  expect_identical(normal_a, normal_b)
   expect_identical(resample_a, resample_b)
 })
 

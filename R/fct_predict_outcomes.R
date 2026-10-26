@@ -50,14 +50,12 @@
 #'   \code{lm}/\code{glm} objects. Common values: \code{"response"} (default),
 #'   \code{"link"}. Ignored for parsnip and fixest objects.
 #' @param residuals Character. One of \code{"none"}, \code{"original"},
-#'   \code{"normal"}, \code{"resample"}. Controls how residuals are added to
+#'   \code{"resample"}. Controls how residuals are added to
 #'   fitted values.
 #'   \describe{
 #'     \item{\code{"none"}}{No residual added. \code{.residual} is \code{NA}.}
 #'     \item{\code{"original"}}{Residuals from training data, matched by
 #'       \code{id} column or recycled by position.}
-#'     \item{\code{"normal"}}{Draws from \eqn{N(0, \hat\sigma)} where
-#'       \eqn{\hat\sigma} is the SD of training residuals.}
 #'     \item{\code{"resample"}}{Bootstrap sample from training residuals.}
 #'   }
 #' @param id Optional character. Column name used to match training residuals
@@ -104,8 +102,8 @@
 #'   id = "id", train_data = train_data
 #' )
 #'
-#' # Parametric residuals
-#' predict_outcome(model, new_data, residuals = "normal", train_data = train_data)
+#' # Bootstrap residuals
+#' predict_outcome(model, new_data, residuals = "resample", train_data = train_data)
 #'
 #' @importFrom broom augment
 #' @importFrom dplyr mutate left_join select
@@ -115,7 +113,7 @@
 predict_outcome <- function(model,
                             newdata,
                             type = "response",
-                            residuals = c("none", "original", "normal", "resample"),
+                            residuals = c("none", "original", "resample"),
                             id = NULL,
                             outcome = "predicted",
                             train_data = NULL,
@@ -333,28 +331,14 @@ predict_outcome <- function(model,
         rep(train_resid, length.out = nrow(preds))
       }
     },
-    normal = {
-      train_resid <- train_aug$.resid
-      if (length(train_resid) == 0) {
-        stop("No training residuals available for `residuals = 'normal'`.")
-      }
-      # Use nrow(preds) not nrow(newdata): fixest::predict() silently drops rows
-      # with FE levels absent from training data, so preds may have fewer rows
-      # than newdata. Sizing resid_draw to nrow(newdata) causes a mutate() error.
-      withr::with_seed(
-        wise_seed(seed, "predict-outcome", "normal", outcome),
-        stats::rnorm(nrow(preds),
-          mean = 0,
-          sd = stats::sd(train_resid, na.rm = TRUE)
-        )
-      )
-    },
     resample = {
       train_resid <- train_aug$.resid
       if (length(train_resid) == 0) {
         stop("No training residuals available for `residuals = 'resample'`.")
       }
-      # Same reason as normal above - use nrow(preds).
+      # Use nrow(preds) not nrow(newdata): fixest::predict() silently drops rows
+      # with FE levels absent from training data, so preds may have fewer rows
+      # than newdata. Sizing resid_draw to nrow(newdata) causes a mutate() error.
       withr::with_seed(
         wise_seed(seed, "predict-outcome", "resample", outcome),
         sample(train_resid, size = nrow(preds), replace = TRUE)

@@ -442,7 +442,7 @@ step2_add_residual_key <- function(train_data, svy) {
 #' @param model Fitted \code{fixest} model object.
 #' @param residuals Character. Residual treatment passed through to
 #'   \code{aggregate_with_uncertainty_delta()}. One of \code{"none"},
-#'   \code{"original"}, \code{"normal"}, \code{"resample"}.
+#'   \code{"original"}, \code{"resample"}.
 #' @param train_data Data frame. Training data used to fit \code{model}.
 #'   Used to compute training residuals for \code{train_aug}.
 #' @param engine Character. Model engine identifier (e.g. \code{"fixest"}).

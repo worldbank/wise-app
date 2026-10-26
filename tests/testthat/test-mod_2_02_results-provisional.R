@@ -436,7 +436,7 @@ test_that("seeding is skipped on any mismatch and results stay correct", {
 
   # residuals differ.
   r <- .pv_committed_render(.pv_adopted(edit = function(p) {
-    p$historical$display$residuals <- "normal"
+    p$historical$display$residuals <- "resample"
     p
   }))
   expect_gt(r$calls, 0L)

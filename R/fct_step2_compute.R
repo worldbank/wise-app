@@ -126,7 +126,7 @@ step2_slim_model_fit <- function(mf) {
     )
   }
   if (length(input$residuals) != 1L ||
-    !input$residuals %in% c("none", "original", "normal", "resample")) {
+    !input$residuals %in% c("none", "original", "resample")) {
     stop("step2_compute()$residuals is invalid.", call. = FALSE)
   }
   if (length(input$skip_coef_draws) != 1L ||

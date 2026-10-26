@@ -11,11 +11,11 @@ test_that("the decomposition owner marker is compared by value, not identity", {
 
 test_that("step3_baseline_arm keeps the Step 2 signature and residual treatment", {
   hs <- list(.sig = list(a = 1), residuals = NULL, pipeline = "p")
-  out <- step3_baseline_arm(hs, "normal")
-  expect_identical(out$residuals, "normal")
+  out <- step3_baseline_arm(hs, "resample")
+  expect_identical(out$residuals, "resample")
   expect_identical(out$.step2_sig, list(a = 1))
   expect_identical(out$pipeline, "p")
-  expect_identical(step3_baseline_arm(list(residuals = "none"), "normal")$residuals, "none")
+  expect_identical(step3_baseline_arm(list(residuals = "none"), "resample")$residuals, "none")
 })
 
 test_that("worker eligibility needs a matching on-disk Step 2 artifact", {

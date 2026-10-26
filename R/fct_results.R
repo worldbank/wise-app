@@ -436,7 +436,7 @@ attach_active_mask <- function(chol_obj,
   # draws and absorbs uncertainty on unchanged coefficients - or (b) any
   # residuals mode for the RIF engine, because the RIF prediction is
   # y_baseline + delta_i and the level y_baseline plays the same role as the
-  # fixed residual on the linear path. Under "resample"/"normal" with the
+  # fixed residual on the linear path. Under "resample" with the
   # linear engine, residuals are drawn independently of beta and the
   # cancellation does not hold.
   if (!is_rif_shape && !identical(residuals, "original")) {

@@ -63,23 +63,18 @@ test_that("bare lm: 'original' without id recycles by position", {
   expect_equal(out7$.residual, unname(residuals(fit))[1:7])
 })
 
-test_that("'normal' and 'resample' are seeded and drawn from training residuals", {
+test_that("'resample' is seeded and drawn from training residuals", {
   tr <- make_po_data()
   fit <- lm(y ~ x, data = tr)
   nd <- data.frame(id = 1:200, x = 0)
   res <- unname(residuals(fit))
 
-  n1 <- predict_outcome(fit, nd, residuals = "normal", train_data = tr, seed = 5)
-  n2 <- predict_outcome(fit, nd, residuals = "normal", train_data = tr, seed = 5)
-  n3 <- predict_outcome(fit, nd, residuals = "normal", train_data = tr, seed = 6)
-  expect_identical(n1$.residual, n2$.residual)
-  expect_false(identical(n1$.residual, n3$.residual))
-  expect_equal(sd(n1$.residual), sd(res), tolerance = 0.2)
-  expect_equal(n1$predicted, n1$.fitted + n1$.residual)
-
   r1 <- predict_outcome(fit, nd, residuals = "resample", train_data = tr, seed = 5)
   r2 <- predict_outcome(fit, nd, residuals = "resample", train_data = tr, seed = 5)
+  r3 <- predict_outcome(fit, nd, residuals = "resample", train_data = tr, seed = 6)
   expect_identical(r1$.residual, r2$.residual)
+  expect_false(identical(r1$.residual, r3$.residual))
+  expect_equal(r1$predicted, r1$.fitted + r1$.residual)
   in_train <- vapply(r1$.residual, function(r) any(abs(r - res) < 1e-10), logical(1))
   expect_true(all(in_train))
 })
@@ -91,7 +86,7 @@ test_that("argument validation", {
   expect_error(predict_outcome(fit, nd, residuals = character(0)), "length 0")
   expect_error(predict_outcome(fit, nd, residuals = "bogus"))
   expect_error(
-    predict_outcome(fit, nd, residuals = "normal"),
+    predict_outcome(fit, nd, residuals = "resample"),
     "train_data"
   )
   expect_error(
@@ -101,7 +96,7 @@ test_that("argument validation", {
     "`id` column not found in training"
   )
   # A vector of modes uses the first (default "none")
-  expect_true(all(is.na(predict_outcome(fit, nd, residuals = c("none", "normal"))$.residual)))
+  expect_true(all(is.na(predict_outcome(fit, nd, residuals = c("none", "resample"))$.residual)))
 })
 
 test_that("fixest feols: fitted values and response residuals", {
@@ -165,7 +160,7 @@ test_that("parsnip logistic: .pred_1 is the probability and a residual draw is m
   # Only outcome + predictors in train_data, so the observed-minus-fitted
   # residual branch (not the centred-fitted proxy) is used.
   o2 <- predict_outcome(fit, nd,
-    residuals = "normal", train_data = tr[c("id", "x", "zf")]
+    residuals = "resample", train_data = tr[c("id", "x", "zf")]
   )
   expect_equal(nrow(o2), 6L)
   expect_false(anyNA(o2$.residual))
@@ -186,7 +181,7 @@ test_that("parsnip logistic with several non-newdata columns falls back to centr
   fit <- parsnip::fit(parsnip::logistic_reg(), zf ~ x, data = tr)
   nd <- tr[1:6, c("id", "x")]
   expect_warning(
-    out <- predict_outcome(fit, nd, residuals = "normal", train_data = tr),
+    out <- predict_outcome(fit, nd, residuals = "resample", train_data = tr),
     "centred fitted values"
   )
   expect_equal(nrow(out), 6L)

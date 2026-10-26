@@ -91,7 +91,7 @@ test_that("metric states use canonical aggregates and reconcile for all metrics 
 
 
 test_that("metric states match the aggregated policy arm under residuals with a covariate lever and a transfer (DOC-11)", {
-  for (mode in c("original", "normal", "resample")) for (method in c("mean", "headcount_ratio", "gini")) {
+  for (mode in c("original", "resample")) for (method in c("mean", "headcount_ratio", "gini")) {
     fx <- metric_channel_fixture("fixest", "log", mode)
     expect_true(!is.null(fx$policy_hist$pipeline$sp_level))
     result <- .policy_metric_decomposition(fx$hist, fx$policy_hist, list(), list(),
@@ -163,7 +163,7 @@ test_that("adverse support interpolates deterministic year keys and fails closed
 
 test_that("one residual realization is reused across states and compact shared context resolves", {
   for (engine in c("fixest", "rif")) for (trans in c("none", "log")) {
-    for (mode in c("none", "original", "normal", "resample")) {
+    for (mode in c("none", "original", "resample")) {
       fx <- metric_channel_fixture(engine, trans, mode, zero_policy = TRUE)
       result <- .policy_metric_decomposition(fx$hist, fx$policy_hist, list(), list(),
         fx$prepared, "mean", requested_residuals = mode)
@@ -178,7 +178,7 @@ test_that("one residual realization is reused across states and compact shared c
   }
   fx <- metric_channel_fixture()
   fx$hist$shared_context <- fx$policy_hist$shared_context <- list(train_aug = data.frame(id = 1:12))
-  for (mode in c("original", "normal", "resample")) {
+  for (mode in c("original", "resample")) {
     result <- .policy_metric_decomposition(fx$hist, fx$policy_hist, list(), list(), fx$prepared,
       "mean", requested_residuals = mode)
     expect_identical(result$status, "ok")
@@ -383,7 +383,7 @@ test_that("R2-PERF-06: metric decomposition is memoised per method and poverty l
     api <<- .wire_results_pane(input, output, session,
       shiny::reactive(fx$hist), shiny::reactive(list()),
       shiny::reactive(fx$policy_hist), shiny::reactive(list()),
-      selected_hist = shiny::reactive(NULL), residuals = shiny::reactive("normal"),
+      selected_hist = shiny::reactive(NULL), residuals = shiny::reactive("resample"),
       decomp_context = shiny::reactive(technical), annual_channels = shiny::reactive(fx$prepared))
   }, {
     session$setInputs(cmp_agg_method = "mean")
@@ -447,7 +447,7 @@ test_that("the real shared Results calculation follows edits without re-preparin
     api <<- .wire_results_pane(input, output, session,
       shiny::reactive(fx$hist), shiny::reactive(list()),
       shiny::reactive(fx$policy_hist), shiny::reactive(list()),
-      selected_hist = shiny::reactive(NULL), residuals = shiny::reactive("normal"),
+      selected_hist = shiny::reactive(NULL), residuals = shiny::reactive("resample"),
       decomp_context = shiny::reactive(technical), annual_channels = shiny::reactive(fx$prepared))
   }, {
     session$setInputs(cmp_agg_method = "mean")
@@ -839,7 +839,7 @@ test_that("a primed exposure cache leaves the annual policy run and metric decom
 test_that("residual draws are shared across members and never reused across different inputs", {
   train <- data.frame(id = 1:12, .resid = seq(-0.2, 0.2, length.out = 12))
   ids <- c(3L, 1L, 99L, 5L)
-  for (mode in c("original", "normal", "resample", "none")) {
+  for (mode in c("original", "resample", "none")) {
     cache <- new.env(parent = emptyenv())
     expected <- draw_residuals_vec(mode, train, 4L, ids, "id",
       seed = wise_seed(WISEAPP_DEFAULT_SEED, "residual", 2030L))
@@ -863,7 +863,7 @@ test_that("residual draws are shared across members and never reused across diff
   other_train <- transform(train, .resid = rev(.resid))
   for (case in list(
     list(year = 2031L), list(i = c(3L, 1L, 99L, 6L)), list(i = ids[1:3], n = 3L),
-    list(mode = "normal"), list(tr = other_train)
+    list(mode = "resample"), list(tr = other_train)
   )) {
     before <- draws
     got <- do.call(call, case)

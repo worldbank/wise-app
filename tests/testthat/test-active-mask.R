@@ -231,7 +231,7 @@ test_that("attach_active_mask is a no-op when residuals != 'original' (linear en
     svy_modified                        = svy,
     train_data                          = train,
     weather_terms                       = "tx",
-    residuals                           = "normal",
+    residuals                           = "resample",
     propagate_all_covariate_uncertainty = FALSE
   )
   expect_null(out$active_mask)

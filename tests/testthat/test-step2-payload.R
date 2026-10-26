@@ -147,7 +147,7 @@ test_that("compact residual context retains only mode-required columns", {
   expect_identical(names(original), c("hhid", ".resid"))
   expect_identical(original$hhid, train_aug$hhid)
   expect_identical(original$.resid, train_aug$.resid)
-  for (mode in c("normal", "resample")) {
+  for (mode in "resample") {
     compact <- .compact_residual_context(train_aug, "hhid", mode)
     expect_identical(names(compact), ".resid", info = mode)
     expect_identical(compact$.resid, train_aug$.resid, info = mode)
@@ -165,7 +165,7 @@ test_that("compact residual context preserves ID alignment and deterministic RNG
   )
   compact <- .compact_residual_context(train_aug, "hhid", "original")
   ids <- c("a", "missing", "a", "c")
-  for (mode in c("original", "normal", "resample")) {
+  for (mode in c("original", "resample")) {
     set.seed(915L)
     before <- .Random.seed
     full <- draw_residuals_vec(mode, train_aug, length(ids), ids, "hhid", seed = 51L)
