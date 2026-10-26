@@ -55,7 +55,6 @@ model_args <- function() {
   list(
     id               = "model",
     variable_list    = reactiveVal(make_vl()),
-    selected_surveys = reactiveVal(data.frame(code = "ABC", year = 2010L)),
     analysis_unit    = reactiveVal("hh"),
     selected_outcome = reactiveVal(make_outcome()),
     selected_weather = reactiveVal(make_weather()),

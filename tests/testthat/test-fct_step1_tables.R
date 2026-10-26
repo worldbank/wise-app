@@ -360,7 +360,6 @@ test_that("the Weather module and the core loader build the same frames", {
     mod_1_05_weatherstats_server,
     args = list(
       connection_params = shiny::reactive(list(type = "local", path = ".")),
-      variable_list = shiny::reactive(NULL),
       selected_surveys = shiny::reactive(data.frame()),
       selected_outcome = shiny::reactive(NULL),
       selected_weather = shiny::reactive(sw),

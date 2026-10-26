@@ -33,8 +33,7 @@ test_that("year picker renders with data; warning shows and picker hides without
     args = list(
       id                = "sample",
       connection_params = shiny::reactive(list(type = "local", path = data_dir)),
-      survey_list       = shiny::reactive(make_survey_list()),
-      variable_list     = shiny::reactive(NULL)
+      survey_list       = shiny::reactive(make_survey_list())
     ),
     {
       # Household with available files: economy + year pickers render

@@ -15,7 +15,6 @@ mod_1_07_results_ui <- function(id) {
 #'
 #' @param id              Module id.
 #' @param variable_list   Reactive data frame of variable metadata.
-#' @param selected_surveys Reactive data frame of selected surveys.
 #' @param selected_outcome Reactive one-row data frame from mod_1_03_outcome.
 #' @param selected_weather Reactive data frame from mod_1_04_weather.
 #' @param survey_weather  Reactive data frame from mod_1_05_weatherstats.
@@ -27,7 +26,6 @@ mod_1_07_results_ui <- function(id) {
 #' @noRd
 mod_1_07_results_server <- function(id,
                                     variable_list,
-                                    selected_surveys,
                                     selected_outcome,
                                     selected_weather,
                                     survey_weather,

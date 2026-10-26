@@ -43,7 +43,6 @@ weatherstats_args <- function(sw, swd, cell_data = NULL,
   survey_generation_rx <- if (is.function(survey_data_generation)) survey_data_generation else shiny::reactiveVal(survey_data_generation)
   list(
     connection_params = shiny::reactive(list(type = "local", path = ".")),
-    variable_list     = shiny::reactive(NULL),
     selected_surveys  = shiny::reactive(NULL),
     selected_outcome  = shiny::reactive(NULL),
     selected_weather  = shiny::reactive(sw),

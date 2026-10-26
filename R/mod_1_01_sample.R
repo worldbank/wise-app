@@ -22,12 +22,11 @@ mod_1_01_sample_ui <- function(id) {
 #'
 #' @param id Module id.
 #' @param survey_list Reactive tibble from mod_0_overview (survey metadata).
-#' @param variable_list Reactive tibble from mod_0_overview (variable metadata).
 #' @param connection_params Reactive named list from mod_0_overview
 #'   (connection type + credentials/path).
 #'
 #' @noRd
-mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_list) {
+mod_1_01_sample_server <- function(id, connection_params, survey_list) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 

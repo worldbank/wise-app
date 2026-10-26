@@ -19,7 +19,6 @@ mod_1_05_weatherstats_ui <- function(id) {
 #'
 #' @param id               Module id.
 #' @param connection_params Reactive named list from mod_0_overview.
-#' @param variable_list    Reactive data frame of variable metadata.
 #' @param selected_surveys Reactive data frame of selected surveys.
 #' @param selected_outcome Reactive data frame row of the selected outcome.
 #' @param selected_weather Reactive data frame of selected weather spec.
@@ -40,7 +39,6 @@ mod_1_05_weatherstats_ui <- function(id) {
 mod_1_05_weatherstats_server <- function(
   id,
   connection_params,
-  variable_list,
   selected_surveys,
   selected_outcome,
   selected_weather,

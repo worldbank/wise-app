@@ -101,8 +101,7 @@ mod_1_modelling_server <- function(id,
     s1 <- mod_1_01_sample_server(
       "sample",
       connection_params = connection_params,
-      survey_list       = survey_list,
-      variable_list     = variable_list
+      survey_list       = survey_list
     )
 
     # 2. Survey stats ----
@@ -144,7 +143,6 @@ mod_1_modelling_server <- function(id,
     s5 <- mod_1_05_weatherstats_server(
       "weatherstats",
       connection_params = connection_params,
-      variable_list = variable_list,
       selected_surveys = s1$selected_surveys,
       selected_outcome = s3$selected_outcome,
       selected_weather = s4$selected_weather,
@@ -163,7 +161,6 @@ mod_1_modelling_server <- function(id,
     s6 <- mod_1_06_model_server(
       "model",
       variable_list    = variable_list,
-      selected_surveys = s1$selected_surveys,
       analysis_unit    = s1$analysis_unit,
       selected_outcome = s3$selected_outcome,
       selected_weather = s4$selected_weather,
@@ -176,7 +173,6 @@ mod_1_modelling_server <- function(id,
     s7 <- mod_1_07_results_server(
       "results",
       variable_list    = variable_list,
-      selected_surveys = s1$selected_surveys,
       selected_outcome = s3$selected_outcome,
       selected_weather = s4$selected_weather,
       survey_weather   = s5$survey_weather,

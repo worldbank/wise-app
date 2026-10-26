@@ -56,7 +56,6 @@ test_that("fit snapshot captures fit-time labels; headings follow re-fit engine"
     args = list(
       id               = "res",
       variable_list    = shiny::reactiveVal(make_vl()),
-      selected_surveys = shiny::reactiveVal(data.frame()),
       selected_outcome = sel_outcome,
       selected_weather = sel_weather,
       survey_weather   = shiny::reactiveVal(
@@ -159,7 +158,6 @@ test_that("REACT-14: specification fallbacks render the provenance banner", {
     args = list(
       id               = "res",
       variable_list    = shiny::reactiveVal(make_vl()),
-      selected_surveys = shiny::reactiveVal(data.frame()),
       selected_outcome = shiny::reactiveVal(make_outcome()),
       selected_weather = shiny::reactiveVal(make_weather_sel()),
       survey_weather   = shiny::reactiveVal(
@@ -209,7 +207,6 @@ test_that("P16: one fit-signature observer preserves exact stale transitions", {
   shiny::testServer(
     mod_1_07_results_server,
     args = list(id = "res", variable_list = shiny::reactiveVal(make_vl()),
-                selected_surveys = shiny::reactiveVal(data.frame()),
                 selected_outcome = outcome, selected_weather = weather,
                 survey_weather = swd, selected_model = model,
                 run_model = run,
@@ -248,7 +245,6 @@ test_that("R2-BUG-14: the fit signature carries the seed, so a seed-only refit d
   shiny::testServer(
     mod_1_07_results_server,
     args = list(id = "res", variable_list = shiny::reactiveVal(make_vl()),
-                selected_surveys = shiny::reactiveVal(data.frame()),
                 selected_outcome = shiny::reactiveVal(make_outcome()),
                 selected_weather = shiny::reactiveVal(make_weather_sel()),
                 survey_weather = shiny::reactiveVal(
@@ -318,7 +314,6 @@ test_that("redesigned sections render: who-panel, focused table, RIF suppression
     args = list(
       id               = "res",
       variable_list    = shiny::reactiveVal(make_vl()),
-      selected_surveys = shiny::reactiveVal(data.frame()),
       selected_outcome = sel_outcome,
       selected_weather = sel_weather,
       survey_weather   = shiny::reactiveVal(
@@ -476,7 +471,6 @@ test_that("R2-BUG-11: a Lasso spec without a successful selection is not fitted"
     args = list(
       id               = "res",
       variable_list    = shiny::reactiveVal(make_vl()),
-      selected_surveys = shiny::reactiveVal(data.frame()),
       selected_outcome = shiny::reactiveVal(make_outcome()),
       selected_weather = shiny::reactiveVal(make_weather_sel()),
       survey_weather   = shiny::reactiveVal(

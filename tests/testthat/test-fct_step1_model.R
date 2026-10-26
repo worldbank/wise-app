@@ -66,7 +66,6 @@ drive_results <- function(fx, fun, type = "Linear regression", covs = list(hh = 
     mod_1_07_results_server,
     args = list(
       id = "r", variable_list = shiny::reactiveVal(fx$vl),
-      selected_surveys = shiny::reactiveVal(data.frame()),
       selected_outcome = shiny::reactiveVal(fx$so), selected_weather = shiny::reactiveVal(swx),
       survey_weather = shiny::reactiveVal(fx$sw), selected_model = shiny::reactiveVal(sm),
       run_model = shiny::reactiveVal(0L), tabset_id = "tabs"
@@ -298,7 +297,7 @@ test_that("the Model module's specification and Lasso match the core", {
     mod_1_06_model_server,
     args = list(
       id = "m", variable_list = shiny::reactiveVal(fx$vl),
-      selected_surveys = shiny::reactiveVal(data.frame()), analysis_unit = shiny::reactiveVal("hh"),
+      analysis_unit = shiny::reactiveVal("hh"),
       selected_outcome = shiny::reactiveVal(fx$so),
       selected_weather = shiny::reactiveVal(model_fixture_weather(fx$vl)),
       survey_weather = shiny::reactiveVal(fx$sw)
@@ -359,7 +358,7 @@ test_that("interactions and the policy scenario of the spec give the Model tab's
       mod_1_06_model_server,
       args = list(
         id = "m", variable_list = shiny::reactiveVal(fx$vl),
-        selected_surveys = shiny::reactiveVal(data.frame()), analysis_unit = shiny::reactiveVal("hh"),
+        analysis_unit = shiny::reactiveVal("hh"),
         selected_outcome = shiny::reactiveVal(fx$so), selected_weather = shiny::reactiveVal(swx),
         survey_weather = shiny::reactiveVal(fx$sw)
       ),

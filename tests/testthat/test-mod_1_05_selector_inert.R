@@ -81,7 +81,6 @@ test_that("weather stats tab is inert to selector changes until re-pressed", {
     args = list(
       id                = "weatherstats",
       connection_params = shiny::reactiveVal(list()),
-      variable_list     = shiny::reactiveVal(data.frame()),
       selected_surveys  = shiny::reactiveVal(data.frame(
         fname = "microdata/TST/TST_2021_SRv_NAT.parquet")),
       selected_outcome  = sel_outcome_rv,
