@@ -466,6 +466,8 @@ test_that("simulations run per sim_id, write the three Step 2 tables and are reu
   prov <- arrow::read_parquet(file.path(out, "provenance.parquet"))
   expect_setequal(prov$stage, c("data", "weather", "fit", "sim"))
   expect_true(all(prov$n_failed_keys[prov$stage == "sim"] == 0L))
+  expect_true(all(prov$residuals_applied[prov$stage == "sim"] == prov$residuals_requested[prov$stage == "sim"]))
+  expect_false(anyNA(prov$residuals_applied[prov$stage == "sim"]))
   manifest <- jsonlite::read_json(file.path(out, "manifest.json"))
   expect_true(all(c("annual", "summary", "sim_weather") %in% unlist(manifest$tables)))
   expect_identical(manifest$n_sims, 2L)

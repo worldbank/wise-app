@@ -740,6 +740,8 @@ wise_batch_sim <- function(item, connection_params = NULL) {
           weight_share_dropped = baseline$dropped$weight_share_dropped,
           n_residual_matched = attr(input, "residual_match")$n_matched %||% NA_integer_,
           n_residual_unmatched = attr(input, "residual_match")$n_unmatched %||% NA_integer_,
+          residuals_requested = sim$residuals,
+          residuals_applied = input$residuals,
           r_peak_mb = sum(gc_max[, ncol(gc_max)]),
           seconds = as.numeric(difftime(Sys.time(), t0, units = "secs")),
           stringsAsFactors = FALSE

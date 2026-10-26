@@ -1,5 +1,7 @@
 # Review: sources of uncertainty, residual treatment and their presentation (Steps 1 to 3)
 
+Status: **closed 2026-10-26** (archived). Phases 0 to 7 are implemented (commits `c5ccb9e`, `1ecc93e`, `f84b9e3`, `235bce2` and the closing commit). Open remainders are in `review/REVIEW-2026-10-06-tracking.md` under "B10 - Uncertainty and residuals".
+
 First written 2026-10-25 against commit `0f9afde` as a desk review. Extended the same day against commit `2af403d` (branch `dev`): the scope now covers every source of uncertainty the app reports or omits, and each finding has been checked on real data (`WISEAPP_DATA_PATH`, local) with the results recorded under the finding. No code was changed. Methods pages that describe the area: `docs/30_simulation.md` (Section 4), `docs/32_metrics.md` (Section 5), `docs/33_uncertainty.md`, `docs/40_policy_framework.md` (Section 5), `docs/44_decomposition.md`, `docs/45_cost_effectiveness.md`, `docs/50_assumptions_limitations.md`.
 
 ## Task for the implementing agent

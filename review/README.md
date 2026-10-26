@@ -11,13 +11,12 @@ Status: **standard** (rules to follow) · **open** (work in progress, may change
 | `REVIEW-2026-10-06-tracking.md` | open | Choosing or closing a finding; "Where things stand" is the current status |
 | `REVIEW-2026-10-06.md` | lookup | Reading the text of a finding by id (`grep -n "<ID>"`). Immutable; 120 KB |
 | `agent_setup_review.md` | open | Changing `AGENTS.md`, `ARCHITECTURE.md`, skills or `dev/agents_check.R` |
-| `uncertainty_residuals_review.md` | open | Work on uncertainty and residual treatment; carries its own phase plan |
 | `methodology_review_2026-10-26.md` | open | Methods implementation review of 2026-10-26 |
 | `sp_shock_responsive_plan.md` | reference | Shock-responsive social protection: design rules; Phase 3 design is still open. Cited by `R/fct_sp_shock.R` |
 | `sp_shock_responsive_tasks.md` | reference | Remaining SP tasks and the decisions that still bind. Cited by `R/fct_sp_shock.R`, `R/fct_sp_effectiveness.R` |
 | `step3_cost_effectiveness_plan.md` | reference | Why the cost-effectiveness tab works as it does (built as task P2-2). Cited by `R/fct_sp_effectiveness.R` |
 | `batch_pipeline_plan.md` | reference | Batch pipeline design; Phases 1 to 4 are built, Phase 5 is planned. Cited by `batch/` docs and tests |
-| `archive/` | archive | Evidence behind a closed finding, the Decision log and earlier plans. Open it for a specific item, not for orientation |
+| `archive/` | archive | Evidence behind a closed finding, the Decision log and earlier plans (`uncertainty_residuals_review.md`: the evidence and tables behind the residual and uncertainty work, closed 2026-10-26). Open it for a specific item, not for orientation |
 
 ## Conventions
 

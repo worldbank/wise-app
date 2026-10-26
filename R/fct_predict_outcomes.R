@@ -108,7 +108,7 @@
 #' @importFrom broom augment
 #' @importFrom dplyr mutate left_join select
 #' @importFrom rlang sym .data
-#' @importFrom stats rnorm sd na.omit residuals predict
+#' @importFrom stats na.omit residuals predict
 #' @export
 predict_outcome <- function(model,
                             newdata,

@@ -14,6 +14,7 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B6 | Performance | 4 |
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 2 |
+| B10 | Uncertainty and residuals | 2 |
 
 B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
 
@@ -67,6 +68,28 @@ Work stopped by decision 2026-10-24 (user agreed): the rows below have no measur
 
 Ordering note from the report: delete dead code before splitting files; one PR per file with characterisation tests.
 
+## B10 - Uncertainty and residuals
+
+Source: `review/archive/uncertainty_residuals_review.md` (closed 2026-10-26; findings F0 to F10 and the removal of the "normal" residual rule are done). Open remainders:
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| UR-01 | L | S | ☐ | A failed `train_aug` precomputation inside `fct_run_simulation()` demotes the residual rule to "none" with a warning only; the run summary and provenance do not record it (the RIF demotion is recorded). `fct_run_simulation()` and the Step 2 result names are pinned by `test-step2-contract.R`, so the fix needs a contract change or a field on `sim_summary` set by the caller. Rare. |
+| UR-02 | L | S | ☐ | The seed spread of the shock-responsive forecast hits and false alarms and of the predicted-welfare layer is unmeasured (the 20-seed check had only the seeded targeting draws active: about 1.1 per cent on cost and effect). `docs/43_shock_responsive_sp.md` says the bands exclude it. Measure with a spec that switches those layers on. |
+
+Not done and not planned (closed decisions): a cluster-block or stratified resample rule (F4), a bootstrap of the return-period tail (F10).
+
+## Decision log (uncertainty and residuals, 2026-10-26)
+
+Numerical changes, BFA unless stated, "original" rule unless stated. Evidence and tables are in the archived review.
+
+- F0 (residual key): BEN 2018 + 2021, historical average mean / poverty rate / Gini 5.4948 / 0.2916 / 0.3782 before, 5.2755 / 0.2685 / 0.3410 after (observed 5.2510 / 0.2729 / 0.3432). BFA unchanged to every printed digit (4.3606 / 0.4358 / 0.3725).
+- F8 (logistic loading): agriculture employment, first historical year, coefficient SD 0.5036 before, 0.1140 after (Monte Carlo 0.107); band at 10/90 [-0.194, 1.097] before, [0.314, 0.598] after.
+- F1 (median reference under "resample"): the reference year's residual variance is added to the contrast; the mean reference, same-year and year-averaged contrasts are unchanged.
+- F2 (own residual bar): "resample", level, coefficient bar 0.5461 before (residual inside), 0.5429 after, residual bar 0.0588.
+- F9 (poverty-rate residual variance): residual SD under "resample" 0.00967 before, 0.00758 after (Monte Carlo 0.00778).
+- Normal rule removed: point estimates under "original" and "resample" identical to every printed digit (mean 4.36060483590172 and 4.77585348505506).
+
 ## Log
 
 Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (moved)" and earlier addenda). Add new entries here.
@@ -76,3 +99,4 @@ Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (move
 - 2026-10-24 - RED-06 and R2-OPS-09 closed as won't fix (B5 open count 1 to 0); DOC-11 severity raised L to M (the log-outcome transfer is worth 8% to 18% more than T with a residual term, so policy gains are overstated). Rows in the archive addendum.
 - 2026-10-24 - DOC-11 closed (B9 open count 3 to 2): for a log outcome the cash transfer is now added after the residual, so the policy arm gains T and not T * exp(e); regular and shock-responsive SP, aggregation mean and its gradient, and the metric states. Outputs move (policy gains shrink by up to 8% at SD 0.4); Decision log entry, real-BFA before/after (policy mean gain 0.70 and 1.30 of the transfer before, 1.00 after, for original and resample residuals) and the row in the archive addendum. The Step 3 pane was not driven in the browser.
 - 2026-10-25 - DOC-11 follow-up: the quantile model (RIF) now adds the transfer after repositioning (`E * exp(c + rho) + T`) and the level channels add it once with another lever active. RIF outputs move when a transfer combines with another lever or repositioning. Decision log in the archive addendum; real-BFA RIF before/after (transfer alone +1.8% gain, transfer plus electricity -0.7%) and the Decomposition tab driven in the browser, both in the archive. Also: `test-bench-step3.R` timing assertion made `expect_gte` (1 ms clock resolution made it flaky).
+- 2026-10-26 - Uncertainty and residuals review closed and archived (B10 opened with 2 low-severity rows): residual key (F0), logistic loading (F8), own residual bar and median reference (F2, F1), poverty-rate residual variance (F9), the all-covariates control removed (F3), the applied residual rule recorded in the run summary, Step 2 provenance and batch provenance, the "normal" rule removed, docs 30, 32, 33, 40, 43, 50. Commits `c5ccb9e`, `1ecc93e`, `f84b9e3`, `235bce2`. Decision log rows above.
