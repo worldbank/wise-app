@@ -144,7 +144,8 @@ WISEAPP_SIM_HIST_RANGE <- c(1950L, 2025L)
 #'
 #' @return A named list: `hist_years`, `future_periods` (a list of
 #'   start/end year pairs, at most three), `ssps`, `residuals`,
-#'   `coef_uncertainty`, `propagate_all_covariate_uncertainty`.
+#'   `coef_uncertainty`, `propagate_all_covariate_uncertainty` (deprecated: the app
+#'   control is gone and the batch runner ignores it; kept so saved specs load).
 #' @noRd
 wise_default_sim <- function() {
   list(

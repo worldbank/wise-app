@@ -193,13 +193,19 @@ mod_2_01_weathersim_ui <- function(id) {
           shiny::p(
             shiny::tags$b("original:"),
             paste0(
-              " Recommended default: match each observation's own residual - ",
-              "assumes no changes due to changing hazards."
+              " Recommended default. Each household keeps its own unexplained component, the same in ",
+              "every year. The simulated distribution stays close to the observed one, and the ",
+              "coefficient band covers only the change from the weather at the interview."
             )
           ),
           shiny::p(
             shiny::tags$b("resample:"),
-            " Secondary recommendation: randomly resample residuals from the model."
+            paste0(
+              " Adds residual noise drawn from the pooled estimation residuals, independent of ",
+              "household and location. It changes the level and spread of the simulated distribution, ",
+              "so it does not reproduce the observed distribution. The coefficient band then uses ",
+              "all covariates and is several times wider than under original."
+            )
           ),
           docs = TRUE
         ),
@@ -222,21 +228,19 @@ mod_2_01_weathersim_ui <- function(id) {
         info_popover(
           title = "Model coefficient uncertainty",
           shiny::p(
-            "Checking this box incorporates uncertainty around the model",
-            "definition process itself, via the analytic delta method.",
+            "Checking this box adds the sampling error of the estimated coefficients, via the",
+            "analytic delta method, for the model as specified. It does not cover the choice of",
+            "covariates, the Lasso selection, the functional form or the bins.",
             "Disable to use point estimates only."
           ),
           shiny::p(
-            "By default, only coefficients on variables that change between",
-            "baseline and counterfactual contribute to the reported SE:",
-            "weather variables and their interactions in Step 2; weather plus",
+            "Only coefficients on variables that change between baseline and counterfactual",
+            "contribute: weather variables and their interactions in Step 2; weather plus",
             "the policy-modified variables and their interactions in Step 3.",
-            "Under 'original' residuals, uncertainty on the unchanged covariates",
-            "cancels through the held-fixed residual term (additive-decomposition",
-            "SE). 'Include uncertainty on all covariates' propagates uncertainty",
-            "from all covariates instead - more conservative, but inconsistent",
-            "with the model's own additive-separability assumption. Has no",
-            "effect when residuals are not 'original'."
+            "Under 'original' residuals the household's own residual holds the fitted value at",
+            "its interview weather, so a level's band is zero at that weather and grows with the",
+            "distance from it. Under 'resample' the band of a level uses every covariate and is",
+            "several times wider; a difference between two results is much closer under both rules."
           ),
           shiny::p(
             "Coefficient uncertainty is propagated analytically via the",
@@ -252,14 +256,6 @@ mod_2_01_weathersim_ui <- function(id) {
         inputId = ns("include_coef_uncertainty"),
         label   = "Include coefficient uncertainty",
         value   = d$coef_uncertainty
-      ),
-      shiny::conditionalPanel(
-        condition = sprintf("input['%s'] == true", ns("include_coef_uncertainty")),
-        shiny::checkboxInput(
-          inputId = ns("propagate_all_covariate_uncertainty"),
-          label   = "Include uncertainty on all covariates",
-          value   = d$propagate_all_covariate_uncertainty
-        )
       )
     ),
     shiny::tags$hr(style = "margin: 10px 0;"),
@@ -875,9 +871,7 @@ mod_2_01_weathersim_server <- function(id,
         fut_sel = .sig_plain(selected_fut()),
         baseline_survey = input$baseline_survey,
         residuals = input$residuals,
-        skip_coef_draws = !isTRUE(input$include_coef_uncertainty),
-        propagate_all_covariate_uncertainty =
-          isTRUE(input$propagate_all_covariate_uncertainty)
+        skip_coef_draws = !isTRUE(input$include_coef_uncertainty)
       )
     }
 
@@ -890,7 +884,6 @@ mod_2_01_weathersim_server <- function(id,
       model_fit(), survey_version(), selected_surveys(),
       input$hist_years, input$climate,
       input$baseline_survey, input$residuals, input$include_coef_uncertainty,
-      input$propagate_all_covariate_uncertainty,
       input$fut_period_1, input$fut_period_2, input$fut_period_3
     ))
 
@@ -979,7 +972,6 @@ mod_2_01_weathersim_server <- function(id,
         sw, so, svy, ss, mf, .wise_step2_async_connection_params(cp),
         hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
         residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
-        propagate_all = input$propagate_all_covariate_uncertainty,
         stored_breaks = stored_breaks(), slim = TRUE
       )
       ssps <- step2_input$ssps
@@ -1272,7 +1264,6 @@ mod_2_01_weathersim_server <- function(id,
           sw, so, svy, ss, mf, cp,
           hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
           residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
-          propagate_all = input$propagate_all_covariate_uncertainty,
           stored_breaks = stored_breaks(), slim = FALSE
         )
 
@@ -1394,8 +1385,8 @@ mod_2_01_weathersim_server <- function(id,
       selected_hist = selected_hist,
       residuals = reactive(input$residuals %||% "original"),
       skip_coef_draws = reactive(!isTRUE(input$include_coef_uncertainty)),
-      propagate_all_covariate_uncertainty =
-        reactive(isTRUE(input$propagate_all_covariate_uncertainty)),
+      # The "all covariates" control was removed (F3): it changed nothing.
+      propagate_all_covariate_uncertainty = reactive(FALSE),
       stale = sim_stale,
       run_generation = run_generation,
       run_status = run_status,

@@ -95,7 +95,7 @@ case-insensitive. A spec is checked when read.
 | `weather` | `hist_years` ([1991, 2020]) |
 | `stats` | `indicators` (`poor300`, `poor420`, `poor830`, `ttime_health_gt15/30/45/60`), `location_samples` (true) |
 | `model` | `type` (linear; logistic for a binary outcome), `fixed_effects` (`year`, `gaul1_code`; `[]` none), `covariates.method` (`user`) and `.vars`, `covariates.lasso.*` (alpha 1, `lambda.1se`, 10 folds, ...), `interactions`, `policy_vars` (scenario key `A` to `M`) |
-| `sim` | `hist_years` ([1991, 2020]), `future_periods` ([[2025, 2035]]), `ssps` (`ssp3_7_0`), `residuals` (`original` or `resample`), `coef_uncertainty` (true), `propagate_all_covariate_uncertainty` (false), `baseline_survey` (`CODE\|YEAR`, default the latest wave) |
+| `sim` | `hist_years` ([1991, 2020]), `future_periods` ([[2025, 2035]]), `ssps` (`ssp3_7_0`), `residuals` (`original` or `resample`), `coef_uncertainty` (true), `propagate_all_covariate_uncertainty` (false; deprecated, accepted and ignored: with a matched residual it changes nothing), `baseline_survey` (`CODE\|YEAR`, default the latest wave) |
 | `policy` | levers `sp`, `infra`, `digital`, `labor`, `education`; settings are the app's control ids (see below) |
 
 Notes:

@@ -32,7 +32,7 @@ test_that("every Step 2 simulation dependency marks published results stale", {
   ), {
     session$setInputs(hist_years = c(1991, 2020), climate = "ssp3_7_0",
       baseline_survey = "AAA|2020", residuals = "original",
-      include_coef_uncertainty = TRUE, propagate_all_covariate_uncertainty = FALSE,
+      include_coef_uncertainty = TRUE,
       fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
     session$flushReact()
     publish <- function() {
@@ -54,7 +54,6 @@ test_that("every Step 2 simulation dependency marks published results stale", {
     expect_stale_after(function() session$setInputs(baseline_survey = character(0)), "baseline")
     expect_stale_after(function() session$setInputs(residuals = "resample"), "residuals")
     expect_stale_after(function() session$setInputs(include_coef_uncertainty = FALSE), "coefficient uncertainty")
-    expect_stale_after(function() session$setInputs(propagate_all_covariate_uncertainty = TRUE), "covariate uncertainty")
   })
 })
 
@@ -127,7 +126,7 @@ test_that("live_run lifecycle: submit, partials, adoption, cancel", {
   ), {
     session$setInputs(hist_years = c(1991, 2020), climate = c("ssp2_4_5", "ssp5_8_5"),
       baseline_survey = "AAA|2020", residuals = "original",
-      include_coef_uncertainty = TRUE, propagate_all_covariate_uncertainty = FALSE,
+      include_coef_uncertainty = TRUE,
       fut_period_1 = c(2030, 2040), fut_period_2 = c(2050, 2060),
       fut_period_3 = c(2015, 2015))
     session$flushReact()

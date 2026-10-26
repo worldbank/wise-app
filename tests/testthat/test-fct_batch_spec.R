@@ -405,8 +405,7 @@ test_that("the configuration input ids still exist in the module controls", {
   expect_match(s6, 'paste0("force_out_", role)', fixed = TRUE)
   s21 <- src("mod_2_01_weathersim.R")
   for (id in c(
-    "hist_years", "climate", "baseline_survey", "residuals", "include_coef_uncertainty",
-    "propagate_all_covariate_uncertainty"
+    "hist_years", "climate", "baseline_survey", "residuals", "include_coef_uncertainty"
   )) {
     expect_match(s21, paste0('ns("', id, '")'), fixed = TRUE)
   }

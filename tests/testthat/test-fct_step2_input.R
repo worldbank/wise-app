@@ -290,7 +290,7 @@ drive_sim_module <- function(fit, inputs, sync = FALSE) {
 sim_module_inputs <- list(
   hist_years = c(1991, 2020), climate = c("ssp2_4_5", "ssp5_8_5"), baseline_survey = "AAA|2020",
   residuals = "original", include_coef_uncertainty = TRUE,
-  propagate_all_covariate_uncertainty = FALSE, fut_period_1 = c(2030, 2040),
+  fut_period_1 = c(2030, 2040),
   fut_period_2 = c(2050, 2060), fut_period_3 = c(2015, 2015)
 )
 
@@ -316,14 +316,14 @@ test_that("the module hands the worker exactly the core's input", {
   # Historical only, resampled residuals, no coefficient uncertainty.
   alt <- utils::modifyList(sim_module_inputs, list(
     fut_period_1 = c(2015, 2015), fut_period_2 = c(2015, 2015), residuals = "resample",
-    include_coef_uncertainty = FALSE, propagate_all_covariate_uncertainty = TRUE,
+    include_coef_uncertainty = FALSE,
     baseline_survey = c("AAA|2020", "BBB|2020")
   ))
   got <- drive_sim_module(step2_input_fit(), alt)$snapshot$input
   expect_identical(got$fp_list, list())
   expect_identical(got$residuals, "resample")
   expect_true(got$skip_coef_draws)
-  expect_true(got$propagate_all_covariate_uncertainty)
+  expect_false(got$propagate_all_covariate_uncertainty)
   expect_identical(unique(got$svy$code), c("AAA", "BBB"))
 })
 

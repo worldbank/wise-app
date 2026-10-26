@@ -234,19 +234,20 @@ open_step("step2")
 click_js("[id$='weathersim-settings_toggle']")
 Sys.sleep(1)
 sel_parent <- "input[id$='include_coef_uncertainty']"
-sel_child <- "input[id$='propagate_all_covariate_uncertainty']"
 check(isTRUE(app$get_js(sprintf("!!document.querySelector(\"%s\")", sel_parent))), "Step 2 coefficient-uncertainty checkbox renders")
-check(visible(sel_child), "sub-option visible while the parent is checked")
-click_js(sel_parent)
-Sys.sleep(0.5)
-check(!visible(sel_child), "sub-option hidden after the parent is unchecked")
-click_js(sel_parent)
 scan("step2-settings")
 click_js("#step2-weathersim-run_sim")
 wait_for("document.body.innerText.includes('Step 2 (climate scenarios): complete')", "Step 2 simulation runs on the fixture")
 settle(2)
 open_tab("sim_tab")
 scan("step2-results", "#step2-results-summary_threshold_table .rt-table")
+# conditionalPanel: the poverty-line input shows only for a poverty metric.
+sel_line <- "input[id$='results-pov_line']"
+check(!visible(sel_line), "poverty line hidden for the mean")
+click_js("input[name$='cmp_agg_method'][value='headcount_ratio']")
+Sys.sleep(0.5)
+check(visible(sel_line), "poverty line visible for the poverty rate")
+click_js("input[name$='cmp_agg_method'][value='mean']")
 open_tab("diag_tab")
 scan("step2-diagnostics")
 

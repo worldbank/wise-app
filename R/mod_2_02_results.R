@@ -356,7 +356,9 @@
           paste0(
             "Coefficient uncertainty is the analytic delta-method standard error from the fitted model's ",
             "coefficient covariance matrix. It follows the Results view: a level, or the difference from the ",
-            "historical mean or median, as the bar label says. It is shown as one standard ",
+            "historical mean or median, as the bar label says. A level's coefficient bar depends on the ",
+            "residual rule: under \"resample\" it uses every covariate and is several times larger than ",
+            "under \"original\". It is shown as one standard ",
             "deviation, not a 95% confidence interval;"
           ),
           "an approximate normal 95% interval would be estimate +/- 1.96 times this value."

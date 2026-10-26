@@ -666,6 +666,13 @@ wise_batch_sim <- function(item, connection_params = NULL) {
       sw <- w$selected_weather
       so <- wise_outcome_run_line(d$outcome$so, spec$outcome)
       # Households without weather or model data are left out, as in the app.
+      if (isTRUE(sim$propagate_all_covariate_uncertainty)) {
+        warning(
+          "sim.propagate_all_covariate_uncertainty is deprecated and has no effect; ",
+          "it is accepted so saved specs still load.",
+          call. = FALSE
+        )
+      }
       baseline <- step2_baseline_run(w$survey_weather, sim$baseline_survey, sw, mf, so)
       input <- wise_step2_input(
         sw, so,
@@ -673,7 +680,6 @@ wise_batch_sim <- function(item, connection_params = NULL) {
         ss = .step2_filter_baseline_surveys(d$selected_surveys, sim$baseline_survey),
         mf = mf, cp = cp, hist_years = sim$hist_years, periods = sim$future_periods,
         ssps = sim$ssps, residuals = sim$residuals, coef_uncertainty = sim$coef_uncertainty,
-        propagate_all = sim$propagate_all_covariate_uncertainty,
         stored_breaks = w$stored_breaks, slim = FALSE
       )
       # The worker of the app normalises the input the same way before it calls

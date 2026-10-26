@@ -86,7 +86,7 @@ translations and the table builders `model_terms_table()`, `model_fit_table()`,
 | `climate` | `sim.ssps` | `ssp3_7_0` |
 | `residuals` | `sim.residuals` (`none` is forced for RIF) | `original` |
 | `include_coef_uncertainty` | `sim.coef_uncertainty` | true |
-| `propagate_all_covariate_uncertainty` | same name | false |
+| `propagate_all_covariate_uncertainty` | same name (the app control was removed; the field is deprecated, accepted and ignored) | false |
 
 Results and Diagnostics controls (`cmp_*`, `ensemble_band`, `pov_line`,
 `diag_weather_*`) are display choices: `metric` is a table column, the rest are
