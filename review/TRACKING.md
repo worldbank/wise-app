@@ -15,9 +15,9 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
-| B11 | Social protection (deferred) | 8 |
+| B11 | Social protection (owed numbers) | 1 |
 | B12 | Methodology review follow-ups | 3 |
-| B13 | Batch pipeline follow-ups | 3 |
+| B13 | Batch pipeline follow-ups | 1 |
 
 B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
 
@@ -80,20 +80,13 @@ Source: `review/archive/uncertainty_residuals_review.md` (closed 2026-10-26). Op
 | UR-01 | L | S | ☐ | A failed `train_aug` precomputation inside `fct_run_simulation()` demotes the residual rule to "none" with a warning only; the run summary and provenance do not record it (the RIF demotion is recorded). `fct_run_simulation()` and the Step 2 result names are pinned by `test-step2-contract.R`, so the fix needs a contract change or a field on `sim_summary` set by the caller. Rare. |
 | UR-02 | L | S | ☐ | The seed spread of the shock-responsive forecast hits and false alarms and of the predicted-welfare layer is unmeasured (the 20-seed check had only the seeded targeting draws active: about 1.1 per cent on cost and effect). `docs/43_shock_responsive_sp.md` says the bands exclude it. Measure with a spec that switches those layers on. |
 
-## B11 - Social protection (all deferred or owed)
+## B11 - Social protection (owed)
 
-Sources: `review/archive/sp_shock_responsive_plan.md`, `review/archive/sp_shock_responsive_tasks.md`, `review/archive/step3_cost_effectiveness_plan.md` (archived 2026-10-26; Phases 0 to 2 and the cost-effectiveness tab are built). Nothing here is scheduled.
+Sources: `review/archive/sp_shock_responsive_plan.md`, `review/archive/sp_shock_responsive_tasks.md`, `review/archive/step3_cost_effectiveness_plan.md` (archived 2026-10-26; Phases 0 to 2 and the cost-effectiveness tab are built). Deferred rows SP-01 to SP-06 and SP-08 are in the archive ("Closed and deferred list").
 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
-| SP-01 | L | M | ✗ | P0-9 admin and error presets: a literature pass on cost-transfer ratios and PMT error rates, then a preset dropdown. The 10 % / 10 % defaults and zero admin share stay. |
-| SP-02 | L | M | ✗ | PR-13: the shock state plus transfer is re-evaluated per metric-decomposition job (1.7 s base to 3.5 s with anticipatory and layers, BFA, 17 pipelines). Cache it in the retained Step 3 artifact if a slow metric switch is reported. |
-| SP-03 | L | S-M | ✗ | Phase 3 presets and amount rules (P3-1 named presets, P3-4 gap-filling and tiered amounts). |
-| SP-04 | L | M | ✗ | Phase 3 design sweep (P3-2: cost against poverty-reduction frontier over a bounded grid) and reserve dynamics (P3-3: needs an ordered-year rule first, years are draws today). |
-| SP-05 | L | M | ✗ | P3-5 further budget rules (AAL sizing, premium-equivalent cost, budgets tied to the rise in the number of poor, envelope per activation). Needs P2-5. |
-| SP-06 | L | M | ✗ | Cost-effectiveness for non-cash levers (`mod_3_02` to `mod_3_05`) and the cost-effectiveness summary card: need unit costs from the policy team. |
 | SP-07 | M | S | ☐ | Owed numbers: BFA before/after headline figures for P0-8 (synthetic check already recorded: realised weighted inclusion 15.8 % / exclusion 12.2 % before, 15.0 % / 10.0 % after, for 15 % / 10 % sliders), BFA Step 3 benchmark figures with the shock fixtures, and the BFA LCU re-run entry for R2-BUG-04 / CR-BUG-02. |
-| SP-08 | L | S | ✗ | Targeting errors are one seeded draw; the draw-to-draw variation of coverage and leakage, and of the shock forecast layers, is not shown (see UR-02). |
 
 ## B12 - Methodology review follow-ups
 
@@ -112,8 +105,6 @@ Source: `review/archive/batch_pipeline_plan.md` (archived 2026-10-26). Phases 1 
 | ID | Sev | Eff | Status | Open task |
 |---|---|---|---|---|
 | BP-01 | L | M | ☐ | Per-release parity against a downloaded headless-app Export bundle. Existing `dev/batch_parity_bfa*.R` checks compare module-server tables with batch, not the downloaded bundle. Compare the same spec and seed through Steps 1 to 3, including policy tables. |
-| BP-02 | L | S | ✗ | Separate policy-stage crew controller; policy currently shares the bounded `sim` controller. Defer until a measured batch workload needs different Step 2/3 concurrency or memory limits. |
-| BP-03 | L | M | ✗ | A frame key independent of descriptive-statistics options, which currently enter `data_id` and invalidate downstream fits. Defer until changing statistics causes material rerun cost; preserve table identity and cache correctness if split. |
 
 ## Decision log
 

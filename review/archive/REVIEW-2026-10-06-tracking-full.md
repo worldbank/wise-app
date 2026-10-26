@@ -380,3 +380,19 @@ Entries up to 2026-10-24 are in the archive ("Log 2026-10-23 to 2026-10-24 (move
 - Closed scope decision (user, 2026-10-26): figures and model/spec selection are supported downstream in study-specific reproducibility packages, not a shared Phase 5. Extract `weather_effect_data()` only if a concrete app or downstream consumer needs it; no standalone batch task. Each study owns its `renv.lock` and software pins.
 
 - Source: `review/archive/methodology_review_2026-10-26.md` (closed 2026-10-26). Done: documentation corrections (`0d50062`), run-seed provenance, batch survey fingerprints and the climate-member grid check (`f9cdc08`), sector targets in survey weights (`52561c6`, Decision log above) and the RIF joint covariance (finding 2, Decision log above). Finding 1 (additive fixed effects) is documented, not changed. Closed 2026-10-26 (user): MR-01 dropped (cost-effectiveness person weights, not pursued); MR-02 (only a column named `weight` is a survey weight, `survey_weight_column()`), MR-03 (strict poverty cutoff in `.headcount_resid_variance()`) and MR-10 (a RIF fit records the fallback to independent equations as a `rif_joint_covariance` fallback, shown in `model_fit` and in provenance), see the Decision log below. Closed 2026-10-26 (user): MR-04 (the weather-support warning compares with the fitted sample; no model numbers move), MR-07 (working rows without a sector flag stay in the working population, reopen on data with a large share of them) and MR-08 (won't fix, reopen on a dataset or spec where the sector variables are model variables), see the Decision log below. Open remainders:
+
+### Deferred rows moved from the tracker (2026-10-26, user)
+
+Added to the Closed and deferred list. Status `✗` (deferred or won't fix); reopen only on the trigger stated in each row, or when a measured need or the missing input (unit costs, literature pass, a slow workload) appears. Rows as they stood:
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| SP-01 | L | M | ✗ | P0-9 admin and error presets: a literature pass on cost-transfer ratios and PMT error rates, then a preset dropdown. The 10 % / 10 % defaults and zero admin share stay. |
+| SP-02 | L | M | ✗ | PR-13: the shock state plus transfer is re-evaluated per metric-decomposition job (1.7 s base to 3.5 s with anticipatory and layers, BFA, 17 pipelines). Cache it in the retained Step 3 artifact if a slow metric switch is reported. |
+| SP-03 | L | S-M | ✗ | Phase 3 presets and amount rules (P3-1 named presets, P3-4 gap-filling and tiered amounts). |
+| SP-04 | L | M | ✗ | Phase 3 design sweep (P3-2: cost against poverty-reduction frontier over a bounded grid) and reserve dynamics (P3-3: needs an ordered-year rule first, years are draws today). |
+| SP-05 | L | M | ✗ | P3-5 further budget rules (AAL sizing, premium-equivalent cost, budgets tied to the rise in the number of poor, envelope per activation). Needs P2-5. |
+| SP-06 | L | M | ✗ | Cost-effectiveness for non-cash levers (`mod_3_02` to `mod_3_05`) and the cost-effectiveness summary card: need unit costs from the policy team. |
+| SP-08 | L | S | ✗ | Targeting errors are one seeded draw; the draw-to-draw variation of coverage and leakage, and of the shock forecast layers, is not shown (see UR-02). |
+| BP-02 | L | S | ✗ | Separate policy-stage crew controller; policy currently shares the bounded `sim` controller. Defer until a measured batch workload needs different Step 2/3 concurrency or memory limits. |
+| BP-03 | L | M | ✗ | A frame key independent of descriptive-statistics options, which currently enter `data_id` and invalidate downstream fits. Defer until changing statistics causes material rerun cost; preserve table identity and cache correctness if split. |
