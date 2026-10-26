@@ -45,7 +45,7 @@ The correction is the sum of a main effect and two resilience effects, defined i
 
 $$\Delta y_i^{(r,s,m)} = \delta_i^{\text{main}} + \delta_i^{\text{rep}\ (r,s,m)} + \delta_i^{\text{int}\ (r,s,m)} \qquad \text{(2.2)}$$
 
-The main effect does not depend on the simulated weather. The two resilience effects depend on the weather of the prediction row, through the weather change defined in Eq. (3.1).
+The main effect does not depend on the simulated weather: it is the effect of the policy at the weather the household experienced at its interview. The two resilience effects depend on the weather of the prediction row, through the weather change defined in Eq. (3.1).
 
 The statistic of the policy arm is computed from the corrected prediction with the same residual term as the baseline:
 
@@ -65,7 +65,7 @@ For the linear model, the weather-dependent part of the correction is the fitted
 
 Two features follow.
 
-- If a policy variable interacts with weather, the effect of the policy is the interaction coefficient times the weather change. It is zero at the weather the household experienced and grows with the weather change. The part of the interaction that applies at the weather of the interview itself is part of the main effect, so that main plus resilience is the effect of the policy at the weather of the row (see Assumption A3).
+- If a policy variable interacts with weather, the effect of the policy is the interaction coefficient times the weather change. It is zero at the weather the household experienced and grows with the weather change. The part of the interaction that applies at the weather of the interview itself is part of the main effect, so that main plus resilience is the effect of the policy at the weather of the row (see Assumption A3). Repositioning in the quantile model acts on the weather change only, with no part at the interview weather.
 - The prediction row must map exactly to a weather observation of the Step 2 run. If the mapping is missing or inconsistent, the run stops with an error. There is no fallback to period-mean weather.
 
 ### 4. Which models and outcomes are supported
@@ -88,7 +88,7 @@ $$F_i^{\text{pol}} = F_i + \nabla_{\beta}\,\Delta y_i \qquad \text{(5.1)}$$
 The coefficients of the policy variables are outside the block of weather coefficients and their interactions that the baseline loading covers. They are added as extra columns in the Cholesky basis of the covered block plus the policy coefficients. The leading block of that basis is the baseline's own, so the baseline arm is unchanged, and the covariance between the policy coefficients and the weather coefficients is kept. Two things follow.
 
 - The bands on the policy series and on the effect include the sampling error of the policy coefficients and of the interactions at the weather of the row. A run without a covariate lever (for example a cash transfer only) has the baseline loading, because the cash transfer is a fixed amount.
-- For the quantile model the correction is also linear in the coefficient curves once the household's positions before and after the main effect are fixed (the positions depend on the outcome, not on the coefficients). Its gradient is the same interpolation of the grid coefficients that the correction uses, and the loading rows are interpolated between the quantile equations in the same way as the baseline loading, in the Cholesky basis of the joint covariance of the equations ([33_uncertainty](33_uncertainty.md), Section 6) extended by the policy coefficients. A cash transfer then also carries coefficient uncertainty, through the weather coefficients at the shifted position.
+- For the quantile model the correction is also linear in the coefficient curves once the household's positions before and after the main effect are fixed (the positions depend on the outcome, not on the coefficients). Its gradient is the same interpolation of the grid coefficients that the correction uses, and the loading rows are interpolated between the quantile equations in the same way as the baseline loading, in the Cholesky basis of the joint covariance of the equations ([33_uncertainty](33_uncertainty.md), Section 6) extended by the policy coefficients. A cash transfer then also carries coefficient uncertainty, through the weather coefficients at the shifted position, multiplied by the weather change.
 
 The band on the effect of the policy is the band of the paired contrast of [33_uncertainty](33_uncertainty.md): the coefficient error that the two arms share cancels, so only the part that differs between arms remains. The cash transfer is a fixed amount and carries no coefficient error.
 
