@@ -10,12 +10,11 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 
 | Batch | Scope | Open |
 |---|---|---|
-| B6 | Performance | 4 |
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
 
-B1, B2, B3, B4, B5, B7, B11, B12 and B13 have no open rows.
+B1, B2, B3, B4, B5, B6, B7, B11, B12 and B13 have no open rows.
 
 ## Working rules
 
@@ -30,20 +29,8 @@ B1, B2, B3, B4, B5, B7, B11, B12 and B13 have no open rows.
 
 - **CI first run:** the 16-screen axe scan (CR-A11Y-09) has run only locally; watch its first GitHub run (needs `arrow` and the DuckDB `h3` extension from the community repository). `main` requires `e2e-smoke`; `dev` is deliberately unprotected (user, 2026-10-24).
 - **Step 3 worker memory (CR-PERF-13):** decided 2026-10-08, accept the lower peak, no `Max Processes` change. Unmeasured: Step 2's own 2x2 daemon peak, deployed cold start, 3x3.
-- **R2-PERF-01 in-app check:** done 2026-10-24 for the Step 2 Results (aggregation, poverty line). Still unchecked: the scenario picker (needs two SSPs), any export after a release, RIF and ranger engines, memory on Linux. Revert path: `.step3_release_allowed()` returning FALSE.
 - **Browser spot-check, still unchecked:** hover tooltips of columnar charts and `.wx-tip` legend markers (Escape), map pointer cursor, tab empty states, SPI/SPEI choices, the decile-movement card (needs a quantile-model run), survey-identification warnings at load (DOC-02), the weights and LCU notes, colour contrast of the changed palettes.
 - **Before a deploy:** rerun `dev/00_make_manifest.R` after committing `R/`, `inst/` or dependency changes.
-
-## B6 - Performance
-
-Work stopped by decision 2026-10-24 (user agreed): the rows below have no measured pain behind them. Baselines and measurements are in the archive. Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepwise fits, SQL `ORDER BY` for survey sort, `bw.SJ` subsampling, batched gemm (1.8x regression with reference BLAS), `shared_period` plan, reference weather as default, shared SSP monthly cache, sort-once materialisation of the period relation (no gain: 3.35 s against 3.23 s for 16 members), unsorted per-member collect with a key-order check (DuckDB does not return key order, so it collects twice: 2x2 40.0 s to 43.1 s), R-side rounding rewrite (identical, saves only 4 ms per member).
-
-| Rank | ID | Eff | Status | Open task | Gate |
-|---:|---|---|---|---|---|
-| 3 | R2-PERF-01 | M | ◐ | Shrink the Step 2 result. Done: household-constant vectors shared once; Step 3 policy arm linked to the baseline; member `weather_raw` released at adoption (`.step3_release_member_weather()`; BFA 2x2 live heap -294 MB, max RSS unchanged because the peak is the adoption read). Open: a peak reduction needs the Step 2 worker to write member frames to a second file (artifact contract change, not started); drop `hist_sim_result$svy` (4.3 MB); slimmer `F_loading` (3.4 MB per pipeline, uncertainty on only). | Bit-identical |
-| OPT-02 | - | - | ☐ | Startup and Step 3 backend. Measured 2026-10-24: Step 3 is linear in pipeline count, no stage justifies a change. Reopen only on a reported slow Step 3 run or metric switch, or a Linux/Connect measurement showing the Shiny process is memory-bound. | - |
-| OPT-03 | - | - | ☐ | Hex engine lazy-load. mod_1_02/03 map containers are static, so deferral needs container restructuring. | - |
-| OPT-06 | - | - | ☐ | Deferred 2026-10-08 (no measured pain). Step 2 batching tuning (never implemented). XGBoost support deferred by the user. DuckDB 2.0 / Parquet v2 is in `review/duckdb_parquet_plan.md`. | - |
 
 ## B8 - Accessibility (WCAG 2.2 AA, section 9)
 
@@ -80,6 +67,9 @@ Entries up to 2026-10-26 are in the archive ("Log moved from the tracker" and ea
 - 2026-10-26 - CR-SEC-09 closed with CSP rollout deferred (user; B2 open count 1 to 0). App-owned inline-script guard passes; no Connect CSP deployment or enforcement verified. Full row, evidence and reopen trigger in the archive addendum.
 - 2026-10-26 - SP-07 closed as superseded legacy bookkeeping (user; B11 open count 1 to 0). Historical before/after checks were already dropped on 2026-10-23; BFA shock-fixture benchmarks are recorded in the archived SP tasks. No new numerical validation claimed; full row and reopen trigger in the archive addendum.
 - 2026-10-26 - MR-09 closed as a documented specification consideration (user; B12 open count 3 to 2). `docs/20_model_specification.md` highlights the area-by-round tradeoff; no estimator change, new specification test or empirical comparison. Full row and reopen trigger in the archive addendum.
+- 2026-10-26 - OPT-06 archived as deferred (user; B6 open count 4 to 3). No measured need for batching, XGBoost remains deferred, and the DuckDB/Parquet investigation is already archived. Full row, evidence and reopen triggers in the archive addendum; no runtime change or new speed claim.
+- 2026-10-26 - OPT-03 archived as deferred (user; B6 open count 3 to 2). Hex-engine lazy loading needs map-container restructuring and has no measured user-facing benefit. Full row and reopen trigger in the archive addendum; no UI or runtime change.
+- 2026-10-26 - OPT-02 and R2-PERF-01 archived with remaining work deferred (user; B6 open count 2 to 0). Startup/Step 3 pain is low; existing result-memory savings retained, further artifact redesign and outstanding validation deferred, not verified. Full rows, evidence limits, rejected experiments and reopen triggers in the archive addendum.
 - 2026-10-26 - BP-01 closed (user; B13 open count 1 to 0). `dev/batch_parity_bfa_policy.R` now checks that the Export bundle CSVs equal the module tables and that the app configuration gives the same stage ids as the batch run; fixture and BFA runs pass. Not driven: the browser download. Not committed yet. Full row, evidence and reopen trigger in the archive addendum.
 - 2026-10-26 - MR-05 closed (`d449ec6`; B12 open count 2 to 1). Weather files are fingerprinted in the stage items (H3 files were already covered by the data item); a changed weather or H3 file reruns the branches that read it. Full row and evidence in the archive addendum.
 - 2026-10-26 - MR-06 closed (B12 open count 1 to 0). Real-data check: no location with observed weather lacks a climate cell. Known data limitations documented in `docs/10_data.md` and `docs/31_climate_scenarios.md`: `loc_id` without H3 cells, H3 cells outside ERA5-Land, variables missing for some climate models, `mrsos` undefined at some coastal and island locations. Full row and evidence in the archive addendum.

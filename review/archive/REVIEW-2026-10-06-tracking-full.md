@@ -102,6 +102,10 @@ The tracker was cut to open work only. Verbatim text of what left it follows: th
 
 ### Closed and deferred list (reopen triggers)
 
+- OPT-02 (archived as deferred 2026-10-26, user): low startup/Step 3 pain. Reopen on reported slow Connect startup, a slow Step 3 run or metric switch, or Linux/Connect measurements showing the Shiny process is memory-bound. No deployment change or current Connect cold-start measurement claimed; full row below.
+- R2-PERF-01 (archived with remaining work deferred 2026-10-26, user): implemented memory savings retained; artifact redesign, small payload cleanups and remaining validation deferred, not verified. Reopen on memory pressure/OOM, result-adoption latency, a release-related scenario/export/engine failure, or changes to the artifact/release contract. Full row, evidence limits and revert path below.
+- OPT-03 (archived as deferred 2026-10-26, user): hex-engine lazy loading needs map-container restructuring; no measured user-facing benefit justifies it now. Reopen when browser profiling shows map assets or initialization materially delay startup on a representative connection/device, or a planned map-container change makes deferral straightforward. Full row in the closure addendum below.
+- OPT-06 (archived as deferred 2026-10-26, user): no measured need for Step 2 batching; XGBoost remains deferred; DuckDB/Parquet investigation already archived. Reopen batching on a measured workload showing dispatch/batch overhead is material, XGBoost on an explicit engine requirement, and DuckDB migration on a maintenance requirement or reproducible production-relevant benefit. Full row and evidence in the closure addendum below.
 - CR-SEC-09 (closed 2026-10-26, user): application-side remediation complete; optional CSP rollout deferred. Reopen when hosting/security policy requires CSP enforcement or a rollout is scheduled; validate on staging before enforcement. Full row and limits in the closure addendum below.
 - SP-07 (closed 2026-10-26, user): superseded legacy evidence task, not an unresolved code defect. Historical before/after checks were already dropped and shock-fixture benchmarks are recorded. Reopen on a concrete targeting-rate, PPP/LCU transfer or cost discrepancy, a reported shock-SP slowdown, or a study/audit requiring the missing historical validation. Full row and limits in the closure addendum below.
 - MR-09 (closed 2026-10-26, user): retain additive fixed effects; highlight area-by-round effects as a study-specific consideration in `docs/20_model_specification.md`. Proposed specification test and empirical comparison not pursued. Reopen when a study needs within-area-round identification, a sensitivity analysis is requested, or fixed-effect formula assembly changes. Full row and limits in the closure addendum below.
@@ -462,6 +466,53 @@ Two script findings fixed on the way, no app change: the script's batch spec lef
 Not verified: the browser download of the zip (`tests/e2e/smoke.R` covers the wiring), figures in the bundle, an explicit-versus-default equivalence of fixed effects (an app configuration that names the default fixed effects gets a different `fit_id` from a spec that leaves them out; the fits are the same), Step 1 and Step 2 tables against batch in this script (covered by `dev/batch_parity_bfa_models.R` and `dev/batch_parity_bfa_sim.R`).
 
 Reopen when the Export bundle layout, `wise_config_snapshot()` or `wise_spec_from_config()` changes, or when a bundle from the app and a batch run disagree on a real study.
+
+### OPT-06 archived: demand-driven tuning and engine work deferred (2026-10-26)
+
+Row as it stood (the DuckDB plan path was stale; its current location is `review/archive/duckdb_parquet_plan.md`):
+
+| Rank | ID | Eff | Status | Open task | Gate |
+|---:|---|---|---|---|---|
+| OPT-06 | - | - | ☐ | Deferred 2026-10-08 (no measured pain). Step 2 batching tuning (never implemented). XGBoost support deferred by the user. DuckDB 2.0 / Parquet v2 is in `review/duckdb_parquet_plan.md`. | - |
+
+Decision (user, 2026-10-26): remove this umbrella row from open work and mark it `✗` (deferred), not implemented. Step 2 batching has no measured pain behind it; XGBoost is already a user deferral. The DuckDB investigation's section 0 records no reproducible local end-to-end speedup from 2.0 and drops Parquet v2/native storage for the tested weather data. Migration can still be considered for maintenance; remote and Linux behaviour are not established by that investigation. No dependency, engine, runtime or numerical change; no new benchmark or performance claim.
+
+Reopen batching on a measured workload showing dispatch/batch overhead is material, XGBoost on an explicit engine requirement, and DuckDB migration on a maintenance requirement or reproducible production-relevant benefit. Preserve the pinned version and extension rebuild/parity gates for any future migration.
+
+### OPT-03 archived: hex-engine lazy loading deferred (2026-10-26)
+
+Row as it stood:
+
+| Rank | ID | Eff | Status | Open task | Gate |
+|---:|---|---|---|---|---|
+| OPT-03 | - | - | ☐ | Hex engine lazy-load. mod_1_02/03 map containers are static, so deferral needs container restructuring. | - |
+
+Decision (user, 2026-10-26): remove from open work and mark `✗` (deferred), not implemented. The map engine is already served as a shared dependency; lazy loading would require changing the static map containers rather than simply delaying a script. No measured user-facing benefit justifies that restructuring now. No UI, runtime or numerical changes, and no new browser test, timing or memory measurement claimed.
+
+Reopen when browser profiling shows map assets or initialization materially delay startup on a representative connection/device, or a planned map-container change makes deferral straightforward. Any implementation must verify map rendering in the running app and compare startup timing and peak memory before claiming a performance improvement.
+
+### OPT-02 and R2-PERF-01 archived: remaining performance work deferred (2026-10-26)
+
+Rows as they stood:
+
+| Rank | ID | Eff | Status | Open task | Gate |
+|---:|---|---|---|---|---|
+| 3 | R2-PERF-01 | M | ◐ | Shrink the Step 2 result. Done: household-constant vectors shared once; Step 3 policy arm linked to the baseline; member `weather_raw` released at adoption (`.step3_release_member_weather()`; BFA 2x2 live heap -294 MB, max RSS unchanged because the peak is the adoption read). Open: a peak reduction needs the Step 2 worker to write member frames to a second file (artifact contract change, not started); drop `hist_sim_result$svy` (4.3 MB); slimmer `F_loading` (3.4 MB per pipeline, uncertainty on only). | Bit-identical |
+| OPT-02 | - | - | ☐ | Startup and Step 3 backend. Measured 2026-10-24: Step 3 is linear in pipeline count, no stage justifies a change. Reopen only on a reported slow Step 3 run or metric switch, or a Linux/Connect measurement showing the Shiny process is memory-bound. | - |
+
+Decision (user, 2026-10-26): archive OPT-02 for low pain and R2-PERF-01 with its implemented savings retained; mark remaining optimization and validation `✗` (deferred), not completed or verified. B6 has no open rows. No runtime, deployment, dependency or numerical change, and no new performance claim or benchmark.
+
+OPT-02: retain the current source-loaded deployment and development launcher. Current Connect cold/warm startup, page-visible time and metadata-ready time have not been measured here; historical source-versus-installed-package first-response timings are not a current Connect baseline. Reopen on reported slow Connect startup, a slow Step 3 run or metric switch, or Linux/Connect measurements showing the Shiny process is memory-bound.
+
+R2-PERF-01: the detailed implementation, earlier measurements and BFA browser evidence remain under "R2-PERF-01", "Waiting on the user, member release check" and the 2026-10-24 browser Log above. The -294 MB figure is live R heap, not an observed peak-RSS reduction from member release. Further peak reduction requires the unstarted artifact-contract redesign; the smaller survey/loading cleanups are also deferred. Remaining checks, moved verbatim from the tracker:
+
+- **R2-PERF-01 in-app check:** done 2026-10-24 for the Step 2 Results (aggregation, poverty line). Still unchecked: the scenario picker (needs two SSPs), any export after a release, RIF and ranger engines, memory on Linux. Revert path: `.step3_release_allowed()` returning FALSE.
+
+Reopen R2-PERF-01 on memory pressure/OOM, result-adoption latency, a release-related scenario/export/engine failure, or changes to the artifact/release contract. When reopened, exercise the affected unchecked paths and retain numerical parity and before/after timing/peak-memory gates. Archival does not establish that these paths pass.
+
+B6 context moved verbatim from the tracker:
+
+Work stopped by decision 2026-10-24 (user agreed): the rows below have no measured pain behind them. Baselines and measurements are in the archive. Rejected experiments not to reopen (section 11): Arrow fetch path, `csw()` stepwise fits, SQL `ORDER BY` for survey sort, `bw.SJ` subsampling, batched gemm (1.8x regression with reference BLAS), `shared_period` plan, reference weather as default, shared SSP monthly cache, sort-once materialisation of the period relation (no gain: 3.35 s against 3.23 s for 16 members), unsorted per-member collect with a key-order check (DuckDB does not return key order, so it collects twice: 2x2 40.0 s to 43.1 s), R-side rounding rewrite (identical, saves only 4 ms per member).
 
 ### MR-05 and MR-06 closed (2026-10-26)
 
