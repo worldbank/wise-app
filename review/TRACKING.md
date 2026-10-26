@@ -15,9 +15,8 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
 | B12 | Methodology review follow-ups | 2 |
-| B13 | Batch pipeline follow-ups | 1 |
 
-B1, B2, B3, B4, B5, B7 and B11 have no open rows.
+B1, B2, B3, B4, B5, B7, B11 and B13 have no open rows.
 
 ## Working rules
 
@@ -80,14 +79,6 @@ Source: `review/archive/methodology_review_2026-10-26.md` (closed 2026-10-26; it
 | MR-05 | L | S | ☐ | The batch data work item fingerprints the survey files only. H3 and weather files do not enter any stage identifier (stated in `docs/52_batch_runs.md`). Add their fingerprints and a two-run integration test that changes one input file and checks the affected branches rerun. |
 | MR-06 | L | S | ☐ | Real-data check of the climate grid rule (expected location-months from the requested locations, independent of members): a location with no climate cell excludes every member. The five BFA members excluded on 2026-10-26 (all 7152 location-months missing) are known and expected; what is left is to confirm that no requested location lacks a climate cell. |
 
-## B13 - Batch pipeline follow-ups
-
-Source: `review/archive/batch_pipeline_plan.md` (archived 2026-10-26). Phases 1 to 4, the reproducibility template/checker, early-stage artifact stamps and local survey fingerprints are implemented. Broader source-input fingerprints remain MR-05; do not duplicate that task here.
-
-| ID | Sev | Eff | Status | Open task |
-|---|---|---|---|---|
-| BP-01 | L | M | ☐ | Per-release parity against a downloaded headless-app Export bundle. Existing `dev/batch_parity_bfa*.R` checks compare module-server tables with batch, not the downloaded bundle. Compare the same spec and seed through Steps 1 to 3, including policy tables. |
-
 ## Decision log
 
 Numerical changes get an entry here (formula before and after, BFA before/after, what was not checked). Entries for closed items move to the archive addendum (`review/archive/REVIEW-2026-10-06-tracking-full.md`, "Decision log moved from the tracker"); none are open.
@@ -99,3 +90,4 @@ Entries up to 2026-10-26 are in the archive ("Log moved from the tracker" and ea
 - 2026-10-26 - CR-SEC-09 closed with CSP rollout deferred (user; B2 open count 1 to 0). App-owned inline-script guard passes; no Connect CSP deployment or enforcement verified. Full row, evidence and reopen trigger in the archive addendum.
 - 2026-10-26 - SP-07 closed as superseded legacy bookkeeping (user; B11 open count 1 to 0). Historical before/after checks were already dropped on 2026-10-23; BFA shock-fixture benchmarks are recorded in the archived SP tasks. No new numerical validation claimed; full row and reopen trigger in the archive addendum.
 - 2026-10-26 - MR-09 closed as a documented specification consideration (user; B12 open count 3 to 2). `docs/20_model_specification.md` highlights the area-by-round tradeoff; no estimator change, new specification test or empirical comparison. Full row and reopen trigger in the archive addendum.
+- 2026-10-26 - BP-01 closed (user; B13 open count 1 to 0). `dev/batch_parity_bfa_policy.R` now checks that the Export bundle CSVs equal the module tables and that the app configuration gives the same stage ids as the batch run; fixture and BFA runs pass. Not driven: the browser download. Not committed yet. Full row, evidence and reopen trigger in the archive addendum.

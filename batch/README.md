@@ -259,7 +259,10 @@ what differs. `Rscript run.R` then reproduces the tables.
 `dev/batch_parity_bfa_sim.R` and `dev/batch_parity_bfa_policy.R` run one BFA spec
 through the pipeline and through the app's module servers and compare the tables.
 They need real data and run per release; `dev/batch_parity_bfa_policy.R
---fixture` uses the small data folder of the tests.
+--fixture` uses the small data folder of the tests. The policy script also
+writes the app's Export bundle and compares its CSVs with the module tables, and
+checks that the app's configuration export gives the same stage ids as the batch
+spec. It does not drive the browser download.
 
 ## For agents
 

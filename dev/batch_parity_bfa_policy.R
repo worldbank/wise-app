@@ -9,6 +9,13 @@
 # Step 3 modules register for export: the paired effects, the adverse-year
 # table, the annual effects, the headline cards, the distributional incidence,
 # the cost-effectiveness and the shock summary.
+# Two checks cover the Export layer (BP-01). Every table the modules register
+# goes through wise_export_bundle() (zip, CSV, read back) and must equal the
+# module table, so the bundle equals batch by the checks above. The app's
+# configuration snapshot (JSON, as downloaded) is read as the base of a run
+# grid, and its stage ids (data, weather, fit, simulation, policy) must equal
+# those of the batch run of the shock policy. The browser download itself is
+# not driven here (tests/e2e/smoke.R).
 # Needs WISEAPP_DATA_PATH (with the climate projections), targets, arrow and
 # yaml. Not part of the test suite: run per release.
 #
@@ -90,6 +97,7 @@ writeLines(c(
   "seed: 123",
   sprintf("outcome: {name: welfare, currency: PPP}"),
   "model:",
+  sprintf("  fixed_effects: [%s]", paste(cfg$fe, collapse = ", ")),
   sprintf("  covariates: {method: user, vars: [%s]}", paste(cfg$covs, collapse = ", ")),
   "sim:",
   sprintf("  hist_years: [%d, %d]", cfg$sim_hist[1], cfg$sim_hist[2]),
@@ -99,6 +107,7 @@ writeLines(c(
   "  weather:",
   "    parity:",
   cfg$weather_yaml,
+  sprintf("      hist_years: [%d, %d]", cfg$hist[1], cfg$hist[2]),
   "  policy:",
   paste0("    cash: ", yaml_sp(cash)),
   paste0("    shock: ", yaml_sp(shock)),
@@ -174,7 +183,52 @@ all_steps <- function(input, output, session) {
   )
   list(s1 = s1, s2 = s2, s3 = s3)
 }
+near <- function(a, b) isTRUE(all.equal(as.numeric(a), as.numeric(b), tolerance = 1e-10))
 app <- list()
+bundle <- list()
+config <- NULL
+
+# Write the registered tables to a bundle zip, read the CSVs back and name the
+# keys whose file is missing or differs from the module table.
+bundle_diffs <- function(items) {
+  zipf <- tempfile(fileext = ".zip")
+  dir <- tempfile("bundle-")
+  on.exit(unlink(c(zipf, dir), recursive = TRUE))
+  suppressWarnings(wise_export_bundle(zipf, items, include = "tables"))
+  utils::unzip(zipf, exdir = dir)
+  same <- function(a, b) {
+    if (is.numeric(a)) {
+      b <- suppressWarnings(as.numeric(b))
+      return(identical(is.na(a), is.na(b)) && near(a[!is.na(a)], b[!is.na(b)]))
+    }
+    a <- as.character(a)
+    a[!is.na(a) & a == ""] <- NA
+    identical(a, b)
+  }
+  bad <- character(0)
+  n <- 0L
+  for (it in Filter(function(x) identical(x$kind, "table"), items)) {
+    stale <- is.function(it$stale) && isTRUE(shiny::isolate(it$stale()))
+    value <- if (stale) NULL else tryCatch(it$fun(), error = function(e) NULL)
+    if (!is.data.frame(value) || !nrow(value)) next
+    n <- n + 1L
+    file <- list.files(dir, sprintf("^[0-9]{2}_step%d_%s\\.csv$", it$step, .export_slug(it$key)), full.names = TRUE)
+    if (length(file) != 1L) {
+      bad <- c(bad, paste0(it$key, " (no file)"))
+      next
+    }
+    flat <- .export_flatten_df(value)
+    csv <- utils::read.csv(file, check.names = FALSE, na.strings = "", colClasses = "character",
+      blank.lines.skip = FALSE)
+    if (!identical(names(flat), names(csv)) || nrow(flat) != nrow(csv)) {
+      bad <- c(bad, paste0(it$key, " (shape)"))
+      next
+    }
+    differs <- names(flat)[!vapply(names(flat), function(v) same(flat[[v]], csv[[v]]), NA)]
+    if (length(differs)) bad <- c(bad, sprintf("%s (%s)", it$key, paste(differs, collapse = ", ")))
+  }
+  list(n = n, bad = bad)
+}
 sp_inputs <- function(values) {
   all <- utils::modifyList(wise_default_policy()$sp, values)
   stats::setNames(all, paste0("step3-sp-", names(all)))
@@ -247,9 +301,13 @@ shiny::testServer(all_steps, {
         ce = grab("policy_cost_effectiveness"), shock = grab("policy_shock_summary"),
         shock_annual = grab("policy_shock_annual")
       )
+      bundle[[paste(label, method)]] <- bundle_diffs(items)
     }
   }
+  # The configuration the Export would download, with the shock policy set.
+  config <<- wise_config_snapshot(input, seed = 123L)
   app <<- results
+  bundle <<- bundle
 })
 stopifnot(length(app) == 4L)
 
@@ -258,8 +316,7 @@ check <- function(name, ok) {
   cat(sprintf("%-84s %s\n", name, if (isTRUE(ok)) "OK" else "DIFFERS"))
   all_ok <<- isTRUE(ok) && all_ok
 }
-near <- function(a, b) isTRUE(all.equal(as.numeric(a), as.numeric(b), tolerance = 1e-10))
-plain <- function(x) ifelse(grepl("^Historical", x), "Historical", x)
+plain <-function(x) ifelse(grepl("^Historical", x), "Historical", x)
 
 for (label in c("cash", "shock")) {
   id <- pid(label)
@@ -331,6 +388,33 @@ for (label in c("cash", "shock")) {
     k1 <- paste(plain(sa$scenario), sa$member, sa$sim_year)
     k2 <- paste(bsa$scenario, bsa$member, bsa$sim_year)
     check("shock rows: annual total cost per member and year (1e-10)", near(sa$total_cost, bsa$value[match(k1, k2)]))
+  }
+}
+
+# Export layer (BP-01) ----
+cat("\n-- Export bundle and configuration --\n")
+for (k in names(bundle)) {
+  b <- bundle[[k]]
+  check(sprintf("bundle %-22s %d table CSVs equal the module tables (1e-10)", k, b$n), b$n > 0L && !length(b$bad))
+  if (length(b$bad)) cat("  differs:", paste(b$bad, collapse = ", "), "\n")
+}
+cfg_file <- file.path(proj, "app-config.json")
+jsonlite::write_json(config, cfg_file, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA)
+from_app <- wise_spec_expand(list(base = cfg_file), connection_params = cp, metadata = md)
+from_batch <- wise_spec_expand(file.path(proj, "spec.yaml"), connection_params = cp, metadata = md)
+from_batch <- from_batch[from_batch$policy == "shock", ]
+stopifnot(nrow(from_app) == 1L, nrow(from_batch) == 1L)
+for (id in c("data_id", "weather_id", "fit_id", "sim_id", "policy_id")) {
+  check(sprintf("config to spec: %-10s equals the batch run of the shock policy", id), identical(from_app[[id]], from_batch[[id]]))
+}
+if (!identical(from_app$policy_id, from_batch$policy_id)) {
+  cat("  Sections of the spec from the app configuration that differ from the batch spec:\n")
+  a <- from_app$spec[[1L]]
+  b <- from_batch$spec[[1L]]
+  for (s in union(names(a), names(b))) {
+    if (!identical(wiseapp:::.spec_canonical(a[[s]]), wiseapp:::.spec_canonical(b[[s]]))) {
+      cat("  -", s, "\n    app:  ", wiseapp:::.spec_json(a[[s]]), "\n    batch:", wiseapp:::.spec_json(b[[s]]), "\n")
+    }
   }
 }
 cat(if (all_ok) "\nAll checks passed.\n" else "\nSome checks differ.\n")

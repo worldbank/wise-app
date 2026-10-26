@@ -444,3 +444,21 @@ Decision (user, 2026-10-26): close as a documented methodological consideration;
 Code-reading evidence at `e577575`: `ENGINE_REGISTRY$fixest$build_formulas()` in `R/fct_fit_model.R` joins fixed-effect terms with ` + `, consistent with the documented additive specification. The documentation's `verified_against` is updated to that revision. Validation for this docs-only closure: `Rscript dev/docs_check.R`, `Rscript dev/agents_check.R` and `git diff --check`; no new R tests.
 
 Reopen when a study needs within-area-round identification, a sensitivity analysis is requested, or fixed-effect formula assembly changes. Any estimator change remains a separate methodological decision with regression tests, support diagnostics and before/after numerical validation.
+
+### BP-01 closed: Export bundle and configuration parity added to the policy parity script (2026-10-26)
+
+Source: `review/archive/batch_pipeline_plan.md`, Phase 1 to 4 open items. Row as it stood:
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| BP-01 | L | M | ☐ | Per-release parity against a downloaded headless-app Export bundle. Existing `dev/batch_parity_bfa*.R` checks compare module-server tables with batch, not the downloaded bundle. Compare the same spec and seed through Steps 1 to 3, including policy tables. |
+
+Decision (user, 2026-10-26): do the cheap maintainer check inside the existing script, not a new script and not a browser-driven download. `dev/batch_parity_bfa_policy.R` now (1) writes every table the Step 1 to 3 modules register through `wise_export_bundle()`, reads the CSVs back and compares them with the module tables (1e-10 for numbers, exact for text), so the bundle equals batch through the module-to-batch checks of the four parity scripts; and (2) writes the app's `wise_config_snapshot()` as JSON, reads it as the `base` of a run grid with `wise_spec_expand()` and compares `data_id`, `weather_id`, `fit_id`, `sim_id` and `policy_id` with the batch run of the shock policy. Equal ids mean equal resolved specs for every stage.
+
+Evidence: `Rscript dev/batch_parity_bfa_policy.R --fixture` and the BFA run (`Rscript dev/batch_parity_bfa_policy.R`, batch pipeline 316 s) both end with "All checks passed.": 36 (cash) and 40 (shock) table CSVs equal the module tables for both metrics, and all five stage ids match. Commit: pending (not committed at the time of writing).
+
+Two script findings fixed on the way, no app change: the script's batch spec left `fixed_effects` and the weather `hist_years` to defaults while the app run set them (the Step 3 numbers agreed, the stage ids did not), so the spec now sets both from the same settings the app run uses. The checker reads the CSVs with `blank.lines.skip = FALSE`, because `read.csv` drops a first row of `""` in a one-column file (`model_summary`).
+
+Not verified: the browser download of the zip (`tests/e2e/smoke.R` covers the wiring), figures in the bundle, an explicit-versus-default equivalence of fixed effects (an app configuration that names the default fixed effects gets a different `fit_id` from a spec that leaves them out; the fits are the same), Step 1 and Step 2 tables against batch in this script (covered by `dev/batch_parity_bfa_models.R` and `dev/batch_parity_bfa_sim.R`).
+
+Reopen when the Export bundle layout, `wise_config_snapshot()` or `wise_spec_from_config()` changes, or when a bundle from the app and a batch run disagree on a real study.
