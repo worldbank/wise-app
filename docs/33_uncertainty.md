@@ -6,7 +6,7 @@ depends_on: [notation, model-specification, linear-model, rif-model, simulation,
 symbols: [Sigma, L, F, h, T, Y, omega, z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations
 code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_simulations.R, R/fct_results.R, R/fct_rif_sim.R, R/fct_step2_tables.R, R/fct_sim_compare.R, R/fct_uncertainty_helpers.R]
-verified_against: 1ecc93e
+verified_against: 72a2fdb
 ---
 
 # Uncertainty propagation
@@ -101,7 +101,7 @@ For the quantile model, $\hat\Sigma_k$ and $L_k$ come from the equation of each 
 
 $$F_i = (1-w_i)\ x_i^{*\prime}L_k + w_i\ x_i^{*\prime}L_{k+1} \qquad \text{(6.1)}$$
 
-with $x_i^{*}$ the design row under the scenario minus the design row at the weather of the interview, as in Eq. (1.2). Households outside the grid take the loading of the boundary quantile, with no extra penalty. The nine equations are treated as independent. There is no residual variance.
+with $x_i^{*}$ the design row under the scenario minus the design row at the weather of the interview, as in Eq. (1.2). Households outside the grid take the loading of the boundary quantile, with no extra penalty. The nine equations are **not** independent in the implementation. Every equation's coefficient deviation is drawn as $\beta_k-\hat\beta_k = L_k z$ with one shared standardised shock vector $z$ for all nine equations, so $\mathrm{Cov}(\beta_k,\beta_l) = L_kL_l^{\prime}$. This is an approximation, not an estimated covariance. It depends on the column order of the Cholesky factors, it applies to every pair of quantiles (not only neighbouring grid points), and it implies a correlation close to one when $L_k\approx L_l$. The equations are fitted on the same sample and design, so positive correlation is expected, but its size is not estimated. A joint cross-equation covariance, drawn from one factor of the joint active block, is the planned fix. There is no residual variance.
 
 ### 7. Combining members
 
@@ -143,7 +143,7 @@ and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference 
 - **A2. Gaussian coefficients.** The coefficient estimates are jointly normal with covariance $\hat\Sigma$.
 - **A3. Rank stability of the Gini.** Coefficient changes do not reorder households.
 - **A4. Cancellation through the residual.** The household's unexplained component is fixed (original rule), and the model is additive in changed and unchanged terms.
-- **A5. Independent quantile equations.** The nine quantile equations are treated as independent.
+- **A5. Shared shocks across quantile equations.** The nine quantile equations share one standardised shock vector, so $\mathrm{Cov}(\beta_k,\beta_l)=L_kL_l^{\prime}$ (Section 6). This depends on Cholesky column order and is not the estimated joint covariance, which is the planned fix.
 - **A6. Exchangeable members.** Climate models are equally informative and independent.
 - **A7. Independent sources.** The residual and coefficient errors are independent, and members' coefficient errors are of similar size. The residual draws are also independent, homoskedastic and unweighted. They are drawn with replacement from the pooled estimation residuals, ignoring location, the fitted value and the survey weights. In BFA, 24 per cent of the residual variance lies between location panels (design effect of a weighted mean 11.8), the variance rises from 0.24 in the lowest quintiles of the fitted value to 0.42 in the top one, and the weighted mean residual of the baseline households is -0.027 while the pooled draw has mean zero. "Resample" therefore changes the level and the spread of the simulated distribution, not only its noise: the simulated historical Gini is 0.410 against 0.373 under "original" and 0.374 observed, and the mean is 4.78 against 4.36 and 4.48. The spread across years shows weather-driven variability (and, under "resample", independent draw noise). It does not show common non-weather shocks, which an iid draw understates by a factor of about $\sqrt{11.8}$ for a national statistic.
 
@@ -153,7 +153,7 @@ and not $\sqrt{\mathrm{SD}_s^2+\mathrm{SD}_{\text{ref}}^2}$. For the difference 
 - Error in the weather data, and uncertainty about the interview month and location.
 - Poverty-line uncertainty and survey-weight uncertainty.
 - The estimation of the quantile density and of the quantiles themselves (the quantile model).
-- Cross-quantile covariance, and correlation between the baseline and the prediction of a household in the quantile model.
+- An estimated cross-quantile covariance (the implementation uses a shared-shock approximation, Section 6), and correlation between the baseline and the prediction of a household in the quantile model.
 - Scenario uncertainty: the choice of pathway, horizon and policy design.
 - Coefficient uncertainty for non-linear and tree-based models.
 - Uncertainty in the bandwidth rules. The poverty rate and the median depend on the smoothing bandwidths.

@@ -6,12 +6,12 @@ depends_on: [notation, policy-framework, social-protection, shock-sp, metrics, d
 symbols: [T, z, omega, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-results-tab
 code: [R/fct_sp_effectiveness.R, R/fct_step3_tables.R, R/fct_sp_shock.R, R/mod_3_10_cost_effectiveness.R]
-verified_against: 8592a9d
+verified_against: 72a2fdb
 ---
 
 # Cost-effectiveness of a cash transfer
 
-> The cost-effectiveness tab divides the annual cost of a cash transfer by the effect that the policy run attributes to it, for the poverty metric chosen in Results. For the poverty rate it reports the cost per person lifted out of poverty. For the poverty gap it reports the poverty gap closed per dollar. Each is given for an average weather year and for a 1-in-20 adverse year. Metrics that have no per-dollar reading are not scored.
+> The cost-effectiveness tab divides the annual cost of a cash transfer by the effect that the policy run attributes to it, for the poverty metric chosen in Results. For the poverty rate it reports the cost per net person-year lifted out of poverty in an average year (annual net person-years, not unique people). For the poverty gap it reports the poverty gap closed per dollar. Each is given for an average weather year and for a 1-in-20 adverse year. Metrics that have no per-dollar reading are not scored.
 
 ## Setup
 
@@ -21,7 +21,7 @@ The tab joins two results of the same Step 3 run: the **cost** of the programme 
 
 ### 1. Inputs
 
-**Effect.** For the average year, the effect $\Delta T^{\text{avg}}$ is the expected paired effect of the policy on the chosen metric, the equal-weight mean over models and years, with its coefficient standard deviation from the paired contrast ([33_uncertainty](33_uncertainty.md)). For the adverse year, the effect $\Delta T^{\text{adv}}$ is the total effect of the policy in the 1-in-20 adverse year of the baseline, read as in Eq. (5.3) of [44_decomposition](44_decomposition.md). It has no interval, because the uncertainty of its components is not estimated.
+**Effect.** For the average year, the effect $\Delta T^{\text{avg}}$ is the expected paired effect of the policy on the chosen metric. Years are averaged within each climate member first, then members are averaged with equal weight, with its coefficient standard deviation from the paired contrast ([33_uncertainty](33_uncertainty.md)). For the adverse year, the effect $\Delta T^{\text{adv}}$ is the total effect of the policy in the 1-in-20 adverse year of the baseline, read as in Eq. (5.3) of [44_decomposition](44_decomposition.md). It has no interval, because the uncertainty of its components is not estimated.
 
 **Cost.** For a regular programme, the cost is the same in every year, Eq. (4.1) of [42_social_protection](42_social_protection.md), so the average-year cost and the adverse-year cost are equal. For a shock-responsive programme, the cost differs by year, and it is pooled on the same member-years as the effect. The average-year cost is the equal-weight mean over climate models of each model's mean annual cost. The adverse-year cost applies the same adverse-year ranking as the effect, by rank interpolation between the two baseline years of each model, and averages over models.
 

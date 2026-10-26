@@ -6,12 +6,12 @@ depends_on: [notation, framework, outcomes, weather-measures]
 symbols: [y, W, M, X, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation
 code: [R/fct_model_select.R, R/fct_step1_model.R, R/fct_fit_model.R, R/mod_1_06_model.R, R/fct_model_card.R, R/fct_results.R, R/fct_simulations.R]
-verified_against: 93a2782
+verified_against: 72a2fdb
 ---
 
 # Model specification and estimation sample
 
-> Step 1 fits three nested versions of one weather-welfare regression on the same sample. The weather coefficients are identified from variation inside fixed-effect cells. Standard errors are clustered by location panel. Covariates are chosen by the user or by a stability-selection Lasso. This page defines the specification, the fixed effects, the Lasso, the variance estimator and the estimation sample. The estimators for each outcome type are on [21_model_linear](21_model_linear.md) and [22_model_rif](22_model_rif.md).
+> Step 1 fits three nested versions of one weather-welfare regression on the same sample. The weather coefficients are identified from residual variation after additive survey-year and area effects. Standard errors are clustered by location panel. Covariates are chosen by the user or by a stability-selection Lasso. This page defines the specification, the fixed effects, the Lasso, the variance estimator and the estimation sample. The estimators for each outcome type are on [21_model_linear](21_model_linear.md) and [22_model_rif](22_model_rif.md).
 
 ## Setup
 
@@ -45,7 +45,7 @@ Fixed effects are absorbed, not estimated as dummies. For linear models the esti
 
 $$\ddot y_i = \ddot Z_i^{\prime}\phi + \ddot\varepsilon_i, \qquad Z_i = \big(W_i,\ M_i,\ W_i\otimes M_i,\ X_i\big) \qquad \text{(2.1)}$$
 
-so that the coefficients are identified from variation of $Z_i$ inside an area-by-round cell, as the framework requires ([01_framework](01_framework.md), Eq. (3.1)). A regressor with no variation inside cells is dropped as collinear. The default fixed effects are the survey year, shared by all units of a round, and the first administrative level.
+so that the coefficients are identified from the residual variation of $Z_i$ after additive survey-year and administrative-area effects are removed ([01_framework](01_framework.md), Eq. (3.1)). The fixed effects enter as separate terms, $\alpha_{g(i)} + \lambda_{t(i)}$, and are not interacted: there is no area-by-round cell effect. A regressor that is fully explained by the two sets of effects is dropped as collinear, but one that varies across areas and rounds in a way the additive effects cannot absorb is kept, even if it is constant within each area-round cell. Area-specific changes across rounds are therefore not removed, and they can confound the weather coefficients. The default fixed effects are the survey year, shared by all units of a round, and the first administrative level.
 
 Fixed effects fitted on the estimation sample are reused to predict. A unit in a cell that is absent from the estimation sample cannot be predicted with those effects; its prediction is missing ([30_simulation](30_simulation.md)).
 

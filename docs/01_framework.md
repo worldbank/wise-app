@@ -6,7 +6,7 @@ depends_on: [notation]
 symbols: [y, W, M, X, D, beta, gamma, delta, alpha, lambda, T, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: [R/fct_step1_model.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_policy_sim.R, R/fct_step3_async.R]
-verified_against: 8592a9d
+verified_against: 72a2fdb
 ---
 
 # Framework and identification
@@ -56,11 +56,11 @@ Because $\mathcal{B}$ is the same in every simulated year, the spread of $T^{(r,
 
 ### 3. Identification of the weather response
 
-Step 1 estimates Eq. (2.1) of [00_notation](00_notation.md) with area and time fixed effects. After the fixed effects are removed, the weather coefficients are identified from how much weather in a given interview differs from the typical weather in the same area and survey round. Whether weather enters as a level, an anomaly from the local normal, a standardised anomaly or bins, the identifying variation is the within-cell variation. The identifying condition is:
+Step 1 estimates Eq. (2.1) of [00_notation](00_notation.md) with area and time fixed effects. The fixed effects are additive: one set for the administrative area and one for the survey year, not an effect for each area-round cell. After both are removed, the weather coefficients are identified from the residual variation in weather, that is, how much weather at a given interview differs from what the area effect and the survey-year effect together predict. Whether weather enters as a level, an anomaly from the local normal, a standardised anomaly or bins, the identifying variation is this residual variation. It includes variation within an area and round, and also variation across areas and rounds that the additive effects do not absorb. The identifying condition is:
 
 $$\mathbb{E}\big[\varepsilon_i \mid W_i,\ M_i,\ X_i,\ g(i),\ t(i)\big] = 0 \qquad \text{(3.1)}$$
 
-In words: within an area and survey round, which households happened to be interviewed in a hotter or wetter month is unrelated to anything else that drives welfare. This is a design-based argument, not a test. It is plausible for weather because weather is not chosen by households, and it relies on the fixed effects to remove place-specific and round-specific confounders such as climate zone, market access and a national shock in the survey year.
+In words: once area and survey-year effects are removed, the weather a household experienced is unrelated to anything else that drives welfare. This is a design-based argument, not a test. It is plausible for weather because weather is not chosen by households, and it relies on the fixed effects to remove place-specific and round-specific confounders such as climate zone, market access and a national shock in the survey year. Because the effects are additive, **area-specific time-varying confounding is not removed**: a change in welfare across rounds that differs by area and happens to correlate with weather (a local market shock, a regional programme) is attributed to weather.
 
 Two features of the data limit this argument.
 

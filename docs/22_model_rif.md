@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, model-specification, linear-model]
 symbols: [y, tau, q_tau, f_Y, beta_tau, W, X, F_hat]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif
 code: [R/fct_fit_model.R, R/fct_rif_sim.R, R/fct_step1_headline.R, R/fct_results.R]
-verified_against: 8592a9d
+verified_against: 72a2fdb
 ---
 
 # Unconditional quantile regression (RIF)
@@ -102,7 +102,7 @@ The quantile model estimates movements of the **quantiles** of the distribution,
 - Nothing prevents estimated quantile functions from crossing, so adjacent quantile effects need not be ordered.
 - The bandwidth is chosen once for the full estimation sample. It is not adapted to a survey round or a group.
 - Standard errors treat the transformed outcome as given, so they ignore the estimation of $q_\tau$ and $\hat f$.
-- The nine equations are fitted separately. Cross-quantile covariance is not used in the uncertainty bands ([33_uncertainty](33_uncertainty.md)).
+- The nine equations are fitted on the same sample, but no cross-equation covariance is estimated. The uncertainty bands use one shared standardised shock vector $z$ across all nine equations, so $\mathrm{Cov}(\beta_k,\beta_l)=L_kL_l^{\prime}$, which depends on the column order of the Cholesky factors ([33_uncertainty](33_uncertainty.md), Section 6). A joint cross-equation covariance is the planned fix.
 - A weather effect in the simulation is available only for households that have an observed baseline outcome.
 - Diagnostics shown for the model use the median equation only.
 

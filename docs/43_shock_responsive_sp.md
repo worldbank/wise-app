@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, social-protection, simulation, climate-
 symbols: [omega, T, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release
 code: [R/fct_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decompose.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
-verified_against: 1ecc93e
+verified_against: 72a2fdb
 ---
 
 # Shock-responsive cash transfers: triggers, payments and basis risk
@@ -84,6 +84,8 @@ A budget **linked to modelled loss** pays, in a cell-year, a share $\lambda$ of 
 $$v_i = \frac{1}{s_i^{\text{share}}}\ \frac{\lambda\ \sum_{l \in c}\omega_l\ L_l}{\sum_{l \in c}\omega_l / s_l^{\text{share}}} \qquad \text{(4.1)}$$
 
 where the sums are over the paid households of the cell-year and $v_i$ is the daily gain of household $i$. The cost of the cell-year is then $\lambda$ times its modelled loss, in annual terms.
+
+**Currency.** Losses are computed in the stored welfare units (the PPP scale) and the budget share applies there. Costs are converted back to the currency in which the amounts were entered. The identity "cost equals $\lambda$ times modelled loss" therefore holds in the entry currency only if the PPP factor is the same for every household in a payout cell. The app does not check this. Where the factor varies within a cell, read the identity in stored units.
 
 An optional **annual cap** limits the total cost of a year. If transfers in a year would cost more than the cap net of administration, every payment of that year is scaled down in the same proportion:
 

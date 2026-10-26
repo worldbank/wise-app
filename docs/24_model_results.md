@@ -6,7 +6,7 @@ depends_on: [notation, outcomes, model-specification, linear-model, rif-model]
 symbols: [beta, gamma, Sigma, tau, y, Z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#interpreting-the-results-tab
 code: [R/fct_step1_headline.R, R/fct_step1_model_tables.R, R/fct_results.R, R/fct_results_table2.R, R/mod_1_07_results.R, R/mod_1_08_modelfit.R]
-verified_against: 8592a9d
+verified_against: 72a2fdb
 ---
 
 # Reading the Step 1 results
@@ -42,7 +42,7 @@ $$\hat c = d^{\prime}\hat\phi, \qquad \widehat{se} = \sqrt{d^{\prime}\hat V d}, 
 - **Reference household:** the sample-average household. For a binary outcome it is the household whose fitted risk is the sample median, which avoids a profile with a probability close to zero.
 - **Moderators:** one contrast per value of the moderator. A binary moderator takes its two values. A numeric moderator with more than five distinct values is shown at its mean and at one standard deviation above and below.
 
-For the quantile model the contrast is computed at $\tau=0.1$, $0.5$ and $0.9$ from the equation of that quantile. Its standard error combines the term variances without covariances between terms, a stated approximation.
+For the quantile model the contrast is computed at $\tau=0.1$, $0.5$ and $0.9$ from the equation of that quantile. Its standard error uses the full coefficient covariance of that equation, so polynomial and interaction terms keep their covariances. Only if the covariance or a term is unavailable does it fall back to summing independent term variances.
 
 ### 3. Effect curves
 

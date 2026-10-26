@@ -6,7 +6,7 @@ depends_on: [notation, framework]
 symbols: [i, l, t, mu, Y, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
 code: [R/fct_surveystats.R, R/fct_step1_data.R, R/fct_loc_panel.R, R/fct_get_weather.R, R/fct_sample.R, R/fct_incidence.R, R/fct_weatherstats.R]
-verified_against: 8592a9d
+verified_against: 72a2fdb
 ---
 
 # Data and spatial linking
@@ -77,7 +77,7 @@ A variable list assigns each variable one or more roles: outcome, weather variab
 
 ### 7. Sampling weights
 
-The weight column is read from the survey under the first of the names `weight`, `hhweight`, `wgt`, `pw` that exists. The same column is used by every weighted statistic in Steps 2 and 3.
+The survey must carry a column named `weight`. The harmonised surveys always have one. Other names, such as `hhweight`, `wgt` or `pw`, are not renamed on load, and several Step 2 and 3 statistics read only `weight`, so a survey without it is treated as unweighted there.
 
 ## Interpretation
 

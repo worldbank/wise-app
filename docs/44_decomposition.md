@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, linear-model, rif-model, metrics, socia
 symbols: [y, W, D, Delta, tau, beta, gamma, delta, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab
 code: [R/fct_policy_decompose.R, R/fct_policy_metric_decompose.R, R/fct_decomposition_summary.R, R/fct_policy_sim.R]
-verified_against: 1c2834e
+verified_against: 72a2fdb
 ---
 
 # Decomposition of the policy effect into direct and resilience channels
@@ -71,11 +71,11 @@ which is Eq. (2.2) of [40_policy_framework](40_policy_framework.md) for the row 
 
 ### 4. Effects in outcome units
 
-The channels are in log points for a log outcome. Averaging log points is not the same as averaging effects on the level. The app therefore converts the channels of each household to outcome units before averaging them, one at a time and in order, against the household's predicted baseline level $B_i$ of that year. With $m = \delta^{\text{main}}$, $\rho = \delta^{\text{rep}}$ and $\iota = \delta^{\text{int}}$:
+The channels are in log points for a log outcome. Averaging log points is not the same as averaging effects on the level. The app therefore converts the channels of each household to outcome units before averaging them, one at a time and in order, against the household's predicted baseline level $B_i$ of that year. A cash transfer is a level amount, not a log shift, so it stays outside the exponentials ([42_social_protection](42_social_protection.md), Eq. (5.2)). Split the main effect into a non-cash log shift $m$ (the policy variables of the model) and a cash amount $c_i$ in outcome units. With $\rho = \delta^{\text{rep}}$ and $\iota = \delta^{\text{int}}$:
 
-$$\text{direct} = \big(e^{m} - 1\big)B_i, \quad \text{repositioning} = e^{m}\big(e^{\rho} - 1\big)B_i, \quad \text{interaction} = e^{m+\rho}\big(e^{\iota} - 1\big)B_i \qquad \text{(4.1)}$$
+$$\text{direct} = \big(e^{m} - 1\big)B_i + c_i, \quad \text{repositioning} = e^{m}\big(e^{\rho} - 1\big)B_i, \quad \text{interaction} = e^{m+\rho}\big(e^{\iota} - 1\big)B_i \qquad \text{(4.1)}$$
 
-The three channels add up to the total effect $e^{m+\rho+\iota}B_i - B_i$. For a level outcome the channels are the model-scale effects themselves.
+The non-cash shift $m$ compounds through the later channels. The cash amount $c_i$ does not: it is added once, as a level, and is not multiplied by $e^{\rho}$ or $e^{\iota}$. The channels add up to the total effect $\big(e^{m+\rho+\iota} - 1\big)B_i + c_i$. A shock-responsive payment is a separate level channel with the same treatment. Without cash, $c_i = 0$ and the channels are those of the pure log shift. For a level outcome the channels are the model-scale effects themselves.
 
 ### 5. Channels of a welfare metric
 

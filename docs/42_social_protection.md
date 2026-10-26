@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, outcomes, metrics]
 symbols: [Y, omega, z, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers
 code: [R/fct_policy_sim.R, R/fct_step3_input.R, R/fct_sp_effectiveness.R, R/fct_policy_metric_decompose.R, R/fct_aggregation_delta.R, R/mod_3_01_sp.R]
-verified_against: 1c2834e
+verified_against: 72a2fdb
 ---
 
 # Regular cash transfers: targeting, amount, cost and reach
@@ -42,7 +42,7 @@ $$\text{flip the first } k \text{ units, } k = \arg\min_{j}\Big|\sum_{l \le j}\o
 
 so that the weighted share of units flipped matches the rate to within the weight of one row. If the weights are all equal or absent, the number flipped is the rate times the number of rows in $G$, rounded.
 
-By default, the units to flip are drawn uniformly. The user can concentrate errors near the cut-off. The probability of being drawn is then proportional to $\exp(-\kappa d_i)$, where $d_i$ is the distance of the unit from the cut-off in percentile rank (0 at the cut-off, at most 1) and $\kappa$ between 0 and 50 sets the concentration. Concentration is available for the ex ante rule and for a continuous proxy variable.
+By default, the units to flip are drawn uniformly. The user can concentrate errors near the cut-off. The concentration value $\exp(-\kappa d_i)$ is a random-order sampling weight, not the final probability that a household is flipped, so the weighted share flipped still matches the rate by Eq. (2.1). The weight is proportional to $\exp(-\kappa d_i)$, where $d_i$ is the distance of the unit from the cut-off in percentile rank (0 at the cut-off, at most 1) and $\kappa$ between 0 and 50 sets the concentration. Concentration is available for the ex ante rule and for a continuous proxy variable.
 
 The realised eligibility after errors is $\tilde E_i$.
 
