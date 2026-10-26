@@ -524,7 +524,7 @@ test_that("Step 3 expected effect card prints the 95% CI from the paired coeffic
   cards <- step3_headline_cards(summary, method = "headcount_ratio",
     so = list(name = "welfare", type = "numeric", units = "PPP"), metric_context = spec)
   # -4.00 pp +/- 1.96 * 1.00 pp.
-  expect_match(cards[[1]]$note, "(95% CI: -5.96 to -2.04 pp)", fixed = TRUE)
+  expect_match(cards[[1]]$note, "(95% CI, estimation only: -5.96 to -2.04 pp)", fixed = TRUE)
   expect_equal(cards[[1]]$effect_ci_native, -0.04 + c(-1, 1) * stats::qnorm(0.975) * 0.01)
   expect_match(cards[[1]]$info, "weather coefficients only", fixed = TRUE)
   # Without a coefficient SD the generic line stays.

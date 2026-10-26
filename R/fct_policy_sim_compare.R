@@ -1136,8 +1136,8 @@ step3_headline_cards <- function(paired_summary,
   analysis_unit <- analysis_unit %||% spec$analysis_unit %||% NULL
   card_digits <- if (identical(method, "total")) 0L else 2L
   fmt_level <- function(x) if (is.finite(x)) format_metric_value(x, spec, digits = card_digits) else "Unavailable"
-  fmt_change <- function(x) {
-    if (is.finite(x)) format_metric_value(x, spec, change = TRUE, digits = card_digits) else "Unavailable"
+  fmt_change <- function(x, digits = card_digits) {
+    if (is.finite(x)) format_metric_value(x, spec, change = TRUE, digits = digits) else "Unavailable"
   }
 
   # Levels and contrast must use the same matched model/year support.
@@ -1170,13 +1170,22 @@ step3_headline_cards <- function(paired_summary,
   if (is.finite(coef_sd_1) && coef_sd_1 > 0 && is.finite(effect_val)) {
     half <- stats::qnorm(0.975) * coef_sd_1
     unit_suffix <- paste0(" ", spec$change_unit %||% "")
-    lo_txt <- fmt_change(effect_val - half)
+    # A narrow band rounds to one printed value: add digits until its ends differ
+    digits_ci <- card_digits
+    while (digits_ci < card_digits + 4L &&
+      identical(fmt_change(effect_val - half, digits_ci), fmt_change(effect_val + half, digits_ci))) {
+      digits_ci <- digits_ci + 1L
+    }
+    lo_txt <- fmt_change(effect_val - half, digits_ci)
     if (nzchar(trimws(unit_suffix)) && endsWith(lo_txt, unit_suffix)) {
       lo_txt <- substr(lo_txt, 1L, nchar(lo_txt) - nchar(unit_suffix))
     }
+    # The band holds estimation (coefficient) uncertainty only; climate-model
+    # spread is in the robustness card.
     ci_1 <- list(
       lo = effect_val - half, hi = effect_val + half,
-      text = paste0("(95% CI: ", lo_txt, " to ", fmt_change(effect_val + half), ")")
+      text = paste0("(95% CI, estimation only: ", lo_txt, " to ",
+        fmt_change(effect_val + half, digits_ci), ")")
     )
     line1_1 <- ci_1$text
   }
@@ -2113,7 +2122,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
-        "Central estimates summarize each model's weather years at the selected return period, then take the equal-weight mean across climate models for baseline and policy. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled). For the quantile model, policy bands reuse the baseline coefficient covariance and do not include estimation uncertainty of the policy variables' own coefficients."
+        "Central estimates summarize each model's weather years at the selected return period, then take the equal-weight mean across climate models for baseline and policy. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled). Policy bands include the estimation uncertainty of the policy variables' own coefficients. A cash transfer uses no estimated policy coefficient, so the Coef band of its effect is close to zero and its spread comes from climate models and weather years; this is not evidence that the effect is precisely estimated."
       )
     ),
   )

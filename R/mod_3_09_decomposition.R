@@ -230,6 +230,11 @@ mod_3_09_decomposition_ui <- function(id) {
         height = "360px"),
       shiny::uiOutput(ns("headline_decomp_note_ui")),
       shiny::uiOutput(ns("interaction_warning_ui")),
+      shiny::tags$p(class = "diagnostic-note",
+        paste0(
+          "Channels are central estimates without uncertainty bands. A small repositioning or ",
+          "interaction effect next to the direct effect should not be read as distinguishable from zero."
+        )),
       shiny::tags$details(
         class = "decomposition-data-details",
         shiny::tags$summary("View decomposition data"),

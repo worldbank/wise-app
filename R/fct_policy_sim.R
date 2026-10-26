@@ -1612,8 +1612,8 @@ apply_policy_to_svy <- function(svy,
 #'     \item For the linear model \code{F_loading} of the policy arm is the
 #'           baseline loading plus the gradient of the correction, with the
 #'           policy coefficients as extra columns (\code{.policy_arm_loading()}).
-#'           The quantile model keeps the baseline loading, so its SE bands
-#'           do not include the policy coefficients.
+#'           The quantile model does the same in the joint Cholesky basis of its
+#'           quantile equations (\code{.policy_arm_loading_rif()}).
 #'     \item Exact retained prediction-row exposure mapping is required. Invalid
 #'           mappings fail the entire run; no period-mean fallback is used.
 #'   }
