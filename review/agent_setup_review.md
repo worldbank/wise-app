@@ -14,7 +14,7 @@ Status: `✓` done · `☐` todo.
 | R5 | Write-back rule | ✓ 2026-10-26 | "Keeping these instructions current" section in `AGENTS.md`. |
 | R4 | `dev/agents_check.R` in CI | ✓ 2026-10-26 | Job `agents-check` in `R-CMD-check.yaml`. Checks paths and functions named in `AGENTS.md`, `ARCHITECTURE.md`, skills and the two standards; skill front matter and listing in `AGENTS.md`; size budgets; version match. Budget for `ARCHITECTURE.md` is a ratchet just above today's size; lower it when trimmed. |
 | R6 | Missing skills | ✓ 2026-10-26 | `wise-verify`, `wise-numeric-change`, `wise-close-finding`, `add-policy-lever`, `add-metric`, `wise-release`. Listed in `AGENTS.md`. |
-| R7 | `review/README.md` index; archive finished plans | ☐ | `review/` is 1.0 MB; agents read finished plans as current guidance. |
+| R7 | `review/README.md` index; archive finished plans | ✓ 2026-10-26 | Index with status written. No plan moved: `R/fct_sp_shock.R`, `R/fct_sp_effectiveness.R`, `batch/` docs and tests cite the plans by path. Move them when those comments are next edited. |
 | R3b | One shared skills folder, pointed to from the README; no copies in the repo | ✓ 2026-10-26 | Skills moved with `git mv` to `.agents/skills/`. `.claude/skills` is a git-ignored local link (`ln -s ../.agents/skills .claude/skills`); setup in README "Agent skills" and the Skills section of `AGENTS.md`. |
 | R9 | Trim `ARCHITECTURE.md` | ✓ 2026-10-26 | 23 KB to 9 KB. Deployment settings moved intact to `DEPLOYMENT.md`; per-file prose and the lever, uncertainty and decomposition detail now point to `docs/` pages and R file headers. Budgets in `dev/agents_check.R` lowered to match. |
 

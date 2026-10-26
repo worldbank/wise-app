@@ -23,7 +23,8 @@ skill_dirs <- ".agents/skills"
 skill_files <- unlist(lapply(skill_dirs, list.files, pattern = "\\.md$", recursive = TRUE, full.names = TRUE))
 doc_files <- Filter(
   file.exists,
-  c("AGENTS.md", "ARCHITECTURE.md", "DEPLOYMENT.md", "review/code_hygiene.md", "review/optimization_guidelines.md", skill_files)
+  c("AGENTS.md", "ARCHITECTURE.md", "DEPLOYMENT.md", "review/README.md", "review/code_hygiene.md",
+    "review/optimization_guidelines.md", skill_files)
 )
 
 # Size budgets ----

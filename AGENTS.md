@@ -43,7 +43,7 @@ Install dependencies with `pak::local_install_deps()` or from `DESCRIPTION` `Imp
 | `src/welfare_stats.cpp` | Rcpp kernel for aggregation statistics |
 | `docs/` | Methods pages (equations, assumptions); index `docs/README.md`. Each ends with an Implementation map and records `verified_against` |
 | `batch/` | Batch runs (`targets`): `batch/README.md`, table reference `batch/docs/tables.md` |
-| `review/` | Standards (`code_hygiene.md`, `optimization_guidelines.md`), open items (`REVIEW-2026-10-06-tracking.md`, its "Where things stand" block is the current status), plans; finished work in `review/archive/` |
+| `review/` | Standards, open items and plans; index with status in `review/README.md`. Current status: "Where things stand" in `review/REVIEW-2026-10-06-tracking.md`; finished work in `review/archive/` |
 | `dev/` | `run_dev.R`, `00_make_manifest.R` (Connect manifest), `ui_drive.R` (headless-Chrome driver), `docs_check.R` / `docs_index.R`, `agents_check.R` (paths, functions and sizes named in these instructions; run in CI), parity scripts `batch_parity_bfa*.R`, benchmarks in `dev/bench/` |
 | `tests/testthat/` | Unit tests; `tests/e2e/smoke.R` browser smoke with axe-core |
 | `.agents/skills/` | Skills, the one shared copy (see Skills) |
