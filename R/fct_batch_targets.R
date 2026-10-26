@@ -182,6 +182,16 @@ wise_batch_template <- function(path) {
   dir
 }
 
+# The survey files (name and SHA-256) of the countries of one data item, so a
+# changed file reruns the item. NULL when the source has no file digest.
+.batch_item_files <- function(data_files, countries) {
+  if (is.null(data_files) || !length(countries)) {
+    return(NULL)
+  }
+  hit <- grepl(paste0("^(", paste(countries, collapse = "|"), ")_"), basename(data_files$file))
+  if (any(hit)) data_files[hit, c("file", "sha256"), drop = FALSE] else NULL
+}
+
 #' Resolve the run grid
 #'
 #' @param spec_file Path to the grid YAML file.
@@ -253,7 +263,7 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
       function(id, spec) {
         list(
           id = id, spec = sections(spec, "schema_version", "source", "sample", "outcome", "stats"),
-          metadata_digest = digest
+          metadata_digest = digest, survey_files = .batch_item_files(grid$data_files, spec$sample$countries)
         )
       },
       runs$data_id[first], runs$spec[first]

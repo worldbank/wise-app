@@ -311,6 +311,11 @@ step3_compute <- function(svy, hs, ss, mf,
   if (is.null(pol_out)) {
     stop("Policy simulation produced no results.", call. = FALSE)
   }
+  # The seed of this run, kept with the result for run provenance. It is a
+  # separate field because `hist_sim$seed` seeds the display residuals.
+  if (!is.null(seed) && is.list(pol_out$hist_sim)) {
+    pol_out$hist_sim$.seed <- as.integer(seed)
+  }
 
   # REACT-05: the production annual channels were computed above, so a failure
   # there already fails the whole run instead of silently presenting the

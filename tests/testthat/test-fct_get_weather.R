@@ -1090,7 +1090,16 @@ make_test_fixtures_cmip6_coarser <- function(
     )
   )$h3
 
-  base_months <- sort(unique(fx$dates))
+  # Every month of the years the survey weather spans: the climate members
+  # must cover every calendar month of the future period.
+  base_years  <- unique(as.integer(format(fx$dates, "%Y")))
+  base_months <- sort(unique(c(
+    fx$dates,
+    unlist(lapply(base_years, function(y) {
+      as.character(seq(as.Date(sprintf("%d-01-01", y)), by = "1 month", length.out = 12L))
+    }))
+  )))
+  base_months <- as.Date(base_months)
   fut_months  <- seq(as.Date("2025-01-01"), as.Date("2025-12-01"), by = "1 month")
 
   .cmip6_df <- function(months, tx) {
@@ -1214,6 +1223,80 @@ test_that("CR-BUG-06: CMIP6 members with partial coverage are excluded with a wa
   members <- grep("ssp2_4_5", names(result), value = TRUE)
   expect_true(any(grepl("TESTMOD$", members)) && any(grepl("FULLMOD$", members)))
   expect_false(any(grepl("PARTMOD$", members)))
+})
+
+# Writes CMIP6 members that each lack the future months in `missing[[name]]`
+# (indices into the calendar months the survey weather needs), runs get_weather() and returns the scenario members kept and the warnings.
+run_with_missing_future_months <- function(missing) {
+  dir <- tempfile("wiseapp-weather-grid-")
+  dir.create(dir, recursive = TRUE)
+  withr::defer(unlink(dir, recursive = TRUE, force = TRUE), envir = parent.frame())
+  fx <- make_test_fixtures_cross_res(
+    dir, seed_cell = "85283473fffffff", micro_res = 5L, weather_res = 4L
+  )
+  make_test_fixtures_cmip6_coarser(dir, fx, cmip6_res = 3L)
+  code <- fx$selected_surveys$code
+  proj_dir <- file.path(dir, "hazard", "weather", "projections", code)
+  hist_path <- file.path(proj_dir, paste0(code, "_cmip6_historical.parquet"))
+  ssp_path <- file.path(proj_dir, paste0(code, "_cmip6_ssp245.parquet"))
+  hist <- arrow::read_parquet(hist_path)
+  ssp <- arrow::read_parquet(ssp_path)
+  needed <- sort(unique(as.integer(format(fx$dates, "%m"))))
+  member <- function(df, name) {
+    df$model <- name
+    drop <- needed[missing[[name]]]
+    df[!(df$timestamp >= as.Date("2025-01-01") &
+      as.integer(format(df$timestamp, "%m")) %in% drop), ]
+  }
+  arrow::write_parquet(
+    do.call(rbind, lapply(names(missing), function(n) { h <- hist; h$model <- n; h })), hist_path
+  )
+  arrow::write_parquet(do.call(rbind, lapply(names(missing), function(n) member(ssp, n))), ssp_path)
+  warnings <- character()
+  result <- withCallingHandlers(
+    get_weather(
+      survey_data = fx$survey_data, selected_surveys = fx$selected_surveys,
+      selected_weather = sw_continuous("tx"), dates = fx$dates,
+      connection_params = fx$connection_params, ssp = "ssp2_4_5",
+      future_period = c("2025-01-01", "2025-12-31"), perturbation_method = c(tx = "additive")
+    ),
+    warning = function(w) {
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  list(members = grep("ssp2_4_5", names(result), value = TRUE), warnings = warnings)
+}
+
+test_that("a location-month missing from every member excludes them all and is reported", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("bit64")
+
+  out <- run_with_missing_future_months(list(AAA = 1L, BBB = 1L))
+  expect_length(out$members, 0L)
+  expect_true(any(grepl("excluded", out$warnings) & grepl("AAA", out$warnings) & grepl("BBB", out$warnings)),
+    info = paste(out$warnings, collapse = " | "))
+  expect_true(any(grepl("Missing keys", out$warnings) & grepl("loc_1/", out$warnings)),
+    info = paste(out$warnings, collapse = " | "))
+})
+
+test_that("members with different missing keys but equal row counts are both excluded", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("bit64")
+
+  out <- run_with_missing_future_months(list(AAA = 1L, BBB = 2L))
+  expect_length(out$members, 0L)
+  expect_true(any(grepl("excluded", out$warnings) & grepl("AAA", out$warnings) & grepl("BBB", out$warnings)),
+    info = paste(out$warnings, collapse = " | "))
+})
+
+test_that("a complete member survives next to an incomplete one on the required grid", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("bit64")
+
+  out <- run_with_missing_future_months(list(AAA = integer(), BBB = 1L))
+  expect_true(any(grepl("AAA$", out$members)))
+  expect_false(any(grepl("BBB$", out$members)))
 })
 
 test_that("get_weather is identical across repeated end-to-end calls", {

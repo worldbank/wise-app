@@ -568,6 +568,76 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
   res$lo[[1L]]
 }
 
+# Expected location-month keys of every future period: each requested
+# location (code, year, survname, loc_id) by each calendar month the period
+# covers. Independent of the climate members.
+.cmip_expected_keys <- function(locations, period_specs) {
+  do.call(rbind, lapply(period_specs, function(spec) {
+    months <- sort(unique(as.integer(format(
+      seq(as.Date(spec$start), as.Date(spec$end), by = "month"), "%m"
+    ))))
+    out <- merge(
+      as.data.frame(locations), data.frame(month = months), by = character()
+    )
+    out$period_id <- spec$id
+    out
+  }))
+}
+
+# Per period and member: how many of the expected keys carry every delta
+# variable. `is_full` needs all of them; `n_expected` is the same for every
+# member of a period.
+.cmip_member_coverage <- function(loc_deltas, expected, delta_vars, con) {
+  # A registered view, not a copied table: copying draws from the session RNG.
+  name <- basename(tempfile(pattern = "lw_expected_"))
+  duckdb::duckdb_register(con, name, expected)
+  on.exit(duckdb::duckdb_unregister(con, name), add = TRUE)
+  keys <- c("period_id", "code", "year", "survname", "loc_id", "month")
+  n_expected <- stats::aggregate(
+    list(n_expected = expected$month), list(period_id = expected$period_id), length
+  )
+  members <- loc_deltas |>
+    dplyr::distinct(period_id, model) |>
+    dplyr::collect()
+  counts <- loc_deltas |>
+    dplyr::inner_join(dplyr::tbl(con, name), by = keys) |>
+    dplyr::group_by(period_id, model) |>
+    dplyr::summarise(
+      n_complete = sum(
+        dplyr::if_all(dplyr::all_of(delta_vars), ~ !is.na(.x)),
+        na.rm = TRUE
+      ),
+      .groups = "drop"
+    ) |>
+    dplyr::collect()
+  # A member with no expected key at all still appears, with zero complete.
+  members |>
+    dplyr::left_join(counts, by = c("period_id", "model")) |>
+    dplyr::mutate(n_complete = as.numeric(dplyr::coalesce(n_complete, 0))) |>
+    dplyr::left_join(n_expected, by = "period_id") |>
+    dplyr::mutate(is_full = n_complete == n_expected & n_expected > 0)
+}
+
+# The first missing keys of each excluded member, for the warning.
+.cmip_missing_summary <- function(loc_deltas, expected, delta_vars, period_id, members, n_show = 3L) {
+  keys <- c("code", "year", "survname", "loc_id", "month")
+  exp_p <- expected[expected$period_id == period_id, keys]
+  parts <- vapply(seq_len(nrow(members)), function(i) {
+    have <- loc_deltas |>
+      dplyr::filter(period_id == !!period_id, model == !!members$model[[i]]) |>
+      dplyr::filter(dplyr::if_all(dplyr::all_of(delta_vars), ~ !is.na(.x))) |>
+      dplyr::select(dplyr::all_of(keys)) |>
+      dplyr::collect()
+    miss <- exp_p[!do.call(paste, c(exp_p, sep = "|")) %in% do.call(paste, c(have[keys], sep = "|")), ]
+    shown <- utils::head(do.call(paste, c(miss, sep = "/")), n_show)
+    sprintf(
+      "%s: %d of %d expected location-months missing (e.g. %s)",
+      members$model[[i]], nrow(miss), nrow(exp_p), paste(shown, collapse = ", ")
+    )
+  }, character(1L))
+  paste0("Missing keys (code/year/survname/loc_id/month): ", paste(parts, collapse = "; "))
+}
+
 #' Harmonise H3 resolution and type between microdata and weather tables.
 #'
 #' This helper:
@@ -2050,26 +2120,39 @@ get_weather <- function(
         temporary = TRUE
       )
 
-      complete_model_tbl <- loc_deltas_all |>
-        dplyr::group_by(period_id, model) |>
-        dplyr::summarise(
-          n_complete = sum(
-            dplyr::if_all(dplyr::all_of(delta_vars), ~ !is.na(.x)),
-            na.rm = TRUE
-          ),
-          n_rows = dplyr::n(),
-          .groups = "drop"
-        ) |>
-        dplyr::collect() |>
-        # CR-BUG-06: a member is usable only with every location-month of the
-        # period present and non-missing; a partial member would otherwise
-        # feed NA or short rows into the ensemble statistics.
-        dplyr::group_by(period_id) |>
-        dplyr::mutate(
-          n_expected = max(n_rows),
-          is_full = n_complete == n_expected & n_expected > 0
-        ) |>
-        dplyr::ungroup()
+      # CR-BUG-06: a member is usable only with every expected location-month
+      # of the period present and non-missing. The expected keys come from the
+      # requested locations and the months of the period, not from the other
+      # members, so a key missing from every member excludes them all.
+      expected_keys <- .cmip_expected_keys(
+        loc_monthly |>
+          dplyr::distinct(code, year, survname, loc_id) |>
+          dplyr::collect(),
+        period_specs
+      )
+      complete_model_tbl <- .cmip_member_coverage(
+        loc_deltas_all, expected_keys, delta_vars, con
+      )
+
+      # Report the excluded members and their missing keys for every period
+      # before any early return, so an all-excluded run is not silent.
+      for (spec in period_specs) {
+        complete_for_period <- complete_model_tbl |>
+          dplyr::filter(period_id == !!spec$id)
+        incomplete <- complete_for_period[!complete_for_period$is_full, ]
+        if (nrow(incomplete) > 0L) {
+          warning(sprintf(
+            "%s / %s: %d model(s) excluded due to missing or partial coverage of variables (%s): %s",
+            ssp_i, spec$label, nrow(incomplete),
+            paste(delta_vars, collapse = ", "),
+            paste(incomplete$model, collapse = ", ")
+          ), call. = FALSE)
+          warning(
+            .cmip_missing_summary(loc_deltas_all, expected_keys, delta_vars, spec$id, incomplete),
+            call. = FALSE
+          )
+        }
+      }
 
       complete_keys <- complete_model_tbl |>
         dplyr::filter(is_full) |>
@@ -2112,15 +2195,6 @@ get_weather <- function(
 
         complete_for_period <- complete_model_tbl |>
           dplyr::filter(period_id == !!current_period_id)
-        incomplete_models <- complete_for_period$model[!complete_for_period$is_full]
-        if (length(incomplete_models) > 0L) {
-          warning(sprintf(
-            "%s / %s: %d model(s) excluded due to missing or partial coverage of variables (%s): %s",
-            ssp_i, fp_label, length(incomplete_models),
-            paste(delta_vars, collapse = ", "),
-            paste(incomplete_models, collapse = ", ")
-          ), call. = FALSE)
-        }
 
         complete_models <- complete_for_period$model[complete_for_period$is_full]
         if (length(complete_models) == 0L) next

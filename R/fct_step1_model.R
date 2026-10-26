@@ -347,5 +347,7 @@ wise_fit <- function(survey_weather, stored_breaks, selected_outcome, selected_w
     variable_list  = variable_list,
     model          = selected_model
   )
+  # The seed the fit used, kept with the result for run provenance.
+  fit_list$.seed <- as.integer(seed)
   fit_list
 }

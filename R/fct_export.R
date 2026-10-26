@@ -297,6 +297,19 @@ wise_current_seed <- function(default = WISEAPP_DEFAULT_SEED,
   keep
 }
 
+#' Seed to write at the top level of an export
+#'
+#' @param provenance List of per-step provenance records.
+#' @param seed Seed in force for the session.
+#' @return The common seed of the records, else `seed`.
+#' @noRd
+.export_run_seed <- function(provenance, seed) {
+  seeds <- unique(stats::na.omit(vapply(
+    provenance, function(p) as.integer(p$random_seed %||% NA_integer_)[1L], integer(1)
+  )))
+  if (length(seeds) == 1L) seeds else as.integer(seed)
+}
+
 #' Capture the full analysis configuration as a plain list
 #'
 #' Shiny namespaces module inputs as a prefix on one flat input map, so a
@@ -306,7 +319,9 @@ wise_current_seed <- function(default = WISEAPP_DEFAULT_SEED,
 #'
 #' @param input   The root session's `input` object.
 #' @param seed    Base random seed in force for the session.
-#' @param provenance Optional list of per-step run provenance records.
+#' @param provenance Optional list of per-step run provenance records. When
+#'   every record names the same seed, that seed is the top-level
+#'   `random_seed`, so the bundle does not contradict its own step records.
 #'
 #' @return A named list ready for `jsonlite::toJSON()`.
 #' @noRd
@@ -332,7 +347,7 @@ wise_config_snapshot <- function(input, seed = WISEAPP_DEFAULT_SEED,
       error = function(e) NA_character_
     ),
     r_version = paste0(R.version$major, ".", R.version$minor),
-    random_seed = as.integer(seed),
+    random_seed = .export_run_seed(provenance, seed),
     provenance = provenance,
     inputs = vals
   )

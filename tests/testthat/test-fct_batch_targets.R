@@ -107,3 +107,29 @@ test_that("the reproducibility check runs on a manifest with unrecorded values",
   expect_match(txt, "wiseapp commit")
   expect_match(txt, "renv.lock")
 })
+
+test_that("the data work item carries the fingerprints of its countries' survey files", {
+  spec <- wise_spec(sample = list(countries = "BFA"))
+  ids <- wise_spec_ids(spec)
+  runs <- tibble::tibble(
+    data_id = ids$data_id, weather_id = ids$weather_id, fit_id = ids$fit_id,
+    sim_id = ids$sim_id, policy_id = ids$policy_id, wxvar_ids = list(ids$wxvar_ids), spec = list(spec)
+  )
+  files <- function(sha) {
+    data.frame(file = c("BFA/BFA_2018_EHCVM_hh.parquet", "NER/NER_2018_X_hh.parquet"), sha256 = c(sha, "n"))
+  }
+  item <- function(sha) {
+    wise_batch_unique(list(runs = runs, source = list(metadata_digest = "m"), data_files = files(sha)), "data")
+  }
+  expect_identical(item("a"), item("a"))
+  expect_false(identical(item("a"), item("b")))
+  expect_identical(item("a")[[1]]$survey_files$file, "BFA/BFA_2018_EHCVM_hh.parquet")
+
+  # Another country's file does not rerun this item.
+  other <- files("a")
+  other$sha256[2] <- "changed"
+  expect_identical(
+    item("a"),
+    wise_batch_unique(list(runs = runs, source = list(metadata_digest = "m"), data_files = other), "data")
+  )
+})

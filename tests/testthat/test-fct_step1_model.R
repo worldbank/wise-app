@@ -531,3 +531,10 @@ test_that("outcome-flagged variables can be interactions, except the outcome of 
     "Interaction variable\\(s\\) not available in the data: urban"
   )
 })
+
+test_that("the fit stores the seed it used and provenance reads it back", {
+  fx <- model_fixture()
+  mf <- core_fit(fx, seed = 999L)
+  expect_identical(mf$.seed, 999L)
+  expect_equal(wise_provenance(1L, mf, seed = 123L)$random_seed, 999L)
+})

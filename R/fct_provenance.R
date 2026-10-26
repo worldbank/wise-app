@@ -136,13 +136,26 @@
   paste(Filter(function(x) !is.na(x) && nzchar(x), parts), collapse = " / ")
 }
 
+#' Seed stored with a result
+#'
+#' @param result A stored step result.
+#' @return A single integer, or NA when the result records none.
+#' @noRd
+.provenance_result_seed <- function(result) {
+  stored <- result$.seed %||% result$seed %||% result$.run$seed
+  suppressWarnings(as.integer(stored)[1L])
+}
+
 #' Build an immutable provenance record for one step's results
 #'
 #' @param step   Integer step number.
 #' @param result The stored result object (carries `.sig` and, for Step 1,
 #'   `.snap`). NULL when the step has not run.
 #' @param connection_params Connection parameters for the data source.
-#' @param seed   Base random seed.
+#' @param seed   Seed to record when the result carries none of its own. A
+#'   seed stored with the result (`.seed` on a Step 1 fit, `seed` on a
+#'   simulation) always wins, so the record names the seed the run used, not
+#'   the seed in force when the record is read.
 #' @param extra  Named list of step-specific fields to append.
 #' @param label_fun Optional variable-name to label mapping.
 #'
@@ -172,11 +185,14 @@ wise_provenance <- function(step, result, connection_params = NULL,
     paste(as.character(v), collapse = ", ")
   }
 
+  run_seed <- .provenance_result_seed(result)
+  if (is.na(run_seed)) run_seed <- as.integer(seed)
+
   rec <- list(
     step = as.integer(step),
     step_label = .export_step_label(step),
     run_signature = .provenance_digest(sig),
-    random_seed = as.integer(seed),
+    random_seed = run_seed,
     app_version = tryCatch(as.character(golem::get_golem_version()),
       error = function(e) NA_character_
     ),
