@@ -100,6 +100,24 @@ Meaningfulness of `WISEAPP_AXE_FAIL=1`: before the fix the same script exits 1 w
 
 The tracker was cut to open work only. Verbatim text of what left it follows: the closed and deferred list with reopen triggers, the long forms of rows that stay open (their done parts), Known gaps in finished items, Performance baselines with the local measurements, and the Log from 2026-10-23.
 
+### Tracker maintenance restructure (2026-10-26)
+
+The active tracker now groups app/repository maintenance by category, with stable IDs, severity, effort, status, next action and evidence/source. Review-batch counts and the rolling Log are retired; git history records routine changes. Closure evidence, numerical Decision log entries and deferred decisions remain in this archive. No existing finding was closed by this restructure. The former browser checklist is now UX-01; CR-A11Y-09 remains open with an explicit CI dependency.
+
+The former "Waiting on the user" CR-PERF-13 note is historical, not new open work: user accepted the lower Step 3 worker peak on 2026-10-08, with no Max Processes change. Still unmeasured: Step 2's own 2x2 daemon peak, deployed cold start, 3x3. Detailed evidence remains under the earlier worker-memory entries; B6 reopen triggers govern further work. The former "Before a deploy" manifest reminder is a standing release rule in AGENTS.md/wise-verify, not a separate issue.
+
+Current Log moved verbatim from TRACKING.md (historical status/commit wording retained; consult git and later closure records for current state):
+
+- 2026-10-26 - CR-SEC-09 closed with CSP rollout deferred (user; B2 open count 1 to 0). App-owned inline-script guard passes; no Connect CSP deployment or enforcement verified. Full row, evidence and reopen trigger in the archive addendum.
+- 2026-10-26 - SP-07 closed as superseded legacy bookkeeping (user; B11 open count 1 to 0). Historical before/after checks were already dropped on 2026-10-23; BFA shock-fixture benchmarks are recorded in the archived SP tasks. No new numerical validation claimed; full row and reopen trigger in the archive addendum.
+- 2026-10-26 - MR-09 closed as a documented specification consideration (user; B12 open count 3 to 2). `docs/20_model_specification.md` highlights the area-by-round tradeoff; no estimator change, new specification test or empirical comparison. Full row and reopen trigger in the archive addendum.
+- 2026-10-26 - OPT-06 archived as deferred (user; B6 open count 4 to 3). No measured need for batching, XGBoost remains deferred, and the DuckDB/Parquet investigation is already archived. Full row, evidence and reopen triggers in the archive addendum; no runtime change or new speed claim.
+- 2026-10-26 - OPT-03 archived as deferred (user; B6 open count 3 to 2). Hex-engine lazy loading needs map-container restructuring and has no measured user-facing benefit. Full row and reopen trigger in the archive addendum; no UI or runtime change.
+- 2026-10-26 - OPT-02 and R2-PERF-01 archived with remaining work deferred (user; B6 open count 2 to 0). Startup/Step 3 pain is low; existing result-memory savings retained, further artifact redesign and outstanding validation deferred, not verified. Full rows, evidence limits, rejected experiments and reopen triggers in the archive addendum.
+- 2026-10-26 - BP-01 closed (user; B13 open count 1 to 0). `dev/batch_parity_bfa_policy.R` now checks that the Export bundle CSVs equal the module tables and that the app configuration gives the same stage ids as the batch run; fixture and BFA runs pass. Not driven: the browser download. Not committed yet. Full row, evidence and reopen trigger in the archive addendum.
+- 2026-10-26 - MR-05 closed (`d449ec6`; B12 open count 2 to 1). Weather files are fingerprinted in the stage items (H3 files were already covered by the data item); a changed weather or H3 file reruns the branches that read it. Full row and evidence in the archive addendum.
+- 2026-10-26 - MR-06 closed (B12 open count 1 to 0). Real-data check: no location with observed weather lacks a climate cell. Known data limitations documented in `docs/10_data.md` and `docs/31_climate_scenarios.md`: `loc_id` without H3 cells, H3 cells outside ERA5-Land, variables missing for some climate models, `mrsos` undefined at some coastal and island locations. Full row and evidence in the archive addendum.
+
 ### Closed and deferred list (reopen triggers)
 
 - OPT-02 (archived as deferred 2026-10-26, user): low startup/Step 3 pain. Reopen on reported slow Connect startup, a slow Step 3 run or metric switch, or Linux/Connect measurements showing the Shiny process is memory-bound. No deployment change or current Connect cold-start measurement claimed; full row below.

@@ -105,10 +105,10 @@ commit household-level frames.
   the before/after table with the spec, commits, seed and library setup, what
   was not changed, and what was not checked (for example "the Step 3 pane was
   not driven in the browser"). New entries go in the addendum of
-  `review/archive/REVIEW-2026-10-06-tracking-full.md` or as a row in
-  `review/TRACKING.md`; the last two (DOC-11) are the model.
-- **Log line** in the tracking file: date, finding id, one sentence on what
-  moved and by how much.
+  `review/archive/REVIEW-2026-10-06-tracking-full.md`; the DOC-11 entries
+  are examples. Link the entry from the active issue if work remains.
+- **Tracker**: update only the open remainder, or archive/remove the row per
+  `review/TRACKING.md`, Working rules. No routine Log line; use git history.
 - **Methods page**: update the equation or text in `docs/`, set
   `verified_against` to the commit, `Rscript dev/docs_index.R`, then
   `Rscript dev/docs_check.R`.
