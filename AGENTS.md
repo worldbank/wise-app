@@ -56,10 +56,10 @@ Step 0 Overview, Step 1 Modelling, Step 2 Simulation, Step 3 Policy scenarios; d
 
 | Change | Also |
 |---|---|
-| Any `R/` file | Run the matching test file (`test-<file>.R`; some use hyphens, so also try `filter = "<topic>"`) |
+| Any `R/` file | Run the matching tests (skill `wise-verify` has the map; file names mix `_` and `-`, so use `filter = "fct.name"`) |
 | Roxygen block or exports | `devtools::document()`; check the `NAMESPACE` and `man/` diff |
 | A method (estimator, simulation, metric, policy mechanics) | Update the methods page in `docs/`, its `verified_against`; run `Rscript dev/docs_check.R` |
-| Model or simulation outputs | Determinism tests; Decision log with BFA before/after |
+| Model or simulation outputs | Skill `wise-numeric-change` (determinism tests, Decision log with BFA before/after) |
 | A batch table builder | `batch/docs/tables.md`; batch tests (`ARCHITECTURE.md`, Testing details) |
 | UI (modules, CSS, charts, maps) | Check in the running app (skill `wise-ui-check`); `tests/e2e/smoke.R` for larger changes |
 | Performance | Skill `wise-benchmark` |
@@ -73,6 +73,8 @@ Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If y
 
 | Skill | Use when |
 |---|---|
+| `wise-verify` | A change is finished: which tests to run and which follow-ups it owes |
+| `wise-numeric-change` | Model, simulation or policy numbers move on purpose: tests, BFA before/after, Decision log |
 | `wise-ui-check` | A change touches the UI, or the user asks to run, screenshot or inspect the app |
 | `wise-benchmark` | Benchmarking or claiming a speed or memory improvement |
 | `wise-hygiene-pass` | Cleanup, style, lint or dead-code pass over `R/` with no behaviour change |

@@ -13,7 +13,7 @@ Status: `✓` done · `☐` todo.
 | R3a | Skills findable by every agent | ✓ 2026-10-26 | Skills table in `AGENTS.md`; agents without native skill support read the `SKILL.md` on demand. |
 | R5 | Write-back rule | ✓ 2026-10-26 | "Keeping these instructions current" section in `AGENTS.md`. |
 | R4 | `dev/agents_check.R` in CI | ✓ 2026-10-26 | Job `agents-check` in `R-CMD-check.yaml`. Checks paths and functions named in `AGENTS.md`, `ARCHITECTURE.md`, skills and the two standards; skill front matter and listing in `AGENTS.md`; size budgets; version match. Budget for `ARCHITECTURE.md` is a ratchet just above today's size; lower it when trimmed. |
-| R6 | Missing skills | ☐ | Section 2. Start with `wise-verify`, `wise-numeric-change`. |
+| R6 | Missing skills | ◐ | `wise-verify` and `wise-numeric-change` written 2026-10-26. Remaining in section 2. |
 | R7 | `review/README.md` index; archive finished plans | ☐ | `review/` is 1.0 MB; agents read finished plans as current guidance. |
 | R3b | One shared skills folder, pointed to from the README; no copies in the repo | ✓ 2026-10-26 | Skills moved with `git mv` to `.agents/skills/`. `.claude/skills` is a git-ignored local link (`ln -s ../.agents/skills .claude/skills`); setup in README "Agent skills" and the Skills section of `AGENTS.md`. |
 | R9 | Trim `ARCHITECTURE.md` | ✓ 2026-10-26 | 23 KB to 9 KB. Deployment settings moved intact to `DEPLOYMENT.md`; per-file prose and the lever, uncertainty and decomposition detail now point to `docs/` pages and R file headers. Budgets in `dev/agents_check.R` lowered to match. |
@@ -30,8 +30,6 @@ Status: `✓` done · `☐` todo.
 
 | Skill | Purpose |
 |---|---|
-| `wise-verify` | End-of-task checklist: changed files to the narrowest tests and follow-up duties. Expands the "After you change X" table in `AGENTS.md`. Note test naming is mixed (`test-fct_*` and `test-fct-*`), so `filter =` can miss files. |
-| `wise-numeric-change` | When outputs move: determinism tests, BFA before/after with `dev/batch_parity_bfa*.R`, Decision log, methods page. |
 | `wise-close-finding` | Close a review finding per the tracking file's Working rules. |
 | `add-policy-lever` | Registry-driven lever, special behaviours, controls, batch configs. |
 | `add-metric` | `fct_metric_registry.R` and its consumers. |
