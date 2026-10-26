@@ -253,6 +253,13 @@ another machine, restore the lock (`renv::restore()`), set `WISEAPP_DATA_PATH`
 and run `Rscript check_reproducibility.R`; it exits with status 1 and prints
 what differs. `Rscript run.R` then reproduces the tables.
 
+Name `model.fixed_effects` in the spec. When it is left out, the fit takes the
+default (`year`, `gaul1_code` where the data has them) at fit time, and the stage
+ids do not record it. A spec built from an app export names it, so it gets
+different ids from the same spec without it, although the fit is the same. The
+resolved fixed effects are in the `fixed_effects` column of the `model_fit` spec
+table.
+
 ## Checking against the app
 
 `dev/batch_parity_bfa.R`, `dev/batch_parity_bfa_models.R`,
