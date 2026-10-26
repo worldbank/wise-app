@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, weather-measures]
 symbols: [y, W, M, X, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation
 code: [R/fct_model_select.R, R/fct_step1_model.R, R/fct_fit_model.R, R/mod_1_06_model.R, R/fct_model_card.R, R/fct_results.R, R/fct_simulations.R]
-verified_against: 72a2fdb
+verified_against: e577575
 ---
 
 # Model specification and estimation sample
@@ -46,6 +46,8 @@ Fixed effects are absorbed, not estimated as dummies. For linear models the esti
 $$\ddot y_i = \ddot Z_i^{\prime}\phi + \ddot\varepsilon_i, \qquad Z_i = \big(W_i,\ M_i,\ W_i\otimes M_i,\ X_i\big) \qquad \text{(2.1)}$$
 
 so that the coefficients are identified from the residual variation of $Z_i$ after additive survey-year and administrative-area effects are removed ([01_framework](01_framework.md), Eq. (3.1)). The fixed effects enter as separate terms, $\alpha_{g(i)} + \lambda_{t(i)}$, and are not interacted: there is no area-by-round cell effect. A regressor that is fully explained by the two sets of effects is dropped as collinear, but one that varies across areas and rounds in a way the additive effects cannot absorb is kept, even if it is constant within each area-round cell. Area-specific changes across rounds are therefore not removed, and they can confound the weather coefficients. The default fixed effects are the survey year, shared by all units of a round, and the first administrative level.
+
+> **Specification consideration: area-by-round effects.** For a study where regional shocks or programmes may correlate with weather, consider assessing an area-by-round specification as a sensitivity analysis. It would absorb shocks common to each area-round cell, but would identify weather effects only from variation remaining within those cells after controls. With coarse weather assignment or narrow survey fieldwork windows, that variation may be limited or absent; cell-constant weather terms and controls would be absorbed. This is not the app's current specification or an automatic improvement. A future implementation should check identifying variation, sample support, collinearity and prediction support, and compare coefficients and downstream simulation results on a common sample before adopting it. Neither additive nor interacted effects alone establish causal identification.
 
 Fixed effects fitted on the estimation sample are reused to predict. A unit in a cell that is absent from the estimation sample cannot be predicted with those effects; its prediction is missing ([30_simulation](30_simulation.md)).
 

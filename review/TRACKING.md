@@ -14,7 +14,7 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
-| B12 | Methodology review follow-ups | 3 |
+| B12 | Methodology review follow-ups | 2 |
 | B13 | Batch pipeline follow-ups | 1 |
 
 B1, B2, B3, B4, B5, B7 and B11 have no open rows.
@@ -79,7 +79,6 @@ Source: `review/archive/methodology_review_2026-10-26.md` (closed 2026-10-26; it
 |---|---|---|---|---|
 | MR-05 | L | S | ☐ | The batch data work item fingerprints the survey files only. H3 and weather files do not enter any stage identifier (stated in `docs/52_batch_runs.md`). Add their fingerprints and a two-run integration test that changes one input file and checks the affected branches rerun. |
 | MR-06 | L | S | ☐ | Real-data check of the climate grid rule (expected location-months from the requested locations, independent of members): a location with no climate cell excludes every member. The five BFA members excluded on 2026-10-26 (all 7152 location-months missing) are known and expected; what is left is to confirm that no requested location lacks a climate cell. |
-| MR-09 | M | M | ☐ | Finding 1 follow-up: add a specification test that distinguishes additive from interacted fixed effects, and assess an area-by-round specification as a separate methodological decision (identification and support diagnostics, numerical parity). Do not change the estimator silently. |
 
 ## B13 - Batch pipeline follow-ups
 
@@ -99,3 +98,4 @@ Entries up to 2026-10-26 are in the archive ("Log moved from the tracker" and ea
 
 - 2026-10-26 - CR-SEC-09 closed with CSP rollout deferred (user; B2 open count 1 to 0). App-owned inline-script guard passes; no Connect CSP deployment or enforcement verified. Full row, evidence and reopen trigger in the archive addendum.
 - 2026-10-26 - SP-07 closed as superseded legacy bookkeeping (user; B11 open count 1 to 0). Historical before/after checks were already dropped on 2026-10-23; BFA shock-fixture benchmarks are recorded in the archived SP tasks. No new numerical validation claimed; full row and reopen trigger in the archive addendum.
+- 2026-10-26 - MR-09 closed as a documented specification consideration (user; B12 open count 3 to 2). `docs/20_model_specification.md` highlights the area-by-round tradeoff; no estimator change, new specification test or empirical comparison. Full row and reopen trigger in the archive addendum.
