@@ -2,7 +2,7 @@
 # Rscript check_reproducibility.R
 #
 # Compares the wiseapp version and commit, the R and duckdb versions, renv.lock
-# and the survey files in WISEAPP_DATA_PATH with the values the run recorded.
+# and the survey, H3 and weather files in WISEAPP_DATA_PATH with the values the run recorded.
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
@@ -31,9 +31,10 @@ checks <- data.frame(
 )
 
 if (is.data.frame(m$data_files) && nzchar(data_path)) {
-  cur <- vapply(m$data_files$file, function(f) now_sha(file.path(data_path, "microdata", f)), "")
+  dirs <- if (is.null(m$data_files$dir)) rep("microdata", nrow(m$data_files)) else m$data_files$dir
+  cur <- vapply(seq_along(dirs), function(i) now_sha(file.path(data_path, dirs[i], m$data_files$file[i])), "")
   checks <- rbind(checks, data.frame(
-    item = paste("data:", m$data_files$file), recorded = m$data_files$sha256,
+    item = paste("data:", dirs, m$data_files$file), recorded = m$data_files$sha256,
     current = unname(cur), stringsAsFactors = FALSE
   ))
 }

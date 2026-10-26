@@ -182,15 +182,20 @@ wise_batch_template <- function(path) {
   dir
 }
 
-# The survey files (name and SHA-256) of the countries of one data item, so a
-# changed file reruns the item. NULL when the source has no file digest.
-.batch_item_files <- function(data_files, countries) {
+# The input files (folder, name and SHA-256) of the countries of one item in
+# the given data folders, so a changed file reruns the item. NULL when the
+# source has no file digest.
+.batch_item_files <- function(data_files, countries, dirs = "microdata") {
   if (is.null(data_files) || !length(countries)) {
     return(NULL)
   }
-  hit <- grepl(paste0("^(", paste(countries, collapse = "|"), ")_"), basename(data_files$file))
-  if (any(hit)) data_files[hit, c("file", "sha256"), drop = FALSE] else NULL
+  hit <- (data_files$dir %||% "microdata") %in% dirs &
+    grepl(paste0("^(", paste(countries, collapse = "|"), ")_"), basename(data_files$file))
+  if (any(hit)) data_files[hit, intersect(c("dir", "file", "sha256"), names(data_files)), drop = FALSE] else NULL
 }
+
+# The historical and projected weather folders of the data folder.
+.BATCH_WEATHER_DIRS <- c("hazard/weather/historical", "hazard/weather/projections")
 
 #' Resolve the run grid
 #'
@@ -280,7 +285,8 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
       function(id, data_id, spec) {
         list(
           id = id, data_id = data_id, spec = sections(spec, "source", "weather", "seed"),
-          data_file = data_file(data_id), stamps = list(data = .batch_stamp(data_file(data_id)))
+          data_file = data_file(data_id), stamps = list(data = .batch_stamp(data_file(data_id))),
+          weather_files = .batch_item_files(grid$data_files, spec$sample$countries, .BATCH_WEATHER_DIRS[1L])
         )
       },
       runs$weather_id[keep], runs$data_id[keep], runs$spec[keep]
@@ -317,6 +323,7 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
           spec = sections(spec, "source", "sample", "outcome", "sim", "seed"),
           data_file = files$data, frame_file = files$frame, fit_file = fit_file,
           stamps = lapply(files, .batch_stamp),
+          weather_files = .batch_item_files(grid$data_files, spec$sample$countries, .BATCH_WEATHER_DIRS),
           # The Step 2 run is stored for the policy branches that read it.
           needs_step2 = any(!is.na(runs$policy_id[runs$sim_id %in% id]))
         )
@@ -357,7 +364,8 @@ wise_batch_unique <- function(grid, stage = c("data", "weather", "frame", "fit",
             weather = c(spec$weather[v], list(hist_years = spec$weather$hist_years))
           ),
           data_file = data_file(runs$data_id[i]),
-          stamps = list(data = .batch_stamp(data_file(runs$data_id[i])))
+          stamps = list(data = .batch_stamp(data_file(runs$data_id[i]))),
+          weather_files = .batch_item_files(grid$data_files, spec$sample$countries, .BATCH_WEATHER_DIRS[1L])
         )
       }
     }
@@ -956,31 +964,38 @@ wise_batch_policy <- function(item) {
   if (length(out)) out[1L] else NA_character_
 }
 
-#' SHA-256 of the survey files of the run's economies
+#' SHA-256 of the input files of the run's economies
 #'
 #' Local data folders only: other sources return `NULL`. Hashes the parquet
-#' files under `microdata/` whose names start with an economy code of the runs.
-#' With `cache_file`, a digest is reused while the size and modification time of
-#' its file are unchanged, so a rerun does not read the data again.
+#' files under `microdata/` (survey and H3 files) and under
+#' `hazard/weather/historical` and `hazard/weather/projections` whose names
+#' start with an economy code of the runs. With `cache_file`, a digest is
+#' reused while the size and modification time of its file are unchanged, so a
+#' rerun does not read the data again.
 #' @noRd
 .batch_data_digest <- function(path, runs, cache_file = NULL) {
   if (!nzchar(path %||% "") || !dir.exists(file.path(path, "microdata"))) {
     return(NULL)
   }
   codes <- unique(unlist(lapply(runs$spec, function(s) s$sample$countries)))
-  files <- list.files(file.path(path, "microdata"), pattern = "\\.parquet$", recursive = TRUE)
-  files <- files[grepl(paste0("^(", paste(codes, collapse = "|"), ")_"), basename(files))]
-  files <- sort(files)
-  if (!length(files)) {
+  pattern <- paste0("^(", paste(codes, collapse = "|"), ")_")
+  found <- lapply(c("microdata", .BATCH_WEATHER_DIRS), function(dir) {
+    files <- list.files(file.path(path, dir), pattern = "\\.parquet$", recursive = TRUE)
+    files <- sort(files[grepl(pattern, basename(files))])
+    data.frame(dir = rep(dir, length(files)), file = files)
+  })
+  found <- do.call(rbind, found)
+  if (!nrow(found)) {
     return(NULL)
   }
   cache <- if (!is.null(cache_file) && file.exists(cache_file)) {
     tryCatch(readRDS(cache_file), error = function(e) NULL)
   }
-  full <- file.path(path, "microdata", files)
+  keys <- paste(found$dir, found$file, sep = "/")
+  full <- file.path(path, keys)
   stamps <- paste(file.size(full), as.numeric(file.mtime(full)))
-  sha <- vapply(seq_along(files), function(i) {
-    hit <- cache[[files[i]]]
+  found$sha256 <- vapply(seq_along(keys), function(i) {
+    hit <- cache[[keys[i]]]
     if (!is.null(hit) && identical(hit$stamp, stamps[i])) {
       hit$sha256
     } else {
@@ -989,11 +1004,11 @@ wise_batch_policy <- function(item) {
   }, "")
   if (!is.null(cache_file)) {
     saveRDS(
-      stats::setNames(Map(function(s, h) list(stamp = s, sha256 = h), stamps, sha), files),
+      stats::setNames(Map(function(s, h) list(stamp = s, sha256 = h), stamps, found$sha256), keys),
       cache_file
     )
   }
-  data.frame(file = files, sha256 = sha, row.names = NULL)
+  found
 }
 
 #' Write the results store

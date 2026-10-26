@@ -160,6 +160,36 @@ test_that("the pipeline writes the store, reuses shared work and records failure
   expect_identical(nrow(arrow::read_parquet(file.path(out, "runs.parquet"))), 3L)
 })
 
+test_that("a rebuilt H3 or weather file reruns the branches that read it", {
+  data <- withr::local_tempdir()
+  batch_fixture_tree(data)
+  proj <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_DATA_PATH = data)
+  write_project(proj, grid_yaml)
+  make_it(proj)
+
+  # Weather file: the data branch is reused, the weather branches rerun.
+  w_file <- file.path(data, "hazard", "weather", "historical", "TST", "TST_era5land.parquet")
+  w <- arrow::read_parquet(w_file)
+  w$tx <- w$tx + 1
+  arrow::write_parquet(w, w_file)
+  make_it(proj)
+  p <- progress(proj)
+  expect_identical(p["weather_tables", "completed"], 2L)
+  expect_identical(p["data_tables", "skipped"], 1L)
+  expect_identical(p["data_frames", "skipped"], 1L)
+
+  # H3 file: the data branch reruns.
+  h_file <- file.path(data, "microdata", "h3", "TST", "TST_2018_SRV_lsms_h3.parquet")
+  h <- arrow::read_parquet(h_file)
+  h$pop_2020 <- h$pop_2020 + 1L
+  arrow::write_parquet(h, h_file)
+  make_it(proj)
+  p <- progress(proj)
+  expect_identical(p["data_frames", "completed"], 1L)
+  expect_identical(p["data_tables", "completed"], 1L)
+})
+
 test_that("a data set that fails is recorded and the others still run", {
   data <- withr::local_tempdir()
   batch_fixture_tree(data)

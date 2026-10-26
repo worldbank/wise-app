@@ -26,11 +26,11 @@ Where the specification leaves a setting out, the run takes the app's default. T
 - **Same numbers as the app.** For a given specification and seed, the tables hold the numbers that the app shows for the same settings. This is checked against the app's own functions for one country, per release, on real data. It is not part of the automated tests that run on every change, except for a small fixture run.
 - **Aggregates only.** Batch tables hold aggregate statistics. They never hold household-level results, maps or microdata.
 - **Raw values.** Values are not rounded. Rounding is for display.
-- **Reproducibility.** The seed drives every random draw, as in the app ([51_reproducibility](51_reproducibility.md)). A manifest records the versions of the package, R and DuckDB, a hash of the package lock file and a checksum of each local survey file. A check script compares a second machine with the manifest and lists what differs.
+- **Reproducibility.** The seed drives every random draw, as in the app ([51_reproducibility](51_reproducibility.md)). A manifest records the versions of the package, R and DuckDB, a hash of the package lock file and a checksum of each local survey, H3 and weather file. A check script compares a second machine with the manifest and lists what differs.
 
 ### 2. Caching by stage
 
-Each stage of a run (the survey sample, a weather variable, a model fit, a simulation, a policy) has an identifier that is a hash of the parts of the specification it depends on. Runs with equal identifiers share the work, so a grid that varies only the policy runs the survey, the weather, the model and the simulation once. A stage is recomputed if its inputs change. The survey stage includes the name and SHA-256 checksum of each survey file of its countries in its work item, so a rebuilt survey file reruns it and everything downstream. The location (H3) files and the weather files are not part of any identifier: a rebuilt one does not rerun a stage on its own. Every table carries the identifier of its stage, which is how results are joined to the settings of the runs that use them.
+Each stage of a run (the survey sample, a weather variable, a model fit, a simulation, a policy) has an identifier that is a hash of the parts of the specification it depends on. Runs with equal identifiers share the work, so a grid that varies only the policy runs the survey, the weather, the model and the simulation once. A stage is recomputed if its inputs change. The work item of a stage includes the name and SHA-256 checksum of the input files of its countries, so a rebuilt file reruns the stage and everything downstream. The survey stage reads the survey and location (H3) files. The weather and frame stages read the historical weather files, and the simulation stage reads the historical and projected weather files. The checksums are not part of any identifier: the identifiers stay the same, and the stage reruns in place. A checksum is computed once per file and reused while its size and modification time are unchanged. Every table carries the identifier of its stage, which is how results are joined to the settings of the runs that use them.
 
 ### 3. Tables
 
@@ -66,7 +66,7 @@ A failed stage does not stop independent runs. It is listed in a failures table 
 - At most two weather variables, and one or two economies.
 - Rules that the app applies from the data after its controls appear are not applied. In a policy run, a trigger variable, its direction and its return period must be stated, and a proxy means test needs its variable and cut-off.
 - Household-level outputs and maps.
-- Cache invalidation by input file covers the survey files only. A changed H3 or weather file needs a cleared cache, or a changed specification, to rerun the stages that read it.
+- Cache invalidation by input file covers the survey, H3 and weather files of the run's economies. A changed file of another economy does not rerun the stage. Files outside `microdata/` and `hazard/weather/` (for example `hazard/events/`) are not covered.
 
 ## In the app
 
@@ -85,7 +85,7 @@ None. Full entries for other pages are in [references](references.md).
 | Specification, defaults, validation | Setup | `R/fct_batch_spec.R` `wise_spec_read()`, `wise_spec_expand()`; `R/fct_spec_defaults.R` `wise_spec_defaults()` |
 | Start from an app configuration | Setup | `R/fct_batch_spec.R` `wise_spec_from_config()` |
 | Runner and caching by stage | Section 2 | `R/fct_batch_targets.R` `wise_targets()`, `wise_batch_controller()`, `wise_batch_template()` |
-| Survey-file fingerprints in the data work item | Section 2 | `R/fct_batch_targets.R` `.batch_item_files()` |
+| Input-file fingerprints in the stage work items | Section 2 | `R/fct_batch_targets.R` `.batch_item_files()`, `.batch_data_digest()` |
 | Step 0 and 1 tables | Section 3 | `R/fct_step1_tables.R`; `R/fct_step1_model_tables.R` |
 | Step 2 tables | Section 3 | `R/fct_step2_tables.R` |
 | Step 3 tables | Section 3 | `R/fct_step3_tables.R` `step3_batch_tables()` |
