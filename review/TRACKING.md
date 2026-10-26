@@ -17,7 +17,6 @@ Status: `☐` todo, `◐` in progress, `blocked` awaiting a named dependency. Cl
 
 | ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
 |---|---|---|---|---|---|
-| UR-02 | L | S | blocked | Measure seed variation with shock-responsive forecast and predicted-welfare layers enabled; the existing 20-seed check exercised targeting draws only. Blocked by SP-09 (the forecast layer is off in every run until it is fixed). Predicted-welfare layer already measured (2026-10-26, 8 seeds, Step 3 reseeded on one Step 2 run): coefficient of variation of the mean annual cost 0.75 to 0.97% (targeting only: about 0.6%), false-negative rate 4 to 7%, false-positive rate below 1%. After SP-09: rerun the forecast policies (POD 70, FAR 20, multiplier 1.5) over about 8 seeds by calling `wise_batch_policy()` with other `spec$seed` on the stored Step 2 run, then update `docs/43_shock_responsive_sp.md` and close. | `archive/uncertainty_residuals_review.md`; `docs/43_shock_responsive_sp.md` states the exclusion. Existing check: about 1.1% variation in cost/effect. |
 
 ## UX and Accessibility
 

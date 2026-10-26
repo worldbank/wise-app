@@ -613,3 +613,22 @@ Running app (headless Chrome, `dev/ui_drive.R`, BFA defaults, linear model, Step
 Docs: `docs/42` and `docs/43` already describe the restored behaviour (Section 5 of docs/43); `verified_against` set to `3f4fc5f` on both, `dev/docs_index.R` and `dev/docs_check.R` run (0 problems). Docs 42 was re-read only for the regular program and the amount/targeting parts, not re-derived.
 
 Not checked: the RIF engine with a shock timing run (the change is in the shared configuration, upstream of the engine); the export and provenance of a Step 3 config with timing; the batch `policy_summary` tables beyond `policy_measures` and `annual`; seeds other than 123 (seed spread is UR-02).
+
+### UR-02 closed: seed variation with the forecast and predicted-welfare layers (2026-10-26)
+
+Row as it stood:
+
+| UR-02 | L | S | blocked | Measure seed variation with shock-responsive forecast and predicted-welfare layers enabled; the existing 20-seed check exercised targeting draws only. Blocked by SP-09 (the forecast layer is off in every run until it is fixed). Predicted-welfare layer already measured (2026-10-26, 8 seeds, Step 3 reseeded on one Step 2 run): coefficient of variation of the mean annual cost 0.75 to 0.97% (targeting only: about 0.6%), false-negative rate 4 to 7%, false-positive rate below 1%. After SP-09: rerun the forecast policies (POD 70, FAR 20, multiplier 1.5) over about 8 seeds by calling `wise_batch_policy()` with other `spec$seed` on the stored Step 2 run, then update `docs/43_shock_responsive_sp.md` and close. | `archive/uncertainty_residuals_review.md`; `docs/43_shock_responsive_sp.md` states the exclusion. Existing check: about 1.1% variation in cost/effect. |
+
+Outcome (commit pending, one commit for UR-02, after the SP-09 commit). Method: the stored Step 2 run of the earlier UR-02 session (BFA, seed 101, SSP3-7.0 2025-2035, hist 1991-2020, user covariates hhsize, electricity, cellphone, t binned, r continuous), `wise_batch_policy()` re-run on the SP-09 fix with `spec$seed` 101 to 108 for four policies: base (ex post), forecast (POD 70, FAR 20, m 1.5), predicted welfare (poorest 30%, 10% inclusion and exclusion errors) and both; 60 PPP per payment, poorest 30% by targeting, 5% administration, trigger `t_cont` return period 5. 32 runs, no failures. Coefficient of variation between seeds (SD / mean, per cent), Historical / SSP3-7.0:
+
+| Measure | base | forecast | predicted welfare | both |
+|---|---|---|---|---|
+| Mean annual cost | 0.61 / 0.58 | 1.69 / 0.73 | 0.97 / 0.75 | 2.61 / 1.55 |
+| Cost 1-in-20 | 1.05 / 0.59 | 3.62 / 1.25 | 3.23 / 0.89 | 5.07 / 1.07 |
+| False-negative rate | 0 / 0 | 9.3 / 3.6 | 7.3 / 4.1 | 7.8 / 2.7 |
+| False-positive rate | 0 / 0 | 1.8 / 0.9 | 0.6 / 0.3 | 2.0 / 1.1 |
+
+Activation frequency did not vary (0.933 Historical for base and predicted welfare, 1.000 with the forecast layer; 0.998 / 1.000 SSP3-7.0). The predicted-welfare figures agree with the earlier partial measurement (cost CV 0.75 to 0.97%, FNR 4 to 7%). Mean values (Historical / SSP3-7.0, million): cost base 12.0 / 42.2, forecast 18.0 / 33.1, predicted welfare 4.8 / 17.5, both 7.0 / 13.6. `docs/43_shock_responsive_sp.md` ("Variation between random draws") now states these ranges. No code change.
+
+Not checked: the average effect on mean welfare and on the poverty rate across seeds with the layers on (a second run for the annual table was started and stopped on the user's request to save time; the earlier 1.1% for the targeting-only run stands); seeds beyond 8; Step 2 draws (one Step 2 result was reused).
