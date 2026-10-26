@@ -355,7 +355,7 @@ pages:
       - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
     code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
-    verified_against: "b4f2807"
+    verified_against: "f62a72b"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"
@@ -383,7 +383,7 @@ pages:
       - "Step 3 > Results, Diagnostics, Decomposition and Cost-effectiveness: the policy and baseline series side by side, the before-and-after summary of the changed variables, the channels and the cost per outcome gained."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model"
     code: ["R/fct_policy_sim.R", "R/fct_policy_registry.R", "R/fct_step3_input.R", "R/fct_step3_async.R", "R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_policy_sim_compare.R"]
-    verified_against: "1ecc93e"
+    verified_against: "f62a72b"
   - id: "policy-levers"
     file: "41_policy_levers.md"
     title: "Policy levers: access, percent change, travel time and labour market"
@@ -498,7 +498,7 @@ pages:
       - "A banner appears when the model has no weather-by-policy interaction, since the interaction channel is then zero."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab"
     code: ["R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_decomposition_summary.R", "R/fct_policy_sim.R"]
-    verified_against: "72a2fdb"
+    verified_against: "f62a72b"
   - id: "cost-effectiveness"
     file: "45_cost_effectiveness.md"
     title: "Cost-effectiveness of a cash transfer"

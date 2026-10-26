@@ -52,15 +52,16 @@
     return(list(status = "unavailable", reason = "Canonical main channel is unavailable or nonfinite."))
   }
   # DOC-10: the main effect is the effect of the policy at the weather the
-  # household experienced at its interview, so the weather channels evaluated
-  # at that weather (the interaction gamma * dD * W0; for the quantile model
-  # also the repositioning) belong to it. It is a household constant, so the
-  # main effect still does not vary with the simulated weather. The weather
-  # channels of a prediction row act on the change from this weather only, and
-  # main + repositioning + interaction is the full effect at the row's weather.
+  # household experienced at its interview, so the weather-by-policy interaction
+  # evaluated at that weather (gamma * dD * W0) belongs to it. It is a household
+  # constant, so the main effect still does not vary with the simulated weather.
+  # MR-12: the repositioning acts on the change from that weather only, never on
+  # its level, so it has no at-interview piece and a recoding of the weather
+  # (W + c) leaves the policy effect unchanged. The weather channels of a
+  # prediction row act on the change from the interview weather.
   at_interview <- .policy_explicit_channels(context, setNames(
     lapply(vars, function(v) context$svy_baseline[[v]]), vars))
-  at_interview_w0 <- at_interview$delta_res1 + at_interview$delta_res2
+  at_interview_w0 <- at_interview$delta_res2
   if (any(!is.finite(at_interview_w0))) {
     return(list(status = "unavailable", reason = "Main effect at the interview weather is nonfinite."))
   }
@@ -602,9 +603,10 @@
       context$weather_vars))
     ch$delta_res1 <- ch$delta_res1 - anchor$delta_res1
     ch$delta_res2 <- ch$delta_res2 - anchor$delta_res2
-    # DOC-10: the main effect is the effect at the interview weather
-    ch$delta_main <- ch$delta_main + anchor$delta_res1 + anchor$delta_res2
-    ch$delta_main_covar <- ch$delta_main_covar + anchor$delta_res1 + anchor$delta_res2
+    # DOC-10: the main effect carries the interaction at the interview weather
+    # (MR-12: not the repositioning, which acts on the weather change only)
+    ch$delta_main <- ch$delta_main + anchor$delta_res2
+    ch$delta_main_covar <- ch$delta_main_covar + anchor$delta_res2
     row <- pipeline$svy_row_id[i]
     y_t <- pipeline$y_point[i]
     transfer <- as.numeric(context$sp_transfer)[row]

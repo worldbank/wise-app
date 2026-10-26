@@ -178,9 +178,11 @@
 # standard deviations). At the weather x of a row, a household with positions
 # tau_pre and tau_post has
 #   correction = sum_lever d_lever b_lever(tau_pre)
-#              + sum_weather x (b_w(tau_post) - b_w(tau_pre))
+#              + sum_weather (x - x0) (b_w(tau_post) - b_w(tau_pre))
 #              + sum_weather,lever x d_lever b_wl(tau_post)
-# (for a binned weather variable x is the indicator of the row's bin). Each
+# (x0 the weather at the household's interview; for a binned weather variable x
+# and x0 are the indicators of the row's bin and of the interview bin, and the
+# interaction term takes the level x, as the channels do). Each
 # curve b(tau) is the linear interpolation of the grid coefficients, so the
 # loading is the same interpolation of the rows of the per-quantile Cholesky
 # basis of the joint covariance of the quantile equations.
@@ -351,9 +353,16 @@
       d <- d + dl * .policy_curve_rows(t$term, pre[h], context, rows_by_k)
     }
     x_of <- function(var) exposure$table[[var]][idx[r]]
+    x0_of <- function(var) context$svy_baseline[[var]][h]
     for (t in recipe$weather) {
+      # The repositioning acts on the change from the interview weather (MR-12)
       x <- x_of(t$var)
-      w <- if (is.na(t$level)) as.numeric(x) else as.numeric(as.character(x) == t$level)
+      x0 <- x0_of(t$var)
+      w <- if (is.na(t$level)) {
+        as.numeric(x) - as.numeric(x0)
+      } else {
+        as.numeric(as.character(x) == t$level) - as.numeric(as.character(x0) == t$level)
+      }
       sel <- which(w != 0)
       if (!length(sel)) next
       diff_rows <- .policy_curve_rows(t$term, post[h[sel]], context, rows_by_k) -

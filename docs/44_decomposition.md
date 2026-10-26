@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, linear-model, rif-model, metrics, socia
 symbols: [y, W, D, Delta, tau, beta, gamma, delta, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab
 code: [R/fct_policy_decompose.R, R/fct_policy_metric_decompose.R, R/fct_decomposition_summary.R, R/fct_policy_sim.R]
-verified_against: 72a2fdb
+verified_against: f62a72b
 ---
 
 # Decomposition of the policy effect into direct and resilience channels
@@ -152,7 +152,7 @@ User guide: [Interpreting the Decomposition tab](https://github.com/worldbank/wi
 | Household decomposition entry point | (3.3) | `R/fct_policy_decompose.R` `decompose_policy_effect()`, `.build_decomposition_context()` |
 | Covariate changes | (1.1) | `R/fct_policy_decompose.R` `.compute_policy_deltas()` |
 | Matching variables to terms | (1.1) | `R/fct_policy_sim.R` `.policy_lever_terms()` |
-| Channels per prediction row | Setup, (3.3) | `R/fct_policy_metric_decompose.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()` |
+| Channels per prediction row | (1.2), Setup, (3.3) | `R/fct_policy_metric_decompose.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()` |
 | Outcome-unit channels | (4.1) | `R/fct_policy_metric_decompose.R` `.policy_level_channels()` |
 | Cumulative states and contributions | (5.1), (5.2) | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()`, `.policy_metric_contributions()` |
 | Summary across years and members | Section 5 | `R/fct_policy_metric_decompose.R` `.policy_metric_summary()`, `.policy_metric_decomposition()` |

@@ -184,3 +184,89 @@ test_that("a RIF fit records the fallback to independent equations, and only the
   expect_null(attr(plain$fit3, "wise_joint_vcov"))
   expect_true(any(grepl("independent quantile equations", model_fit_table(plain)$text, fixed = TRUE)))
 })
+
+test_that("quantile policy effect and loading do not depend on the level of the weather (MR-12)", {
+  skip_if_not_installed("fixest")
+  set.seed(79)
+  n <- 300L
+  baseline <- data.frame(
+    code = "BFA", year = "2018", survname = "w", loc_id = seq_len(n), int_month = 1L,
+    temp = rnorm(n, 3, 1), weight = 1
+  )
+  baseline$welfare <- exp(1 - 0.1 * baseline$temp + rnorm(n, 0, 0.5))
+  poor <- baseline$welfare <= stats::quantile(baseline$welfare, 0.3)
+  policy <- baseline
+  policy[[SP_TRANSFER_COL]] <- ifelse(poor, 0.5 * stats::median(baseline$welfare), 0)
+  sm <- build_selected_model(model_type = "Unconditional quantile regression (RIF)",
+    engine = "rif", cluster = "loc_id")
+  sw <- data.frame(name = "temp", cont_binned = "Continuous", stringsAsFactors = FALSE)
+  so <- list(name = "welfare", type = "numeric", transform = "log")
+  fit_df <- baseline
+  fit_df$welfare <- log(baseline$welfare)  # Step 1 fits on the model scale
+  mf <- suppressWarnings(fit_model(fit_df, so, sw, sm))
+  ids <- rep(seq_len(n), 2L)
+  change <- rep(c(0.5, 2), each = n)
+
+  # The same households and the same weather change, recoded as temp + shift
+  run <- function(shift) {
+    svy <- baseline
+    svy$temp <- svy$temp + shift
+    pol <- policy
+    pol$temp <- pol$temp + shift
+    pipeline <- list(y_point = rep(0, 2L * n), svy_row_id = ids,
+      sim_year = rep(c(2030L, 2031L), each = n), weight = NULL, id_vec = ids)
+    pipeline <- .policy_test_attach_exposure(pipeline, svy, list(temp = svy$temp[ids] + change))
+    run_identity <- "level-invariance"
+    context <- .build_decomposition_context(svy, pol, mf, so,
+      skip_coef = FALSE, run_identity = run_identity)
+    pipeline$F_loading <- matrix(0, 2L * n, length(context$taus))
+    prepared <- .prepare_policy_annual_channels(context, run_identity)
+    exposure <- .validate_policy_annual_exposure(pipeline, context)
+    list(
+      channels = .policy_annual_channels(pipeline, prepared, run_identity),
+      loading = .policy_arm_loading_rif(pipeline, prepared, exposure, chunk_size = 200L)
+    )
+  }
+  ref <- run(0)
+  shifted <- run(50)
+  expect_gt(max(abs(ref$channels$delta_res1)), 1e-6)
+  expect_equal(shifted$channels$delta_total, ref$channels$delta_total, tolerance = 1e-10)
+  expect_equal(shifted$channels$delta_main, ref$channels$delta_main, tolerance = 1e-10)
+  expect_equal(shifted$channels$delta_res1, ref$channels$delta_res1, tolerance = 1e-10)
+  expect_false(is.null(ref$loading))
+  expect_equal(shifted$loading, ref$loading, tolerance = 1e-10)
+})
+
+test_that("quantile policy arm without a policy has no repositioning and keeps the baseline loading (MR-12)", {
+  skip_if_not_installed("fixest")
+  set.seed(80)
+  n <- 200L
+  baseline <- data.frame(
+    code = "BFA", year = "2018", survname = "w", loc_id = seq_len(n), int_month = 1L,
+    temp = rnorm(n, 3, 1), weight = 1
+  )
+  baseline$welfare <- exp(1 - 0.1 * baseline$temp + rnorm(n, 0, 0.5))
+  policy <- baseline
+  policy[[SP_TRANSFER_COL]] <- 0
+  sm <- build_selected_model(model_type = "Unconditional quantile regression (RIF)",
+    engine = "rif", cluster = "loc_id")
+  sw <- data.frame(name = "temp", cont_binned = "Continuous", stringsAsFactors = FALSE)
+  so <- list(name = "welfare", type = "numeric", transform = "log")
+  fit_df <- baseline
+  fit_df$welfare <- log(baseline$welfare)  # Step 1 fits on the model scale
+  mf <- suppressWarnings(fit_model(fit_df, so, sw, sm))
+  ids <- rep(seq_len(n), 2L)
+  pipeline <- list(y_point = rep(0, 2L * n), svy_row_id = ids,
+    sim_year = rep(c(2030L, 2031L), each = n), weight = NULL, id_vec = ids)
+  pipeline <- .policy_test_attach_exposure(pipeline, baseline,
+    list(temp = baseline$temp[ids] + rep(c(0.5, 2), each = n)))
+  context <- .build_decomposition_context(baseline, policy, mf, so,
+    skip_coef = FALSE, run_identity = "no-policy")
+  pipeline$F_loading <- matrix(0, 2L * n, length(context$taus))
+  prepared <- .prepare_policy_annual_channels(context, "no-policy")
+  ch <- .policy_annual_channels(pipeline, prepared, "no-policy")
+  expect_equal(ch$delta_main, rep(0, 2L * n))
+  expect_equal(ch$delta_total, rep(0, 2L * n))
+  exposure <- .validate_policy_annual_exposure(pipeline, context)
+  expect_null(.policy_arm_loading_rif(pipeline, prepared, exposure, chunk_size = 200L))
+})

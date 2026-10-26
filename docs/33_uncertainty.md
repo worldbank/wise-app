@@ -6,7 +6,7 @@ depends_on: [notation, model-specification, linear-model, rif-model, simulation,
 symbols: [Sigma, L, F, h, T, Y, omega, z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations
 code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_simulations.R, R/fct_results.R, R/fct_rif_sim.R, R/fct_step2_tables.R, R/fct_sim_compare.R, R/fct_uncertainty_helpers.R]
-verified_against: b4f2807
+verified_against: f62a72b
 ---
 
 # Uncertainty propagation

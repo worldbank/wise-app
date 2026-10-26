@@ -960,3 +960,18 @@ test_that("compact policy channels match a direct recomputation per year and per
   expect_equal(nrow(dec_a), nrow(unique(
     data.frame(y = pipe$sim_year, d = decile)[is.finite(decile), ])))
 })
+
+test_that("the main effect adds the interview-weather interaction, never the repositioning (MR-12)", {
+  for (engine in c("fixest", "rif")) for (binned in c(FALSE, TRUE)) {
+    fx <- annual_channel_fixture(engine, binned, "none")
+    p <- .prepare_policy_annual_channels(fx$context, "annual-run")
+    w0 <- setNames(lapply(fx$context$weather_vars, function(v) fx$base[[v]]), fx$context$weather_vars)
+    at_interview <- .policy_explicit_channels(fx$context, w0)
+    if (engine == "rif") expect_gt(max(abs(at_interview$delta_res1)), 0)
+    # The context's own main effect (SP + covariates) plus gamma * dD * W0 only
+    expect_equal(p$delta_main, fx$context$delta_main + at_interview$delta_res2, tolerance = 1e-14)
+    expect_equal(p$delta_main_covar, p$delta_main - p$delta_sp, tolerance = 1e-14)
+    # The linear model has no repositioning at all
+    if (engine == "fixest") expect_equal(at_interview$delta_res1, rep(0, fx$context$n))
+  }
+})
