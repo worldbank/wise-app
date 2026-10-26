@@ -79,6 +79,10 @@ Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If y
 | `wise-benchmark` | Benchmarking or claiming a speed or memory improvement |
 | `wise-hygiene-pass` | Cleanup, style, lint or dead-code pass over `R/` with no behaviour change |
 | `add-model-engine` | Adding or extending a model engine |
+| `add-policy-lever` | A new Step 3 lever, control type or lever group (most levers need no code) |
+| `add-metric` | A new welfare metric in Steps 2 and 3 |
+| `wise-close-finding` | Closing, deferring or dropping an item of the review tracker |
+| `wise-release` | Version bump, manifest, DuckDB pin, deploy readiness (never pushes) |
 
 ## Testing essentials
 

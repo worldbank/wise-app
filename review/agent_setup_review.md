@@ -13,7 +13,7 @@ Status: `✓` done · `☐` todo.
 | R3a | Skills findable by every agent | ✓ 2026-10-26 | Skills table in `AGENTS.md`; agents without native skill support read the `SKILL.md` on demand. |
 | R5 | Write-back rule | ✓ 2026-10-26 | "Keeping these instructions current" section in `AGENTS.md`. |
 | R4 | `dev/agents_check.R` in CI | ✓ 2026-10-26 | Job `agents-check` in `R-CMD-check.yaml`. Checks paths and functions named in `AGENTS.md`, `ARCHITECTURE.md`, skills and the two standards; skill front matter and listing in `AGENTS.md`; size budgets; version match. Budget for `ARCHITECTURE.md` is a ratchet just above today's size; lower it when trimmed. |
-| R6 | Missing skills | ◐ | `wise-verify` and `wise-numeric-change` written 2026-10-26. Remaining in section 2. |
+| R6 | Missing skills | ✓ 2026-10-26 | `wise-verify`, `wise-numeric-change`, `wise-close-finding`, `add-policy-lever`, `add-metric`, `wise-release`. Listed in `AGENTS.md`. |
 | R7 | `review/README.md` index; archive finished plans | ☐ | `review/` is 1.0 MB; agents read finished plans as current guidance. |
 | R3b | One shared skills folder, pointed to from the README; no copies in the repo | ✓ 2026-10-26 | Skills moved with `git mv` to `.agents/skills/`. `.claude/skills` is a git-ignored local link (`ln -s ../.agents/skills .claude/skills`); setup in README "Agent skills" and the Skills section of `AGENTS.md`. |
 | R9 | Trim `ARCHITECTURE.md` | ✓ 2026-10-26 | 23 KB to 9 KB. Deployment settings moved intact to `DEPLOYMENT.md`; per-file prose and the lever, uncertainty and decomposition detail now point to `docs/` pages and R file headers. Budgets in `dev/agents_check.R` lowered to match. |
@@ -24,16 +24,11 @@ Status: `✓` done · `☐` todo.
 - Stale facts removed or fixed: module, `fct_` and test file counts (dropped, they rot); `testthat::test_dir("tests")` (runs nothing; replaced by `devtools::test()`); the install one-liner (replaced by `pak::local_install_deps()`); residual options (UI offers `original` and `resample`; `normal` and `none` are internal, per `residual_choices()`); `ranger` and `xgboost` now shown as registered but not offered in the UI; Step 3 harness path in the tracking file is `dev/bench/bench_step2.R`.
 - Correction to the first draft of this review: protected areas are defined in `review/code_hygiene.md` (the first check was truncated). No change needed.
 - Check: every path and function named in backticks in `AGENTS.md` and `ARCHITECTURE.md` exists (scripted; the remaining hits were relative paths inside `review/` and base R functions).
-- `manifest.json` was not regenerated; `AGENTS.md` is in the Connect bundle, so rerun `dev/00_make_manifest.R` before the next deploy.
+- `manifest.json` needs no regeneration for these changes: it covers only `app.R`, `R/`, `src/`, `inst/`, `DESCRIPTION` and `NAMESPACE`.
 
-## 2. Missing skills
+## 2. Skills
 
-| Skill | Purpose |
-|---|---|
-| `wise-close-finding` | Close a review finding per the tracking file's Working rules. |
-| `add-policy-lever` | Registry-driven lever, special behaviours, controls, batch configs. |
-| `add-metric` | `fct_metric_registry.R` and its consumers. |
-| `wise-release` | Version bump, manifest, DuckDB pin and checksums, deploy checks. |
+Six written 2026-10-26 (see R6). Candidates not written: none known. Add a skill when a task recurs and an agent got it wrong or slow; keep each under 300 lines (`dev/agents_check.R`).
 
 ## 3. Self-improvement
 
