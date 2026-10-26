@@ -1,5 +1,11 @@
 # Agent setup review: instructions, skills and self-maintenance
 
+Closed and archived 2026-10-26 (user): repository setup work is complete; no new actionable remainder for `review/TRACKING.md`. Runtime skill discovery on teammates' installed tools/Windows and Claude permission behavior after workspace trust remain unverified onboarding checks, not claims of tested compatibility. Historical implementation notes below are retained; current instructions live in `AGENTS.md`, `README.md` and `.agents/skills/`.
+
+Closure evidence: `Rscript dev/agents_check.R` passed; `devtools::test(filter = "agents_check", reporter = "summary")` passed (26 expectations). The CI job and narrow Claude allowlist are configured; this closure does not establish a successful GitHub run or runtime permission behavior.
+
+Reopen on a reproducible skill-discovery or permission problem, or recurring instruction drift the current checks miss. The Stop hook is an optional experiment only if drift persists; a scheduled audit needs team demand and a credential/reviewer plan. Additional version/roxygen/pipe guards remain deferred until a concrete need. Large-file refactoring is already CR-CQ-01, not a new setup issue. No hooks, scheduled jobs or new permissions are authorized by archival.
+
 Started 2026-10-26 on `dev` (HEAD `2af403d`). How coding agents (Claude Code, Kilo and others used by the World Bank team) find instructions and workflows in this repo, and how to keep those instructions current. Constraints from the user: several agent tools are in use, so the setup must be interoperable; other team members use agents too, so Windows clones are likely.
 
 Status: `✓` done · `☐` todo.

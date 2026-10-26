@@ -1,4 +1,4 @@
-# Check the instructions that coding agents read (R4 of review/agent_setup_review.md).
+# Check the instructions that coding agents read (R4 of review/archive/agent_setup_review.md).
 #
 # Checks: required documents and skills exist; heuristic backtick path checks in
 # those documents and skills; function checks in the three root guides only;

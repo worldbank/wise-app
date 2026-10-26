@@ -9,7 +9,7 @@ Status: **standard** (rules to follow) · **open** (work in progress, may change
 | `code_hygiene.md` | standard | Writing or cleaning `R/` code; defines protected areas |
 | `optimization_guidelines.md` | standard | Any performance, caching, async or UI-table/figure work (section 9: benchmark gate) |
 | `TRACKING.md` | open | Actionable app/repo maintenance by category; Working rules define adding, updating, closing and reopening items |
-| `agent_setup_review.md` | open | Changing `AGENTS.md`, `ARCHITECTURE.md`, skills or `dev/agents_check.R` |
+| `archive/agent_setup_review.md` | reference | Completed agent-setup design and verification limits; current setup is in `AGENTS.md` and README "Agent skills" |
 | `archive/batch_pipeline_plan.md` | reference | Built batch pipeline design, cited by `batch/` docs and tests. No open work in `TRACKING.md`; figures and selection belong in downstream reproducibility packages |
 | `archive/` | archive | Closed/deferred decisions, numerical Decision log and earlier plans; look up by ID, not for orientation. `REVIEW-2026-10-06.md` is immutable; `REVIEW-2026-10-06-tracking-full.md` holds closure evidence and reopen triggers. The SP plans remain design records cited by code. |
 
