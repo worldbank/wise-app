@@ -10,16 +10,14 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 
 | Batch | Scope | Open |
 |---|---|---|
-| B2 | Security | 1 |
 | B6 | Performance | 4 |
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
-| B11 | Social protection (owed numbers) | 1 |
 | B12 | Methodology review follow-ups | 3 |
 | B13 | Batch pipeline follow-ups | 1 |
 
-B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Waiting on the user).
+B1, B2, B3, B4, B5, B7 and B11 have no open rows.
 
 ## Working rules
 
@@ -32,18 +30,11 @@ B1, B3, B4, B5, B7 have no open rows (B4: Step 3 lever numbers are owed, see Wai
 
 ## Waiting on the user
 
-- **CR-SEC-09 step 2, staging:** needs a go-ahead before any deployment (see the row).
 - **CI first run:** the 16-screen axe scan (CR-A11Y-09) has run only locally; watch its first GitHub run (needs `arrow` and the DuckDB `h3` extension from the community repository). `main` requires `e2e-smoke`; `dev` is deliberately unprotected (user, 2026-10-24).
 - **Step 3 worker memory (CR-PERF-13):** decided 2026-10-08, accept the lower peak, no `Max Processes` change. Unmeasured: Step 2's own 2x2 daemon peak, deployed cold start, 3x3.
 - **R2-PERF-01 in-app check:** done 2026-10-24 for the Step 2 Results (aggregation, poverty line). Still unchecked: the scenario picker (needs two SSPs), any export after a release, RIF and ranger engines, memory on Linux. Revert path: `.step3_release_allowed()` returning FALSE.
 - **Browser spot-check, still unchecked:** hover tooltips of columnar charts and `.wx-tip` legend markers (Escape), map pointer cursor, tab empty states, SPI/SPEI choices, the decile-movement card (needs a quantile-model run), survey-identification warnings at load (DOC-02), the weights and LCU notes, colour contrast of the changed palettes.
 - **Before a deploy:** rerun `dev/00_make_manifest.R` after committing `R/`, `inst/` or dependency changes.
-
-## B2 - Security
-
-| ID | Sev | Eff | Status | Open task |
-|---|---|---|---|---|
-| CR-SEC-09 (rest) | L | S | ◐ | Steps 1 (no inline script or handler in the app's code) and 2 (report-only policy designed; zero violations over the fixture flow Step 1 to 3 in headless Chrome) are done. Open: set the report-only header on a staging Connect instance and read real traffic (`CustomHeader` in the `[Server]` section of `rstudio-connect.gcfg`; it applies to all content on that server, so check other apps first), then decide on enforcing. Header: `Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://tiles.basemaps.cartocdn.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'`. It pins connections, images, workers, plugins, base and form targets, but gives no injected-script protection (`script-src` needs `'unsafe-inline'` for bslib/Shiny initialisers and `'unsafe-eval'` for `htmlwidgets::JS()`); a strict `script-src` would need nonces, which Shiny lacks. Not covered locally: real downloads, hover tooltips, real-data tile traffic. Evidence in the archive. |
 
 ## B6 - Performance
 
@@ -80,14 +71,6 @@ Source: `review/archive/uncertainty_residuals_review.md` (closed 2026-10-26). Op
 | UR-01 | L | S | ☐ | A failed `train_aug` precomputation inside `fct_run_simulation()` demotes the residual rule to "none" with a warning only; the run summary and provenance do not record it (the RIF demotion is recorded). `fct_run_simulation()` and the Step 2 result names are pinned by `test-step2-contract.R`, so the fix needs a contract change or a field on `sim_summary` set by the caller. Rare. |
 | UR-02 | L | S | ☐ | The seed spread of the shock-responsive forecast hits and false alarms and of the predicted-welfare layer is unmeasured (the 20-seed check had only the seeded targeting draws active: about 1.1 per cent on cost and effect). `docs/43_shock_responsive_sp.md` says the bands exclude it. Measure with a spec that switches those layers on. |
 
-## B11 - Social protection (owed)
-
-Sources: `review/archive/sp_shock_responsive_plan.md`, `review/archive/sp_shock_responsive_tasks.md`, `review/archive/step3_cost_effectiveness_plan.md` (archived 2026-10-26; Phases 0 to 2 and the cost-effectiveness tab are built). Deferred rows SP-01 to SP-06 and SP-08 are in the archive ("Closed and deferred list").
-
-| ID | Sev | Eff | Status | Open task |
-|---|---|---|---|---|
-| SP-07 | M | S | ☐ | Owed numbers: BFA before/after headline figures for P0-8 (synthetic check already recorded: realised weighted inclusion 15.8 % / exclusion 12.2 % before, 15.0 % / 10.0 % after, for 15 % / 10 % sliders), BFA Step 3 benchmark figures with the shock fixtures, and the BFA LCU re-run entry for R2-BUG-04 / CR-BUG-02. |
-
 ## B12 - Methodology review follow-ups
 
 Source: `review/archive/methodology_review_2026-10-26.md` (closed 2026-10-26; its closed items and their evidence are in the archive addendum). Open remainders:
@@ -113,3 +96,6 @@ Numerical changes get an entry here (formula before and after, BFA before/after,
 ## Log
 
 Entries up to 2026-10-26 are in the archive ("Log moved from the tracker" and earlier addenda). Add new entries here.
+
+- 2026-10-26 - CR-SEC-09 closed with CSP rollout deferred (user; B2 open count 1 to 0). App-owned inline-script guard passes; no Connect CSP deployment or enforcement verified. Full row, evidence and reopen trigger in the archive addendum.
+- 2026-10-26 - SP-07 closed as superseded legacy bookkeeping (user; B11 open count 1 to 0). Historical before/after checks were already dropped on 2026-10-23; BFA shock-fixture benchmarks are recorded in the archived SP tasks. No new numerical validation claimed; full row and reopen trigger in the archive addendum.

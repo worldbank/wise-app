@@ -102,6 +102,9 @@ The tracker was cut to open work only. Verbatim text of what left it follows: th
 
 ### Closed and deferred list (reopen triggers)
 
+- CR-SEC-09 (closed 2026-10-26, user): application-side remediation complete; optional CSP rollout deferred. Reopen when hosting/security policy requires CSP enforcement or a rollout is scheduled; validate on staging before enforcement. Full row and limits in the closure addendum below.
+- SP-07 (closed 2026-10-26, user): superseded legacy evidence task, not an unresolved code defect. Historical before/after checks were already dropped and shock-fixture benchmarks are recorded. Reopen on a concrete targeting-rate, PPP/LCU transfer or cost discrepancy, a reported shock-SP slowdown, or a study/audit requiring the missing historical validation. Full row and limits in the closure addendum below.
+
 Closed as won't fix or deferred (full rows in the archive addendum; reopen only on the stated trigger): CR-OPS-01 (closed 2026-10-24; the earlier PNG-test skip is unverifiable and not reproduced, reopen if it recurs), Test suite remaining (closed 2026-10-24: renames, shared helpers, hygiene in touched files and the `wiseapp.verbose` option are deliberately not done; reopen if test output noise or fixture duplication causes a real problem), CR-A11Y-05, R2-A11Y-04, R2-A11Y-05 and R2-A11Y-06 closed 2026-10-24 after the browser pass (record in the archive addendum), R2-PERF-03 (byte-bounded prep cache; closed 2026-10-24, reopen if a slider change at 2x2 or larger is reported slow), R2-PERF-04 kernel (the sort-free kernel scan is 0.17 s per 17 pipelines, 8% of a cold 63-pipeline poverty-line change; reopen if a re-profile shows the scan above 25%), CR-CQ-04 (deferred 2026-10-23: the 58 outputs created inside observers follow the INT-05 fit-snapshot pattern on purpose; reopen if a stale-output or re-fit cost problem shows up in a browser check), DOC-03 items (1) and (3) (deferred 2026-10-23; reopen if a user needs externally supplied effects, or has 3+ survey rounds per stratum), R2-OPS-05 (stay on DuckDB 1.5.6), CR-SEC-02 (no further DuckDB lockdown), CR-SEC-07 metadata profile (shared pool, guidelines §0), R2-SEC-07 (persistent prepared-weather cache off), CR-PERF-15 (keep `load_all()` in `app.R`), R2-PERF-10 / CR-PERF-02 (weather cache keys; reopen if remote slice reads dominate), CR-PERF-03 (prediction speedup), OPT-05 (aggregation remainders), R2-PERF-13 / R2-PERF-09 / CR-PERF-05, CR-PERF-07 (model_fit size; reopen if a large-country session shows high RSS), CR-CQ-07 (one integer `year` type; needs an engine parity gate)), MR-07 (closed 2026-10-26: working rows without a sector flag stay in the working population; reopen on data with a large share of working rows without a sector flag), MR-08 (won't fix 2026-10-26: no model-level BFA before/after for the sector lever; reopen on a dataset or spec where the sector variables are model variables).
 
 ### Long forms of rows that stay open
@@ -396,3 +399,33 @@ Added to the Closed and deferred list. Status `✗` (deferred or won't fix); reo
 | SP-08 | L | S | ✗ | Targeting errors are one seeded draw; the draw-to-draw variation of coverage and leakage, and of the shock forecast layers, is not shown (see UR-02). |
 | BP-02 | L | S | ✗ | Separate policy-stage crew controller; policy currently shares the bounded `sim` controller. Defer until a measured batch workload needs different Step 2/3 concurrency or memory limits. |
 | BP-03 | L | M | ✗ | A frame key independent of descriptive-statistics options, which currently enter `data_id` and invalidate downstream fits. Defer until changing statistics causes material rerun cost; preserve table identity and cache correctness if split. |
+
+### CR-SEC-09 closed: application remediation complete, CSP rollout deferred (2026-10-26)
+
+Row as it stood:
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| CR-SEC-09 (rest) | L | S | ◐ | Steps 1 (no inline script or handler in the app's code) and 2 (report-only policy designed; zero violations over the fixture flow Step 1 to 3 in headless Chrome) are done. Open: set the report-only header on a staging Connect instance and read real traffic (`CustomHeader` in the `[Server]` section of `rstudio-connect.gcfg`; it applies to all content on that server, so check other apps first), then decide on enforcing. Header: `Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://tiles.basemaps.cartocdn.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'`. It pins connections, images, workers, plugins, base and form targets, but gives no injected-script protection (`script-src` needs `'unsafe-inline'` for bslib/Shiny initialisers and `'unsafe-eval'` for `htmlwidgets::JS()`); a strict `script-src` would need nonces, which Shiny lacks. Not covered locally: real downloads, hover tooltips, real-data tile traffic. Evidence in the archive. |
+
+Decision (user, 2026-10-26): close the application-side finding and mark the remaining CSP rollout `✗` (deferred), not deployed or verified. The original code remediation includes app-owned inline-script removal (`3bae63e`), external-link attributes and extension version/checksum protection. Framework-generated scripts still require the proposed policy's script exceptions, limiting its benefit to defence-in-depth rather than strict injected-script protection. No numerical or runtime behaviour changes in this closure.
+
+Verification: `devtools::test(filter = "csp-inline-scripts", reporter = "summary")` passed on 2026-10-26 (one expectation). Current `R/` external links with `target = "_blank"` have `rel = "noopener noreferrer"`; `DEPLOYMENT.md` records extension version and SHA-256 protection. Earlier local browser evidence and uncovered paths remain in "CR-SEC-09 step 2: report-only CSP, local test" above. No Connect CSP deployment or enforcement verified; report-only testing enforces no restrictions.
+
+Reopen when hosting/security policy requires CSP enforcement or a rollout is scheduled. Before enforcing, validate on staging with real downloads, map traffic and proxy behaviour, and check other content affected by Connect's server-wide header.
+
+### SP-07 closed: superseded legacy evidence task (2026-10-26)
+
+Sources: `sp_shock_responsive_plan.md`, `sp_shock_responsive_tasks.md`, `step3_cost_effectiveness_plan.md` in this archive. Row as it stood:
+
+| ID | Sev | Eff | Status | Open task |
+|---|---|---|---|---|
+| SP-07 | M | S | ☐ | Owed numbers: BFA before/after headline figures for P0-8 (synthetic check already recorded: realised weighted inclusion 15.8 % / exclusion 12.2 % before, 15.0 % / 10.0 % after, for 15 % / 10 % sliders), BFA Step 3 benchmark figures with the shock fixtures, and the BFA LCU re-run entry for R2-BUG-04 / CR-BUG-02. |
+
+Decision (user, 2026-10-26): close as superseded legacy bookkeeping; mark any unperformed historical validation `✗` (won't pursue), not verified. No code or numerical behaviour changes. Evidence:
+
+- "Dropped checks (2026-10-23, user agreed)" at the start of this archive already drops BFA before/after headline numbers for SP P0-8 and CR-BUG-02 / R2-BUG-04. It records synthetic checks and regression tests and explains why a clean historical "before" is no longer available.
+- `sp_shock_responsive_tasks.md`, Phase 2 status and P2-9, records BFA before/after shock-fixture timings and peak parent RSS. Its PR review checks also record `shock_sp`, `shock_sp_dyn`, `shock_sp_impact`, `shock_sp_antic`, `shock_sp_budget` and `targeted_sp` timings, with uncertainty disabled/enabled and the concurrent-suite timing caveat. The older "Owed by the user" list and plan's "Owed outside the build" paragraph are historical, superseded by these records and this decision.
+- A separate real-BFA LCU re-run is not established by those records; this closure waives that remaining historical evidence request rather than claiming it was run. No new tests, benchmark or real-data parity run was performed for this documentation-only closure. Future numerical changes still require the normal regression and before/after gates.
+
+Reopen on a concrete targeting-rate, PPP/LCU transfer or cost discrepancy, a reported shock-SP slowdown, or a study/audit requiring the missing historical validation. Reproduce the affected current spec and seed rather than reconstructing obsolete implementation states without a concrete need.
