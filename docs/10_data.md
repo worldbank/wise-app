@@ -99,6 +99,7 @@ The survey must carry a column named `weight`. The harmonised surveys always hav
 - Variables are harmonised but not always strictly comparable across surveys.
 - Households that moved, or interviews held away from the location, are not detected.
 - Missing deflators and missing weather months reduce the sample without any imputation.
+- Known data limitations of the location link. Some survey location identifiers cannot be mapped to H3 cells, because the survey has no coordinates or shapefile for them. Some H3 cells have no weather, because they lie outside the coverage of ERA5-Land. Records in either case have no weather, are dropped at the merge and are counted in the reported number of dropped records. They are not imputed and not weighted up, so the sample no longer represents those locations. In the files of 72 surveys checked on 2026-10-26, about 3 % of the location identifiers in the survey microdata (3,766 of 137,144) had no row in the H3 files, and every location in the H3 files had at least one ERA5-Land cell.
 
 ## In the app
 

@@ -58,7 +58,7 @@ This is applied to the **raw** monthly series, before any window. The window, ag
 
 ### 4. Members and scenarios
 
-A member is used only if it has a change for every expected location-month of the period and every selected variable. The expected location-months are the requested survey locations by the calendar months that the period covers. They do not depend on the members, so a location-month that no member has excludes every member. Each excluded member is reported with a warning that names it, the number of its missing location-months and the first few missing keys (code, year, survey, location, month), for every period before the run continues. If no member remains for a period, that period has no future series. Each pathway-period-member combination is an independent weather series and gives one simulation series ([30_simulation](30_simulation.md)). All members have equal weight. Members are not selected for skill.
+A member is used only if it has a change for every expected location-month of the period and every selected variable. The expected location-months are the survey locations that have observed weather, by the calendar months that the period covers. Locations that cannot be mapped to H3 cells, or whose cells lie outside the observed-weather coverage, were dropped before this step ([10_data](10_data.md), Limitations), so they are not expected and do not exclude a member. The expected location-months do not depend on the members, so a location-month that no member has excludes every member. Each excluded member is reported with a warning that names it, the number of its missing location-months and the first few missing keys (code, year, survey, location, month), for every period before the run continues. If no member remains for a period, that period has no future series. Each pathway-period-member combination is an independent weather series and gives one simulation series ([30_simulation](30_simulation.md)). All members have equal weight. Members are not selected for skill.
 
 The simulation years of a future series are the years of the historical window. A future period only decides which climatology of the climate model is compared with the baseline.
 
@@ -86,7 +86,9 @@ The simulation years of a future series are the years of the historical window. 
 - Bias correction beyond the delta method, and spatial detail finer than the climate grid, except through the observed record.
 - Changes within a future period: each period uses a single mean climatology.
 - Weights for model skill or independence.
-- Survey locations with no climate cell. They make every member incomplete, so a single such location removes all members of the period.
+- Survey locations with observed weather but no climate cell. They make every member incomplete, so a single such location removes all members of the period. None occurs in the files checked on 2026-10-26 (72 surveys, 33 economies, three pathways, every member): every location with observed weather has climate cells.
+- Known data limitation, climate-model variables. Some climate models do not provide some variables in the supplied files, and the same models lack the same variables in every economy. Of the 22 to 27 members of a pathway, 2 lack `r`, `rx5day` and `r20`, 4 to 5 lack `tn` and `tr`, 5 to 8 lack `tx` and `tx35`, and about half lack `mrsos`. A member without a selected variable is excluded as incomplete, so the number of members depends on the variables chosen.
+- Known data limitation, soil moisture. `mrsos` is also undefined at the cells of some coastal and island locations. In Colombia (two surveys), Fiji, Myanmar and Mauritania (2014) at least one location has no `mrsos` value in any cell, so every member is excluded when `mrsos` is selected. In Guinea-Bissau a few members remain. The other variables have no such location-level gaps.
 - Only the weather variables that the model uses are perturbed.
 
 ## In the app

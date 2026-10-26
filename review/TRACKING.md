@@ -14,9 +14,8 @@ All Critical and High findings, the docs/ revision (DOC-01 to DOC-14) and UNC-01
 | B8 | Accessibility | 1 |
 | B9 | Code quality and docs | 2 |
 | B10 | Uncertainty and residuals | 2 |
-| B12 | Methodology review follow-ups | 2 |
 
-B1, B2, B3, B4, B5, B7, B11 and B13 have no open rows.
+B1, B2, B3, B4, B5, B7, B11, B12 and B13 have no open rows.
 
 ## Working rules
 
@@ -70,15 +69,6 @@ Source: `review/archive/uncertainty_residuals_review.md` (closed 2026-10-26). Op
 | UR-01 | L | S | ☐ | A failed `train_aug` precomputation inside `fct_run_simulation()` demotes the residual rule to "none" with a warning only; the run summary and provenance do not record it (the RIF demotion is recorded). `fct_run_simulation()` and the Step 2 result names are pinned by `test-step2-contract.R`, so the fix needs a contract change or a field on `sim_summary` set by the caller. Rare. |
 | UR-02 | L | S | ☐ | The seed spread of the shock-responsive forecast hits and false alarms and of the predicted-welfare layer is unmeasured (the 20-seed check had only the seeded targeting draws active: about 1.1 per cent on cost and effect). `docs/43_shock_responsive_sp.md` says the bands exclude it. Measure with a spec that switches those layers on. |
 
-## B12 - Methodology review follow-ups
-
-Source: `review/archive/methodology_review_2026-10-26.md` (closed 2026-10-26; its closed items and their evidence are in the archive addendum). Open remainders:
-
-| ID | Sev | Eff | Status | Open task |
-|---|---|---|---|---|
-| MR-05 | L | S | ☐ | The batch data work item fingerprints the survey files only. H3 and weather files do not enter any stage identifier (stated in `docs/52_batch_runs.md`). Add their fingerprints and a two-run integration test that changes one input file and checks the affected branches rerun. |
-| MR-06 | L | S | ☐ | Real-data check of the climate grid rule (expected location-months from the requested locations, independent of members): a location with no climate cell excludes every member. The five BFA members excluded on 2026-10-26 (all 7152 location-months missing) are known and expected; what is left is to confirm that no requested location lacks a climate cell. |
-
 ## Decision log
 
 Numerical changes get an entry here (formula before and after, BFA before/after, what was not checked). Entries for closed items move to the archive addendum (`review/archive/REVIEW-2026-10-06-tracking-full.md`, "Decision log moved from the tracker"); none are open.
@@ -91,3 +81,5 @@ Entries up to 2026-10-26 are in the archive ("Log moved from the tracker" and ea
 - 2026-10-26 - SP-07 closed as superseded legacy bookkeeping (user; B11 open count 1 to 0). Historical before/after checks were already dropped on 2026-10-23; BFA shock-fixture benchmarks are recorded in the archived SP tasks. No new numerical validation claimed; full row and reopen trigger in the archive addendum.
 - 2026-10-26 - MR-09 closed as a documented specification consideration (user; B12 open count 3 to 2). `docs/20_model_specification.md` highlights the area-by-round tradeoff; no estimator change, new specification test or empirical comparison. Full row and reopen trigger in the archive addendum.
 - 2026-10-26 - BP-01 closed (user; B13 open count 1 to 0). `dev/batch_parity_bfa_policy.R` now checks that the Export bundle CSVs equal the module tables and that the app configuration gives the same stage ids as the batch run; fixture and BFA runs pass. Not driven: the browser download. Not committed yet. Full row, evidence and reopen trigger in the archive addendum.
+- 2026-10-26 - MR-05 closed (`d449ec6`; B12 open count 2 to 1). Weather files are fingerprinted in the stage items (H3 files were already covered by the data item); a changed weather or H3 file reruns the branches that read it. Full row and evidence in the archive addendum.
+- 2026-10-26 - MR-06 closed (B12 open count 1 to 0). Real-data check: no location with observed weather lacks a climate cell. Known data limitations documented in `docs/10_data.md` and `docs/31_climate_scenarios.md`: `loc_id` without H3 cells, H3 cells outside ERA5-Land, variables missing for some climate models, `mrsos` undefined at some coastal and island locations. Full row and evidence in the archive addendum.
