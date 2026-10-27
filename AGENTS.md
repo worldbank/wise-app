@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for coding agents (Claude Code, Kilo, Codex and others) working in this repository. This file holds the rules and a map; the detail lives in the files it points to. Read those only when the task needs them.
+Guidance for coding agents working in this repository. This file holds the rules and a map; the detail lives in the files it points to. Read those only when the task needs them.
 
 ## What this is
 
@@ -48,10 +48,6 @@ Install dependencies with `pak::local_install_deps()` or from `DESCRIPTION` `Imp
 | `tests/testthat/` | Unit tests; `tests/e2e/smoke.R` browser smoke with axe-core |
 | `.agents/skills/` | Skills, the one shared copy (see Skills) |
 
-## Pipeline
-
-Step 0 Overview, Step 1 Modelling, Step 2 Simulation, Step 3 Policy scenarios; data flows forward. Map of the code by step: `ARCHITECTURE.md`. Methods: `docs/README.md`.
-
 ## After you change X, also do Y
 
 | Change | Also |
@@ -69,7 +65,7 @@ Step 0 Overview, Step 1 Modelling, Step 2 Simulation, Step 3 Policy scenarios; d
 
 ## Skills
 
-Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If your tool does not load skills from there, read the `SKILL.md` before doing that kind of task. To make a tool load them, link or copy the folder into the tool's own skills folder (not tracked by git); Claude Code, from the repo root: `ln -s ../.agents/skills .claude/skills` (`.claude/skills` is git-ignored). Edit skills only in `.agents/skills/`. Setup for other tools: README, "Agent skills".
+Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If your tool does not load skills from there, read the `SKILL.md` before doing that kind of task. Setup guidance is in `README.md`, "Agent skills". Edit skills only in `.agents/skills/`.
 
 | Skill | Use when |
 |---|---|
@@ -89,7 +85,6 @@ Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If y
 - Run from the source tree, as CI does. The environment is pinned by `tests/testthat/setup-env.R` (caches in a temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R`; do not rely on the developer's `.Renviron`.
 - New tests go in `test-<R file>.R`. A fixture builder moves into a `helper-*.R` file only when two or more test files use it.
 - Not covered by R tests: MapLibre rendering, `conditionalPanel` visibility, `update*Input()` on config import and the real Step 0 to 3 flow. Check them with `dev/ui_drive.R` (skill `wise-ui-check`).
-- Coverage, browser smoke and batch test details: `ARCHITECTURE.md`, Testing details.
 
 ## Keeping these instructions current
 
