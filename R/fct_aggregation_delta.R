@@ -64,7 +64,7 @@
 #'
 #' @param rate_band Logical. The outcome is a binary rate from a logistic fit
 #'   (the loading is already on the probability scale): the mean's band is
-#'   built on the logit scale so it stays inside [0, 1].
+#'   built on the logit scale so it stays inside \code{[0, 1]}.
 #' @return Named list:
 #'   \describe{
 #'     \item{value}{Numeric scalar. Point estimate.}

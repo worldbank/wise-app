@@ -245,19 +245,31 @@ collect_deterministic <- function(data, keys = NULL) {
 
 # DuckDB version the bundled extension binaries in inst/duckdb_extensions were
 # built for. DuckDB refuses to load an extension built for another version, so
-# DESCRIPTION pins duckdb to the same version. Rebuild the binaries, update
-# these two constants and the DESCRIPTION pin together when upgrading.
+# the engine version is checked against it before an extension is installed.
+# Rebuild the binaries, update these two constants and the DESCRIPTION minimum
+# together when upgrading.
 .DUCKDB_BUNDLE_VERSION <- "2.0.0"
 .DUCKDB_BUNDLE_SHA256 <- c(
   h3 = "7514dc2834ca9c0af0962b796470a54c706ec69c82df4fb3cde1666045f41c2b",
   httpfs = "ee6c7d7e60a5da1b6f6bf6156b4298b55ddce0496a5bfe628bd6ab6d47eb8e3e"
 )
 
+#' Version of the DuckDB engine behind the R package (for example "2.0.0").
+#'
+#' The engine version, not `packageVersion("duckdb")`: development builds of
+#' the R package (such as 2.0.0.9000) vendor a release engine, and extensions
+#' are tied to the engine.
+#' @noRd
+.duck_engine_version <- function() {
+  v <- DBI::dbGetQuery(.duck_con(), "SELECT version() AS v")$v
+  sub("^v", "", v[[1]])
+}
+
 #' Check that a bundled extension binary matches the installed DuckDB and the
 #' pinned checksum before it is installed.
 #' @noRd
 .duck_check_bundled_ext <- function(ext, path) {
-  installed <- as.character(utils::packageVersion("duckdb"))
+  installed <- .duck_engine_version()
   if (!identical(installed, .DUCKDB_BUNDLE_VERSION)) {
     stop(
       "The bundled DuckDB extensions were built for duckdb ",

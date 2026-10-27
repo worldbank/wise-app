@@ -26,22 +26,22 @@ test_that("every bundled extension binary is pinned and nothing else ships", {
   expect_false("spatial" %in% shipped)
 })
 
-test_that("DESCRIPTION pins duckdb to the bundled extension version", {
+test_that("DESCRIPTION requires at least the bundled extension version", {
   desc <- read.dcf(system.file("DESCRIPTION", package = "wiseapp"),
     fields = "Imports")[1, "Imports"]
   expect_match(
     gsub("\\s+", " ", desc),
-    sprintf("duckdb \\(== %s\\)", gsub(".", "\\.", .DUCKDB_BUNDLE_VERSION, fixed = TRUE))
+    sprintf("duckdb \\(>= %s\\)", gsub(".", "\\.", .DUCKDB_BUNDLE_VERSION, fixed = TRUE))
   )
 })
 
 test_that("bundled extension check accepts a matching binary", {
-  skip_if_not(identical(as.character(utils::packageVersion("duckdb")), .DUCKDB_BUNDLE_VERSION))
+  skip_if_not(identical(.duck_engine_version(), .DUCKDB_BUNDLE_VERSION))
   expect_no_error(.duck_check_bundled_ext("httpfs", bundled_path("httpfs")))
 })
 
 test_that("bundled extension check rejects a modified binary", {
-  skip_if_not(identical(as.character(utils::packageVersion("duckdb")), .DUCKDB_BUNDLE_VERSION))
+  skip_if_not(identical(.duck_engine_version(), .DUCKDB_BUNDLE_VERSION))
   tampered <- withr::local_tempfile(fileext = ".duckdb_extension.gz")
   file.copy(bundled_path("h3"), tampered)
   cat("x", file = tampered, append = TRUE)
@@ -54,4 +54,8 @@ test_that("bundled extension check rejects a different DuckDB version", {
     .duck_check_bundled_ext("httpfs", bundled_path("httpfs")),
     "built for duckdb 0.0.1"
   )
+})
+
+test_that("the engine version ignores the R package's development suffix", {
+  expect_match(.duck_engine_version(), "^[0-9]+\\.[0-9]+\\.[0-9]+$")
 })
