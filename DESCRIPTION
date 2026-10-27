@@ -25,7 +25,7 @@ Imports:
     dbplyr,
     digest,
     dplyr,
-    duckdb (== 1.5.6),
+    duckdb (== 2.0.0),
     echarts4r,
     fixest (>= 0.14.0),
     filelock,

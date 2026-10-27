@@ -228,7 +228,13 @@ collect_deterministic <- function(data, keys = NULL) {
   if (!is.null(.duck$con) && DBI::dbIsValid(.duck$con)) {
     return(.duck$con)
   }
-  .duck$con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  # DuckDB 2.0 defaults to a shared ~/.duckdb for extensions and secrets. Keep
+  # them in a per-process temp home: Connect's HOME may be read-only or shared,
+  # workers must not race on one extension directory, and secrets must not
+  # persist on disk.
+  .duck$con <- DBI::dbConnect(
+    duckdb::duckdb(shared_home = FALSE), dbdir = ":memory:"
+  )
   .duck_apply_limits(.duck$con)
   .duck$extensions <- character(0)
   # Metadata may cache a token before DuckDB is initialized.
@@ -241,10 +247,10 @@ collect_deterministic <- function(data, keys = NULL) {
 # built for. DuckDB refuses to load an extension built for another version, so
 # DESCRIPTION pins duckdb to the same version. Rebuild the binaries, update
 # these two constants and the DESCRIPTION pin together when upgrading.
-.DUCKDB_BUNDLE_VERSION <- "1.5.6"
+.DUCKDB_BUNDLE_VERSION <- "2.0.0"
 .DUCKDB_BUNDLE_SHA256 <- c(
-  h3 = "8318026b801a060802f15b57547f5500f969946ee48ab65fd344ef7c2d069899",
-  httpfs = "19e6906934a845487c96f9c94beee250c71e32bb9be260eb27ad96939a1df5f0"
+  h3 = "7514dc2834ca9c0af0962b796470a54c706ec69c82df4fb3cde1666045f41c2b",
+  httpfs = "ee6c7d7e60a5da1b6f6bf6156b4298b55ddce0496a5bfe628bd6ab6d47eb8e3e"
 )
 
 #' Check that a bundled extension binary matches the installed DuckDB and the
