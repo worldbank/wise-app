@@ -72,3 +72,43 @@ test_that(".sp_reach_card reports recipients, cost and administration", {
   expect_match(shock_html, "Annual cost in a year it pays")
   expect_match(shock_html, "No exposure")
 })
+
+.sp_panel_html <- function(x) as.character(htmltools::renderTags(x)$html)
+
+test_that("SP panel tag builders keep their input and output ids", {
+  ns <- shiny::NS("sp")
+  uw <- function(plural = TRUE, capitalize = FALSE) {
+    word <- if (plural) "households" else "household"
+    if (capitalize) tools::toTitleCase(word) else word
+  }
+  cur <- function() "PPP"
+
+  budget <- .sp_panel_html(.sp_budget_amount_tags(ns, uw, cur))
+  for (id in c(
+    "sp-budget_mode", "sp-budget_fixed", "sp-budget_rule", "sp-loss_share_pct",
+    "sp-transfer_amount_mode", "sp-transfer_amount_usd", "sp-transfer_pctile",
+    "sp-transfer_amount_resolved"
+  )) {
+    expect_match(budget, id, fixed = TRUE)
+  }
+  expect_match(budget, "Amount per transfer (PPP)", fixed = TRUE)
+
+  timing <- .sp_panel_html(.sp_timing_tags(ns, cur))
+  expect_match(timing, "sp-payment_toggle", fixed = TRUE)
+  expect_match(timing, "sp-payment_summary", fixed = TRUE)
+  expect_match(timing, "Annual cost cap (PPP)", fixed = TRUE)
+
+  targeting <- .sp_panel_html(.sp_targeting_tags(ns, uw))
+  expect_match(targeting, "sp-targeting", fixed = TRUE)
+  expect_match(targeting, "sp-targeting_summary", fixed = TRUE)
+})
+
+test_that(".sp_trigger_tags warns when no weather variable is available", {
+  ns <- shiny::NS("sp")
+  none <- .sp_panel_html(.sp_trigger_tags(ns, function() character(0)))
+  expect_match(none, "No continuous weather variable is available", fixed = TRUE)
+  expect_match(none, "sp-trigger_summary", fixed = TRUE)
+  some <- .sp_panel_html(.sp_trigger_tags(ns, function() c(tx = "Max temp")))
+  expect_false(grepl("No continuous weather variable", some, fixed = TRUE))
+  expect_match(some, "sp-trigger_metric", fixed = TRUE)
+})

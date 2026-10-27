@@ -438,6 +438,8 @@ test_that("the configuration input ids still exist in the module controls", {
     list("mod_3_01_sp.R", STEP3_SP_IDS), list("mod_3_04_labor.R", STEP3_LABOR_IDS)
   )) {
     code <- src(lever[[1L]])
+    # The panel tags of the social protection module live in fct_sp_ui.R.
+    if (identical(lever[[1L]], "mod_3_01_sp.R")) code <- paste(code, src("fct_sp_ui.R"))
     for (id in lever[[2L]]) {
       # An id is a literal control id or the stem of a built one (`<stem>_universal`).
       stem <- sub("_(universal|pct)$", "", id)

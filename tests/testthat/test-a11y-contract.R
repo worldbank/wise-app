@@ -192,9 +192,9 @@ test_that("CR-A11Y-04: slider focus targets get role and name in custom.js", {
 })
 
 test_that("CR-A11Y-04: social protection select and slider have hidden labels", {
-  src <- file.path("..", "..", "R", "mod_3_01_sp.R")
-  skip_if_not(file.exists(src), "R sources not found")
-  code <- paste(readLines(src, warn = FALSE), collapse = "\n")
+  src <- file.path("..", "..", "R", c("mod_3_01_sp.R", "fct_sp_ui.R"))
+  skip_if_not(all(file.exists(src)), "R sources not found")
+  code <- paste(unlist(lapply(src, readLines, warn = FALSE)), collapse = "\n")
   expect_match(code, 'visually-hidden", "Targeting"', fixed = TRUE)
   expect_match(code, 'visually-hidden", "Transfers per year"', fixed = TRUE)
 })
