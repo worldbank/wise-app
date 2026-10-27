@@ -347,14 +347,14 @@
       }
     },
     "duckdb": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
+      "Source": "duckdb",
+      "Repository": "https://duckdb.r-universe.dev",
       "description": {
         "Package": "duckdb",
         "Title": "DBI Package for the DuckDB Database Management System",
-        "Version": "1.5.6",
+        "Version": "2.0.0.9000",
         "Authors@R": "c(\n    person(\"Hannes\", \"Mühleisen\", , \"hannes@cwi.nl\", role = \"aut\",\n           comment = c(ORCID = \"0000-0001-8552-0029\")),\n    person(\"Mark\", \"Raasveldt\", , \"mark.raasveldt@cwi.nl\", role = \"aut\",\n           comment = c(ORCID = \"0000-0001-5005-6844\")),\n    person(\"Kirill\", \"Müller\", , \"kirill@cynkra.com\", role = \"cre\",\n           comment = c(ORCID = \"0000-0002-1416-3412\")),\n    person(\"Stichting DuckDB Foundation\", role = \"cph\"),\n    person(\"Apache Software Foundation\", role = \"cph\"),\n    person(\"PostgreSQL Global Development Group\", role = \"cph\"),\n    person(\"The Regents of the University of California\", role = \"cph\"),\n    person(\"Cameron Desrochers\", role = \"cph\"),\n    person(\"Victor Zverovich\", role = \"cph\"),\n    person(\"RAD Game Tools\", role = \"cph\"),\n    person(\"Valve Software\", role = \"cph\"),\n    person(\"Rich Geldreich\", role = \"cph\"),\n    person(\"Tenacious Software LLC\", role = \"cph\"),\n    person(\"The RE2 Authors\", role = \"cph\"),\n    person(\"Google Inc.\", role = \"cph\"),\n    person(\"Facebook Inc.\", role = \"cph\"),\n    person(\"Steven G. Johnson\", role = \"cph\"),\n    person(\"Jiahao Chen\", role = \"cph\"),\n    person(\"Tony Kelman\", role = \"cph\"),\n    person(\"Jonas Fonseca\", role = \"cph\"),\n    person(\"Lukas Fittl\", role = \"cph\"),\n    person(\"Salvatore Sanfilippo\", role = \"cph\"),\n    person(\"Art.sy, Inc.\", role = \"cph\"),\n    person(\"Oran Agra\", role = \"cph\"),\n    person(\"Redis Labs, Inc.\", role = \"cph\"),\n    person(\"Melissa O'Neill\", role = \"cph\"),\n    person(\"PCG Project contributors\", role = \"cph\")\n  )",
-        "Description": "The DuckDB project is an embedded analytical data management\n    system with support for the Structured Query Language (SQL). This\n    package includes all of DuckDB and an R Database Interface (DBI)\n    connector.",
+        "Description": "The DuckDB project is an embedded analytical data\n        management system with support for the Structured Query\n        Language (SQL). This package includes all of DuckDB and an R\n        Database Interface (DBI) connector.",
         "License": "MIT + file LICENSE",
         "URL": "https://r.duckdb.org/, https://github.com/duckdb/duckdb-r",
         "BugReports": "https://github.com/duckdb/duckdb-r/issues",
@@ -369,15 +369,18 @@
         "Config/comment/gha/extra-packages": "arrow does not compile against\nRtools45, and the aarch64 Windows runner has no binary to\ninstall instead. adbcdrivermanager needs ignore-unavailable as\nwell, and needs it on every runner: CRAN archived it, and pak\nis called with dependencies = \"all\", which resolves Enhances\ntoo, so the package is in the plan and resolves to nothing.\nignore-build-errors does not cover that -- it demotes a failed\nbuild, not a failed lookup. ignore-build-errors stays for the\nday it returns to CRAN and Rtools45 has to build it again.\nExplained in handbook/operations/ci/matrix/README.md.",
         "Config/testthat/edition": "3",
         "Encoding": "UTF-8",
-        "SystemRequirements": "xz (for building from source)",
-        "Config/roxygen2/version": "8.1.0.9000",
+        "Roxygen": "list(markdown = TRUE)",
+        "Config/roxygen2/version": "8.1.1.9000",
+        "Repository": "https://duckdb.r-universe.dev",
+        "Date/Publication": "2026-10-23 08:09:55 UTC",
+        "RemoteUrl": "https://github.com/duckdb/duckdb-r",
+        "RemoteRef": "HEAD",
+        "RemoteSha": "ca768a989ad5554f5b643dd26e84dce8578660ba",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-09-28 19:19:26 UTC; runner",
+        "Packaged": "2026-10-23 13:45:05 UTC; root",
         "Author": "Hannes Mühleisen [aut] (ORCID: <https://orcid.org/0000-0001-8552-0029>),\n  Mark Raasveldt [aut] (ORCID: <https://orcid.org/0000-0001-5005-6844>),\n  Kirill Müller [cre] (ORCID: <https://orcid.org/0000-0002-1416-3412>),\n  Stichting DuckDB Foundation [cph],\n  Apache Software Foundation [cph],\n  PostgreSQL Global Development Group [cph],\n  The Regents of the University of California [cph],\n  Cameron Desrochers [cph],\n  Victor Zverovich [cph],\n  RAD Game Tools [cph],\n  Valve Software [cph],\n  Rich Geldreich [cph],\n  Tenacious Software LLC [cph],\n  The RE2 Authors [cph],\n  Google Inc. [cph],\n  Facebook Inc. [cph],\n  Steven G. Johnson [cph],\n  Jiahao Chen [cph],\n  Tony Kelman [cph],\n  Jonas Fonseca [cph],\n  Lukas Fittl [cph],\n  Salvatore Sanfilippo [cph],\n  Art.sy, Inc. [cph],\n  Oran Agra [cph],\n  Redis Labs, Inc. [cph],\n  Melissa O'Neill [cph],\n  PCG Project contributors [cph]",
         "Maintainer": "Kirill Müller <kirill@cynkra.com>",
-        "Repository": "CRAN",
-        "Date/Publication": "2026-09-29 08:50:02 UTC",
-        "Built": "R 4.5.2; aarch64-apple-darwin20; 2026-09-29 11:04:20 UTC; unix"
+        "Built": "R 4.5.3; aarch64-apple-darwin20; 2026-10-23 15:04:27 UTC; unix"
       }
     },
     "echarts4r": {
@@ -4424,7 +4427,7 @@
       "checksum": "b544c98e7d55c33a6c62b5c905878c65"
     },
     "DESCRIPTION": {
-      "checksum": "06992ba779f2e438ad738c5d5e7f384f"
+      "checksum": "fc4e544e0a6e9221d6e10a1ea3a544dd"
     },
     "inst/app/_brand.yml": {
       "checksum": "66580c59f1e8321f5a6ab4dc5565cd0a"
@@ -4484,10 +4487,10 @@
       "checksum": "f2738554f83c63854fc6f8f7efd64d30"
     },
     "inst/duckdb_extensions/h3.duckdb_extension.gz": {
-      "checksum": "f9fac7c2a8fd0825a46b6d8fe0fb13f8"
+      "checksum": "82f2ae75a3f6f2215c4367b005c1e62f"
     },
     "inst/duckdb_extensions/httpfs.duckdb_extension.gz": {
-      "checksum": "8806c00b82b6550bdaa5c801ae5e0efd"
+      "checksum": "612a59ef5b491a5f413c1dabe541c8fc"
     },
     "inst/golem-config.yml": {
       "checksum": "e4182d1f463faf7408c7aa1366d05ad0"
@@ -4508,7 +4511,7 @@
       "checksum": "43acbdd8427452b1f89bbfe539e0370f"
     },
     "R/fct_aggregation_delta.R": {
-      "checksum": "aa7bf51039b42c7daf9bd3da07e7e644"
+      "checksum": "7602ed9a06ac15c3b5cf844d44cf3c56"
     },
     "R/fct_aggregation_kernel.R": {
       "checksum": "4abe86f039622d06119d43d43a7369d3"
@@ -4550,7 +4553,7 @@
       "checksum": "d42956b761de6698f39bc0d75cd4bfb8"
     },
     "R/fct_load_data.R": {
-      "checksum": "bfb53605bce5ed5cb480f699bea2f769"
+      "checksum": "808fe6c1d71e23625ae67e373c829fba"
     },
     "R/fct_loc_panel.R": {
       "checksum": "1abad00c1e7f22fbe1929ad1d52a2046"
