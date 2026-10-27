@@ -246,3 +246,23 @@ test_that("the Step 3 poverty line is the run's, else the outcome's, else 3", {
   expect_equal(step3_pov_line(list(so = data.frame(povline = NA_real_))), 3)
   expect_equal(step3_pov_line(list()), 3)
 })
+
+test_that("the tail table finds the historical tails under the run's historical label", {
+  rows <- function(source) {
+    tibble::tibble(
+      scenario = "Historical", source = source, Estimate = "Single historical estimate",
+      rp_name = "1:5", rp_label = "1:5", value = 1, n_obs = 30, is_historical = TRUE
+    )
+  }
+  tails <- data.frame(
+    scenario = "Historical / 1991-2020", probability = unname(RP_LOW[["1:5"]]),
+    baseline = 10, policy = 8, status = "ok", reason = "", center_method = "single_historical"
+  )
+  testthat::local_mocked_bindings(step3_threshold_rows = function(agg_hist, agg_scn, hist_ref,
+                                                                  source_label, ...) rows(source_label))
+  thr <- step3_threshold_table(NULL, NULL, NULL, NULL, 0, c(lo = 0.1, hi = 0.9), c(lo = 0.5, hi = 0.5),
+    "mean", NULL, character(), tails, hist_label = "Historical / 1991-2020")
+  expect_equal(thr$value[thr$source == "Baseline"], 10)
+  expect_equal(thr$value[thr$source == "Policy"], 8)
+  expect_true(all(thr$status == "ok"))
+})

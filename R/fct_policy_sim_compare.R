@@ -3114,7 +3114,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     step3_threshold_table(
       baseline_agg_hist(), baseline_agg_scenarios(), policy_agg_hist(), policy_agg_scenarios(),
       hr, bq_coef, bq_ens, aggregation_method(), so_obj, selected_scenario_names(),
-      metric_decomposition()$return_period, matrix_transform
+      metric_decomposition()$return_period, matrix_transform, hist_label = hist_label()
     )
   })
 

@@ -218,11 +218,12 @@ step3_threshold_rows <- function(agg_hist, agg_scn, hist_ref, source_label, bq_c
 #' @param scenarios Names of the scenarios to include.
 #' @param tails The `return_period` table of the metric decomposition.
 #' @param matrix_transform Optional cached `by_model_matrix()` accessor.
+#' @param hist_label Label of the historical scenario in `tails`.
 #' @return A tibble.
 #' @noRd
 step3_threshold_table <- function(base_hist, base_scn, pol_hist, pol_scn, hist_ref,
                                   bq_coef, bq_ens, method, so, scenarios, tails,
-                                  matrix_transform = NULL) {
+                                  matrix_transform = NULL, hist_label = "Historical") {
   hr <- hist_ref
   out <- dplyr::bind_rows(
     step3_threshold_rows(base_hist, base_scn, hr, "Baseline", bq_coef, bq_ens, method, so,
@@ -233,7 +234,7 @@ step3_threshold_table <- function(base_hist, base_scn, pol_hist, pol_scn, hist_r
   if (nrow(out)) {
     central_label <- function(x) x %in% c("Equal-model mean", "Single historical estimate", "Central (P50)")
     for (i in which(central_label(out$Estimate))) {
-      scenario <- out$scenario[[i]]
+      scenario <- if (identical(out$scenario[[i]], "Historical")) hist_label else out$scenario[[i]]
       probability <- unname(c(RP_LOW, RP_HIGH, "1:1" = 0.5)[out$rp_name[[i]]])
       if (!is.finite(probability) || !probability %in% RP_LOW) next
       tail <- if (is.data.frame(tails) && nrow(tails)) {
@@ -853,7 +854,8 @@ step3_batch_tables <- function(run, hs, ss, svy, levers, skip_coef, analysis_uni
         )
         hp <- step3_headline_paired_summary(dat)
         thr <- step3_threshold_table(
-          b$hist, b$scn, p$hist, p$scn, 0, bq_coef, bq_ens, m, so, scenarios, decomp$return_period
+          b$hist, b$scn, p$hist, p$scn, 0, bq_coef, bq_ens, m, so, scenarios, decomp$return_period,
+          hist_label = hist_label
         )
         ts <- dplyr::bind_rows(
           step3_timeseries_rows(b$hist, b$scn, 0, "Baseline", scenarios),
