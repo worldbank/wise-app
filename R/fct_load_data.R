@@ -631,7 +631,7 @@ collect_deterministic <- function(data, keys = NULL) {
 # whitespace is trimmed, whole numbers are double (not integer) and ISO dates
 # are Date, as readr guessed. Returns a tibble.
 .read_csv_raw <- function(raw) {
-  txt <- sub("^﻿", "", rawToChar(raw))
+  txt <- sub("^\uFEFF", "", rawToChar(raw))
   Encoding(txt) <- "UTF-8"
   out <- utils::read.csv(
     text = txt, na.strings = c("", "NA"), strip.white = TRUE,

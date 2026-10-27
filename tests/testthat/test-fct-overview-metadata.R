@@ -2,6 +2,10 @@
 
 library(testthat)
 
+write_csv_base <- function(x, file) {
+  utils::write.csv(x, file, row.names = FALSE, na = "NA")
+}
+
 test_that("metadata parent cache hits do not start a daemon", {
   withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "0")
   params <- list(type = "local", path = tempdir())
@@ -70,7 +74,7 @@ test_that("metadata backpressure retries stop when the request is retired", {
   metadata_path <- file.path(path, "metadata")
   dir.create(metadata_path, recursive = TRUE, showWarnings = FALSE)
 
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       economy = "Testland",
       code = "TST",
@@ -83,7 +87,7 @@ test_that("metadata backpressure retries stop when the request is retired", {
     ),
     file.path(metadata_path, "survey_list.csv")
   )
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       name = "loc_id",
       label = "Location",
@@ -102,7 +106,7 @@ test_that("metadata backpressure retries stop when the request is retired", {
     ),
     file.path(metadata_path, "variable_list.csv")
   )
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       code = "TST",
       year = 2020,
@@ -261,7 +265,7 @@ test_that("metadata variable order can be preserved on collection", {
   dir.create(path, recursive = TRUE)
   withr::defer(unlink(path, recursive = TRUE, force = TRUE))
 
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       name = c("t", "tn", "tx", "spei6"),
       label = c("Monthly temperature", "Monthly minimum temperature",
@@ -396,7 +400,7 @@ test_that("successful metadata loads are cached and local changes invalidate the
   first <- load_overview_metadata(list(type = "local", path = path))
   expect_equal(first$survey_list$code, "TST")
 
-  readr::write_csv(
+  write_csv_base(
     rbind(
       data.frame(
         economy = "Testland",
