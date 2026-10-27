@@ -177,7 +177,7 @@ echart_outcome_decomposition_headline <- function(data, y_label = "Mean effect (
     echarts4r::e_charts(channel, height = height) |>
     echarts4r::e_bar(value, name = "Mean effect") |>
     echarts4r::e_color(unname(channel_colours[as.character(data$channel)])) |>
-    echarts4r::e_x_axis(axisLabel = wise_eaxis_label(fontSize = 13),
+    echarts4r::e_x_axis(axisLabel = wise_eaxis_label(fontSize = 13, interval = 0L, width = 130, overflow = "break"),
       axisTick = list(alignWithLabel = TRUE), axisLine = list(lineStyle = list(color = .wise_grid))) |>
     echarts4r::e_y_axis(name = y_label, nameLocation = "end", nameRotate = 0,
       nameGap = 20, nameTextStyle = wise_eaxis_name(align = "left"),

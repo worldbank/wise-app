@@ -273,6 +273,10 @@ mod_3_09_decomposition_server <- function(id,
     change_unit_text <- reactive({
       if (is_relative()) "% of baseline mean" else outcome_metric()$change_unit %||% "outcome units"
     })
+    shock_note <- paste0(
+      "Shock-responsive transfer: payments made only in years when the trigger fires. Each bar is the mean ",
+      "over the years of the selected weather-year basis, not the size of one payment."
+    )
     output$headline_decomp_note_ui <- renderUI({
       if (!identical(policy_method_status()$status, "ok")) {
         return(shiny::tags$p(class = "alert alert-warning", policy_method_status()$reason))
@@ -286,11 +290,16 @@ mod_3_09_decomposition_server <- function(id,
         return(weather_basis_unavailable(basis, FALSE) %||%
           shiny::tags$p(class = "diagnostic-note", "Decomposition is unavailable for this selection."))
       }
-      shiny::tags$p(class = "diagnostic-note", paste0(
-        "Mean effect in ", outcome, " (", unit, ") under ", scenario,
-        " for ", weather_basis_text(basis, outcome), ".",
-        if (is_relative()) " Percent of observed baseline mean, the same for all channels."
-      ))
+      shiny::tagList(
+        shiny::tags$p(class = "diagnostic-note", paste0(
+          "Mean effect in ", outcome, " (", unit, ") under ", scenario,
+          " for ", weather_basis_text(basis, outcome), ".",
+          if (is_relative()) " Percent of observed baseline mean, the same for all channels."
+        )),
+        if ("Shock-responsive transfer" %in% headline_decomp_data()$channel) {
+          shiny::tags$p(class = "diagnostic-note", shock_note)
+        }
+      )
     })
     # Zero-arg echarts closures shared by the on-screen render and the
     # export bundle (guidelines sec. 7 pattern).
@@ -469,16 +478,21 @@ mod_3_09_decomposition_server <- function(id,
       outcome <- outcome_label_text()
       unavailable <- weather_basis_unavailable(basis, nrow(decile_decomp_data()) > 0L)
       if (!is.null(unavailable)) return(unavailable)
-      shiny::tags$p(
-        class = "diagnostic-note",
-        paste0(
-          "Bars: mean effect in ", outcome, " (",
-          change_unit_text(),
-          ") by channel; marker: total, for ", input$decile_scenario %||% hist_label(),
-          " under ", weather_basis_text(basis, outcome),
-          ". Decile 1 is the poorest, fixed from weighted baseline welfare.",
-          if (is_relative()) " Percent of each decile's observed baseline mean."
-        )
+      shiny::tagList(
+        shiny::tags$p(
+          class = "diagnostic-note",
+          paste0(
+            "Bars: mean effect in ", outcome, " (",
+            change_unit_text(),
+            ") by channel; marker: total, for ", input$decile_scenario %||% hist_label(),
+            " under ", weather_basis_text(basis, outcome),
+            ". Decile 1 is the poorest, fixed from weighted baseline welfare.",
+            if (is_relative()) " Percent of each decile's observed baseline mean."
+          )
+        ),
+        if (.decomposition_shock_active(decile_decomp_data()$shock)) {
+          shiny::tags$p(class = "diagnostic-note", shock_note)
+        }
       )
     })
 
