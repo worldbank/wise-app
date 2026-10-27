@@ -944,6 +944,7 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
   tryCatch(
     {
       value$x$opts$animation <- FALSE
+      value$x$opts$toolbox$show <- FALSE
       htmlwidgets::saveWidget(value, html)
       webshot2::webshot(html, path,
         vwidth = max(round(item$width * 150), 1L),

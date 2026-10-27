@@ -144,8 +144,11 @@
     l <- cv$lasso
     l$alpha <- as.numeric(l$alpha)
     l$lambda <- .match_choice(as.character(l$lambda), .MODEL_LAMBDAS)
-    for (f in c("nfolds", "mi_m", "mi_maxit")) l[[f]] <- as.integer(l[[f]])
-    for (f in c("standardize", "use_mice")) l[[f]] <- as.logical(l[[f]])
+    # use_mice and mi_maxit belonged to the removed MICE path; old specs may still carry them
+    l$use_mice <- NULL
+    l$mi_maxit <- NULL
+    for (f in c("nfolds", "mi_m")) l[[f]] <- as.integer(l[[f]])
+    l$standardize <- as.logical(l$standardize)
     l$stability_threshold <- as.numeric(l$stability_threshold)
     l$force_in <- chr(l$force_in)
     l$force_out <- chr(l$force_out)
@@ -201,11 +204,8 @@
     if (!l$lambda %in% .MODEL_LAMBDAS) add(p, "lambda must be one of: ", paste(.MODEL_LAMBDAS, collapse = ", "), ".")
     if (!in_range(l$nfolds, 5, 20)) add(p, "nfolds must be between 5 and 20.")
     if (!in_range(l$mi_m, 1, 20)) add(p, "mi_m must be between 1 and 20.")
-    if (!in_range(l$mi_maxit, 1, 20)) add(p, "mi_maxit must be between 1 and 20.")
     if (!in_range(l$stability_threshold, 0.1, 1)) add(p, "stability_threshold must be between 0.1 and 1.")
-    for (f in c("standardize", "use_mice")) {
-      if (length(l[[f]]) != 1L || is.na(l[[f]])) add(p, f, " must be true or false.")
-    }
+    if (length(l$standardize) != 1L || is.na(l$standardize)) add(p, "standardize must be true or false.")
     both <- intersect(l$force_in, l$force_out)
     if (length(both)) add(p, "force_in and force_out share: ", paste(both, collapse = ", "), ".")
   }
@@ -1066,7 +1066,7 @@ wise_spec_from_config <- function(config) {
     lasso <- Filter(Negate(is.null), list(
       alpha = m("lasso_alpha"), lambda = m("lasso_interactions"), nfolds = m("lasso_nfolds"),
       standardize = if (!is.null(m("lasso_standardize"))) m("lasso_standardize") == "Standardize",
-      use_mice = m("use_mice"), mi_m = m("mi_m"), mi_maxit = m("mi_maxit"),
+      mi_m = m("mi_m"),
       stability_threshold = m("stability_threshold"),
       force_in = flat("force_in_"), force_out = flat("force_out_")
     ))

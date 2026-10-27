@@ -401,13 +401,13 @@ infer_engine <- function(model_type) {
 #' @param lasso_nfolds        Integer. Number of cross-validation folds. Default `10`.
 #' @param lasso_standardize   Logical. Whether to standardise predictors before
 #'   fitting. Default `TRUE`.
-#' @param mi_m                Integer. Number of multiple imputations. Default `5`.
-#' @param mi_maxit            Integer. Number of imputation iterations. Default `5`.
+#' @param mi_m                Integer. Number of Lasso selection repetitions
+#'   (random CV folds each; the name is historical). Default `5`.
 #' @param stability_threshold Numeric in \[0, 1\]. Minimum selection frequency
-#'   across imputations for a variable to be retained. Default `0.5`.
+#'   across repetitions for a variable to be retained. Default `0.5`.
 #'
 #' @return A named list. All `NULL` inputs are coerced to their defaults.
-#'   Lasso/MI fields are always present but only meaningful when
+#'   Lasso fields are always present but only meaningful when
 #'   `covariate_selection == "Lasso"`.
 #'
 #' @export
@@ -427,7 +427,6 @@ build_selected_model <- function(model_type = NULL,
                                  lasso_nfolds = NULL,
                                  lasso_standardize = NULL,
                                  mi_m = NULL,
-                                 mi_maxit = NULL,
                                  stability_threshold = NULL) {
   chr0 <- character(0)
   list(
@@ -442,13 +441,12 @@ build_selected_model <- function(model_type = NULL,
     firm_covariates     = firm_covariates %||% chr0,
     area_covariates     = area_covariates %||% chr0,
     cluster             = cluster %||% chr0,
-    # Lasso / MI options - only meaningful when covariate_selection == "Lasso"
+    # Lasso options - only meaningful when covariate_selection == "Lasso"
     lasso_alpha         = lasso_alpha %||% 1,
     lasso_lambda        = lasso_lambda %||% "lambda.1se",
     lasso_nfolds        = lasso_nfolds %||% 10L,
     lasso_standardize   = lasso_standardize %||% TRUE,
     mi_m                = mi_m %||% 5L,
-    mi_maxit            = mi_maxit %||% 5L,
     stability_threshold = stability_threshold %||% 0.5
   )
 }

@@ -20,7 +20,6 @@
 #'
 #' @importFrom shiny NS tagList
 #' @importFrom glmnet cv.glmnet glmnet
-#' @importFrom mice mice complete as.mira pool
 mod_1_06_model_ui <- function(id) {
   ns <- NS(id)
   tagList(
@@ -733,25 +732,12 @@ mod_1_06_model_server <- function(id,
             fallback = "Standardize"
           )
         ),
-        shiny::checkboxInput(
-          ns("use_mice"),
-          "Use MICE imputation for missing covariates",
-          value = isTRUE(prev("use_mice"))
-        ),
         sliderInput(
           ns("mi_m"),
-          "Number of imputations (m)",
+          "Number of selection repetitions",
           min = 1,
           max = 20,
           value = .restore_numeric(prev("mi_m"), 1, 20, fallback = dflt$mi_m),
-          step = 1
-        ),
-        sliderInput(
-          ns("mi_maxit"),
-          "Imputation iterations",
-          min = 1,
-          max = 20,
-          value = .restore_numeric(prev("mi_maxit"), 1, 20, fallback = dflt$mi_maxit),
           step = 1
         ),
         sliderInput(
@@ -805,7 +791,7 @@ mod_1_06_model_server <- function(id,
         settings <- wise_lasso_settings(
           alpha = input$lasso_alpha, lambda = input$lasso_interactions,
           nfolds = input$lasso_nfolds, standardize = input$lasso_standardize,
-          use_mice = input$use_mice, mi_m = input$mi_m, mi_maxit = input$mi_maxit,
+          mi_m = input$mi_m,
           stability_threshold = input$stability_threshold
         )
         seed_val <- wise_current_seed()
@@ -971,7 +957,6 @@ mod_1_06_model_server <- function(id,
           nfolds              = input$lasso_nfolds,
           standardize         = isTRUE(input$lasso_standardize == "Standardize"),
           mi_m                = input$mi_m,
-          mi_maxit            = input$mi_maxit,
           stability_threshold = input$stability_threshold
         ),
         cluster             = wise_cluster_var(sw_cols)

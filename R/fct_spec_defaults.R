@@ -223,13 +223,13 @@ wise_default_policy <- function() {
 }
 
 #' Default Lasso settings (the Model tab's advanced controls)
-#' @return A named list: `alpha`, `lambda`, `nfolds`, `standardize`, `use_mice`,
-#'   `mi_m`, `mi_maxit`, `stability_threshold`.
+#' @return A named list: `alpha`, `lambda`, `nfolds`, `standardize`,
+#'   `mi_m` (selection repetitions), `stability_threshold`.
 #' @noRd
 wise_default_lasso <- function() {
   list(
     alpha = 1, lambda = "lambda.1se", nfolds = 10L, standardize = TRUE,
-    use_mice = FALSE, mi_m = 5L, mi_maxit = 5L, stability_threshold = 0.5
+    mi_m = 5L, stability_threshold = 0.5
   )
 }
 

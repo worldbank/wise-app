@@ -312,14 +312,9 @@ ENGINE_REGISTRY <- list(
 #' @param lambda_choice character lambda selector ("lambda.1se" / "lambda.min")
 #' @param nfolds integer CV folds
 #' @param standardize logical
-#' @param mi_m integer number of imputations
-#' @param mi_maxit integer mice iterations
-#' @param mi_method character; mice imputation method (default "pmm";
-#'   "norm.predict" / "norm" are much faster for numeric-heavy candidate pools)
-#' @param use_mice logical; when `FALSE` (default) incomplete rows are dropped
-#'   via complete-case filtering and no imputation runs. When `TRUE`, the
-#'   mice multiple-imputation path (`mi_m` / `mi_maxit` / `mi_method`) is
-#'   restored.
+#' @param mi_m integer number of selection repetitions (random CV folds each);
+#'   the name is historical, no imputation takes place. Rows with a missing
+#'   candidate are dropped before selection.
 #' @param stability_threshold numeric in (0,1)
 #' @param parallel_seed integer; base seed for reproducible selection
 #' @param cv_selection character; fold assignment mode for CV ("default" or "random")
@@ -345,9 +340,6 @@ run_lasso_selection <- function(
   nfolds = 10,
   standardize = TRUE,
   mi_m = 5,
-  mi_maxit = 5,
-  mi_method = "pmm",
-  use_mice = FALSE,
   stability_threshold = 0.5,
   parallel_seed = WISEAPP_DEFAULT_SEED,
   cv_selection = c("random", "default"),
@@ -412,9 +404,8 @@ run_lasso_selection <- function(
 
   # 3. Drop NA rows on outcome + core columns (correctness fix) ----
   #
-  # Without this, mice (which is fed only candidate_vars) leaves NAs in core
-  # columns; model.matrix then drops those rows from X_core but not X_lasso,
-  # producing a silent row mismatch when cbind()-ing.
+  # Without this, model.matrix drops rows with NA core terms from X_core but
+  # not X_lasso, producing a silent row mismatch when cbind()-ing.
   if (length(core_main_terms) > 0) {
     df <- df[stats::complete.cases(df[, core_main_terms, drop = FALSE]), , drop = FALSE]
   }
@@ -444,32 +435,28 @@ run_lasso_selection <- function(
   )
   candidate_vars <- candidate_vars[non_all_na]
   if (length(candidate_vars) == 0) {
-    stop("No candidate variables with observed values remain for imputation/LASSO.")
+    stop("No candidate variables with observed values remain for LASSO.")
   }
 
-  # 4b. Complete-case filtering (default; use_mice = TRUE restores MI path) ----
+  # 4b. Complete-case filtering ----
   #
   # For variable *selection*, complete-case analysis is sufficient when
-
   # missingness is low (filter_valid_vars enforces >= 90% complete upstream).
-  # Dropping NA rows avoids the mice bottleneck at large n. Final model
-  # fitting in fit_model() uses the full dataset independently.
-  if (!isTRUE(use_mice)) {
-    cc_mask <- complete.cases(df[, candidate_vars, drop = FALSE])
-    n_dropped <- sum(!cc_mask)
-    if (n_dropped > 0L) {
-      message(sprintf(
-        "run_lasso_selection: dropping %d/%d rows with NA in candidates (complete-case mode).",
-        n_dropped, nrow(df)
-      ))
-      df <- df[cc_mask, , drop = FALSE]
-      if (nrow(df) < 100L) {
-        stop("Too few complete cases for LASSO selection (<100 rows remain).")
-      }
+  # Final model fitting in fit_model() uses the full dataset independently.
+  cc_mask <- complete.cases(df[, candidate_vars, drop = FALSE])
+  n_dropped <- sum(!cc_mask)
+  if (n_dropped > 0L) {
+    message(sprintf(
+      "run_lasso_selection: dropping %d/%d rows with NA in candidates.",
+      n_dropped, nrow(df)
+    ))
+    df <- df[cc_mask, , drop = FALSE]
+    if (nrow(df) < 100L) {
+      stop("Too few complete cases for LASSO selection (<100 rows remain).")
     }
   }
 
-  # 5. Parallel plan (workers capped at mi_m - extra workers idle) ----
+  # 5. Number of selection repetitions ----
   m <- max(1L, as.integer(mi_m))
   family_type <- if (is_logit) "binomial" else "gaussian"
   cv_selection <- match.arg(cv_selection)
@@ -505,23 +492,17 @@ run_lasso_selection <- function(
     X_core <- .lasso_partial_out(X_core, fe_df, drop_absorbed = TRUE)
   }
 
-  has_matrixStats <- requireNamespace("matrixStats", quietly = TRUE)
   drop_constant <- function(X) {
     if (ncol(X) == 0) {
       return(X)
     }
-    keep <- if (has_matrixStats) {
-      matrixStats::colMaxs(X) > matrixStats::colMins(X)
-    } else {
-      vapply(seq_len(ncol(X)), function(j) {
-        v <- X[, j]
-        length(v) > 0L && (max(v) > min(v))
-      }, logical(1))
-    }
+    keep <- vapply(seq_len(ncol(X)), function(j) {
+      v <- X[, j]
+      length(v) > 0L && (max(v) > min(v))
+    }, logical(1))
     X[, keep, drop = FALSE]
   }
 
-  has_na <- anyNA(df[, candidate_vars, drop = FALSE])
   nfolds_i <- max(2L, as.integer(nfolds))
   cluster_id <- if (!is.null(cv_cluster) && cv_cluster %in% names(df)) df[[cv_cluster]] else NULL
   # Random fold assignment for one repetition (DOC-06): by cluster when a
@@ -533,133 +514,58 @@ run_lasso_selection <- function(
     .cluster_foldid(cluster_id, nfolds_i)
   }
 
-  # 7. Fast path: no NAs in candidates (always true after complete-case filter) ----
+  # 7. Selection repetitions ----
   #
   # X_full and penalty are identical across iterations - build once.  The loop
   # only varies the random CV fold assignment for stability selection.
   # Sequential lapply: globals-export overhead of multisession exceeds the
   # cv.glmnet compute time (confirmed via dev/archive/bench_lasso.R).
-  if (!has_na) {
-    X_lasso <- drop_constant(as.matrix(df[, candidate_vars, drop = FALSE]))
-    if (fwl && ncol(X_lasso) > 0) {
-      X_lasso <- .lasso_partial_out(X_lasso, fe_df, drop_absorbed = TRUE)
-    }
-    if (ncol(X_lasso) == 0) stop("All candidate variables are constant.")
-    lasso_names <- colnames(X_lasso)
-
-    X_full <- if (ncol(X_core) > 0) cbind(X_core, X_lasso) else X_lasso
-    penalty <- c(rep(0, ncol(X_core)), rep(1, ncol(X_lasso)))
-    rm(X_core, X_lasso)
-
-    cv_args_base <- list(
-      x = X_full,
-      y = y_vec,
-      alpha = alpha,
-      nfolds = nfolds_i,
-      family = family_type,
-      standardize = isTRUE(standardize),
-      penalty.factor = penalty
-    )
-    if (!is.null(glmnet_tol)) cv_args_base <- .glmnet_set_tol(cv_args_base, glmnet_tol)
-
-    selection_results <- lapply(seq_len(m), function(i) {
-      withr::with_seed(wise_seed(parallel_seed, "lasso", "complete", i), {
-        cv_args <- cv_args_base
-        if (identical(cv_selection, "random")) {
-          cv_args$foldid <- draw_foldid()
-        }
-        cvfit <- do.call(glmnet::cv.glmnet, cv_args)
-        coefs <- stats::coef(cvfit, s = lambda_choice)
-        sel <- rownames(coefs)[as.numeric(coefs) != 0]
-        sel <- setdiff(sel, "(Intercept)")
-        intersect(sel, lasso_names)
-      })
-    })
-  } else {
-    # 8. MI path: impute candidates, rebuild X_lasso per imputation ----
-
-    mi_cols <- unique(c(y_var, core_main_terms, candidate_vars))
-    mi_frame <- df[, mi_cols, drop = FALSE]
-
-    non_num_idx <- vapply(mi_frame, function(x) !is.numeric(x), logical(1))
-    if (any(non_num_idx)) {
-      mi_frame[non_num_idx] <- lapply(mi_frame[non_num_idx], function(x) {
-        if (is.logical(x)) {
-          as.integer(x)
-        } else if (is.factor(x)) {
-          as.integer(x)
-        } else {
-          as.integer(as.factor(x))
-        }
-      })
-    }
-
-    imp <- withr::with_seed(
-      wise_seed(parallel_seed, "lasso", "mice"),
-      mice::mice(
-        mi_frame,
-        m = m,
-        maxit = max(1L, as.integer(mi_maxit)),
-        method = mi_method,
-        print = FALSE
-      )
-    )
-    completed_cands_list <- lapply(
-      seq_len(m),
-      function(i) mice::complete(imp, action = i)[, candidate_vars, drop = FALSE]
-    )
-    rm(mi_frame, imp)
-
-    selection_results <- lapply(seq_len(m), function(i) {
-      withr::with_seed(wise_seed(parallel_seed, "lasso", "imputation", i), {
-        X_lasso <- drop_constant(as.matrix(completed_cands_list[[i]]))
-        if (fwl && ncol(X_lasso) > 0) {
-          X_lasso <- .lasso_partial_out(X_lasso, fe_df, drop_absorbed = TRUE)
-        }
-        if (ncol(X_lasso) == 0) {
-          return(character(0))
-        }
-
-        X_full <- if (ncol(X_core) > 0) cbind(X_core, X_lasso) else X_lasso
-        penalty <- c(rep(0, ncol(X_core)), rep(1, ncol(X_lasso)))
-
-        foldid <- NULL
-        if (identical(cv_selection, "random")) {
-          foldid <- draw_foldid()
-        }
-
-        cv_args <- list(
-          x = X_full,
-          y = y_vec,
-          alpha = alpha,
-          nfolds = nfolds_i,
-          family = family_type,
-          standardize = isTRUE(standardize),
-          penalty.factor = penalty
-        )
-        if (!is.null(foldid)) cv_args$foldid <- foldid
-        if (!is.null(glmnet_tol)) cv_args <- .glmnet_set_tol(cv_args, glmnet_tol)
-
-        cvfit <- do.call(glmnet::cv.glmnet, cv_args)
-
-        coefs <- stats::coef(cvfit, s = lambda_choice)
-        sel <- rownames(coefs)[as.numeric(coefs) != 0]
-        sel <- setdiff(sel, "(Intercept)")
-        intersect(sel, colnames(X_lasso))
-      })
-    })
+  X_lasso <- drop_constant(as.matrix(df[, candidate_vars, drop = FALSE]))
+  if (fwl && ncol(X_lasso) > 0) {
+    X_lasso <- .lasso_partial_out(X_lasso, fe_df, drop_absorbed = TRUE)
   }
+  if (ncol(X_lasso) == 0) stop("All candidate variables are constant.")
+  lasso_names <- colnames(X_lasso)
+
+  X_full <- if (ncol(X_core) > 0) cbind(X_core, X_lasso) else X_lasso
+  penalty <- c(rep(0, ncol(X_core)), rep(1, ncol(X_lasso)))
+  rm(X_core, X_lasso)
+
+  cv_args_base <- list(
+    x = X_full,
+    y = y_vec,
+    alpha = alpha,
+    nfolds = nfolds_i,
+    family = family_type,
+    standardize = isTRUE(standardize),
+    penalty.factor = penalty
+  )
+  if (!is.null(glmnet_tol)) cv_args_base <- .glmnet_set_tol(cv_args_base, glmnet_tol)
+
+  selection_results <- lapply(seq_len(m), function(i) {
+    withr::with_seed(wise_seed(parallel_seed, "lasso", "complete", i), {
+      cv_args <- cv_args_base
+      if (identical(cv_selection, "random")) {
+        cv_args$foldid <- draw_foldid()
+      }
+      cvfit <- do.call(glmnet::cv.glmnet, cv_args)
+      coefs <- stats::coef(cvfit, s = lambda_choice)
+      sel <- rownames(coefs)[as.numeric(coefs) != 0]
+      sel <- setdiff(sel, "(Intercept)")
+      intersect(sel, lasso_names)
+    })
+  })
 
   selected_list <- selection_results
   all_selected <- unique(unlist(selected_list))
-  if (length(all_selected) == 0) stop("No covariates selected across imputations.")
+  if (length(all_selected) == 0) stop("No covariates selected across repetitions.")
 
   # 9. Selection frequency via tabulate ----
   freq_tbl <- table(unlist(selected_list))
   selection_freq <- setNames(as.numeric(freq_tbl) / m, names(freq_tbl))
 
   final_selected <- names(selection_freq)[selection_freq >= stability_threshold]
-  if (length(final_selected) == 0) stop("No covariates stable across imputations.")
+  if (length(final_selected) == 0) stop("No covariates stable across repetitions.")
 
   list(
     selected_covariates = final_selected,

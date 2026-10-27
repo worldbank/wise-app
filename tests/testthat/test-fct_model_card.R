@@ -14,7 +14,7 @@ make_model_spec <- function(...) {
     firm_covariates = character(0), area_covariates = c("x", "y"),
     cluster = "loc_id_panel",
     lasso_alpha = 1, lasso_lambda = "lambda.1se", lasso_nfolds = 10L,
-    lasso_standardize = TRUE, mi_m = 5L, mi_maxit = 5L,
+    lasso_standardize = TRUE, mi_m = 5L,
     stability_threshold = 0.5
   )
   args[names(list(...))] <- list(...)

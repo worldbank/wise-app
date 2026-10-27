@@ -44,14 +44,14 @@ WISE_LABOR_ROW_RULES <- local({
 
 #' Lasso settings with the Model tab's defaults for omitted fields
 #'
-#' @param alpha,lambda,nfolds,standardize,use_mice,mi_m,mi_maxit,stability_threshold
+#' @param alpha,lambda,nfolds,standardize,mi_m,stability_threshold
 #'   Control values (`NULL` = default). `standardize` is a logical or the
 #'   control's label (`"Standardize"`, `"Do not standardize"`).
 #' @return A named list (see `wise_default_lasso()`).
 #' @noRd
 wise_lasso_settings <- function(alpha = NULL, lambda = NULL, nfolds = NULL,
-                                standardize = NULL, use_mice = NULL, mi_m = NULL,
-                                mi_maxit = NULL, stability_threshold = NULL) {
+                                standardize = NULL, mi_m = NULL,
+                                stability_threshold = NULL) {
   d <- wise_default_lasso()
   list(
     alpha = alpha %||% d$alpha,
@@ -64,9 +64,7 @@ wise_lasso_settings <- function(alpha = NULL, lambda = NULL, nfolds = NULL,
     } else {
       standardize == "Standardize"
     },
-    use_mice = use_mice %||% d$use_mice,
     mi_m = mi_m %||% d$mi_m,
-    mi_maxit = mi_maxit %||% d$mi_maxit,
     stability_threshold = stability_threshold %||% d$stability_threshold
   )
 }
@@ -112,9 +110,6 @@ wise_lasso_selection <- function(df, selected_outcome, weather_vars, fe_vars, in
     nfolds = settings$nfolds,
     standardize = settings$standardize,
     mi_m = settings$mi_m,
-    mi_maxit = settings$mi_maxit,
-    mi_method = "norm",
-    use_mice = settings$use_mice,
     stability_threshold = settings$stability_threshold,
     parallel_seed = seed,
     cv_selection = "random",
@@ -162,7 +157,7 @@ wise_cluster_var <- function(columns) if ("loc_id_panel" %in% columns) "loc_id_p
 #' @param covariate_selection `"User-defined"` or `"Lasso"`.
 #' @param covariates List of covariates by level (`hh`, `area`, `ind`, `firm`).
 #' @param lasso List of Lasso control values as the controls hold them
-#'   (`alpha`, `lambda`, `nfolds`, `standardize`, `mi_m`, `mi_maxit`,
+#'   (`alpha`, `lambda`, `nfolds`, `standardize`, `mi_m`,
 #'   `stability_threshold`; `NULL` entries take the defaults).
 #' @param cluster Cluster variable (`wise_cluster_var()`).
 #' @return A `build_selected_model()` list.
@@ -183,7 +178,6 @@ wise_selected_model <- function(model_type, interactions, fixed_effects, covaria
     lasso_nfolds        = lasso$nfolds,
     lasso_standardize   = lasso$standardize,
     mi_m                = lasso$mi_m,
-    mi_maxit            = lasso$mi_maxit,
     stability_threshold = lasso$stability_threshold,
     cluster             = cluster
   )
@@ -250,8 +244,7 @@ wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, 
   if (identical(cv$method, "lasso")) {
     l <- cv$lasso
     settings <- wise_lasso_settings(
-      l$alpha, l$lambda, l$nfolds, l$standardize, l$use_mice, l$mi_m, l$mi_maxit,
-      l$stability_threshold
+      l$alpha, l$lambda, l$nfolds, l$standardize, l$mi_m, l$stability_threshold
     )
     # The variables the force-in / force-out controls offer at each level.
     offered <- function(role) {
@@ -274,7 +267,6 @@ wise_model_from_spec <- function(model, unit, survey_weather, selected_outcome, 
     )
     covs <- wise_lasso_covariates(selection$selected_covariates, vl, forced)
     lasso <- settings
-    lasso$use_mice <- NULL
     method <- "Lasso"
   } else {
     pool <- function(role) {

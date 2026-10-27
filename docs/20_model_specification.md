@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, weather-measures]
 symbols: [y, W, M, X, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation
 code: [R/fct_model_select.R, R/fct_step1_model.R, R/fct_fit_model.R, R/mod_1_06_model.R, R/fct_model_card.R, R/fct_results.R, R/fct_simulations.R]
-verified_against: e577575
+verified_against: 3db0c63
 ---
 
 # Model specification and estimation sample
@@ -83,11 +83,11 @@ $$\min_{\kappa,\ \delta}\ \frac{1}{2N}\sum_i\big(\tilde y_i - \tilde Z_i^{\prime
 
 with no penalty on $\kappa$. The level $\eta$ is chosen by $k$-fold cross-validation ($k=10$ by default) with the one-standard-error rule: the largest $\eta$ within one standard error of the cross-validated minimum. Predictors are standardised by default. For the logistic model the same problem is solved with the binomial likelihood and the fixed effects are kept in the design instead of being residualised.
 
-**Stability.** The selection is repeated $R$ times ($R=5$ by default), each time with new random cross-validation folds. When the data carry the survey location (`loc_id_panel`), whole locations are assigned to folds, so a held-out fold shares no location with the training folds, in line with the location-clustered standard errors of the final model. Selection ignores survey weights, like the final model. If multiple imputation is switched on (it is off by default), each repetition uses a different imputed data set. A candidate is kept if it is selected in at least half of the repetitions:
+**Stability.** The selection is repeated $R$ times ($R=5$ by default), each time with new random cross-validation folds. When the data carry the survey location (`loc_id_panel`), whole locations are assigned to folds, so a held-out fold shares no location with the training folds, in line with the location-clustered standard errors of the final model. Selection ignores survey weights, like the final model. A candidate is kept if it is selected in at least half of the repetitions:
 
 $$f_j = \frac{1}{R}\sum_{r=1}^{R}\mathbf{1}\big[\hat\delta_j^{(r)} \ne 0\big], \qquad \text{keep } j \text{ if } f_j \ge 0.5 \qquad \text{(5.2)}$$
 
-Without imputation, units with a missing candidate are dropped for the selection step only. The final model is fitted on its own complete-case sample (Section 4).
+Units with a missing candidate are dropped for the selection step only. The final model is fitted on its own complete-case sample (Section 4).
 
 The user can force variables in or out. A forced-in variable is always kept and a forced-out variable is removed from the pool. Selected variables are assigned to the individual, household, firm or area group by their flags.
 

@@ -24,7 +24,7 @@ add_time_columns <- function(df) {
     # POSIXlt exposes the month directly and avoids formatting every date.
     as.integer(as.POSIXlt(timestamp)$mon) + 1L
   } else {
-    lubridate::month(timestamp)
+    as.integer(as.POSIXlt(as.Date(timestamp))$mon) + 1L
   }
 
   df$month <- month
@@ -189,7 +189,7 @@ summarise_interview_dates <- function(df) {
   } else if (inherits(df$timestamp, "Date") || inherits(df$timestamp, "POSIXt")) {
     as.integer(as.POSIXlt(df$timestamp)$mon) + 1L
   } else {
-    lubridate::month(df$timestamp)
+    as.integer(as.POSIXlt(as.Date(df$timestamp))$mon) + 1L
   }
   ok <- ok & !is.na(month_num)
   if (!any(ok)) {

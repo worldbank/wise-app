@@ -619,7 +619,31 @@ collect_deterministic <- function(data, keys = NULL) {
     ), call. = FALSE)
   }
 
-  readr::read_csv(httr2::resp_body_raw(resp), show_col_types = FALSE)
+  .read_csv_raw(httr2::resp_body_raw(resp))
+}
+
+# Base-R stand-in for readr::read_csv() on a raw CSV body: "" and "NA" are NA,
+# whitespace is trimmed, whole numbers are double (not integer) and ISO dates
+# are Date, as readr guessed. Returns a tibble.
+.read_csv_raw <- function(raw) {
+  txt <- sub("^﻿", "", rawToChar(raw))
+  Encoding(txt) <- "UTF-8"
+  out <- utils::read.csv(
+    text = txt, na.strings = c("", "NA"), strip.white = TRUE,
+    check.names = FALSE, colClasses = "character"
+  )
+  out[] <- lapply(out, function(x) {
+    v <- x[!is.na(x)]
+    if (any(grepl("^-?0[0-9]", v))) {
+      x # leading zeros: an identifier, keep as text
+    } else if (length(v) && all(grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", v))) {
+      as.Date(x)
+    } else {
+      x <- utils::type.convert(x, as.is = TRUE)
+      if (is.integer(x)) as.numeric(x) else x
+    }
+  })
+  tibble::as_tibble(out)
 }
 
 

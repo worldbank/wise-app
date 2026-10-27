@@ -396,8 +396,8 @@ test_that("the configuration input ids still exist in the module controls", {
   s6 <- src("mod_1_06_model.R")
   for (id in c(
     "model_type", "fixedeffects", "covariates", "hhcov", "indcov", "firmcov", "areacov",
-    "lasso_alpha", "lasso_interactions", "lasso_nfolds", "lasso_standardize", "use_mice", "mi_m",
-    "mi_maxit", "stability_threshold", "interactions", "selected_policies"
+    "lasso_alpha", "lasso_interactions", "lasso_nfolds", "lasso_standardize", "mi_m",
+    "stability_threshold", "interactions", "selected_policies"
   )) {
     expect_match(s6, paste0('ns("', id, '")'), fixed = TRUE)
   }
@@ -486,6 +486,13 @@ test_that("the model section: absent means no fit, empty means the app defaults"
   expect_null(l$vars)
   expect_identical(l$lasso[names(wise_default_lasso())], wise_default_lasso())
   expect_identical(l$lasso$force_in, character(0))
+  # Settings of the removed MICE path are dropped, so old specs still validate and hash alike.
+  old <- wise_spec(model = list(covariates = list(
+    method = "lasso", lasso = list(use_mice = TRUE, mi_maxit = 9L)
+  )))
+  expect_null(old$model$covariates$lasso$use_mice)
+  expect_null(old$model$covariates$lasso$mi_maxit)
+  expect_identical(old, wise_spec(model = list(covariates = list(method = "lasso"))))
 })
 
 test_that("model types and covariates are normalised so equal specs hash equal", {

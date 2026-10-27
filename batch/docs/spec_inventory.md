@@ -64,7 +64,7 @@ The table builders are `variable_stats_table()`, `interview_dates_table()` and
 | `interactions` | `model.interactions` | none (the app starts at `urban`) |
 | `selected_policies` | `model.policy_vars` (lever codes such as `electricity`, earlier keys `A` to `M`, or labels; at most one) | none |
 | `covariates`, `indcov`, `hhcov`, `areacov`, `firmcov` | `model.covariates.method` (`user`, `lasso`), `.vars` (flat list) | `user`, none |
-| `lasso_alpha`, `lasso_interactions` (the lambda rule), `lasso_nfolds`, `lasso_standardize`, `use_mice`, `mi_m`, `mi_maxit`, `stability_threshold` | `model.covariates.lasso.*` | `wise_default_lasso()` |
+| `lasso_alpha`, `lasso_interactions` (the lambda rule), `lasso_nfolds`, `lasso_standardize`, `mi_m` (selection repetitions), `stability_threshold` | `model.covariates.lasso.*` | `wise_default_lasso()` |
 | `force_in_<level>`, `force_out_<level>` | `model.covariates.lasso.force_in`, `.force_out` (flat) | none |
 
 `rif_tau` is a display choice (RIF quantiles are 0.1 to 0.9). No `model`
@@ -153,7 +153,7 @@ and `mod_3_10`; and `step3_batch_tables()`, which builds the policy arm of
 The session seed (default `WISEAPP_DEFAULT_SEED`, 123) controls all randomness
 of a run, and the spec's `seed` is that seed:
 
-- model fits for ranger and xgboost, the Lasso (folds and imputation) and
+- model fits for ranger and xgboost, the Lasso (folds) and
   K-means bin breaks;
 - the Step 2 run (`RNGkind("Mersenne-Twister", "Inversion", "Rejection")` and
   `set.seed(seed)`) and its display residual draws;

@@ -6,7 +6,7 @@ depends_on: [notation, framework, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
 code: [R/utils_math.R, R/fct_provenance.R, R/fct_export.R, R/fct_aggregation.R, R/fct_policy_sim.R, R/fct_step2_compute.R]
-verified_against: b4f2807
+verified_against: 3db0c63
 ---
 
 # Seeds, run provenance and exports
@@ -34,7 +34,7 @@ where $h$ is a hash value computed from the seed and the labels joined as text. 
 | Households that gain or lose access to a lever | "policy" and the lever's variable |
 | Eligibility and targeting errors of a cash transfer | "policy" and "sp" |
 | Forecast, dynamic-targeting and ranking draws of a shock-responsive programme | "policy", the stream and the simulation year (and the survey row or cell) |
-| Variable selection (folds, imputations) | "lasso" and the step |
+| Variable selection (folds of each repetition) | "lasso" and the step |
 
 Three properties follow.
 
