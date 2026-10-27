@@ -3575,7 +3575,7 @@
       "checksum": "b9998b4ee3699c9389744a7528c84685"
     },
     "R/fct_decomposition_summary.R": {
-      "checksum": "49d0152dc8de4b22cb46dd4a04e59c91"
+      "checksum": "e01f3f2093202bb14f7f2837997fbd92"
     },
     "R/fct_export.R": {
       "checksum": "ccd9513e200cdaf7bb6536e75b9748c8"
@@ -3632,7 +3632,7 @@
       "checksum": "d4624d6698ac611c18eb04782e88ce14"
     },
     "R/fct_policy_sim_compare.R": {
-      "checksum": "040b9c702a3db37167d59cb70568fc33"
+      "checksum": "c9dce199df61a3f0f9c8e89b58eff95e"
     },
     "R/fct_policy_sim.R": {
       "checksum": "49dfd98a66c27d2b866473021d16a73d"
@@ -3719,7 +3719,7 @@
       "checksum": "d9bf3b7c1c2af74205d676e36ab9bd41"
     },
     "R/fct_step3_tables.R": {
-      "checksum": "7f6e2b07a4c1dad6523bc045715414e8"
+      "checksum": "0698f7b138497cd003039ecceb722f3f"
     },
     "R/fct_surveystats.R": {
       "checksum": "4177182dbce7fd68ae9551ad9aa9d3fa"
@@ -3806,7 +3806,7 @@
       "checksum": "fa0cf41a4c36d3b3cd4cea27dc10583d"
     },
     "R/mod_3_09_decomposition.R": {
-      "checksum": "23d7985f5226788b0dfaf6b520fe32ae"
+      "checksum": "498cb1c809fbd326cc7638601a3ccd04"
     },
     "R/mod_3_10_cost_effectiveness.R": {
       "checksum": "6bfd2f3c94ee165ab0dec6c7d90bd7b3"
