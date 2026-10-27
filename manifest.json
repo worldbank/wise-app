@@ -3464,7 +3464,7 @@
       "checksum": "b544c98e7d55c33a6c62b5c905878c65"
     },
     "DESCRIPTION": {
-      "checksum": "1cd72411649d9827f2434aa14c93f520"
+      "checksum": "6035f821206e34ce9e36da04a02c66e5"
     },
     "inst/app/_brand.yml": {
       "checksum": "66580c59f1e8321f5a6ab4dc5565cd0a"
@@ -3530,7 +3530,7 @@
       "checksum": "612a59ef5b491a5f413c1dabe541c8fc"
     },
     "inst/golem-config.yml": {
-      "checksum": "e4182d1f463faf7408c7aa1366d05ad0"
+      "checksum": "b54684563a430fd69a9c71ecf516b2e7"
     },
     "inst/math_cache.json": {
       "checksum": "06481f3e56fe50cf9664bf98e2f92cc8"
