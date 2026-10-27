@@ -123,7 +123,9 @@ test_that("outcome rows carry the outcome summary's deciles, per wave and pooled
   }
   r <- row_of(tab, variable = "welfare", sample = "all", wave = "All", var_group = "outcome")
   expect_identical(unlist(r[deciles], use.names = FALSE), unname(osw$mat[deciles, "all"]))
-  expect_identical(r$mean, unname(osw$mat["mean", "all"]))
+  # The pooled mean is summed in a different order on the two paths; Linux CI
+  # differs from macOS in the last digit.
+  expect_equal(r$mean, unname(osw$mat["mean", "all"]), tolerance = 1e-12)
 })
 
 test_that("the outcome's gini equals the pairwise definition and the app's aggregate", {
