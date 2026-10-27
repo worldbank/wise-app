@@ -23,9 +23,3 @@ Status: `☐` todo, `◐` in progress, `blocked` awaiting a named dependency. Cl
 | ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
 |---|---|---|---|---|---|
 | CR-A11Y-09 | M | M | blocked | Confirm one successful GitHub run of the expanded 16-screen axe scan after an authorized push; run a real-data pass through Steps 1-3 and result tabs. | `tests/e2e/smoke.R`; `.github/workflows/e2e-smoke.yaml`; archive CR-A11Y-09. Green locally with `WISEAPP_AXE_FAIL=1`; four violation types fixed. Earlier green CI covered two screens only. Navbar upstream exception and transient-toast exclusion remain documented. `main` requires `e2e-smoke`; `dev` is unprotected by decision. |
-
-## Engineering and Tests
-
-| ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
-|---|---|---|---|---|---|
-| CR-CQ-11 | L | S | ☐ | Remove unused arguments of non-exported helpers whose tests or callers still pass them, each a signature change: `.s1_turning_point(snap)`, `.policy_reach_cards(analysis_unit)`, `.weather_reactable(pct_cols)`, and `eff_10`/`eff_50` in `step3_headline_cards`, whose removal cascades to `get_eff`. `step3_metric_worker(artifact_dir)` is async code: change it only with the user's explicit go-ahead. Follow `wise-hygiene-pass` and the dead-code search in `code_hygiene.md`. | Split out of CR-CQ-01 on 2026-10-27; see the CR-CQ-01 closure in `archive/REVIEW-2026-10-06-tracking-full.md`. |

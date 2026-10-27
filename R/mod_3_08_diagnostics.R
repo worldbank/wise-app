@@ -446,7 +446,7 @@ mod_3_08_diagnostics_server <- function(id,
     output$reach_cards_ui <- shiny::renderUI({
       d <- valid_diag()
       headline_cards_ui(c(
-        .policy_reach_cards(d$reach, d$analysis_unit),
+        .policy_reach_cards(d$reach),
         .policy_decile_move_cards(d$decile_movement)
       ))
     })

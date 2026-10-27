@@ -888,7 +888,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
 # Quadratic turning point of a fixest weather term, when it lies inside the
 # observed range of the variable. NULL for other shapes (interacted, cubic,
 # binned, RIF) where a single turning point is not defined.
-.s1_turning_point <- function(mf, snap, var) {
+.s1_turning_point <- function(mf, var) {
   tryCatch(
     {
       if (!identical(.s1_engine(mf), "fixest") ||
@@ -1037,7 +1037,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
       "and policies, not causal weather impacts."
     )
   )
-  tp <- .s1_turning_point(mf, snap, var)
+  tp <- .s1_turning_point(mf, var)
   if (!is.null(tp)) {
     info_bits <- c(info_bits, paste0(
       "The quadratic specification has a ", tp$shape, " at about ",
@@ -1525,7 +1525,7 @@ step1_fmt_effect <- function(est, se, scale, digits = 1, ci = NULL) {
   fx <- function(x) paste0(format(signif(x, 3), trim = TRUE), unit_txt)
   ci_line <- paste0("(95% CI: ", fmt$lo_txt, " to ", fmt$hi_txt, ")")
   range_line <- paste0("median to 95th percentile (", fx(shp$x_lo), " \u2192 ", fx(shp$x_hi), ")")
-  tp <- .s1_turning_point(mf, snap, var)
+  tp <- .s1_turning_point(mf, var)
   tp_line <- if (!is.null(tp)) paste0(tp$shape, " at ", fx(tp$x)) else NULL
   list(
     label = lab, value = fmt$value,

@@ -428,7 +428,7 @@ policy_decile_movement <- function(context) {
   ))
 }
 
-.policy_reach_cards <- function(reach, analysis_unit = "hh") {
+.policy_reach_cards <- function(reach) {
   if (is.null(reach) || !is.finite(reach$share %||% NA_real_)) {
     return(NULL)
   }

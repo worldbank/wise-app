@@ -92,7 +92,7 @@ test_that("quadratic weather terms report a turning point inside the observed ra
   sw <- data.frame(name = "temp", label = "Temperature", units = "°C",
     cont_binned = "Continuous", polynomial = 2L, stringsAsFactors = FALSE)
   mf <- fit_model(df, so, sw, sm)
-  tp <- .s1_turning_point(mf, list(), "temp")
+  tp <- .s1_turning_point(mf, "temp")
   skip_if(is.null(tp), "polynomial spec not built from this fixture")
   expect_identical(tp$shape, "peak")
   expect_equal(tp$x, 25, tolerance = 0.1)
@@ -170,7 +170,7 @@ test_that("bin pattern ranks the main bin effects, not the bin-by-moderator term
 
 test_that("polynomial weather adds a shape card with the upper-tail effect and turning point", {
   fx <- .s1_poly_fixture()
-  skip_if(is.null(.s1_turning_point(fx$mf, fx$snap, "temp")), "polynomial not built")
+  skip_if(is.null(.s1_turning_point(fx$mf, "temp")), "polynomial not built")
   cards <- step1_headline_cards(fx$mf, fx$snap)$rows[[1]]$cards
   labels <- vapply(cards, function(c) c$label, character(1))
   expect_identical(labels[[2]], "Shape of response")

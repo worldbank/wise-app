@@ -117,10 +117,10 @@ Current Log moved verbatim from TRACKING.md (historical status/commit wording re
 - 2026-10-26 - BP-01 closed (user; B13 open count 1 to 0). `dev/batch_parity_bfa_policy.R` now checks that the Export bundle CSVs equal the module tables and that the app configuration gives the same stage ids as the batch run; fixture and BFA runs pass. Not driven: the browser download. Not committed yet. Full row, evidence and reopen trigger in the archive addendum.
 - 2026-10-26 - MR-05 closed (`d449ec6`; B12 open count 2 to 1). Weather files are fingerprinted in the stage items (H3 files were already covered by the data item); a changed weather or H3 file reruns the branches that read it. Full row and evidence in the archive addendum.
 - 2026-10-26 - MR-06 closed (B12 open count 1 to 0). Real-data check: no location with observed weather lacks a climate cell. Known data limitations documented in `docs/10_data.md` and `docs/31_climate_scenarios.md`: `loc_id` without H3 cells, H3 cells outside ERA5-Land, variables missing for some climate models, `mrsos` undefined at some coastal and island locations. Full row and evidence in the archive addendum.
-
 ### Closed and deferred list (reopen triggers)
 
 - CR-CQ-01 (closed 2026-10-27, user): pure code moved out of `mod_*` into `fct_*`/`utils_*` and the giant server functions reduced where this is safe; the atomic `publish()` and the async wrappers in `mod_3_06_policy_sim.R` `run()` and the near-duplicate `tbl_of`/`build_for` closures in `mod_2_02_results.R` are deliberately kept. Reopen when a `fct_*` function again calls into a `mod_*` file, a server function grows markedly, or a change to the run publish or aggregation builders needs the kept closures split. Unused-argument items continue as CR-CQ-11. Full row and evidence in the closure addendum below.
+- CR-CQ-11 (closed 2026-10-27, user): unused arguments removed from `.s1_turning_point`, `.policy_reach_cards` and `step3_headline_cards` (`eff_10`/`eff_50`). `.weather_reactable(pct_cols)` and `step3_metric_worker(artifact_dir)` kept. Reopen `pct_cols` when callers need per-column percent formatting; reopen `artifact_dir` when the worker dispatch contract changes. Full row and evidence in the closure addendum above.
 - CR-CQ-02 (archived as deferred 2026-10-26, user): shared Results-pane module is an optional refactor, not a demonstrated defect fix. Reopen when common features repeatedly need parallel edits or a concrete cross-step inconsistency shows harmful drift. Start with shared presentation pieces; preserve distinct provisional-result and policy-comparison contracts. Full row and rationale below.
 - OPT-02 (archived as deferred 2026-10-26, user): low startup/Step 3 pain. Reopen on reported slow Connect startup, a slow Step 3 run or metric switch, or Linux/Connect measurements showing the Shiny process is memory-bound. No deployment change or current Connect cold-start measurement claimed; full row below.
 - R2-PERF-01 (archived with remaining work deferred 2026-10-26, user): implemented memory savings retained; artifact redesign, small payload cleanups and remaining validation deferred, not verified. Reopen on memory pressure/OOM, result-adoption latency, a release-related scenario/export/engine failure, or changes to the artifact/release contract. Full row, evidence limits and revert path below.
@@ -658,3 +658,15 @@ Not done, by decision:
 - Unused-argument signature changes continue as CR-CQ-11.
 
 Not checked: the diagnostics, decomposition and results tabs in the running app with real data (covered by unit tests only); `manifest.json` checksums are stale for edits after `54cdeb3`, so rerun `Rscript dev/00_make_manifest.R` before a deploy.
+
+### CR-CQ-11 closed: unused arguments of non-exported helpers (2026-10-27, user)
+
+Row at closure:
+
+| CR-CQ-11 | L | S | ☐ | Remove unused arguments of non-exported helpers whose tests or callers still pass them, each a signature change: `.s1_turning_point(snap)`, `.policy_reach_cards(analysis_unit)`, `.weather_reactable(pct_cols)`, and `eff_10`/`eff_50` in `step3_headline_cards`, whose removal cascades to `get_eff`. `step3_metric_worker(artifact_dir)` is async code: change it only with the user's explicit go-ahead. Follow `wise-hygiene-pass` and the dead-code search in `code_hygiene.md`. | Split out of CR-CQ-01 on 2026-10-27; see the CR-CQ-01 closure in `archive/REVIEW-2026-10-06-tracking-full.md`. |
+
+Outcome. Removed `snap` from `.s1_turning_point` (`fct_step1_headline.R`, 2 callers), `analysis_unit` from `.policy_reach_cards` (`fct_policy_diagnostics.R`, caller in `mod_3_08_diagnostics.R`), and `eff_10`/`eff_50` with `rp_10`/`rp_50` and the two `get_metric_tail(10)`/`(50)` calls in `step3_headline_cards` (`fct_policy_sim_compare.R`). `get_eff` stays because `eff_20` uses it; the `eff_20` result is unchanged. Tests updated for the new signatures (`test-step1-headline-cards.R`, `test-fct_policy_diag_charts.R`). Commit: pending.
+
+Kept by decision (user, 2026-10-27): `.weather_reactable(pct_cols)` is a documented no-op for caller intent and `test-ui-tables-fake-data.R` guards that it is accepted; `step3_metric_worker(artifact_dir)` is part of the exported worker contract (the dispatcher calls every worker as `fn(snapshot =, artifact_dir =)`) and is async code.
+
+Verification. Test filters `step1-headline-cards`, `fct_policy_diag`, `mod_3_07_results`, `w3-a-aggregation`: 0 failures, 0 errors. Full suite and `dev/agents_check.R` not run for this change. Behaviour unchanged by design, so no Decision log entry.

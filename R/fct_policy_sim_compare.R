@@ -1272,9 +1272,7 @@ step3_headline_cards <- function(paired_summary,
   eff_20 <- NA_real_
   if (!is.null(threshold_tbl) && nrow(threshold_tbl) && "source" %in% names(threshold_tbl)) {
     rp_map <- metric_decision_return_periods(method %||% "mean", so)
-    rp_10 <- unname(rp_map[["Adverse 1-in-10"]])
     rp_20 <- unname(rp_map[["Adverse 1-in-20"]])
-    rp_50 <- unname(rp_map[["Adverse 1-in-50"]])
 
     get_eff <- function(rp_id) {
       if (is.null(rp_id) || !nzchar(rp_id)) {
@@ -1292,9 +1290,7 @@ step3_headline_cards <- function(paired_summary,
       ]
       if (length(b) && length(p) && is.finite(b[[1L]]) && is.finite(p[[1L]])) p[[1L]] - b[[1L]] else NA_real_
     }
-    eff_10 <- get_eff(rp_10)
     eff_20 <- get_eff(rp_20)
-    eff_50 <- get_eff(rp_50)
   }
 
   metric_focus <- NULL
@@ -1336,21 +1332,14 @@ step3_headline_cards <- function(paired_summary,
       metric_tail_focus <- tail_20[1L, , drop = FALSE]
       if (identical(metric_tail_focus$status[[1L]], "ok")) metric_focus_reason <- NULL
     }
-    for (rp in c(10, 20, 50)) {
-      value <- get_metric_tail(rp)
-      if (!is.finite(value)) next
-      if (rp == 10) eff_10 <- value
-      if (rp == 20) eff_20 <- value
-      if (rp == 50) eff_50 <- value
-    }
+    value <- get_metric_tail(20)
+    if (is.finite(value)) eff_20 <- value
   }
 
   # Never substitute a legacy independently-ranked endpoint when the shared
   # Results support is missing or unavailable.
   if (is.list(metric_decomposition)) {
-    eff_10 <- get_metric_tail(10)
     eff_20 <- get_metric_tail(20)
-    eff_50 <- get_metric_tail(50)
   }
 
   # 2. Resilience effect in the selected metric. Never fall back to the

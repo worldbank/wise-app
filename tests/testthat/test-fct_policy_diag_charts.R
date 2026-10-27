@@ -95,7 +95,7 @@ test_that("the reach summary counts units with a transfer or a changed covariate
 
 test_that("the reach and cost cards describe annual and shock programs", {
   expect_null(.policy_reach_cards(NULL))
-  cards <- .policy_reach_cards(list(share = 0.25, people = 1500, households = 300), "hh")
+  cards <- .policy_reach_cards(list(share = 0.25, people = 1500, households = 300))
   expect_identical(cards[[1L]]$value, "25.0%")
   expect_match(cards[[1L]]$note, "1,500 people")
   expect_length(cards, 2L)
