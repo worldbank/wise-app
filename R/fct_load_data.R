@@ -232,8 +232,13 @@ collect_deterministic <- function(data, keys = NULL) {
   # them in a per-process temp home: Connect's HOME may be read-only or shared,
   # workers must not race on one extension directory, and secrets must not
   # persist on disk.
+  #
+  # On Connect the bundled h3 binary is community-signed, which DuckDB 2.0
+  # rejects when installed from a local path. Unsigned loading can only be set
+  # at startup; .duck_check_bundled_ext() pins every bundled file by SHA-256.
+  config <- if (.on_posit_connect()) list(allow_unsigned_extensions = "true") else list()
   .duck$con <- DBI::dbConnect(
-    duckdb::duckdb(shared_home = FALSE), dbdir = ":memory:"
+    duckdb::duckdb(shared_home = FALSE, config = config), dbdir = ":memory:"
   )
   .duck_apply_limits(.duck$con)
   .duck$extensions <- character(0)
