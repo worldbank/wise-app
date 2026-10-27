@@ -165,7 +165,7 @@
       "share is survey-weighted; inclusion and exclusion errors are applied",
       "after the Proxy rule."
     ),
-    `default` = paste(
+    paste(
       "Universal targeting reaches all sampled units; survey weights determine",
       "the population count and share."
     )

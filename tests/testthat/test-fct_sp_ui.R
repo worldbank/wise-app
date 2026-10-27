@@ -53,13 +53,7 @@ test_that(".sp_reach_card reports recipients, cost and administration", {
   expect_match(html, "Estimated annual cost")
   expect_match(html, "Of which administration")
   expect_match(html, "Annual transfer per household")
-  # The switch names its fallback `default`, so "universal" has no targeting text
-  # (existing behaviour, kept by the move).
-  expect_false(grepl("Universal targeting reaches all sampled units", html))
-  default_html <- as.character(.sp_reach_card(
-    r, utils::modifyList(spec, list(targeting = "default")), "hh", "regular", NULL, "hh"
-  ))
-  expect_match(default_html, "Universal targeting reaches all sampled units")
+  expect_match(html, "Universal targeting reaches all sampled units")
   expect_false(grepl("Before Step 2 runs", html))
   r$on_baseline <- FALSE
   r$amount_basis <- "per_capita"
