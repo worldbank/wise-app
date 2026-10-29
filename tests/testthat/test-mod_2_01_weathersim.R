@@ -64,6 +64,10 @@ test_that("scenario labels follow run order and match worker keys", {
     "SSP5-8.5 / 2030-2040", "SSP5-8.5 / 2050-2060"))
   expect_identical(.step2_scenario_labels(character(0), list(c(2030, 2040))),
     character(0))
+  expect_identical(
+    .step2_scenario_labels("ssp2_4_5", list(c(2030, 2040)), forecast_key = "Seasonal forecast / X"),
+    c("Seasonal forecast / X", "SSP2-4.5 / 2030-2040")
+  )
 })
 
 test_that("ETA is NULL until a group completes, then mean per group x remaining", {
@@ -251,7 +255,7 @@ test_that("with the scaffold run the window clamps and joins the summary", {
   testServer(mod_2_01_weathersim_server, args = list(
     id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
     selected_outcome = reactiveVal(data.frame(name = "welfare")),
-    selected_weather = reactiveVal(data.frame(name = c("t", "r"))),
+    selected_weather = reactiveVal(data.frame(name = c("t", "r"), ref_start = 0L, ref_end = c(1L, 4L))),
     selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
       survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
     survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
@@ -264,7 +268,13 @@ test_that("with the scaffold run the window clamps and joins the summary", {
     expect_identical(forecast_window()$start, "2027-01")
     expect_identical(output$forecast_summary, "Jan\u2013Mar \u00b7 on")
     expect_match(as.character(output$settings_summary$html), "Jan 2027 \u2013 Mar 2027", fixed = TRUE)
+    expect_identical(forecast_lag(), 4L)
+    expect_identical(
+      live_sim_sig()$forecast,
+      list(product = "seasonal", run = "2026-10", start = "2027-01", len = 3L)
+    )
     session$setInputs(fc_include = FALSE)
     expect_identical(output$forecast_summary, "Off")
+    expect_null(live_sim_sig()$forecast)
   })
 })

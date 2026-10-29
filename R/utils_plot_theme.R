@@ -15,6 +15,7 @@
 .wise_baseline <- "#5B6B79" # baseline scenario in policy comparisons
 .wise_policy <- "#D55E00" # policy accent (bright, colourblind-safe)
 .wise_policy_dark <- "#7F2704" # darker companion for policy outlines/labels
+.wise_forecast <- "#CC79A7" # forecast scenario (seasonal or subseasonal); reddish purple, 3.1:1
 .wise_marker <- "#D55E00" # poverty lines, tau/quantile markers
 .wise_marker_alt <- "#A86400" # secondary markers (quantile labels), 4.7:1 on white
 .wise_support <- "#243746" # ensemble / support points and outlines

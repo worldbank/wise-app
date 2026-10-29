@@ -1927,6 +1927,9 @@ echart_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
     if (identical(s, "Historical")) {
       return(.wise_support)
     }
+    if (.step2_is_forecast_scenario(s)) {
+      return(.wise_forecast)
+    }
     ssp <- .normalise_ssp(s)
     if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else .wise_slate
   }, character(1L)), scenario_levels)
@@ -2137,6 +2140,9 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
   scen_colour_map <- vapply(scen_levels, function(s) {
     if (s == "Historical") {
       return(.wise_support)
+    }
+    if (.step2_is_forecast_scenario(s)) {
+      return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
     if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else "grey50"
@@ -2351,6 +2357,9 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
   cat_idx <- setNames(as.character(seq_along(cats) - 1L), cats)
   colours <- stats::setNames(vapply(cats, function(s) {
     if (identical(s, "Historical")) return(.wise_history)
+    if (.step2_is_forecast_scenario(s)) {
+      return(.wise_forecast)
+    }
     ssp <- .normalise_ssp(s)
     if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else .wise_slate
   }, character(1)), cats)
@@ -2518,6 +2527,9 @@ echart_exceedance <- function(curves_tbl,
   scenario_colour_map <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) {
       return(.wise_support)
+    }
+    if (.step2_is_forecast_scenario(s)) {
+      return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
     if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else .wise_slate

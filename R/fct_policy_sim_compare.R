@@ -672,6 +672,9 @@ echart_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
     if (identical(s, "Historical")) {
       return(.wise_support)
     }
+    if (.step2_is_forecast_scenario(s)) {
+      return(.wise_forecast)
+    }
     ssp <- .normalise_ssp(s)
     if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else .wise_slate
   }, character(1L)), scenario_levels)

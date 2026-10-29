@@ -356,6 +356,23 @@ pages:
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
     code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
     verified_against: "f62a72b"
+  - id: "seasonal-forecast"
+    file: "34_seasonal_forecast.md"
+    title: "Seasonal forecast scenario (design, not yet computed)"
+    app_step: "2"
+    depends_on: ["notation", "data", "weather-measures", "simulation"]
+    methods:
+      - "1. Forecast weather in the app's units"
+      - "2. Predictors for the target window"
+      - "3. One state per member"
+    equations:
+      - {tag: "(1.1)", section: "1. Forecast weather in the app's units"}
+    symbols: ["l", "mu", "m", "v", "s", "W", "x"]
+    ui:
+      - "Step 2 > Seasonal forecast: include the forecast, choose the run, the length of the window (1, 3 or 6 months) and the start month on the strip. The forecast is unavailable, with a reason, when the country has no forecast or the fitted model uses a variable the forecast does not provide."
+    guide: "https://github.com/worldbank/wise-app-docs"
+    code: ["R/utils_forecast_ui.R", "R/mod_2_01_weathersim.R"]
+    verified_against: "d09a4ac"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"

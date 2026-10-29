@@ -36,7 +36,7 @@ verified_against: 8592a9d
 | Step 1 Sample and Outcome | [10_data](10_data.md), [11_outcomes](11_outcomes.md) |
 | Step 1 Weather | [12_weather_measures](12_weather_measures.md) |
 | Step 1 Model and Results | [20_model_specification](20_model_specification.md), [21_model_linear](21_model_linear.md), [22_model_rif](22_model_rif.md), [23_model_ml](23_model_ml.md), [24_model_results](24_model_results.md) |
-| Step 2 Simulation | [30_simulation](30_simulation.md), [31_climate_scenarios](31_climate_scenarios.md), [32_metrics](32_metrics.md), [33_uncertainty](33_uncertainty.md) |
+| Step 2 Simulation | [30_simulation](30_simulation.md), [31_climate_scenarios](31_climate_scenarios.md), [32_metrics](32_metrics.md), [33_uncertainty](33_uncertainty.md), [34_seasonal_forecast](34_seasonal_forecast.md) (design) |
 | Step 3 Policy | [40_policy_framework](40_policy_framework.md), [41_policy_levers](41_policy_levers.md), [42_social_protection](42_social_protection.md), [43_shock_responsive_sp](43_shock_responsive_sp.md), [44_decomposition](44_decomposition.md), [45_cost_effectiveness](45_cost_effectiveness.md) |
 | Across steps | [51_reproducibility](51_reproducibility.md), [52_batch_runs](52_batch_runs.md), [references](references.md) |
 

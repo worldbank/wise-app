@@ -284,16 +284,21 @@ mod_2_01_weathersim_ui <- function(id) {
   )
 }
 
-# Expected scenario labels of a run, in run order: SSP outer, period inner
-# (the order of get_weather()'s .process_ssp loop), keyed exactly like the
-# worker's partials and the adopted scenarios.
-.step2_scenario_labels <- function(ssps, periods) {
-  if (!length(ssps) || !length(periods)) return(character(0))
-  unlist(lapply(ssps, function(ssp) {
-    vapply(periods, function(yr) {
-      .step2_scenario_display_key(ssp, c(yr[[1L]], yr[[2L]]))
-    }, character(1))
-  }), use.names = FALSE)
+# Expected scenario labels of a run, in run order: the forecast (when given)
+# first, then SSP outer, period inner (the order of get_weather()'s
+# .process_ssp loop), keyed exactly like the worker's partials and the adopted
+# scenarios.
+.step2_scenario_labels <- function(ssps, periods, forecast_key = NULL) {
+  ssp_labels <- if (!length(ssps) || !length(periods)) {
+    character(0)
+  } else {
+    unlist(lapply(ssps, function(ssp) {
+      vapply(periods, function(yr) {
+        .step2_scenario_display_key(ssp, c(yr[[1L]], yr[[2L]]))
+      }, character(1))
+    }), use.names = FALSE)
+  }
+  c(forecast_key, ssp_labels)
 }
 
 # Mean seconds per completed scenario group times the remaining groups.
@@ -521,6 +526,11 @@ mod_2_01_weathersim_server <- function(id,
       tryCatch(as.character(selected_weather()$name), error = function(e) character(0))
     })
 
+    # Months the fitted lagged predictors reach back (Step 1 lag windows).
+    forecast_lag <- reactive({
+      tryCatch(.step2_forecast_lag(selected_weather()), error = function(e) 0L)
+    })
+
     # NULL when the forecast can be used, else the reason it cannot.
     forecast_block <- reactive({
       .step2_forecast_block_reason(
@@ -539,7 +549,7 @@ mod_2_01_weathersim_server <- function(id,
     forecast_window <- reactive({
       run <- forecast_run()
       if (is.null(run)) return(NULL)
-      .step2_forecast_window(.step2_forecast_months(run), input$fc_start, input$fc_len %||% "3")
+      .step2_forecast_window(.step2_forecast_months(run, forecast_lag()), input$fc_start, input$fc_len %||% "3")
     })
 
     shiny::observe({
@@ -574,7 +584,7 @@ mod_2_01_weathersim_server <- function(id,
       if (is.null(run)) return(NULL)
       runs <- forecast_runs()
       off <- !forecast_on()
-      months <- .step2_forecast_months(run)
+      months <- .step2_forecast_months(run, forecast_lag())
       len <- shiny::isolate(input$fc_len)
       if (!isTRUE(len %in% .STEP2_FORECAST_LEN_CHOICES)) len <- "3"
       start <- .step2_forecast_clamp_start(months, shiny::isolate(input$fc_start), len)
@@ -603,7 +613,7 @@ mod_2_01_weathersim_server <- function(id,
           choices = .STEP2_FORECAST_LEN_CHOICES, selected = len,
           disabled = off, aria_label = "Window length"
         ),
-        forecast_strip_input(ns("fc_start"), ns("fc_len"), months, start, disabled = off),
+        forecast_strip_input(ns("fc_start"), ns("fc_len"), months, start, lag = forecast_lag(), disabled = off),
         forecast_strip_legend()
       )
     })
@@ -612,7 +622,9 @@ mod_2_01_weathersim_server <- function(id,
     output$forecast_readout_ui <- shiny::renderUI({
       w <- forecast_window()
       if (!forecast_on() || is.null(w)) return(NULL)
-      lag <- .step2_forecast_lag_text(.step2_forecast_months(forecast_run()), w)
+      lag <- .step2_forecast_lag_text(
+        .step2_forecast_months(forecast_run(), forecast_lag()), w, forecast_lag()
+      )
       shiny::tagList(
         shiny::tags$div(
           class = "forecast-readout",
@@ -629,7 +641,6 @@ mod_2_01_weathersim_server <- function(id,
     output$forecast_notes_ui <- shiny::renderUI({
       wx <- forecast_weather_names()
       bad <- .step2_forecast_unsupported(wx)
-      hist_yr <- input$hist_years %||% wise_default_sim()$hist_years
       shiny::tagList(
         if (length(wx)) {
           shiny::tagList(
@@ -653,12 +664,8 @@ mod_2_01_weathersim_server <- function(id,
         },
         if (!is.null(forecast_run())) {
           shiny::helpText(
-            "Forecast anomalies are anchored to ",
-            shiny::tags$b(paste0(hist_yr[1], "\u2013", hist_yr[2])), ", set in ",
-            shiny::tags$button(
-              type = "button", class = "btn btn-link btn-sm p-0 align-baseline",
-              `data-flyout-open` = ns("settings_toggle"), "Simulation settings"
-            ), "."
+            "Forecast values are anchored to the ERA5-Land climate by the data pipeline, ",
+            "so the historical period in Simulation settings does not change them."
           )
         }
       )
@@ -1053,7 +1060,7 @@ mod_2_01_weathersim_server <- function(id,
     # result and recomputed from live inputs for the staleness comparison.
 
     .sim_sig_from_live <- function(fit_sig) {
-      list(
+      sig <- list(
         step = "sim",
         fit_sig = fit_sig,
         survey_version = survey_version(),
@@ -1066,6 +1073,11 @@ mod_2_01_weathersim_server <- function(id,
         residuals = input$residuals,
         skip_coef_draws = !isTRUE(input$include_coef_uncertainty)
       )
+      # Added only when the forecast is on, so runs without it keep their signature.
+      if (forecast_on()) {
+        sig$forecast <- .step2_forecast_signature(forecast_run(), forecast_window())
+      }
+      sig
     }
 
     live_sim_sig <- reactive({
@@ -1077,7 +1089,8 @@ mod_2_01_weathersim_server <- function(id,
       model_fit(), survey_version(), selected_surveys(),
       input$hist_years, input$climate,
       input$baseline_survey, input$residuals, input$include_coef_uncertainty,
-      input$fut_period_1, input$fut_period_2, input$fut_period_3
+      input$fut_period_1, input$fut_period_2, input$fut_period_3,
+      input$fc_include, input$fc_run, input$fc_start, input$fc_len
     ))
 
     observeEvent(stale_dependencies(),

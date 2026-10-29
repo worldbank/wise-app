@@ -3,7 +3,8 @@ library(testthat)
 run <- list(
   id = "2026-10", label = "October 2026", model = "ECMWF SEAS5",
   init = as.Date("2026-10-01"), released = as.Date("2026-10-06"),
-  next_release = as.Date("2026-11-06"), n_members = 51L, n_leads = 6L
+  next_release = as.Date("2026-11-06"), n_members = 51L, n_leads = 6L,
+  product = "seasonal", lead_unit = "month"
 )
 
 test_that("the placeholder run source is off unless the scaffold option is set", {
@@ -13,6 +14,8 @@ test_that("the placeholder run source is off unless the scaffold option is set",
     runs <- .step2_forecast_runs()
     expect_named(runs, "2026-10")
     expect_identical(runs[[1L]]$n_leads, 6L)
+    expect_identical(runs[[1L]]$product, "seasonal")
+    expect_identical(runs[[1L]]$lead_unit, "month")
   })
 })
 
@@ -53,11 +56,11 @@ test_that("window labels and leads follow the start and length", {
 test_that("the lag sentence names observed and forecast months before the window", {
   m <- .step2_forecast_months(run)
   expect_identical(
-    .step2_forecast_lag_text(m, .step2_forecast_window(m, "2026-11", 3)),
+    .step2_forecast_lag_text(m, .step2_forecast_window(m, "2026-11", 3), 2L),
     "Lagged predictors also use observed Sep 2026 and forecast Oct 2026."
   )
   expect_match(
-    .step2_forecast_lag_text(m, .step2_forecast_window(m, "2027-01", 3)),
+    .step2_forecast_lag_text(m, .step2_forecast_window(m, "2027-01", 3), 2L),
     "forecast Nov 2026, Dec 2026", fixed = TRUE
   )
 })
@@ -80,4 +83,48 @@ test_that("the strip disables months that are not forecast months", {
   expect_match(html, 'value="2026-11" checked', fixed = TRUE)
   all_off <- as.character(forecast_strip_input("fc_start", "fc_len", m, "2026-11", disabled = TRUE))
   expect_equal(lengths(regmatches(all_off, gregexpr('disabled="disabled"', all_off))), 10L)
+})
+
+test_that("the lag is the longest reach-back of the fitted weather predictors", {
+  expect_identical(.step2_forecast_lag(data.frame(name = character(), ref_end = integer())), 0L)
+  expect_identical(.step2_forecast_lag(data.frame(name = "t")), 0L)
+  expect_identical(.step2_forecast_lag(data.frame(name = c("t", "r"), ref_start = 0L, ref_end = c(3L, 5L))), 5L)
+  expect_identical(.step2_forecast_lag(data.frame(name = "t", ref_end = NA_integer_)), 0L)
+})
+
+test_that("the strip widens to the lag, up to a cap, and the lag text covers the excess", {
+  expect_identical(sum(.step2_forecast_months(run, 4L)$kind == "obs"), 4L)
+  expect_identical(sum(.step2_forecast_months(run, 12L)$kind == "obs"), .STEP2_FORECAST_BEFORE_MAX)
+  expect_identical(sum(.step2_forecast_months(run, 0L)$kind == "obs"), .STEP2_FORECAST_BEFORE)
+  m <- .step2_forecast_months(run, 12L)
+  txt <- .step2_forecast_lag_text(m, .step2_forecast_window(m, "2026-11", 1), 12L)
+  expect_match(txt, "reaches back 12 months", fixed = TRUE)
+  expect_null(.step2_forecast_lag_text(m, .step2_forecast_window(m, "2026-11", 1), 0L))
+  html <- as.character(forecast_strip_input("fc_start", "fc_len", m, "2026-11", lag = 12L))
+  expect_match(html, 'data-lag="12"', fixed = TRUE)
+})
+
+test_that("the forecast scenario key and signature name the product, run and window", {
+  m <- .step2_forecast_months(run)
+  w <- .step2_forecast_window(m, "2026-11", 3)
+  expect_identical(
+    .step2_forecast_display_key(run, w),
+    "Seasonal forecast / Nov 2026 \u2013 Jan 2027 (October 2026 run)"
+  )
+  expect_identical(
+    .step2_forecast_signature(run, w),
+    list(product = "seasonal", run = "2026-10", start = "2026-11", len = 3L)
+  )
+  run$product <- "subseasonal"
+  expect_match(.step2_forecast_display_key(run, w), "^Subseasonal forecast / ")
+})
+
+test_that("forecast scenarios are recognised by name and have their own colour", {
+  m <- .step2_forecast_months(run)
+  key <- .step2_forecast_display_key(run, .step2_forecast_window(m, "2026-11", 3))
+  expect_identical(
+    .step2_is_forecast_scenario(c(key, "Historical", "SSP2-4.5 / 2030-2040", "Subseasonal forecast / X")),
+    c(TRUE, FALSE, FALSE, TRUE)
+  )
+  expect_false(.wise_forecast %in% c(unname(.ssp_colours), .wise_history, .wise_support, .wise_slate))
 })
