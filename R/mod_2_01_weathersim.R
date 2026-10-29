@@ -57,10 +57,13 @@ mod_2_01_weathersim_ui <- function(id) {
     # Simulation settings flyout (same pattern as Step 1 'Configure') ----
     # UI-02: shared flyout block - anchored to its toggle, one-open state,
     # aria-expanded, focus management, Escape to close (see custom.js).
+    # Settings that apply to every scenario; the climate projection and the
+    # seasonal forecast controls have their own flyouts below.
     config_flyout_block(
       ns("settings_toggle"),
       "Simulation settings",
       toggle_label = "Simulation settings",
+      display_label = "Survey, history, residuals",
 
       # Baseline survey ----
       shiny::tags$div(
@@ -71,44 +74,6 @@ mod_2_01_weathersim_ui <- function(id) {
       shiny::uiOutput(ns("baseline_warning_ui")),
       shiny::tags$hr(style = "margin: 6px 0;"),
 
-      # Climate scenarios ----
-      shiny::tags$div(
-        class = "step2-section-label",
-        "Climate scenarios"
-      ),
-      shiny::checkboxGroupInput(
-        inputId = ns("climate"),
-        label = shiny::tags$span(class = "visually-hidden", "Climate scenarios"),
-        choices = c(
-          "SSP2" = "ssp2_4_5",
-          "SSP3" = "ssp3_7_0",
-          "SSP5" = "ssp5_8_5"
-        ),
-        selected = d$ssps,
-        inline = TRUE
-      ),
-      shiny::tags$hr(style = "margin: 6px 0;"),
-
-      # Projection period ----
-      shiny::tags$div(
-        class = "step2-section-label",
-        "Projection period"
-      ),
-      shiny::tags$div(
-        class = "step2-projection-period",
-        with_grid_num(
-          shiny::sliderInput(
-            ns("fut_period_1"),
-            label = shiny::tags$span(class = "visually-hidden", "Projection period 1"),
-            min = .STEP2_SSP_START_YEAR, max = .STEP2_SSP_END_YEAR, value = d$future_periods[[1L]],
-            step = 1, sep = ""
-          ),
-          9
-        )
-      ),
-      shiny::uiOutput(ns("fut_years_warning")),
-      shiny::tags$hr(style = "margin: 6px 0;"),
-
       # Historical period ----
       shiny::tags$h6(
         "Historical weather distribution period",
@@ -116,7 +81,8 @@ mod_2_01_weathersim_ui <- function(id) {
           title = "Historical weather distribution period",
           shiny::p(
             "Historical weather informs the underlying variability, which is then",
-            "perturbed with climate scenario projections."
+            "perturbed with climate scenario projections. It also sets the monthly",
+            "climate that seasonal forecast anomalies are added to."
           )
         ),
         style = "font-weight:600; margin-top:8px; margin-bottom:4px;"
@@ -136,39 +102,6 @@ mod_2_01_weathersim_ui <- function(id) {
       shiny::helpText(
         tags$b("30 years is the recommended default."),
         style = "font-size: 11px; color: #555; margin-top: 2px; margin-bottom: 8px;"
-      ),
-      shiny::tags$hr(style = "margin: 6px 0;"),
-
-      # Additional future periods ----
-      shiny::tags$h6("Additional projection periods",
-        style = "font-weight:600; margin-bottom:4px;"
-      ),
-
-      # Period 2 (optional)
-      shiny::tags$div(
-        class = "step2-projection-period",
-        shiny::tags$span("Period 2", class = "step2-projection-label"),
-        with_grid_num(
-          shiny::sliderInput(
-            ns("fut_period_2"),
-            label = shiny::tags$span(class = "visually-hidden", "Projection period 2"),
-            min = .STEP2_SSP_START_YEAR, max = 2100, value = c(2015, 2015), step = 1, sep = ""
-          ),
-          9
-        )
-      ),
-      # Period 3 (optional)
-      shiny::tags$div(
-        class = "step2-projection-period",
-        shiny::tags$span("Period 3", class = "step2-projection-label"),
-        with_grid_num(
-          shiny::sliderInput(
-            ns("fut_period_3"),
-            label = shiny::tags$span(class = "visually-hidden", "Projection period 3"),
-            min = .STEP2_SSP_START_YEAR, max = 2100, value = c(2015, 2015), step = 1, sep = ""
-          ),
-          9
-        )
       ),
       shiny::tags$hr(style = "margin: 6px 0;"),
 
@@ -244,6 +177,105 @@ mod_2_01_weathersim_ui <- function(id) {
         label   = "Include coefficient uncertainty",
         value   = d$coef_uncertainty
       )
+    ),
+
+    # Climate projections flyout ----
+    config_flyout_block(
+      ns("projections_toggle"),
+      "Climate projections",
+      toggle_label = "Climate projections",
+      toggle_icon = "chart-line",
+      display_label = shiny::textOutput(ns("projections_summary"), inline = TRUE),
+
+      # Climate scenarios ----
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Climate scenarios"
+      ),
+      shiny::checkboxGroupInput(
+        inputId = ns("climate"),
+        label = shiny::tags$span(class = "visually-hidden", "Climate scenarios"),
+        choices = c(
+          "SSP2" = "ssp2_4_5",
+          "SSP3" = "ssp3_7_0",
+          "SSP5" = "ssp5_8_5"
+        ),
+        selected = d$ssps,
+        inline = TRUE
+      ),
+      shiny::tags$hr(style = "margin: 6px 0;"),
+
+      # Projection period ----
+      shiny::tags$div(
+        class = "step2-section-label",
+        "Projection period"
+      ),
+      shiny::tags$div(
+        class = "step2-projection-period",
+        with_grid_num(
+          shiny::sliderInput(
+            ns("fut_period_1"),
+            label = shiny::tags$span(class = "visually-hidden", "Projection period 1"),
+            min = .STEP2_SSP_START_YEAR, max = .STEP2_SSP_END_YEAR, value = d$future_periods[[1L]],
+            step = 1, sep = ""
+          ),
+          9
+        )
+      ),
+      shiny::uiOutput(ns("fut_years_warning")),
+      shiny::tags$hr(style = "margin: 6px 0;"),
+
+      # Additional future periods ----
+      shiny::tags$h6("Additional projection periods",
+        style = "font-weight:600; margin-bottom:4px;"
+      ),
+
+      # Period 2 (optional)
+      shiny::tags$div(
+        class = "step2-projection-period",
+        shiny::tags$span("Period 2", class = "step2-projection-label"),
+        with_grid_num(
+          shiny::sliderInput(
+            ns("fut_period_2"),
+            label = shiny::tags$span(class = "visually-hidden", "Projection period 2"),
+            min = .STEP2_SSP_START_YEAR, max = 2100, value = c(2015, 2015), step = 1, sep = ""
+          ),
+          9
+        )
+      ),
+      # Period 3 (optional)
+      shiny::tags$div(
+        class = "step2-projection-period",
+        shiny::tags$span("Period 3", class = "step2-projection-label"),
+        with_grid_num(
+          shiny::sliderInput(
+            ns("fut_period_3"),
+            label = shiny::tags$span(class = "visually-hidden", "Projection period 3"),
+            min = .STEP2_SSP_START_YEAR, max = 2100, value = c(2015, 2015), step = 1, sep = ""
+          ),
+          9
+        )
+      )
+    ),
+
+    # Seasonal forecast flyout ----
+    # Scaffold: nothing here reaches the simulation run yet (utils_forecast_ui.R).
+    config_flyout_block(
+      ns("forecast_toggle"),
+      "Seasonal forecast",
+      toggle_label = "Seasonal forecast",
+      toggle_icon = "calendar-days",
+      display_label = shiny::textOutput(ns("forecast_summary"), inline = TRUE),
+
+      shiny::checkboxInput(
+        inputId = ns("fc_include"),
+        label   = "Include seasonal forecast",
+        value   = FALSE
+      ),
+      shiny::uiOutput(ns("forecast_status_ui")),
+      shiny::uiOutput(ns("forecast_body_ui")),
+      shiny::uiOutput(ns("forecast_readout_ui")),
+      shiny::uiOutput(ns("forecast_notes_ui"))
     ),
     shiny::tags$hr(style = "margin: 10px 0;"),
 
@@ -481,6 +513,174 @@ mod_2_01_weathersim_server <- function(id,
       }
     })
 
+    # Seasonal forecast (scaffold: not part of the simulation run) ----
+
+    forecast_runs <- reactive(.step2_forecast_runs())
+
+    forecast_weather_names <- reactive({
+      tryCatch(as.character(selected_weather()$name), error = function(e) character(0))
+    })
+
+    # NULL when the forecast can be used, else the reason it cannot.
+    forecast_block <- reactive({
+      .step2_forecast_block_reason(
+        forecast_runs(), .step2_forecast_unsupported(forecast_weather_names())
+      )
+    })
+
+    forecast_run <- reactive({
+      runs <- forecast_runs()
+      if (!length(runs)) return(NULL)
+      runs[[input$fc_run %||% names(runs)[[1L]]]] %||% runs[[1L]]
+    })
+
+    forecast_on <- reactive(isTRUE(input$fc_include) && is.null(forecast_block()))
+
+    forecast_window <- reactive({
+      run <- forecast_run()
+      if (is.null(run)) return(NULL)
+      .step2_forecast_window(.step2_forecast_months(run), input$fc_start, input$fc_len %||% "3")
+    })
+
+    shiny::observe({
+      why <- forecast_block()
+      update_input_disabled(session, "fc_include", disabled = !is.null(why), tooltip = why)
+    })
+
+    # A window must fit the forecast horizon: move the start back when the
+    # chosen start or length would run past the last lead.
+    shiny::observeEvent(list(input$fc_start, input$fc_len), {
+      w <- forecast_window()
+      if (!is.null(w) && !identical(w$start, input$fc_start)) {
+        shiny::updateRadioButtons(session, "fc_start", selected = w$start)
+      }
+    })
+
+    output$forecast_status_ui <- shiny::renderUI({
+      why <- forecast_block()
+      if (!is.null(why)) {
+        return(shiny::div(
+          class = "alert alert-warning warning-message", role = "alert",
+          style = "font-size: 12px; margin: 4px 0;", why
+        ))
+      }
+      if (.step2_forecast_scaffold()) {
+        shiny::helpText("Preview only: the forecast is not yet used by simulation runs.")
+      }
+    })
+
+    output$forecast_body_ui <- shiny::renderUI({
+      run <- forecast_run()
+      if (is.null(run)) return(NULL)
+      runs <- forecast_runs()
+      off <- !forecast_on()
+      months <- .step2_forecast_months(run)
+      len <- shiny::isolate(input$fc_len)
+      if (!isTRUE(len %in% .STEP2_FORECAST_LEN_CHOICES)) len <- "3"
+      start <- .step2_forecast_clamp_start(months, shiny::isolate(input$fc_start), len)
+      day <- function(d) sub("^0", "", format(d, "%d %b %Y"))
+      shiny::tagList(
+        shiny::tags$hr(style = "margin: 6px 0;"),
+        shiny::tags$div(class = "step2-section-label", "Forecast run"),
+        shiny::selectInput(
+          ns("fc_run"),
+          label = shiny::tags$span(class = "visually-hidden", "Forecast run"),
+          choices = stats::setNames(
+            names(runs),
+            vapply(runs, function(r) {
+              paste0(r$label, " \u00b7 ", r$model, ", ", r$n_members, " members")
+            }, character(1))
+          ),
+          selected = run$id, width = "100%"
+        ),
+        shiny::helpText(paste0(
+          "Released ", day(run$released), ". Next run expected ", day(run$next_release), "."
+        )),
+        shiny::tags$hr(style = "margin: 6px 0;"),
+        shiny::tags$div(class = "step2-section-label", "Target window"),
+        pill_toggle(
+          ns("fc_len"),
+          choices = .STEP2_FORECAST_LEN_CHOICES, selected = len,
+          disabled = off, aria_label = "Window length"
+        ),
+        forecast_strip_input(ns("fc_start"), ns("fc_len"), months, start, disabled = off),
+        forecast_strip_legend()
+      )
+    })
+    shiny::outputOptions(output, "forecast_body_ui", suspendWhenHidden = FALSE)
+
+    output$forecast_readout_ui <- shiny::renderUI({
+      w <- forecast_window()
+      if (!forecast_on() || is.null(w)) return(NULL)
+      lag <- .step2_forecast_lag_text(.step2_forecast_months(forecast_run()), w)
+      shiny::tagList(
+        shiny::tags$div(
+          class = "forecast-readout",
+          shiny::tags$span("Target ", shiny::tags$b(w$label)),
+          shiny::tags$span(
+            "Lead ",
+            shiny::tags$b(if (w$lead_from == w$lead_to) w$lead_from else paste0(w$lead_from, "\u2013", w$lead_to))
+          )
+        ),
+        if (!is.null(lag)) shiny::helpText(lag)
+      )
+    })
+
+    output$forecast_notes_ui <- shiny::renderUI({
+      wx <- forecast_weather_names()
+      bad <- .step2_forecast_unsupported(wx)
+      hist_yr <- input$hist_years %||% wise_default_sim()$hist_years
+      shiny::tagList(
+        if (length(wx)) {
+          shiny::tagList(
+            shiny::tags$hr(style = "margin: 6px 0;"),
+            shiny::tags$div(class = "step2-section-label", "Weather predictors in the fitted model"),
+            shiny::tags$div(
+              class = "forecast-vars",
+              lapply(unique(wx), function(v) {
+                ok <- !(v %in% bad)
+                shiny::tags$span(
+                  class = paste("selection-card-pill", if (!ok) "forecast-var-bad"),
+                  paste(v, if (ok) "\u2713" else "\u2717"),
+                  shiny::tags$span(
+                    class = "visually-hidden",
+                    if (ok) "available in the forecast" else "not available in the forecast"
+                  )
+                )
+              })
+            )
+          )
+        },
+        if (!is.null(forecast_run())) {
+          shiny::helpText(
+            "Forecast anomalies are anchored to ",
+            shiny::tags$b(paste0(hist_yr[1], "\u2013", hist_yr[2])), ", set in ",
+            shiny::tags$button(
+              type = "button", class = "btn btn-link btn-sm p-0 align-baseline",
+              `data-flyout-open` = ns("settings_toggle"), "Simulation settings"
+            ), "."
+          )
+        }
+      )
+    })
+
+    output$projections_summary <- shiny::renderText({
+      n_ssp <- length(input$climate %||% character(0))
+      n_per <- sum(!vapply(seq_len(3), function(i) {
+        is.null(.step2_valid_future_period(input[[paste0("fut_period_", i)]]))
+      }, logical(1)))
+      if (n_ssp == 0L) return("None selected")
+      paste0(n_ssp, if (n_ssp == 1L) " SSP" else " SSPs", " \u00b7 ",
+        n_per, if (n_per == 1L) " period" else " periods")
+    })
+
+    output$forecast_summary <- shiny::renderText({
+      w <- forecast_window()
+      if (!is.null(forecast_block())) "Not available"
+      else if (forecast_on() && !is.null(w)) paste0(w$short, " \u00b7 on")
+      else "Off"
+    })
+
     output$settings_summary <- shiny::renderUI({
       hist_yr <- input$hist_years %||% c(1991, 2020)
       ssp_map <- c(
@@ -539,7 +739,13 @@ mod_2_01_weathersim_server <- function(id,
         list(item("Climate scenarios", "None", pill = FALSE))
       }
 
+      fc_window <- if (forecast_on()) forecast_window()
+      forecast_items <- if (!is.null(fc_window)) {
+        list(item("Forecast", fc_window$label), separator)
+      }
+
       summary_row <- c(
+        forecast_items,
         climate_items,
         list(separator),
         list(item("Reference climate", paste0(hist_yr[1], "\u2013", hist_yr[2]))),

@@ -372,13 +372,20 @@
 // Handlers that used to be inline (onclick="...", <script>), moved here so the
 // page can run under a CSP without 'unsafe-inline' for scripts (CR-SEC-09).
 (function () {
-  // Close button of a config flyout: click its toggle.
+  // Close button of a config flyout, and a link that opens another flyout:
+  // click the owning toggle (custom.js keeps one flyout open at a time).
   // CSV button of a reactable table: Reactable.downloadDataCSV(table, file).
   document.addEventListener('click', function (e) {
     var close = e.target.closest('[data-flyout-close]');
     if (close) {
       var toggle = document.getElementById(close.getAttribute('data-flyout-close'));
       if (toggle) toggle.click();
+      return;
+    }
+    var open = e.target.closest('[data-flyout-open]');
+    if (open) {
+      var owner = document.getElementById(open.getAttribute('data-flyout-open'));
+      if (owner) owner.click();
       return;
     }
     var csv = e.target.closest('[data-csv-table]');
@@ -406,4 +413,45 @@
   new MutationObserver(function () {
     if (pending === null) pending = setTimeout(lockAll, 50);
   }).observe(document.documentElement, { childList: true, subtree: true });
+})();
+
+// ---- Seasonal forecast month strip (Step 2) -------------------------------------
+// forecast_strip_input() renders one radio tile per month. The selected tile is
+// the start of the target window: the next (length - 1) tiles are the target
+// and the data-lag tiles before it are the months the lagged predictors reach
+// back to. Classes are painted from the DOM so a click, a keyboard move and a
+// programmatic update (config import) all look the same.
+(function () {
+  function tiles(strip) {
+    return Array.prototype.slice.call(
+      strip.querySelectorAll('.radio-inline, .form-check-inline')
+    );
+  }
+  function paint(strip) {
+    var all = tiles(strip);
+    var start = -1;
+    all.forEach(function (t, i) {
+      if (t.querySelector('input:checked')) start = i;
+    });
+    var lenGroup = document.getElementById(strip.getAttribute('data-len-input'));
+    var lenInput = lenGroup && lenGroup.querySelector('input:checked');
+    var len = lenInput ? parseInt(lenInput.value, 10) : 1;
+    var lag = parseInt(strip.getAttribute('data-lag'), 10) || 0;
+    all.forEach(function (t, i) {
+      var kind = t.querySelector('[data-kind]');
+      var off = !!t.querySelector('input:disabled');
+      t.classList.toggle('fc-na', kind && kind.getAttribute('data-kind') === 'na');
+      t.classList.toggle('fc-obs', kind && kind.getAttribute('data-kind') === 'obs');
+      t.classList.toggle('fc-fc', kind && kind.getAttribute('data-kind') === 'fc');
+      t.classList.toggle('fc-tg', start >= 0 && i >= start && i < start + len);
+      t.classList.toggle('fc-lag', start >= 0 && i < start && i >= start - lag);
+      t.classList.toggle('fc-off', off);
+    });
+  }
+  function paintAll() {
+    document.querySelectorAll('.forecast-strip').forEach(paint);
+  }
+  document.addEventListener('change', paintAll);
+  if (window.jQuery) jQuery(document).on('shiny:idle shiny:value', paintAll);
+  document.addEventListener('DOMContentLoaded', paintAll);
 })();

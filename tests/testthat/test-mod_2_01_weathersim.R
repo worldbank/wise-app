@@ -209,3 +209,62 @@ test_that("future periods cannot start before the SSP projections (R2-BUG-23)", 
     expect_match(as.character(output$fut_years_warning$html), "starts before 2015")
   })
 })
+
+test_that("the sidebar has Simulation settings, Climate projections and Seasonal forecast flyouts", {
+  ui <- as.character(mod_2_01_weathersim_ui("sim"))
+  for (id in c("settings_toggle", "projections_toggle", "forecast_toggle")) {
+    expect_match(ui, paste0('id="sim-', id, '"'), fixed = TRUE)
+  }
+  # The projection controls moved flyouts without changing their ids.
+  expect_match(ui, 'id="sim-climate"', fixed = TRUE)
+  expect_match(ui, 'id="sim-fc_include"', fixed = TRUE)
+})
+
+test_that("the seasonal forecast is unavailable and out of the summary without a data source", {
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+                       survname = "SRV", loc_id = "L1", int_month = 1:2,
+                       welfare = 1:2, temp = 3:4)
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = "t")),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
+    survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = c("ssp2_4_5", "ssp5_8_5"),
+      baseline_survey = "AAA|2020", fc_include = TRUE,
+      fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
+    expect_match(forecast_block(), "No seasonal forecast")
+    expect_false(forecast_on())
+    expect_identical(output$forecast_summary, "Not available")
+    expect_identical(output$projections_summary, "2 SSPs \u00b7 1 period")
+    expect_false(grepl("Forecast", as.character(output$settings_summary$html), fixed = TRUE))
+  })
+})
+
+test_that("with the scaffold run the window clamps and joins the summary", {
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+                       survname = "SRV", loc_id = "L1", int_month = 1:2,
+                       welfare = 1:2, temp = 3:4)
+  withr::local_options(wiseapp.forecast_scaffold = TRUE)
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = c("t", "r"))),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
+    survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = "ssp3_7_0",
+      baseline_survey = "AAA|2020", fc_include = TRUE, fc_len = "3", fc_start = "2027-03",
+      fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
+    expect_null(forecast_block())
+    expect_true(forecast_on())
+    expect_identical(forecast_window()$start, "2027-01")
+    expect_identical(output$forecast_summary, "Jan\u2013Mar \u00b7 on")
+    expect_match(as.character(output$settings_summary$html), "Jan 2027 \u2013 Mar 2027", fixed = TRUE)
+    session$setInputs(fc_include = FALSE)
+    expect_identical(output$forecast_summary, "Off")
+  })
+})

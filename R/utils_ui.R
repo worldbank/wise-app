@@ -666,10 +666,11 @@ wise_chart_output <- function(chart_id, alt, ...) {
 #' @param ...          Flyout content, rendered below the header.
 #' @param toggle_label  Button label. Default "Configure".
 #' @param display_label Optional label rendered beside the button.
+#' @param toggle_icon  Font Awesome name of the button icon. Default "sliders".
 #'
 #' @noRd
 config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure",
-                                display_label = NULL) {
+                                display_label = NULL, toggle_icon = "sliders") {
   panel_id <- paste0(toggle_id, "_panel")
   shiny::tags$div(
     class = paste(
@@ -678,7 +679,7 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
     ),
     shiny::actionButton(
       toggle_id, toggle_label,
-      icon = shiny::icon("sliders"),
+      icon = shiny::icon(toggle_icon),
       class = "btn-outline-primary btn-sm config-flyout-toggle",
       style = "margin-bottom: 10px;",
       `aria-expanded` = "false",
