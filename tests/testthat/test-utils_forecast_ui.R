@@ -4,6 +4,7 @@ run <- list(
   id = "2026-10", label = "October 2026", model = "ECMWF SEAS5",
   init = as.Date("2026-10-01"), released = as.Date("2026-10-06"),
   next_release = as.Date("2026-11-06"), n_members = 51L, n_leads = 6L,
+  observed_through = as.Date("2026-09-01"),
   product = "seasonal", lead_unit = "month"
 )
 
@@ -67,7 +68,8 @@ test_that("the lag sentence names observed and forecast months before the window
 
 test_that("the forecast is blocked with a reason when it cannot be used", {
   expect_match(.step2_forecast_block_reason(NULL, character(0)), "No seasonal forecast")
-  expect_identical(.step2_forecast_unsupported(c("t", "r", "tx35", "t")), "tx35")
+  expect_identical(.step2_forecast_unsupported(c("t", "tn", "tx", "r", "tx35", "t")),
+    c("tn", "tx", "r", "tx35"))
   expect_match(
     .step2_forecast_block_reason(list(run), "tx35"), "uses tx35", fixed = TRUE
   )
@@ -127,4 +129,41 @@ test_that("forecast scenarios are recognised by name and have their own colour",
     c(TRUE, FALSE, FALSE, TRUE)
   )
   expect_false(.wise_forecast %in% c(unname(.ssp_colours), .wise_history, .wise_support, .wise_slate))
+})
+
+test_that("the October run blocks missing antecedents for each fitted predictor window", {
+  run$observed_through <- as.Date("2025-12-01")
+  for (lag in c(0L, 1L, 3L)) {
+    weather <- data.frame(name = "t", ref_start = min(lag, 1L), ref_end = lag)
+    m <- .step2_forecast_months(run, lag, weather)
+    expected <- switch(as.character(lag),
+      "0" = c("2026-10", "2026-11", "2026-12", "2027-01", "2027-02", "2027-03"),
+      "1" = c("2026-11", "2026-12", "2027-01", "2027-02", "2027-03"),
+      "3" = c("2027-01", "2027-02", "2027-03")
+    )
+    expect_identical(.step2_forecast_starts(m, 1), expected)
+    expect_identical(.step2_forecast_clamp_start(m, "2026-10", 1), expected[1L])
+    expect_false(any(m$kind == "obs"))
+  }
+  m <- .step2_forecast_months(run, 3L, data.frame(name = "t", ref_start = 1L, ref_end = 3L))
+  expect_identical(.step2_forecast_starts(m, 3), "2027-01")
+  expect_null(.step2_forecast_window(m, "2026-10", 6))
+  expect_match(.step2_forecast_block_reason(list(run), character(0), m, 6), "missing months are not filled")
+  html <- as.character(forecast_strip_input("fc_start", "fc_len", m, "2027-01", lag = 3L, len = 3L))
+  expect_equal(lengths(regmatches(html, gregexpr('disabled="disabled"', html))), nrow(m) - 1L)
+  expect_match(html, "Target window unavailable", fixed = TRUE)
+  empty <- as.character(forecast_strip_input("fc_start", "fc_len", m, NULL, lag = 3L, len = 6L))
+  expect_false(grepl('checked="checked"', empty, fixed = TRUE))
+})
+
+test_that("availability checks exact lag windows even beyond the displayed context", {
+  run$observed_through <- as.Date("2025-12-01")
+  weather <- data.frame(name = "t", ref_start = 12L, ref_end = 12L)
+  m <- .step2_forecast_months(run, 12L, weather)
+  expect_identical(.step2_forecast_starts(m, 3), "2026-10")
+  expect_null(.step2_forecast_window(m, "2026-10", 6))
+  run$observed_through <- NULL
+  m <- .step2_forecast_months(run, 12L, weather)
+  expect_length(.step2_forecast_starts(m, 1), 0L)
+  expect_false(any(m$kind == "obs"))
 })

@@ -81,8 +81,8 @@ mod_2_01_weathersim_ui <- function(id) {
           title = "Historical weather distribution period",
           shiny::p(
             "Historical weather informs the underlying variability, which is then",
-            "perturbed with climate scenario projections. It also sets the monthly",
-            "climate that seasonal forecast anomalies are added to."
+            "perturbed with climate scenario projections. The historical period",
+            "does not affect the seasonal forecast, which is adjusted by the data pipeline."
           )
         ),
         style = "font-weight:600; margin-top:8px; margin-bottom:4px;"
@@ -534,7 +534,7 @@ mod_2_01_weathersim_server <- function(id,
     # NULL when the forecast can be used, else the reason it cannot.
     forecast_block <- reactive({
       .step2_forecast_block_reason(
-        forecast_runs(), .step2_forecast_unsupported(forecast_weather_names())
+        forecast_runs(), .step2_forecast_unsupported(forecast_weather_names()), forecast_months()
       )
     })
 
@@ -544,12 +544,20 @@ mod_2_01_weathersim_server <- function(id,
       runs[[input$fc_run %||% names(runs)[[1L]]]] %||% runs[[1L]]
     })
 
-    forecast_on <- reactive(isTRUE(input$fc_include) && is.null(forecast_block()))
+    forecast_months <- reactive({
+      run <- forecast_run()
+      if (is.null(run)) return(NULL)
+      .step2_forecast_months(run, forecast_lag(), selected_weather())
+    })
+
+    forecast_on <- reactive({
+      isTRUE(input$fc_include) && is.null(forecast_block()) && !is.null(forecast_window())
+    })
 
     forecast_window <- reactive({
       run <- forecast_run()
       if (is.null(run)) return(NULL)
-      .step2_forecast_window(.step2_forecast_months(run, forecast_lag()), input$fc_start, input$fc_len %||% "3")
+      .step2_forecast_window(forecast_months(), input$fc_start, input$fc_len %||% "3")
     })
 
     shiny::observe({
@@ -557,9 +565,8 @@ mod_2_01_weathersim_server <- function(id,
       update_input_disabled(session, "fc_include", disabled = !is.null(why), tooltip = why)
     })
 
-    # A window must fit the forecast horizon: move the start back when the
-    # chosen start or length would run past the last lead.
-    shiny::observeEvent(list(input$fc_start, input$fc_len), {
+    # Keep the start on a complete window when the run, length or fitted lags change.
+    shiny::observe({
       w <- forecast_window()
       if (!is.null(w) && !identical(w$start, input$fc_start)) {
         shiny::updateRadioButtons(session, "fc_start", selected = w$start)
@@ -568,6 +575,11 @@ mod_2_01_weathersim_server <- function(id,
 
     output$forecast_status_ui <- shiny::renderUI({
       why <- forecast_block()
+      if (is.null(why) && is.null(forecast_window())) {
+        why <- .step2_forecast_block_reason(
+          forecast_runs(), character(0), forecast_months(), input$fc_len %||% "3"
+        )
+      }
       if (!is.null(why)) {
         return(shiny::div(
           class = "alert alert-warning warning-message", role = "alert",
@@ -583,9 +595,9 @@ mod_2_01_weathersim_server <- function(id,
       run <- forecast_run()
       if (is.null(run)) return(NULL)
       runs <- forecast_runs()
-      off <- !forecast_on()
-      months <- .step2_forecast_months(run, forecast_lag())
-      len <- shiny::isolate(input$fc_len)
+      off <- !isTRUE(input$fc_include) || !is.null(forecast_block())
+      months <- forecast_months()
+      len <- input$fc_len
       if (!isTRUE(len %in% .STEP2_FORECAST_LEN_CHOICES)) len <- "3"
       start <- .step2_forecast_clamp_start(months, shiny::isolate(input$fc_start), len)
       day <- function(d) sub("^0", "", format(d, "%d %b %Y"))
@@ -613,7 +625,9 @@ mod_2_01_weathersim_server <- function(id,
           choices = .STEP2_FORECAST_LEN_CHOICES, selected = len,
           disabled = off, aria_label = "Window length"
         ),
-        forecast_strip_input(ns("fc_start"), ns("fc_len"), months, start, lag = forecast_lag(), disabled = off),
+        forecast_strip_input(
+          ns("fc_start"), ns("fc_len"), months, start, lag = forecast_lag(), disabled = off, len = len
+        ),
         forecast_strip_legend()
       )
     })
@@ -623,7 +637,7 @@ mod_2_01_weathersim_server <- function(id,
       w <- forecast_window()
       if (!forecast_on() || is.null(w)) return(NULL)
       lag <- .step2_forecast_lag_text(
-        .step2_forecast_months(forecast_run(), forecast_lag()), w, forecast_lag()
+        forecast_months(), w, forecast_lag(), selected_weather()
       )
       shiny::tagList(
         shiny::tags$div(
@@ -684,6 +698,7 @@ mod_2_01_weathersim_server <- function(id,
     output$forecast_summary <- shiny::renderText({
       w <- forecast_window()
       if (!is.null(forecast_block())) "Not available"
+      else if (isTRUE(input$fc_include) && is.null(w)) "Window unavailable"
       else if (forecast_on() && !is.null(w)) paste0(w$short, " \u00b7 on")
       else "Off"
     })

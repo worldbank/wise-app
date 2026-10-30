@@ -372,7 +372,7 @@ pages:
       - "Step 2 > Seasonal forecast: include the forecast, choose the run, the length of the window (1, 3 or 6 months) and the start month on the strip. The forecast is unavailable, with a reason, when the country has no forecast or the fitted model uses a variable the forecast does not provide."
     guide: "https://github.com/worldbank/wise-app-docs"
     code: ["R/utils_forecast_ui.R", "R/mod_2_01_weathersim.R"]
-    verified_against: "d09a4ac"
+    verified_against: "36b8ad4"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"

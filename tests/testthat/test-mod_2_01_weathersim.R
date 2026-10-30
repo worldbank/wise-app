@@ -255,7 +255,7 @@ test_that("with the scaffold run the window clamps and joins the summary", {
   testServer(mod_2_01_weathersim_server, args = list(
     id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
     selected_outcome = reactiveVal(data.frame(name = "welfare")),
-    selected_weather = reactiveVal(data.frame(name = c("t", "r"), ref_start = 0L, ref_end = c(1L, 4L))),
+    selected_weather = reactiveVal(data.frame(name = "t", ref_start = 1L, ref_end = 3L)),
     selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
       survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
     survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
@@ -268,11 +268,20 @@ test_that("with the scaffold run the window clamps and joins the summary", {
     expect_identical(forecast_window()$start, "2027-01")
     expect_identical(output$forecast_summary, "Jan\u2013Mar \u00b7 on")
     expect_match(as.character(output$settings_summary$html), "Jan 2027 \u2013 Mar 2027", fixed = TRUE)
-    expect_identical(forecast_lag(), 4L)
+    expect_identical(forecast_lag(), 3L)
     expect_identical(
       live_sim_sig()$forecast,
       list(product = "seasonal", run = "2026-10", start = "2027-01", len = 3L)
     )
+    session$setInputs(fc_len = "6")
+    expect_null(forecast_window())
+    expect_false(forecast_on())
+    expect_identical(output$forecast_summary, "Window unavailable")
+    expect_null(live_sim_sig()$forecast)
+    expect_match(as.character(output$forecast_status_ui$html), "missing months are not filled", fixed = TRUE)
+    session$setInputs(fc_len = "1", fc_start = "2026-10")
+    expect_identical(forecast_window()$start, "2027-01")
+    expect_true(forecast_on())
     session$setInputs(fc_include = FALSE)
     expect_identical(output$forecast_summary, "Off")
     expect_null(live_sim_sig()$forecast)

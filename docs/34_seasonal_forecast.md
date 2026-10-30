@@ -6,7 +6,7 @@ depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
 code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R]
-verified_against: d09a4ac
+verified_against: 36b8ad4
 ---
 
 # Seasonal forecast scenario (design, not yet computed)
@@ -33,9 +33,9 @@ where $x^{\ m}_{\ell t}$ is the raw forecast, $\bar x^{\text{fc}}_{\ell\mu}$ is 
 
 ### 2. Predictors for the target window
 
-For a target month $t$, each lagged predictor of the fitted model is built from the same window of months before $t$ as in estimation, with the same aggregation (see [12_weather_measures](12_weather_measures.md)). Months before the forecast starts are observed values. Months after it starts are the forecast values of the same member. The longest reach-back among the fitted predictors sets how many earlier months the strip in the app shows.
+For a target month $t$, each lagged predictor of the fitted model uses the same lag window and aggregation as in estimation (see [12_weather_measures](12_weather_measures.md)). Required months up to the run's `observed_through` are observed values; forecast months use values from the same run and member, including the initialization month (lead 1). The longest reach-back among the fitted predictors sets how many earlier months the strip shows, capped at six; the availability check is not capped.
 
-Observed weather ends before the most recent months. A target window is available only when every month its predictors need is either observed or forecast. The rule for the gap is not settled.
+Observed weather ends before the most recent months. Every target month must lie in the forecast horizon, and every month its fitted predictors need must be observed through `observed_through` or forecast by this run. A multi-month window is available only when all its target months pass this check. There is no gap fill or climatology substitution. With an October 2026 run and observations ending in December 2025, lag 1-1 permits November to March, lag 0-0 permits October to March, and lag 1-3 permits January to March. These checks are implemented in the controls; weather construction is not yet wired.
 
 ### 3. One state per member
 
@@ -53,7 +53,7 @@ The band across members shows how much the forecast weather moves the model's ou
 
 ## Limitations and what is not modelled
 
-- Only the variables the monthly product provides: mean, minimum and maximum temperature and rainfall. Daily extremes, soil moisture and drought indices are not available from it.
+- Data preparation starts with monthly mean 2 m temperature (`t`) for the pilot; this is not a permanent limit on forecast variables. Minimum and maximum temperature (`tn`, `tx`) and rainfall (`r`) could be supported after their retrieval, adjustment and validation are added. Models using variables outside the prepared data cannot use the current forecast. Daily extremes, soil moisture and drought indices remain outside the monthly pilot's scope.
 - One forecast system. No weighting or blending of systems.
 - Skill is unproven for most seasons and leads. A backtest against held-out observations is planned before any season is shown without a warning.
 - Welfare responses are conditional on the fitted model; no adaptation within the target window.
@@ -74,5 +74,6 @@ None yet. Entries will be added with the backtest. Full entries are in [referenc
 |---|---|---|
 | Forecast controls, window and lag text | 2 | `R/utils_forecast_ui.R` `.step2_forecast_window()`, `.step2_forecast_lag_text()` |
 | Reach-back of the fitted predictors | 2 | `R/utils_forecast_ui.R` `.step2_forecast_lag()` |
+| Predictor-month availability and allowed starts | 2 | `R/utils_forecast_ui.R` `.step2_forecast_months()`, `.step2_forecast_starts()` |
 | Variables the forecast provides | 1 | `R/utils_forecast_ui.R` `.step2_forecast_unsupported()` |
 | Forecast scenario name and run signature | 3 | `R/utils_forecast_ui.R` `.step2_forecast_display_key()`, `.step2_forecast_signature()` |
