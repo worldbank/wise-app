@@ -262,12 +262,13 @@ step2_hist_label <- function(hist_years) {
 #' @param stored_breaks Bin breaks stored at weather load.
 #' @param slim Give the run the slim model copy (the worker snapshot). The
 #'   live fit stays untouched either way.
+#' @param forecast Optional verified run metadata, target start and window length.
 #' @return A named list; see `.step2_compute_required`.
 #' @noRd
 wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
                              residuals = "original", coef_uncertainty = TRUE,
                              propagate_all = FALSE, stored_breaks = NULL,
-                             slim = TRUE) {
+                             slim = TRUE, forecast = NULL) {
   periods <- Filter(Negate(is.null), lapply(periods, .step2_valid_future_period))
   has_future <- length(ssps) > 0L && length(periods) > 0L
   is_rif <- identical(mf$engine %||% "fixest", "rif")
@@ -300,6 +301,7 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
     taus = if (is_rif) mf$taus else NULL,
     weather_cols = if (is_rif) mf$weather_terms else NULL
   )
+  if (!is.null(forecast)) out$forecast <- forecast
   attr(out, "residual_match") <- residual_match
   out
 }

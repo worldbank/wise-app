@@ -287,3 +287,40 @@ test_that("with the scaffold run the window clamps and joins the summary", {
     expect_null(live_sim_sig()$forecast)
   })
 })
+
+test_that("a local catalogue drives real forecast selection and versioned signatures", {
+  run <- .step2_forecast_runs(scaffold = TRUE)[[1L]]
+  run$experimental <- TRUE
+  run$status <- "draft"
+  run$data_version <- "test-1"
+  run$data_sha256 <- paste(rep("a", 64), collapse = "")
+  run$manifest_sha256 <- paste(rep("b", 64), collapse = "")
+  run$historical_sha256 <- paste(rep("c", 64), collapse = "")
+  run$members <- 0:50
+  withr::local_options(wiseapp.forecast_scaffold = FALSE)
+  testthat::local_mocked_bindings(.forecast_catalogue_runs = function(connection_params, code) {
+    if (identical(code, "AAA")) list("2026-10" = run) else NULL
+  })
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+    survname = "SRV", loc_id = "L1", int_month = 1:2, welfare = 1:2, temp = 3:4)
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = "t", ref_start = 1L, ref_end = 1L)),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
+    survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = character(0), baseline_survey = "AAA|2020",
+      fc_include = TRUE, fc_run = "2026-10", fc_len = "3", fc_start = "2026-10",
+      fut_period_1 = c(2015, 2015), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
+    expect_true(forecast_on())
+    expect_identical(forecast_window()$start, "2026-11")
+    expect_identical(live_sim_sig()$forecast$data_version, "test-1")
+    expect_identical(live_sim_sig()$forecast$members, 0:50)
+    expect_match(as.character(output$forecast_status_ui$html), "scientific usefulness", fixed = TRUE)
+    expect_false(any(forecast_months()$kind == "obs"))
+    session$setInputs(fc_include = FALSE)
+    expect_null(live_sim_sig()$forecast)
+  })
+})

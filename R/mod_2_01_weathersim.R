@@ -259,7 +259,7 @@ mod_2_01_weathersim_ui <- function(id) {
     ),
 
     # Seasonal forecast flyout ----
-    # Scaffold: nothing here reaches the simulation run yet (utils_forecast_ui.R).
+    # Local experimental forecast runs; metadata-only scaffold remains for tests.
     config_flyout_block(
       ns("forecast_toggle"),
       "Seasonal forecast",
@@ -354,7 +354,8 @@ mod_2_01_weathersim_ui <- function(id) {
     cur <- view$current_label
     models <- if (!is.null(view$member_index) && !is.null(view$period_members) &&
         view$period_members > 0L) {
-      paste0(view$member_index, " / ", view$period_members, " climate models")
+      paste0(view$member_index, " / ", view$period_members,
+        if (.step2_is_forecast_scenario(cur %||% "")) " forecast members" else " climate models")
     }
     rows <- c(
       list(row("Historical", isTRUE(view$has_hist), FALSE)),
@@ -518,9 +519,20 @@ mod_2_01_weathersim_server <- function(id,
       }
     })
 
-    # Seasonal forecast (scaffold: not part of the simulation run) ----
+    # Seasonal forecast ----
 
-    forecast_runs <- reactive(.step2_forecast_runs())
+    forecast_catalogue_error <- reactiveVal(NULL)
+    forecast_runs <- reactive({
+      code <- unique(baseline_surveys()$code)
+      tryCatch({
+        runs <- .step2_forecast_runs(connection_params = connection_params(), code = code)
+        forecast_catalogue_error(NULL)
+        runs
+      }, error = function(e) {
+        forecast_catalogue_error(wise_user_error(e, "Seasonal forecast catalogue"))
+        NULL
+      })
+    })
 
     forecast_weather_names <- reactive({
       tryCatch(as.character(selected_weather()$name), error = function(e) character(0))
@@ -533,8 +545,10 @@ mod_2_01_weathersim_server <- function(id,
 
     # NULL when the forecast can be used, else the reason it cannot.
     forecast_block <- reactive({
+      runs <- forecast_runs()
+      if (!is.null(forecast_catalogue_error())) return(forecast_catalogue_error())
       .step2_forecast_block_reason(
-        forecast_runs(), .step2_forecast_unsupported(forecast_weather_names()), forecast_months()
+        runs, .step2_forecast_unsupported(forecast_weather_names()), forecast_months()
       )
     })
 
@@ -588,6 +602,12 @@ mod_2_01_weathersim_server <- function(id,
       }
       if (.step2_forecast_scaffold()) {
         shiny::helpText("Preview only: the forecast is not yet used by simulation runs.")
+      } else if (isTRUE(forecast_run()$experimental)) {
+        shiny::helpText(
+          "Experimental DEV forecast data. Forecast skill and scientific usefulness are not established. ",
+          "The member spread is not a calibrated probability. ",
+          "Step 3 policy runs currently require switching the forecast off and rerunning Step 2."
+        )
       }
     })
 
@@ -883,7 +903,7 @@ mod_2_01_weathersim_server <- function(id,
     })
 
     selected_fut <- reactive({
-      req(input$climate)
+      if (!length(input$climate)) return(NULL)
       fp <- future_periods()
       if (length(fp) == 0) {
         return(NULL)
@@ -1193,7 +1213,10 @@ mod_2_01_weathersim_server <- function(id,
         sw, so, svy, ss, mf, .wise_step2_async_connection_params(cp),
         hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
         residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
-        stored_breaks = stored_breaks(), slim = TRUE
+        stored_breaks = stored_breaks(), slim = TRUE,
+        forecast = if (forecast_on() && !.step2_forecast_scaffold()) {
+          list(run = forecast_run(), start = forecast_window()$start, len = as.integer(input$fc_len %||% "3"))
+        }
       )
       ssps <- step2_input$ssps
       fp_list <- step2_input$fp_list
@@ -1224,8 +1247,11 @@ mod_2_01_weathersim_server <- function(id,
       live_run(list(
         generation = generation, dependency_signature = dependency_signature,
         status = "queued", started_at = started_at, elapsed = 0,
-        groups_total = length(ssps) * length(fp_list), groups_done = 0L,
-        scenario_labels = .step2_scenario_labels(ssps, fut_periods),
+        groups_total = length(ssps) * length(fp_list) + as.integer(!is.null(step2_input$forecast)), groups_done = 0L,
+        scenario_labels = .step2_scenario_labels(ssps, fut_periods,
+          forecast_key = if (!is.null(step2_input$forecast)) {
+            .step2_forecast_display_key(forecast_run(), forecast_window())
+          }),
         current_label = NULL, member_index = NULL, period_members = NULL,
         eta_seconds = NULL,
         display = isolate(display_settings()),
@@ -1486,7 +1512,10 @@ mod_2_01_weathersim_server <- function(id,
           sw, so, svy, ss, mf, cp,
           hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
           residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
-          stored_breaks = stored_breaks(), slim = FALSE
+          stored_breaks = stored_breaks(), slim = FALSE,
+          forecast = if (forecast_on() && !.step2_forecast_scaffold()) {
+            list(run = forecast_run(), start = forecast_window()$start, len = as.integer(input$fc_len %||% "3"))
+          }
         )
 
         shiny::withProgress(message = "Running climate simulation...", value = 0, {

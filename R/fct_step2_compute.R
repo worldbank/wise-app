@@ -125,6 +125,24 @@ step2_slim_model_fit <- function(mf) {
       call. = FALSE
     )
   }
+  if (!is.null(input$forecast)) {
+    forecast <- input$forecast
+    if (!is.list(forecast) || !is.list(forecast$run) ||
+        is.null(forecast$run$id) || is.null(forecast$run$members) ||
+        length(forecast$run$id) != 1L || is.na(forecast$run$id) ||
+        length(forecast$run$members) < 1L ||
+        length(forecast$start) != 1L ||
+        !grepl("^[0-9]{4}-[0-9]{2}$", as.character(forecast$start)) ||
+        length(forecast$len) != 1L || is.na(as.integer(forecast$len)) ||
+        as.integer(forecast$len) < 1L) {
+      stop("step2_compute()$forecast must contain a run, YYYY-MM start, and positive length.",
+        call. = FALSE
+      )
+    }
+  }
+  if (!is.null(input$forecast) && !all(input$sw$name %in% input$forecast$run$variables)) {
+    stop("step2_compute() selected weather is not covered by the forecast run.", call. = FALSE)
+  }
   if (length(input$residuals) != 1L ||
     !input$residuals %in% c("none", "original", "resample")) {
     stop("step2_compute()$residuals is invalid.", call. = FALSE)
@@ -163,7 +181,7 @@ step2_slim_model_fit <- function(mf) {
 }
 
 .step2_compute_signature <- function(input, seed, run_id) {
-  list(
+  out <- list(
     step = "sim",
     schema = 1L,
     seed = as.integer(seed),
@@ -181,6 +199,38 @@ step2_slim_model_fit <- function(mf) {
     perturbation_method = .sig_plain(input$perturbation_method),
     stored_breaks = .sig_plain(input$stored_breaks)
   )
+  if (!is.null(input$forecast)) {
+    forecast <- input$forecast
+    out$forecast <- list(
+      product = forecast$product %||% forecast$run$product %||% "seasonal",
+      run = list(
+        id = forecast$run$id,
+        product = forecast$run$product %||% "seasonal",
+        model_id = forecast$run$model_id %||% NA_character_,
+        init = forecast$run$init %||% as.Date(NA),
+        observed_through = forecast$run$observed_through %||% as.Date(NA),
+        n_leads = forecast$run$n_leads %||% NA_integer_,
+        members = forecast$run$members,
+        variables = forecast$run$variables %||% character(0),
+        file = forecast$run$file %||% "",
+        adjustment = forecast$run$adjustment %||% "",
+        data_sha256 = forecast$run$data_sha256 %||% "",
+        manifest_sha256 = forecast$run$manifest_sha256 %||% "",
+        historical_sha256 = forecast$run$historical_sha256 %||% ""
+      ),
+      start = forecast$start,
+      len = as.integer(forecast$len),
+      run_identity = .sig_plain(list(
+        id = forecast$run$id, data_sha256 = forecast$run$data_sha256 %||% "",
+        manifest_sha256 = forecast$run$manifest_sha256 %||% "",
+        historical_sha256 = forecast$run$historical_sha256 %||% "",
+        file = forecast$run$file %||% "", members = forecast$run$members,
+        released = forecast$run$released %||% as.Date(NA),
+        next_release = forecast$run$next_release %||% as.Date(NA)
+      ))
+    )
+  }
+  out
 }
 
 .step2_compute_event <- function(events, stage, status, started,
@@ -272,6 +322,7 @@ step2_compute <- function(input,
   )))[1L]
   snapshot <- input
   signature <- .step2_compute_signature(snapshot, seed, run_id)
+  simulation_args <- snapshot
   started <- proc.time()[["elapsed"]]
   events <- list()
   emit <- function(stage, status, detail = NULL, error = NULL, fields = NULL) {
@@ -343,6 +394,21 @@ step2_compute <- function(input,
     emit("weather", "completed")
     value
   }
+  if (!is.null(simulation_args$forecast) && !is.null(simulation_args$forecast$run$data_sha256)) {
+    forecast_code <- unique(as.character(simulation_args$svy$code))
+    current_runs <- .forecast_catalogue_runs(simulation_args$cp, forecast_code)
+    current <- if (is.null(current_runs)) NULL else current_runs[[simulation_args$forecast$run$id]]
+    if (is.null(current) ||
+        !identical(current$data_sha256, simulation_args$forecast$run$data_sha256) ||
+        !identical(current$manifest_sha256, simulation_args$forecast$run$manifest_sha256) ||
+        !identical(current$historical_sha256, simulation_args$forecast$run$historical_sha256) ||
+        !identical(current$members, simulation_args$forecast$run$members)) {
+      stop("Selected forecast data changed after the Step 2 snapshot was created; refresh the forecast selection.",
+        call. = FALSE
+      )
+    }
+    simulation_args$forecast$run <- current
+  }
   pipeline_index <- 0L
   pipeline_wrapper <- function(...) {
     pipeline_index <<- pipeline_index + 1L
@@ -357,7 +423,6 @@ step2_compute <- function(input,
     emit("pipeline", "completed", fields = list(member_ordinal = pipeline_index))
     value
   }
-  simulation_args <- snapshot
   simulation_args$progress_fn <- function(value, detail) {
     emit("simulation", "progress", detail)
   }

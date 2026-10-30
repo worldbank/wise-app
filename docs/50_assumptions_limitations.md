@@ -2,11 +2,11 @@
 id: assumptions
 title: Assumptions and limitations in one place
 app_step: cross
-depends_on: [notation, framework, data, outcomes, weather-measures, model-specification, linear-model, rif-model, ml-models, model-results, simulation, climate-scenarios, metrics, uncertainty, policy-framework, policy-levers, social-protection, shock-sp, decomposition, cost-effectiveness]
+depends_on: [notation, framework, data, outcomes, weather-measures, model-specification, linear-model, rif-model, ml-models, model-results, simulation, climate-scenarios, seasonal-forecast, metrics, uncertainty, policy-framework, policy-levers, social-protection, shock-sp, decomposition, cost-effectiveness]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: []
-verified_against: 9881d96
+verified_against: 623ee30
 ---
 
 # Assumptions and limitations in one place
@@ -52,6 +52,7 @@ The app produces three kinds of statements ([01_framework](01_framework.md)): a 
 | Climate change enters as a change in monthly weather, applied to the observed record | [01_framework](01_framework.md#assumptions) A5; [30_simulation](30_simulation.md#assumptions) A5; [31_climate_scenarios](31_climate_scenarios.md#assumptions) A1 to A3, A5 | Variance and day-to-day structure are those of the observed record. |
 | Equal weights for climate models | [31_climate_scenarios](31_climate_scenarios.md#assumptions) A4 | The spread across models is disagreement, not a probability. |
 | Survey weights are fixed; years are exchangeable; thresholds are meaningful for the outcome | [32_metrics](32_metrics.md#assumptions) A1 to A4 | Thirty years support a 1-in-10 return period with three years only. |
+| Mean-bias-adjusted forecast weather supports the fitted response, with equally weighted members | [34_seasonal_forecast](34_seasonal_forecast.md#assumptions) A1 to A3 | The experimental local pilot starts with temperature only. Skill is not established; mean adjustment does not calibrate spread or probabilities. Target months have equal weight and form one state per member, not an annual return-period sample. |
 
 ## Uncertainty
 
@@ -91,6 +92,7 @@ Across the pages, the app does not model the following.
 - Behavioural responses to a transfer.
 - A policy arm for logistic regression, binary outcomes and machine-learning models.
 - A causal reading of any policy lever effect.
+- Calibrated seasonal forecast probabilities, proven seasonal forecast skill, or policy simulation for seasonal target windows. The local pilot is experimental DEV data; Step 3 requires rerunning Step 2 with the forecast off.
 
 ## In the app
 

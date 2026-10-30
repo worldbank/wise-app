@@ -70,6 +70,24 @@ test_that("the batch views equal the Results module's for every metric", {
   expect_gt(nrow(inc), 0L)
 })
 
+test_that("forecast aggregate bands keep member spread and exclude annual return periods", {
+  label <- "Seasonal forecast / Nov 2026 - Jan 2027 (2026-10 run)"
+  members <- seq(1, 51)
+  tbl <- data.frame(value_all_sd = I(list(rep(0.25, 51L))))
+  mm <- function(...) list(vals = matrix(members, ncol = 1L), sds = matrix(0.25, nrow = 51L),
+    model_ids = paste0("member_", seq_len(51L)))
+  series <- stats::setNames(list(tbl), label)
+  bands <- step2_pointrange_bands(series, step2_ensemble_band_q("p10_p90"), mm_fn = mm)
+  forecast_band <- bands[bands$scenario == label, , drop = FALSE]
+  expect_equal(forecast_band$value, mean(members))
+  expect_true(is.na(forecast_band$interann_lo))
+  expect_true(is.finite(forecast_band$intermod_lo))
+  expect_true(is.finite(forecast_band$coef_lo))
+  threshold <- step2_threshold_table(series, resolve_band_q("p10_p90"),
+    step2_ensemble_band_q("p10_p90"), method = "mean", mm_fn = mm)
+  expect_false(label %in% threshold$scenario)
+})
+
 test_that("the module's threshold table is the core's, with the run summary", {
   mod <- results_module_views("mean")
   agg <- step2_fixture_agg()

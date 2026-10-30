@@ -851,6 +851,45 @@ test_that("sim_id follows the fit and the simulation settings that change result
   expect_identical(hist("ssp2_4_5"), hist("ssp5_8_5"))
 })
 
+test_that("forecast specs are optional, canonical and distinct in sim_id", {
+  base <- sim_spec(list(future_periods = list(), ssps = list()))
+  forecast <- sim_spec(list(forecast = list(
+    product = "seasonal", run = "2026-10", start = "2026-11", len = 3
+  )))
+  expect_null(base$sim$forecast)
+  expect_identical(forecast$sim$forecast, list(
+    product = "seasonal", run = "2026-10", start = "2026-11", len = 3L
+  ))
+  expect_length(forecast$sim$future_periods, 1L)
+  expect_identical(forecast$sim$ssps, "ssp3_7_0")
+  expect_false(identical(wise_spec_ids(forecast)$fit_id, NA_character_))
+  expect_false(identical(wise_spec_ids(base)$sim_id, wise_spec_ids(forecast)$sim_id))
+  expect_identical(wise_spec_ids(forecast)$fit_id, wise_spec_ids(base)$fit_id)
+  combined <- sim_spec(list(
+    forecast = list(run = "2026-10", start = "2026-11", len = 3),
+    future_periods = list(c(2030, 2040)), ssps = c("ssp2_4_5", "ssp5_8_5")
+  ))
+  expect_identical(combined$sim$future_periods, list(c(2030L, 2040L)))
+  expect_identical(combined$sim$ssps, c("ssp2_4_5", "ssp5_8_5"))
+  effective <- .sim_effective(combined)
+  expect_identical(effective$future_periods, list(c(2030L, 2040L)))
+  expect_identical(effective$ssps, c("ssp2_4_5", "ssp5_8_5"))
+  expect_identical(effective$forecast$run, "2026-10")
+  expect_error(
+    sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)),
+      policy = list(sp = list())),
+    "not supported with sim.forecast"
+  )
+})
+
+test_that("forecast settings add to effective sim identity", {
+  spec <- sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)))
+  expect_named(.sim_effective(spec)$forecast, c("product", "run", "start", "len"))
+  changed <- spec
+  changed$sim$forecast$run <- "2026-09"
+  expect_false(identical(wise_spec_ids(changed)$sim_id, wise_spec_ids(spec)$sim_id))
+})
+
 test_that("a grid crosses sim profiles and shares the fit across them", {
   skip_if_not_installed("yaml")
   grid <- list(

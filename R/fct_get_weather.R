@@ -1302,7 +1302,8 @@ get_weather <- function(
   weather_threads = c("auto", "1", "2"),
   weather_consumer = NULL,
   keep_continuous = FALSE,
-  seed = WISEAPP_DEFAULT_SEED
+  seed = WISEAPP_DEFAULT_SEED,
+  forecast = NULL
 ) {
   # The async Step 2 worker passes dates as character. Coerce once so the
   # climate-reference window (max() against a Date below), the date filters
@@ -1314,6 +1315,7 @@ get_weather <- function(
     weather_profile$plan <- .wx_profile_plan()
     weather_profile$started <- proc.time()[["elapsed"]]
   }
+
   # -- Select and pin DuckDB weather-query threads ----------------------------
   # Multi-threaded aggregation sums floats in non-deterministic order. The
   # output boundary rounds weather values to a fixed five-decimal precision, while one
@@ -2417,6 +2419,42 @@ get_weather <- function(
 
     # -- Run SSPs sequentially - DuckDB handles per-query parallelism --------
     result <- c(result, do.call(c, lapply(ssp, .process_ssp)))
+  }
+
+  if (!is.null(forecast)) {
+    forecast_result <- .get_forecast_weather(
+      survey_data = survey_data, selected_surveys = selected_surveys,
+      selected_weather = selected_weather, connection_params = connection_params,
+      run = forecast$run, start = forecast$start, len = forecast$len,
+      stored_breaks = stored_breaks, keep_continuous = keep_continuous, seed = seed,
+      weather_consumer = NULL
+    )
+    if (is.null(weather_consumer)) {
+      result <- c(result, forecast_result)
+    } else {
+      forecast_members <- attr(forecast_result, "forecast_members") %||%
+        sub("^member_", "", names(forecast_result))
+      forecast_window <- attr(forecast_result, "forecast_window") %||% list(
+        start = forecast$start, len = forecast$len
+      )
+      for (i in seq_along(forecast_result)) {
+        frame <- forecast_result[[i]]
+        member <- as.integer(sub("^member_", "", names(forecast_result)[[i]]))
+        metadata <- list(
+          forecast = TRUE,
+          forecast_run = forecast$run$id,
+          forecast_member = member,
+          member_index = as.integer(i),
+          period_members = length(forecast_members),
+          start = forecast_window$start,
+          len = forecast_window$len,
+          order = emitted_order + 1L,
+          is_historical = FALSE
+        )
+        emitted_order <<- emitted_order + 1L
+        weather_consumer(paste0("member_", member), frame, metadata)
+      }
+    }
   }
 
   # -- Cleanup base temp table (best-effort; on.exit ledger is the backstop) --

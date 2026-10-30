@@ -198,7 +198,9 @@
         paste0(
           "Each dot is one simulated weather-year annual aggregate for the fixed baseline population. ",
           "The selected violin or boxplot summarizes the distribution; open circles mark scenario means. ",
-          "This captures weather-year variability, not household inequality."
+          "This captures weather-year variability, not household inequality. ",
+          "For a seasonal forecast, each dot instead represents one member's complete target-window aggregate; ",
+          "the spread is not an annual probability or a calibrated forecast probability."
         )
       )
     ),
@@ -250,7 +252,8 @@
         paste0(
           "Points are equal-weight means across climate models of each model's expected and adverse-year values. ",
           "Adverse tail direction is mapped automatically according to the selected outcome metric. ",
-          "Horizontal bars show inter-model ensemble spread across climate projections."
+          "Horizontal bars show inter-model ensemble spread across climate projections. ",
+          "Seasonal forecasts are excluded from annual adverse-year and return-period summaries."
         )
       )
     ),
@@ -304,7 +307,8 @@
           "lower outcomes for higher-is-better measures and higher outcomes for lower-is-better measures. ",
           "Coloured lines show the across-model median; shaded ribbons show climate-model disagreement for each ",
           "future baseline and policy series. Return-period guides and ticks are limited to the available simulated ",
-          "years per climate model; unsupported periods are not extrapolated."
+          "years per climate model; unsupported periods are not extrapolated. ",
+          "Seasonal forecasts are excluded: their members describe one target window, not annual weather samples."
         )
       )
     ),

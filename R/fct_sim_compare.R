@@ -89,6 +89,17 @@ resolve_band_q <- function(band_key) {
 # .normalise_ssp() and .parse_year() live in fct_simulations.R (single robust
 # implementation - do not re-define them here).
 
+# Forecast labels are separate from SSP/year labels and follow Historical.
+# @noRd
+.step2_scenario_order <- function(scenarios) {
+  scenarios <- unique(as.character(scenarios))
+  historical <- scenarios[scenarios == "Historical"]
+  forecast <- scenarios[vapply(scenarios, .step2_is_forecast_scenario, logical(1L)) |
+    grepl("^(Seasonal|Subseasonal) forecast / ", scenarios)]
+  future <- sort(setdiff(scenarios, c(historical, forecast)))
+  c(historical, forecast, future)
+}
+
 # Internal: dynamic year linetype helper ----
 .resolve_year_styles <- function(year_labels) {
   linetypes <- c("solid", "dashed", "dotted", "longdash", "twodash")
@@ -117,20 +128,25 @@ resolve_band_q <- function(band_key) {
     # drop it so the chart shows one historical dot (under Baseline).
     df <- df[!(df$is_historical & df$source == "Policy"), , drop = FALSE]
   }
+  is_forecast <- vapply(df$scenario, function(x) {
+    .step2_is_forecast_scenario(x) || grepl("^(Seasonal|Subseasonal) forecast / ", x)
+  }, logical(1L))
   df$ssp_key <- ifelse(df$is_historical, "Historical",
-    vapply(df$scenario, .normalise_ssp, character(1L))
+    ifelse(is_forecast, "Forecast", vapply(df$scenario, .normalise_ssp, character(1L)))
   )
   df$yr_lbl <- ifelse(df$is_historical, "Historical",
-    vapply(df$scenario, .parse_year, character(1L))
+    ifelse(is_forecast, sub("^[^/]*/[[:space:]]*", "", df$scenario),
+      vapply(df$scenario, .parse_year, character(1L)))
   )
   df$ssp_short <- ifelse(df$is_historical, "Historical",
-    SSP_SHORT_LABELS[df$ssp_key] %||% df$ssp_key
+    ifelse(df$ssp_key == "Forecast", "Forecast", SSP_SHORT_LABELS[df$ssp_key] %||% df$ssp_key)
   )
   df$pt_key <- ifelse(df$is_historical, "Historical",
-    paste0(df$ssp_short, "\n", df$yr_lbl)
+    ifelse(is_forecast, paste0("Forecast\n", df$yr_lbl), paste0(df$ssp_short, "\n", df$yr_lbl))
   )
   df$colour_key <- ifelse(df$is_historical, "Historical",
-    paste(df$ssp_key, df$yr_lbl, sep = "__")
+    ifelse(is_forecast, paste("Forecast", df$scenario, sep = "__"),
+      paste(df$ssp_key, df$yr_lbl, sep = "__"))
   )
 
   fut_df <- df[!df$is_historical, , drop = FALSE]
@@ -138,14 +154,19 @@ resolve_band_q <- function(band_key) {
   # colour palette: Historical = grey; one colour per SSP x year ----
   colour_palette <- c("Historical" = "#808080")
   if (nrow(fut_df) > 0L) {
-    yrs_present <- sort(unique(fut_df$yr_lbl))
+    forecast_keys <- unique(fut_df$colour_key[fut_df$ssp_key == "Forecast"])
+    if (length(forecast_keys)) colour_palette[forecast_keys] <- .wise_forecast
+    ssp_df <- fut_df[fut_df$ssp_key != "Forecast", , drop = FALSE]
+    yrs_present <- sort(unique(ssp_df$yr_lbl))
     n_yrs <- length(yrs_present)
     yr_lighten <- if (n_yrs > 1L) seq(0.30, 0.0, length.out = n_yrs) else 0.0
-    for (ssp in intersect(names(.ssp_colours), unique(fut_df$ssp_key))) {
+    for (ssp in intersect(names(.ssp_colours), unique(ssp_df$ssp_key))) {
       base_col <- .ssp_colours[ssp]
       for (i in seq_along(yrs_present)) {
         ck <- paste(ssp, yrs_present[i], sep = "__")
-        colour_palette[ck] <- colorspace::lighten(base_col, yr_lighten[i])
+        if (any(ssp_df$ssp_key == ssp & ssp_df$yr_lbl == yrs_present[i])) {
+          colour_palette[ck] <- colorspace::lighten(base_col, yr_lighten[i])
+        }
       }
     }
   }
@@ -154,10 +175,13 @@ resolve_band_q <- function(band_key) {
   ordered_levels <- "Historical"
   spacer_ids <- character(0)
   if (nrow(fut_df) > 0L) {
-    ssps_present <- intersect(c("SSP2", "SSP3", "SSP5"), unique(fut_df$ssp_short))
+    forecast_points <- unique(fut_df$pt_key[fut_df$ssp_key == "Forecast"])
+    ordered_levels <- c(ordered_levels, forecast_points)
+    ssp_df <- fut_df[fut_df$ssp_key != "Forecast", , drop = FALSE]
+    ssps_present <- intersect(c("SSP2", "SSP3", "SSP5"), unique(ssp_df$ssp_short))
     spacer_n <- 0L
     if (isTRUE(group_order == "year_x_scenario")) {
-      yrs_present <- sort(unique(fut_df$yr_lbl))
+      yrs_present <- sort(unique(fut_df$yr_lbl[fut_df$ssp_key != "Forecast"]))
       for (yr_i in yrs_present) {
         spacer_n <- spacer_n + 1L
         sid <- strrep(" ", spacer_n)
@@ -173,7 +197,9 @@ resolve_band_q <- function(band_key) {
         sid <- strrep(" ", spacer_n)
         spacer_ids <- c(spacer_ids, sid)
         ordered_levels <- c(ordered_levels, sid)
-        ssp_yrs <- sort(unique(fut_df$yr_lbl[fut_df$ssp_short == ssp]))
+        ssp_yrs <- sort(unique(fut_df$yr_lbl[
+          fut_df$ssp_short == ssp & fut_df$ssp_key != "Forecast"
+        ]))
         for (yr_i in ssp_yrs) {
           ordered_levels <- c(ordered_levels, paste0(ssp, "\n", yr_i))
         }
@@ -324,9 +350,13 @@ paired_effect_summary <- function(effect_tbl,
     na.rm = TRUE, names = FALSE
   )
   interann <- c(
-    lo = mean(model_rows$annual_lo, na.rm = TRUE),
-    hi = mean(model_rows$annual_hi, na.rm = TRUE)
+    lo = if (any(is.finite(model_rows$annual_lo))) mean(model_rows$annual_lo, na.rm = TRUE) else NA_real_,
+    hi = if (any(is.finite(model_rows$annual_hi))) mean(model_rows$annual_hi, na.rm = TRUE) else NA_real_
   )
+  n_years <- min(model_rows$n_years)
+  if (.step2_is_forecast_scenario(scenario)) {
+    interann[] <- NA_real_
+  }
   z <- stats::qnorm(band_q)
   # The coefficients are shared by every ensemble member, so their error does
   # not average out across members: the exact figure is the norm of the mean
@@ -348,7 +378,8 @@ paired_effect_summary <- function(effect_tbl,
     coef_sd = coef_sd,
     coef_lo = center_value + z[[1L]] * coef_sd,
     coef_hi = center_value + z[[2L]] * coef_sd,
-    interann_lo = interann[[1L]], interann_hi = interann[[2L]],
+    interann_lo = if (n_years > 1L) interann[[1L]] else NA_real_,
+    interann_hi = if (n_years > 1L) interann[[2L]] else NA_real_,
     intermod_lo = intermod[[1L]], intermod_hi = intermod[[2L]],
     n_models = nrow(model_rows), n_years = min(model_rows$n_years),
     n_model_years = sum(model_rows$n_years),
@@ -373,6 +404,10 @@ step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   }
 
   central <- tbl[tbl$Estimate %in% c("Equal-model mean", "Single historical estimate", "Central (P50)"), , drop = FALSE]
+  if (nrow(central)) {
+    forecast_rows <- vapply(central$scenario, .step2_is_forecast_scenario, logical(1L))
+    central <- central[!forecast_rows, , drop = FALSE]
+  }
   if (!nrow(central)) {
     return(tibble::tibble())
   }
@@ -414,10 +449,12 @@ step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   }
 
   central$ssp_key <- ifelse(central$is_historical, "Historical",
-    vapply(central$scenario, .normalise_ssp, character(1L))
+    ifelse(vapply(central$scenario, .step2_is_forecast_scenario, logical(1L)),
+      "Forecast", vapply(central$scenario, .normalise_ssp, character(1L)))
   )
   central$yr_lbl <- ifelse(central$is_historical, "Historical",
-    vapply(central$scenario, .parse_year, character(1L))
+    ifelse(vapply(central$scenario, .step2_is_forecast_scenario, logical(1L)),
+      as.character(central$scenario), vapply(central$scenario, .parse_year, character(1L)))
   )
   central <- central[is.finite(central$value), , drop = FALSE]
   if (!nrow(central)) return(tibble::tibble())
@@ -607,6 +644,8 @@ step2_headline_cards <- function(bands,
   hist <- if (nrow(hist_rows)) hist_rows[1L, ] else fut_rows[1L, ]
   focus <- if (nrow(fut_rows)) fut_rows[1L, ] else hist
   has_future <- nrow(fut_rows) > 0L
+  forecast_focus <- has_future && .step2_is_forecast_scenario(as.character(focus$scenario[[1L]]))
+  forecast_focus <- forecast_focus || (has_future && grepl("^(Seasonal|Subseasonal) forecast / ", as.character(focus$scenario[[1L]])))
 
   so <- if (!is.null(hist_sim)) hist_sim$so else NULL
   metadata <- metadata %||% metric_metadata(method, so)
@@ -651,6 +690,17 @@ step2_headline_cards <- function(bands,
   }
 
   scen_lab <- if (has_future) as.character(focus$scenario) else NULL
+  forecast_focus <- has_future && .step2_is_forecast_scenario(scen_lab)
+  forecast_focus <- forecast_focus || (has_future && grepl("^(Seasonal|Subseasonal) forecast / ", scen_lab))
+  has_curves <- !is.null(timeseries_curves) && nrow(timeseries_curves) &&
+    all(c("scenario", "value") %in% names(timeseries_curves))
+  if (forecast_focus && !is.null(timeseries_curves) && nrow(timeseries_curves) &&
+      "model_id" %in% names(timeseries_curves)) {
+    focus$n_members <- length(unique(timeseries_curves$model_id[
+      timeseries_curves$scenario == focus$scenario
+    ]))
+  }
+  if (forecast_focus) delta_ci <- NULL
   # Weighted population (people) for translating a rate change into the
   # number of poor; only for headcount metrics with survey weights.
   w_pop <- if (!is.null(hist_sim$svy) && "weight" %in% names(hist_sim$svy) &&
@@ -676,7 +726,7 @@ step2_headline_cards <- function(bands,
     "Historical baseline"
   }
   line2_1 <- if (has_future) {
-    paste0("Historical", arrow, scen_lab, " \u00b7 average year")
+    paste0("Historical", arrow, scen_lab, if (forecast_focus) " \u00b7 target window" else " \u00b7 average year")
   } else {
     "Average year"
   }
@@ -703,7 +753,7 @@ step2_headline_cards <- function(bands,
   }
 
   card1 <- list(
-    label = if (has_future) "Expected change" else "Expected outcome",
+    label = if (forecast_focus) "Expected target-window outcome" else if (has_future) "Expected change" else "Expected outcome",
     value = val_1,
     note = paste(c(line1_1, ci_1$text, line2_1, poor_1), collapse = " \u00b7 "),
     note_html = shiny::tagList(
@@ -713,16 +763,31 @@ step2_headline_cards <- function(bands,
       if (!is.null(poor_1)) shiny::tags$div(poor_1)
     ),
     info = paste(
-      "Expected annual aggregate outcome under the focus climate scenario compared with the",
-      "historical baseline (mean across weather years and climate models).",
+      if (forecast_focus) {
+        paste(
+          "Expected aggregate outcome for the selected forecast target window compared with the",
+          "historical baseline (mean across forecast members)."
+        )
+      } else {
+        paste(
+          "Expected annual aggregate outcome under the focus climate scenario compared with the",
+          "historical baseline (mean across weather years and climate models)."
+        )
+      },
       "Differences reflect simulated climate conditions for the fixed survey population.",
       "Short-run weather responses estimated in Step 1 are applied to future weather;",
       "adaptation is not included.",
       if (!is.null(ci_1)) paste(
         "The 95% interval reflects uncertainty in the estimated weather coefficients only;",
-        "climate-model disagreement and year-to-year weather variability are shown on the",
-        "Signal vs noise and Year-to-year range cards."
-      ),
+        if (forecast_focus) {
+          "forecast member spread is shown separately from coefficient uncertainty."
+        } else {
+          paste(
+            "climate-model disagreement and year-to-year weather variability are shown on the",
+            "Signal vs noise and Year-to-year range cards."
+          )
+        }
+       ),
       "Weather values outside the historical range need",
       "extrapolation: the Diagnostics tab flags them under weather support.",
       if (has_future) paste0("Historical: ", display_value(hist$value),
@@ -787,7 +852,9 @@ step2_headline_cards <- function(bands,
   card1$change_native <- change_1
   card1$change_ci_native <- if (!is.null(ci_1)) c(ci_1$lo, ci_1$hi) else c(NA_real_, NA_real_)
   card1$change_display <- if (has_future) display_value(change_1, change = TRUE) else ""
-  if (has_future) card1$status <- headline_status(change_1, direction, display = card1$change_display)
+  if (forecast_focus) card1$info <- paste(card1$info,
+    "Forecast skill has not been established for this pilot.")
+  if (has_future && !forecast_focus) card1$status <- headline_status(change_1, direction, display = card1$change_display)
   if (nzchar(card1$change_display)) {
     card1$note <- paste(card1$note, paste("Difference:", card1$change_display), sep = " \u00b7 ")
   }
@@ -796,7 +863,7 @@ step2_headline_cards <- function(bands,
   # 1-in-20 level is reached under the focus scenario.
   v20_hist <- NA_real_
   v20_ssp <- NA_real_
-  if (!is.null(threshold_tbl) && nrow(threshold_tbl) &&
+  if (!forecast_focus && !is.null(threshold_tbl) && nrow(threshold_tbl) &&
     all(c("scenario", "rp_name", "Estimate") %in% names(threshold_tbl))) {
     rp_map <- metric_decision_return_periods(method %||% "mean", so)
     rp_20 <- unname(rp_map[["Adverse 1-in-20"]])
@@ -811,8 +878,13 @@ step2_headline_cards <- function(bands,
   }
 
   both_20 <- has_future && is.finite(v20_hist) && is.finite(v20_ssp)
+  both_20 <- both_20 && !forecast_focus
   change_2 <- if (both_20) v20_ssp - v20_hist else NA_real_
-  focus_vals <- if (both_20) curve_values(focus$scenario) else numeric(0L)
+  focus_vals <- if (both_20) curve_values(focus$scenario) else if (forecast_focus) {
+    if (has_curves) {
+      as.numeric(timeseries_curves$value[timeseries_curves$scenario == focus$scenario])
+    } else numeric(0L)
+  } else numeric(0L)
   rp_focus <- if (both_20 && length(focus_vals) >= 20L) {
     step2_adverse_return_period(focus_vals, v20_hist, metadata$adverse_tail %||% "high")
   } else {
@@ -826,6 +898,7 @@ step2_headline_cards <- function(bands,
     paste0("about 1-in-", format(max(1, round(rp_focus)), big.mark = ","))
   }
   poor_2 <- if (both_20) poor_line(change_2) else NULL
+  if (forecast_focus) both_20 <- FALSE
   if (both_20) {
     val_2 <- display_value(change_2, change = TRUE)
     line1_2 <- if (is_change) {
@@ -843,9 +916,14 @@ step2_headline_cards <- function(bands,
     line1_2 <- if (is_change) paste(deviation_label, "\u00b7 Historical baseline") else "Historical baseline"
     line2_2 <- "1-in-20 year"
   } else if (has_future && is.finite(v20_ssp)) {
-    val_2 <- display_value(v20_ssp, change = FALSE)
+    val_2 <- if (forecast_focus) display_value(focus$value, change = FALSE) else
+      display_value(v20_ssp, change = FALSE)
     line1_2 <- as.character(focus$scenario)
-    line2_2 <- "1-in-20 year"
+    line2_2 <- if (forecast_focus) "Target-window aggregate; no annual return period" else "1-in-20 year"
+  } else if (forecast_focus) {
+    val_2 <- display_value(focus$value, change = FALSE)
+    line1_2 <- as.character(focus$scenario)
+    line2_2 <- "Target-window aggregate; no annual return period"
   } else {
     val_2 <- "Unavailable"
     line1_2 <- "Requires \u226520 weather years"
@@ -853,7 +931,7 @@ step2_headline_cards <- function(bands,
   }
 
   card2 <- list(
-    label = "Adverse weather years",
+    label = if (forecast_focus) "Target-window outcome" else "Adverse weather years",
     value = val_2,
     note = paste(c(line1_2, line2_2, poor_2), collapse = " \u00b7 "),
     note_html = shiny::tagList(
@@ -861,7 +939,10 @@ step2_headline_cards <- function(bands,
       shiny::tags$div(style = "font-weight: 600;", line2_2),
       if (!is.null(poor_2)) shiny::tags$div(poor_2)
     ),
-    info = paste(
+    info = if (forecast_focus) paste(
+      "Annual return periods are not defined for one forecast target-window state.",
+      "The forecast member spread is not a calibrated probability."
+    ) else paste(
       "Simulated aggregate outcome in adverse 1-in-20 weather years under the historical",
       "baseline compared with the focus climate regime. A 1-in-20 year event occurs in",
       "approximately 5% of simulated weather years. The adverse tail is determined",
@@ -877,10 +958,12 @@ step2_headline_cards <- function(bands,
       metric_context_note(metadata)
     )
   )
-  card2$value_native <- as.numeric(c(v20_hist, v20_ssp))
+  card2$value_native <- if (forecast_focus) as.numeric(focus$value) else as.numeric(c(v20_hist, v20_ssp))
   card2$change_native <- change_2
   card2$change_display <- if (both_20) display_value(change_2, change = TRUE) else ""
-  card2$return_period_native <- rp_focus
+  card2$return_period_native <- if (forecast_focus) NA_real_ else rp_focus
+  if (forecast_focus) card2$status <- NULL
+  if (forecast_focus) card2$change_native <- NA_real_
   if (both_20) card2$status <- headline_status(change_2, direction, display = card2$change_display)
   if (nzchar(card2$change_display)) {
     card2$note <- paste(card2$note, paste("Difference:", card2$change_display), sep = " \u00b7 ")
@@ -920,6 +1003,9 @@ step2_headline_cards <- function(bands,
 
   val_3 <- if (!has_future) {
     "Not applicable"
+  } else if (forecast_focus && length(focus_vals) > 1L) {
+    spread <- range(focus_vals, na.rm = TRUE)
+    paste(display_value(spread[[1L]]), "to", display_value(spread[[2L]]))
   } else if (is.finite(n_agree)) {
     paste0(n_agree, " of ", length(model_change), " models")
   } else if (n_mods <= 1L) {
@@ -927,7 +1013,9 @@ step2_headline_cards <- function(bands,
   } else {
     "Unavailable"
   }
-  line1_3 <- if (is.finite(n_agree)) {
+  line1_3 <- if (forecast_focus) {
+    "forecast member spread; no climate-model comparison"
+  } else if (is.finite(n_agree)) {
     "agree on direction of change"
   } else if (has_future) {
     "no model comparison"
@@ -942,7 +1030,7 @@ step2_headline_cards <- function(bands,
   line3_3 <- if (has_future) scen_lab else NULL
 
   card3 <- list(
-    label = "Signal vs noise",
+    label = if (forecast_focus) "Forecast member spread" else "Signal vs noise",
     value = val_3,
     note = paste(c(line1_3, line2_3, line3_3), collapse = " \u00b7 "),
     note_html = shiny::tagList(
@@ -950,7 +1038,16 @@ step2_headline_cards <- function(bands,
       if (!is.null(line2_3)) shiny::tags$div(line2_3),
       if (!is.null(line3_3)) shiny::tags$div(style = "font-weight: 600;", line3_3)
     ),
-    info = paste(
+    info = if (forecast_focus) paste(
+      "The target-window spread across forecast members is shown separately from coefficient uncertainty.",
+      "It is not a calibrated probability.",
+      if (all(c("coef_lo", "coef_hi") %in% names(focus)) &&
+        is.finite(focus$coef_lo) && is.finite(focus$coef_hi)) paste0(
+          "Coefficient uncertainty is separate: ", display_value(focus$coef_lo), " to ",
+          display_value(focus$coef_hi), "."
+        ),
+      "Forecast skill has not been established for this pilot."
+    ) else paste(
       "Share of CMIP6 climate models whose average change for the focus scenario has the",
       "same sign as the ensemble change; 80% or more is flagged as robust. The second line",
       "compares the size of the climate shift with the standard deviation of historical",
@@ -974,6 +1071,22 @@ step2_headline_cards <- function(bands,
     c(NA_real_, NA_real_)
   }
   card3$snr_native <- snr
+  finite_range <- function(x) {
+    x <- x[is.finite(x)]
+    if (!length(x)) return(c(lo = NA_real_, hi = NA_real_))
+    c(lo = min(x), hi = max(x))
+  }
+  if (forecast_focus) {
+    spread <- finite_range(focus_vals)
+    val_3 <- if (all(is.finite(spread))) paste(display_value(spread[[1L]]), "to", display_value(spread[[2L]])) else "Unavailable"
+    card3$value <- val_3
+    card3$value_native <- as.numeric(spread)
+    card3$snr_native <- NA_real_
+    card3$info <- paste(
+      card3$info,
+      "Forecast skill has not been established for this pilot."
+    )
+  }
   if (is.finite(agree_share)) {
     card3$status <- if (agree_share >= 0.8) {
       dir <- headline_status(change_1, direction)
@@ -999,14 +1112,13 @@ step2_headline_cards <- function(bands,
   # scenarios, first calculate each model's observed year range, then average
   # the lower and upper endpoints across models. This is different from taking
   # quantiles of the pooled model-year values, which can overweight extremes.
-  finite_range <- function(x) {
-    x <- x[is.finite(x)]
-    if (!length(x)) {
-      return(c(lo = NA_real_, hi = NA_real_))
-    }
-    c(lo = min(x), hi = max(x))
-  }
   scenario_year_range <- function(scenario) {
+    forecast_scenario <- .step2_is_forecast_scenario(scenario) ||
+      grepl("^(Seasonal|Subseasonal) forecast / ", scenario)
+    if (forecast_scenario) {
+      x <- if (has_curves) timeseries_curves$value[timeseries_curves$scenario == scenario] else numeric(0L)
+      return(finite_range(x))
+    }
     if (is.null(timeseries_curves) || !nrow(timeseries_curves) ||
       !all(c("scenario", "value") %in% names(timeseries_curves))) {
       return(c(lo = NA_real_, hi = NA_real_))
@@ -1052,17 +1164,22 @@ step2_headline_cards <- function(bands,
   } else {
     "Historical baseline"
   }
+  if (forecast_focus) card3$status <- NULL
+  if (forecast_focus) line1_r <- "Forecast member range"
   line2_r <- if (has_future) scen_lab else "Inter-annual weather variability"
 
   card_range <- list(
-    label = "Year-to-year range",
+    label = if (forecast_focus) "Forecast member range" else "Year-to-year range",
     value = val_r,
     note = paste(line1_r, line2_r, sep = " \u00b7 "),
     note_html = shiny::tagList(
       shiny::tags$div(line1_r),
       shiny::tags$div(style = "font-weight: 600;", line2_r)
     ),
-    info = paste(
+    info = if (forecast_focus) paste(
+      "Range of the population aggregate across forecast members for the selected target",
+      "window. Members are equally weighted. This is not a calibrated probability."
+    ) else paste(
       "Range of annual population aggregate outcomes across simulated weather-year",
       "realizations within the selected climate regime. This characterises",
       "year-to-year weather fluctuations, not household inequality or continuous",
@@ -1076,6 +1193,13 @@ step2_headline_cards <- function(bands,
   } else {
     c(NA_real_, NA_real_)
   }
+  if (forecast_focus) {
+    card_range$info <- paste(
+      card_range$info,
+      "Forecast skill has not been established for this pilot."
+    )
+  }
+  if (forecast_focus) card_range$value_range_native <- focus_range
 
   card4 <- card_range
 
@@ -1099,11 +1223,16 @@ step2_headline_cards <- function(bands,
   } else {
     30L
   }
+  card_range$range_lower_native <- focus_range[["lo"]]
+  card_range$range_upper_native <- focus_range[["hi"]]
+  if (forecast_focus) n_years <- 1L
 
   n_scenarios <- length(saved_scenarios %||% list())
+  if (forecast_focus) n_mods <- as.integer(focus$n_forecast_members %||% focus$n_models %||% 1L)
   if (!n_scenarios && nrow(fut_rows)) {
     n_scenarios <- length(unique(as.character(fut_rows$scenario)))
   }
+  if (forecast_focus) n_mods <- as.integer(focus$n_forecast_members %||% focus$n_models %||% 1L)
 
   # Total simulated model-years across all scenarios, models, and weather years
   total_runs <- if (!is.null(timeseries_curves) && nrow(timeseries_curves)) {
@@ -1138,7 +1267,7 @@ step2_headline_cards <- function(bands,
       per <- split(fut_tbl, fut_tbl$scenario)
       sim_struct <- list(
         k = length(per),
-        m = vapply(per, function(d) length(unique(d$model_id)), integer(1L)),
+      m = vapply(per, function(d) length(unique(d$model_id)), integer(1L)),
         y = vapply(per, function(d) length(unique(d$sim_year)), integer(1L)),
         hy = length(unique(timeseries_curves$sim_year[is_h]))
       )
@@ -1149,7 +1278,8 @@ step2_headline_cards <- function(bands,
     length(unique(sim_struct$y)) == 1L &&
     (sim_struct$hy == 0L || sim_struct$hy == sim_struct$y[[1L]])) {
     paste0(
-      "(", sim_struct$k, " ", scen_word(sim_struct$k), " \u00d7 ", sim_struct$m[[1L]], " models",
+      "(", sim_struct$k, " ", scen_word(sim_struct$k), " \u00d7 ", sim_struct$m[[1L]],
+      if (forecast_focus) " forecast members" else " models",
       if (sim_struct$hy > 0L) " + 1 historical" else "", ") \u00d7 ",
       sim_struct$y[[1L]], " yrs"
     )
@@ -1167,9 +1297,30 @@ step2_headline_cards <- function(bands,
   } else {
     paste0("1 historical \u00d7 ", n_years, " yrs")
   }
+  if (forecast_focus) {
+    n_members <- if (!is.null(focus_curves) && nrow(focus_curves) && "model_id" %in% names(focus_curves)) {
+      length(unique(focus_curves$model_id))
+    } else {
+      as.integer(focus$n_forecast_members %||% focus$n_models %||% NA_integer_)
+    }
+    line1_5 <- paste(n_members, "forecast members; one target window each")
+    if (!is.finite(n_members)) line1_5 <- "Forecast member count unavailable"
+    total_runs <- n_members
+    val_5 <- format(total_runs, big.mark = ",")
+    prediction_count <- if (is.finite(sample_rows) && sample_rows > 0L) {
+      as.numeric(total_runs) * sample_rows
+    } else {
+      NA_real_
+    }
+    prediction_note <- format_prediction_count(prediction_count, metadata$analysis_unit)
+  }
+  if (forecast_focus && is.finite(n_members)) {
+    total_runs <- n_members
+    val_5 <- format(n_members, big.mark = ",")
+  }
 
   card5 <- list(
-    label = "Simulation years",
+    label = if (forecast_focus) "Forecast member runs" else "Simulation years",
     value = val_5,
     note = paste(line1_5, prediction_note, sep = " \u00b7 "),
     note_html = shiny::tagList(
@@ -1179,10 +1330,14 @@ step2_headline_cards <- function(bands,
     class = "neutral",
     # Provenance, not a result: drawn as a basis strip, not a card.
     basis_only = TRUE,
-    basis_text = paste0(
-      val_5, " simulation years: ", line1_5, " \u00b7 ", prediction_note
-    ),
-    info = paste(
+    basis_text = paste0(val_5, if (forecast_focus) " forecast member runs: " else
+      " simulation years: ", line1_5, " \u00b7 ", prediction_note),
+    info = if (forecast_focus) paste(
+      "Count of simulated target-window forecast member aggregates. The target start year",
+      "anchors sim_year for joins, but each row represents a multi-month forecast window,",
+      "not an annual weather draw. The prediction count multiplies aggregates by sampled",
+      "survey rows."
+    ) else paste(
       "Total number of simulated population aggregates across all configured",
       "climate scenarios, ensemble climate models, and annual weather draws",
       "(scenarios \u00d7 models \u00d7 weather years). The prediction count multiplies",
@@ -1190,6 +1345,7 @@ step2_headline_cards <- function(bands,
     )
   )
   card5$value_native <- as.numeric(total_runs)
+  if (forecast_focus) card5$value_native <- as.numeric(n_members)
   card5$prediction_count_native <- prediction_count
     card5$prediction_count_note <- prediction_note
   card5$prediction_sample_rows <- sample_rows
@@ -1739,6 +1895,7 @@ echart_pointrange_climate <- function(bands_tbl,
   for (i in seq_len(nrow(df))) {
     r <- df[i, , drop = FALSE]
     col <- unname(palette[[r$colour_key]] %||% "#808080")
+    forecast_point <- .step2_is_forecast_scenario(as.character(r$scenario))
     # Unique stack per row: ECharts offsets different stacks within one
     # category, so co-located rows (source-dodged data) read side by side.
     st <- paste0("b", i)
@@ -1748,7 +1905,7 @@ echart_pointrange_climate <- function(bands_tbl,
         stack = paste0("im_", st), bar_width = 14, opacity = 0.6, z = 1
       ))
     }
-    if (isTRUE(show_annual) && is.finite(r$interann_lo) &&
+    if (!forecast_point && isTRUE(show_annual) && is.finite(r$interann_lo) &&
       is.finite(r$interann_hi)) {
       series <- c(series, .e_band_pair(
         ordered_levels, r$interann_lo, r$interann_hi, col,
@@ -1922,12 +2079,12 @@ echart_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
   }
   present <- sort(unique(as.character(tbl$scenario[!tbl$is_historical])))
   pending <- setdiff(as.character(pending), c(present, "Historical"))
-  scenario_levels <- c("Historical", sort(unique(c(present, pending))))
+  scenario_levels <- c("Historical", .step2_scenario_order(c(present, pending)))
   scenario_colours <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) {
       return(.wise_support)
     }
-    if (.step2_is_forecast_scenario(s)) {
+    if (.step2_is_forecast_scenario(s) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
@@ -2135,18 +2292,20 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
     return(echart_blank("No finite model trajectories available.", height = height))
   }
 
-  scen_levels <- c("Historical", sort(unique(df$scenario[!df$is_historical])))
+  scen_levels <- c("Historical", .step2_scenario_order(df$scenario[!df$is_historical]))
   scen_levels <- scen_levels[scen_levels %in% df$scenario]
   scen_colour_map <- vapply(scen_levels, function(s) {
     if (s == "Historical") {
       return(.wise_support)
     }
-    if (.step2_is_forecast_scenario(s)) {
+    if (.step2_is_forecast_scenario(s) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
     if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else "grey50"
   }, character(1L))
+  forecast_only <- length(scen_levels) == 1L &&
+    (.step2_is_forecast_scenario(scen_levels[[1L]]) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", scen_levels[[1L]]))
 
   env_grp <- c("scenario", if (has_source) "source", "sim_year")
   env_df <- df |>
@@ -2159,7 +2318,8 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
       is_historical = any(.data$is_historical),
       .groups = "drop"
     )
-  fut_env <- env_df[!env_df$is_historical & env_df$n_models > 1L, , drop = FALSE]
+  fut_env <- env_df[!env_df$is_historical & env_df$n_models > 1L &
+    !vapply(env_df$scenario, .step2_is_forecast_scenario, logical(1L)), , drop = FALSE]
 
   e <- .e_step2_base(height)
   series <- list()
@@ -2280,7 +2440,7 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
     type = "value",
     min = min(x_vals) - x_pad,
     max = max(x_vals) + x_pad,
-    name = "Historical weather-year draw (simulated)",
+    name = if (forecast_only) "Forecast member" else "Historical weather-year draw (simulated)",
     nameLocation = "middle",
     nameGap = 30,
     nameMoveOverlap = FALSE,
@@ -2354,10 +2514,11 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
     return(echart_blank("Climate-model robustness is unavailable.", height = height))
   }
   cats <- unique(as.character(tbl$scenario))
+  cats <- .step2_scenario_order(cats)
   cat_idx <- setNames(as.character(seq_along(cats) - 1L), cats)
   colours <- stats::setNames(vapply(cats, function(s) {
     if (identical(s, "Historical")) return(.wise_history)
-    if (.step2_is_forecast_scenario(s)) {
+    if (.step2_is_forecast_scenario(s) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
@@ -2522,7 +2683,7 @@ echart_exceedance <- function(curves_tbl,
 
   scenario_levels <- c(
     "Historical",
-    sort(unique(as.character(agg_df$scenario[!agg_df$is_historical])))
+    .step2_scenario_order(as.character(agg_df$scenario[!agg_df$is_historical]))
   )
   scenario_colour_map <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) {
@@ -2536,12 +2697,17 @@ echart_exceedance <- function(curves_tbl,
   }, character(1L)), scenario_levels)
   # Period linetypes from the static builder's year-style resolution.
   agg_df$yr_lbl <- ifelse(agg_df$is_historical, "Historical",
-    vapply(agg_df$scenario, .parse_year, character(1L))
+    ifelse(vapply(agg_df$scenario, .step2_is_forecast_scenario, logical(1L)),
+      as.character(agg_df$scenario), vapply(agg_df$scenario, .parse_year, character(1L)))
   )
-  fut_yr_labels <- sort(unique(agg_df$yr_lbl[agg_df$yr_lbl != "Historical"]))
+  fut_yr_labels <- sort(unique(agg_df$yr_lbl[
+    agg_df$yr_lbl != "Historical" &
+      !vapply(agg_df$scenario, .step2_is_forecast_scenario, logical(1L))
+  ]))
   yr_styles <- .resolve_year_styles(fut_yr_labels)
   line_type_map <- c("Historical" = "solid", yr_styles$linetype_map)
   e_type_of <- function(scn) {
+    if (.step2_is_forecast_scenario(scn)) return("solid")
     yr <- .parse_year(scn)
     t <- if (!is.null(yr) && !is.na(yr) && yr %in% names(line_type_map)) {
       unname(line_type_map[[yr]])

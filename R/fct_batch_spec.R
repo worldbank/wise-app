@@ -217,7 +217,7 @@
 .SIM_RESIDUALS <- c("original", "resample")
 .SIM_FIELDS <- c(
   "hist_years", "future_periods", "ssps", "residuals", "coef_uncertainty",
-  "propagate_all_covariate_uncertainty", "baseline_survey"
+  "propagate_all_covariate_uncertainty", "baseline_survey", "forecast"
 )
 
 # Normalise the simulation section: defaults filled field by field (an empty
@@ -244,13 +244,22 @@
   if (!is.null(s$baseline_survey)) {
     out$baseline_survey <- sort(unique(as.character(unlist(s$baseline_survey))))
   }
+  if (!is.null(s$forecast)) {
+    forecast <- s$forecast
+    out$forecast <- list(
+      product = as.character(forecast$product %||% "seasonal"),
+      run = as.character(forecast$run),
+      start = as.character(forecast$start),
+      len = suppressWarnings(as.integer(forecast$len))
+    )
+  }
   out <- c(out, s[setdiff(names(s), .SIM_FIELDS)])
   out[order(names(out))]
 }
 
 # Problems of the simulation section on its own.
 #' @noRd
-.sim_problems <- function(s) {
+.sim_problems <- function(s, model = NULL) {
   bad <- character(0)
   add <- function(...) bad <<- c(bad, paste0(...))
   unknown <- setdiff(names(s), .SIM_FIELDS)
@@ -285,6 +294,10 @@
     )
   }
   if (length(fp) && !length(s$ssps)) add("sim.ssps: choose at least one scenario when future_periods are set.")
+  if (!is.null(s$forecast) && !is.null(model) &&
+      !is.null(model$type) && !model$type %in% c("Linear regression", "Logistic regression")) {
+    add("sim.forecast requires Linear or Logistic regression; this model engine is not supported.")
+  }
   if (length(s$residuals) != 1L || !s$residuals %in% .SIM_RESIDUALS) {
     add("sim.residuals must be one of: ", paste(.SIM_RESIDUALS, collapse = ", "), ".")
   }
@@ -294,6 +307,31 @@
   b <- s$baseline_survey
   if (!is.null(b) && (!length(b) || !all(grepl("^[^|]+\\|[0-9]{4}$", b)))) {
     add("sim.baseline_survey must list survey waves as CODE|YEAR (for example BFA|2021).")
+  }
+  f <- s$forecast
+  if (!is.null(f)) {
+    unknown_forecast <- setdiff(names(f), c("product", "run", "start", "len"))
+    if (length(unknown_forecast)) add("sim.forecast.", paste(unknown_forecast, collapse = ", "), ": not a forecast setting.")
+    if (length(f$product) != 1L || !identical(f$product, "seasonal")) {
+      add("sim.forecast.product must be 'seasonal'.")
+    }
+    if (length(f$run) != 1L || is.na(f$run) || !grepl("^[A-Za-z0-9_-]+$", f$run)) {
+      add("sim.forecast.run must be a seasonal forecast catalogue id.")
+    }
+    if (length(f$start) != 1L || is.na(f$start) || !grepl("^[0-9]{4}-(0[1-9]|1[0-2])$", f$start)) {
+      add("sim.forecast.start must be a target month in YYYY-MM format.")
+    }
+    if (length(f$len) != 1L || is.na(f$len) || f$len < 1L || f$len > 12L) {
+      add("sim.forecast.len must be a whole number from 1 to 12 months.")
+    }
+    if (length(f$start) == 1L && !is.na(f$start) && grepl("^[0-9]{4}-(0[1-9]|1[0-2])$", f$start) &&
+        length(f$len) == 1L && !is.na(f$len) && f$len >= 1L && f$len <= 12L) {
+      start_date <- as.Date(paste0(f$start, "-01"))
+      end_date <- seq(start_date, by = "month", length.out = as.integer(f$len))[[as.integer(f$len)]]
+      if (as.integer(format(start_date, "%Y")) < 1950L || as.integer(format(end_date, "%Y")) > 2100L) {
+        add("sim.forecast.start and len must stay between January 1950 and December 2100.")
+      }
+    }
   }
   bad
 }
@@ -315,7 +353,12 @@
 .sim_effective <- function(spec) {
   s <- spec$sim
   if (identical(spec$model$type, "Unconditional quantile regression (RIF)")) s$residuals <- "none"
-  if (!length(s$future_periods)) s$ssps <- character(0)
+  if (!length(s$future_periods) && is.null(s$forecast)) s$ssps <- character(0)
+  if (!is.null(spec$sim$forecast)) {
+    s$forecast <- spec$sim$forecast
+  } else {
+    s["forecast"] <- NULL
+  }
   s
 }
 
@@ -725,11 +768,14 @@ wise_spec_validate <- function(spec) {
   if (!is.null(spec$model)) bad <- c(bad, .model_problems(spec$model))
   if (!is.null(spec$sim)) {
     if (is.null(spec$model)) add("sim: a simulation needs a model section (use `model: {}` for the app defaults).")
-    bad <- c(bad, .sim_problems(spec$sim))
+    bad <- c(bad, .sim_problems(spec$sim, spec$model))
   }
   if (!is.null(spec$policy)) {
     if (is.null(spec$sim)) add("policy: a policy run needs a sim section (use `sim: {}` for the app defaults).")
     bad <- c(bad, .policy_problems(spec$policy))
+  }
+  if (!is.null(spec$sim$forecast) && !is.null(spec$policy)) {
+    bad <- c(bad, "policy: Step 3 is not supported with sim.forecast.")
   }
   if (length(bad)) {
     stop(
@@ -803,7 +849,23 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
     }
     spec$sim <- spec$sim[order(names(spec$sim))]
   }
-
+  if (!is.null(spec$sim$forecast)) {
+    forecast_code <- spec$sample$countries
+    if (length(forecast_code) != 1L) {
+      stop("sim.forecast requires exactly one sample country.", call. = FALSE)
+    }
+    runs <- .step2_forecast_runs(scaffold = FALSE, connection_params = connection_params,
+      code = forecast_code[[1L]])
+    run <- runs[[spec$sim$forecast$run]]
+    if (is.null(run) || !identical(run$product, "seasonal")) {
+      stop("sim.forecast.run is not an available seasonal forecast for ", forecast_code[[1L]], ".", call. = FALSE)
+    }
+    months <- .step2_forecast_months(run, selected_weather = NULL)
+    window <- .step2_forecast_window(months, spec$sim$forecast$start, spec$sim$forecast$len)
+    if (is.null(window)) stop("sim.forecast target window is not available in the selected run.", call. = FALSE)
+    spec$sim$forecast$run <- run$id
+    spec$sim$forecast$product <- run$product
+  }
   wvars <- get_weather_vars(metadata$variable_list)
   vars <- wise_spec_weather_vars(spec$weather)
   if (!length(vars)) vars <- wise_default_weather_var(wvars)
@@ -962,7 +1024,11 @@ wise_spec_ids <- function(spec) {
       list(fit_id = fit_id, sim = .sim_effective(spec), step2_input = .STEP2_INPUT_VERSION),
       if (!line_in_data && !is.null(spec$outcome$poverty_line)) {
         list(poverty_line = spec$outcome$poverty_line)
-      }
+      },
+      if (!is.null(spec$sim$forecast)) list(forecast_source = list(
+        catalogue = spec$sim$forecast$run,
+        source = spec$source, sample = spec$sample$countries
+      ))
     ))
   }
   policy_id <- if (is.null(spec$policy) || is.na(sim_id)) {

@@ -680,8 +680,27 @@ wise_batch_sim <- function(item, connection_params = NULL) {
       spec <- item$spec
       sim <- spec$sim
       cp <- connection_params %||% wise_batch_connection(spec$source)
-      mf <- qs2::qs_read(item$fit_file)$mf
       sw <- w$selected_weather
+      forecast <- NULL
+      if (!is.null(sim$forecast)) {
+        if (length(spec$sample$countries) != 1L) {
+          stop("sim.forecast requires exactly one sample country.", call. = FALSE)
+        }
+        if (!is.null(spec$policy)) {
+          stop("Step 3 policy runs are not supported with sim.forecast; remove the policy section.", call. = FALSE)
+        }
+        country <- spec$sample$countries[[1L]]
+        runs <- .step2_forecast_runs(scaffold = FALSE, connection_params = cp, code = country)
+        forecast_run <- runs[[sim$forecast$run]]
+        if (is.null(forecast_run)) {
+          stop("sim.forecast.run is not available in the local forecast catalogue: ",
+            sim$forecast$run, call. = FALSE)
+        }
+        forecast <- list(
+          run = forecast_run, start = sim$forecast$start, len = sim$forecast$len
+        )
+      }
+      mf <- qs2::qs_read(item$fit_file)$mf
       so <- wise_outcome_run_line(d$outcome$so, spec$outcome)
       # Households without weather or model data are left out, as in the app.
       if (isTRUE(sim$propagate_all_covariate_uncertainty)) {
@@ -698,7 +717,7 @@ wise_batch_sim <- function(item, connection_params = NULL) {
         ss = .step2_filter_baseline_surveys(d$selected_surveys, sim$baseline_survey),
         mf = mf, cp = cp, hist_years = sim$hist_years, periods = sim$future_periods,
         ssps = sim$ssps, residuals = sim$residuals, coef_uncertainty = sim$coef_uncertainty,
-        stored_breaks = w$stored_breaks, slim = FALSE
+        stored_breaks = w$stored_breaks, slim = FALSE, forecast = forecast
       )
       # The worker of the app normalises the input the same way before it calls
       # step2_compute() (dates and scenarios as character).

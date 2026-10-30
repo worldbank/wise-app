@@ -1,3 +1,11 @@
+test_that("policy runs reject forecast windows before annual exposure calculations", {
+  expect_error(apply_policy_delta_to_baseline(
+    svy_baseline = data.frame(hhid = 1L), svy_policy = data.frame(hhid = 1L),
+    model_fit = list(engine = "fixest"), so = list(name = "welfare"), hist_sim_baseline = list(),
+    saved_scenarios_baseline = list("Seasonal forecast / Nov 2026 (October 2026 run)" = list())
+  ), "Rerun Step 2 with the seasonal forecast switched off", fixed = TRUE)
+})
+
 test_that(".apply_binary_access hits the weighted share asked for (DOC-13)", {
   set.seed(1)
   n <- 2000L

@@ -233,20 +233,27 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
   }
   df <- tbl
   df$scenario <- as.character(df$scenario)
+  is_forecast <- vapply(df$scenario, .step2_is_forecast_scenario, logical(1L))
   df$period <- ifelse(df$scenario == "Historical", "Historical",
-    vapply(df$scenario, .parse_year, character(1L))
+    ifelse(is_forecast, df$scenario, vapply(df$scenario, .parse_year, character(1L)))
   )
   df$ssp <- ifelse(df$scenario == "Historical", "Historical",
-    vapply(df$scenario, .normalise_ssp, character(1L))
+    ifelse(is_forecast, "Forecast", vapply(df$scenario, .normalise_ssp, character(1L)))
   )
   pending <- setdiff(as.character(pending), c(df$scenario, "Historical"))
-  scenario_levels <- c("Historical", sort(unique(c(
+  scenario_levels <- .step2_scenario_order(c(
+    "Historical",
     df$scenario[df$scenario != "Historical"], pending
-  ))))
+  ))
   scenario_palette <- c(Historical = .wise_history)
-  pending_ssps <- vapply(pending, .normalise_ssp, character(1L))
-  for (ssp in unique(c(df$ssp[df$ssp != "Historical"], unname(pending_ssps)))) {
-    members <- scenario_levels[scenario_levels != "Historical"]
+  forecast_scenarios <- scenario_levels[vapply(scenario_levels, .step2_is_forecast_scenario, logical(1L))]
+  if (length(forecast_scenarios)) scenario_palette[forecast_scenarios] <- .wise_forecast
+  pending_ssps <- vapply(pending, function(x) {
+    if (.step2_is_forecast_scenario(x)) "Forecast" else .normalise_ssp(x)
+  }, character(1L))
+  for (ssp in setdiff(unique(c(df$ssp[df$ssp != "Historical"], unname(pending_ssps))), "Forecast")) {
+    members <- scenario_levels[scenario_levels != "Historical" &
+      !vapply(scenario_levels, .step2_is_forecast_scenario, logical(1L))]
     members <- members[vapply(members, function(s) {
       identical(.normalise_ssp(s), ssp)
     }, logical(1L))]
@@ -666,7 +673,7 @@ echart_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
   }
   scenario_levels <- c(
     "Historical",
-    sort(unique(as.character(tbl$scenario[!tbl$is_historical])))
+    .step2_scenario_order(as.character(tbl$scenario[!tbl$is_historical]))
   )
   scenario_colours <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) {
@@ -1754,8 +1761,9 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         NA_real_
       }
 
-      ssp_k <- if (is_hist) "Historical" else .normalise_ssp(sc)
-      yr_l <- if (is_hist) "Historical" else .parse_year(sc)
+      is_forecast <- !is_hist && .step2_is_forecast_scenario(sc)
+      ssp_k <- if (is_hist) "Historical" else if (is_forecast) "Forecast" else .normalise_ssp(sc)
+      yr_l <- if (is_hist) "Historical" else if (is_forecast) sc else .parse_year(sc)
 
       rows[[length(rows) + 1L]] <- tibble::tibble(
         scenario      = sc,

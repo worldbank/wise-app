@@ -23,6 +23,29 @@ guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md
 
 ## Stage ids
 
+### Experimental Forecast Windows
+
+An optional `sim.forecast` descriptor selects local pilot data, for example
+`{product: seasonal, run: '2026-10', start: '2026-11', len: 3}`. The run is a
+country catalogue ID. Forecast data is currently local-only; preparation starts
+with `t`. The worker resolves and validates the run manifest and immutable file
+identities. Policy specifications with a forecast are rejected until Step 3's
+annual exposure contract supports forecast windows.
+
+A forecast scenario is named `Seasonal forecast / <target window> (<run> run)`.
+Its `member` identifies a forecast ensemble member, not a climate model.
+In the `annual` table, its `sim_year` is the target-start-year anchor for one
+complete window per member, not an annual observation or a historical template
+year. Every household contributes in every target month at `weight / len`.
+Forecast summary rows describe target-window outcomes and member spread;
+annual adverse-year/return-period rows are not produced for forecast scenarios.
+Coefficient uncertainty is separate from ensemble-member spread. Forecast
+member probabilities are not calibrated and skill is not yet established.
+The worker validates publication hashes when it executes. Automatic `targets`
+invalidation when local pilot files change under an existing run ID is not yet
+wired; explicitly invalidate the simulation target before replaying replaced
+pilot publications.
+
 12 hex characters, each a hash of the spec sections the stage depends on.
 
 | Id | Hash of | Keys the tables |

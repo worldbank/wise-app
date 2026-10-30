@@ -1669,6 +1669,12 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     is.null(hist_sim_baseline)) {
     return(NULL)
   }
+  if (any(.step2_is_forecast_scenario(names(saved_scenarios_baseline)))) {
+    stop(paste0(
+      "Policy simulation for seasonal forecast windows is not yet supported. ",
+      "Rerun Step 2 with the seasonal forecast switched off before running Step 3."
+    ), call. = FALSE)
+  }
   if (!is.null(decomp_context) && is.null(run_identity)) {
     stop("Current run identity is required.", call. = FALSE)
   }

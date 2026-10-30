@@ -26,7 +26,48 @@
   paste0(ssp_pretty, " / ", year_range[1], "-", year_range[2])
 }
 
+.step2_forecast_group <- function(forecast) {
+  run <- forecast$run
+  start <- as.Date(paste0(forecast$start, "-01"))
+  end <- seq(start, by = "month", length.out = as.integer(forecast$len))[[as.integer(forecast$len)]]
+  list(
+    gk = paste0("forecast_", digest::digest(
+      list(run$id, run$data_sha256, run$manifest_sha256, run$members,
+        forecast$start, forecast$len),
+      algo = "sha256"
+    )),
+    label = .step2_forecast_display_key(run, list(label = if (forecast$len == 1L) {
+      format(start, "%b %Y")
+    } else paste0(format(start, "%b %Y"), " - ", format(end, "%b %Y")))),
+    run = run,
+    start = forecast$start,
+    len = as.integer(forecast$len),
+    sim_year = as.integer(format(start, "%Y"))
+  )
+}
+
+.step2_forecast_expand_survey <- function(svy, forecast) {
+  start <- as.Date(paste0(forecast$start, "-01"))
+  months <- seq(start, by = "month", length.out = as.integer(forecast$len))
+  weight_col <- if ("weight" %in% names(svy)) "weight" else NULL
+  expanded <- lapply(months, function(month) {
+    month_svy <- svy
+    month_svy$int_month <- as.integer(format(month, "%m"))
+    if (!is.null(weight_col)) month_svy[[weight_col]] <- month_svy[[weight_col]] / length(months)
+    month_svy
+  })
+  out <- do.call(rbind, expanded)
+  rownames(out) <- NULL
+  out$.svy_row_id <- rep(seq_len(nrow(svy)), times = length(months))
+  out
+}
+
 # Step 2 data-quality counts ----
+
+.step2_weather_call <- function(weather_fn, args, forecast = NULL) {
+  if (!is.null(forecast)) args$forecast <- forecast
+  do.call(weather_fn, args)
+}
 
 # Add one pipeline's excluded-row counts to the running tally. Missing weights
 # are counted on the historical pipeline only (every member shares them).
@@ -205,16 +246,31 @@ prepare_weather_manifest <- function(
     proj_source = "cmip6", weather_collect = c("fast", "bounded"),
     weather_threads = c("auto", "1", "2"),
     prepared_weather_cache = c("off", "auto", "read_write"),
-    prepared_weather_cache_root = NULL, weather_fn = get_weather) {
+    prepared_weather_cache_root = NULL, weather_fn = get_weather,
+    forecast = NULL) {
   weather_collect <- match.arg(weather_collect)
   weather_threads <- match.arg(weather_threads)
   prepared_weather_cache <- match.arg(prepared_weather_cache)
   fp_list <- future_period %||% list()
   ssps <- ssp %||% character(0)
+  forecast_cache_identity <- if (is.null(forecast)) NULL else list(
+    id = forecast$run$id,
+    data_sha256 = forecast$run$data_sha256,
+    manifest_sha256 = forecast$run$manifest_sha256,
+    historical_sha256 = forecast$run$historical_sha256,
+    file = forecast$run$file,
+    members = forecast$run$members,
+    start = forecast$start,
+    len = forecast$len
+  )
+  forecast_cache_signature <- if (is.null(forecast)) NULL else list(
+    run = forecast_cache_identity, start = forecast$start, len = forecast$len
+  )
   signature <- .step2_prepared_weather_cache_signature(
     selected_weather, selected_surveys, survey_data, connection_params, dates,
     fp_list, ssps, perturbation_method, stored_breaks, epsilon,
-    weather_source, proj_source
+    weather_source, proj_source,
+    forecast = forecast_cache_signature
   )
   cache <- if (.step2_prepared_weather_cache_enabled(
     prepared_weather_cache, default_loader = identical(weather_fn, get_weather)
@@ -238,7 +294,7 @@ prepare_weather_manifest <- function(
   if (is.null(frames)) {
     frames <- list()
     weather_result <- tryCatch(
-      weather_fn(
+      .step2_weather_call(weather_fn, list(
         survey_data = survey_data, selected_surveys = selected_surveys,
         selected_weather = selected_weather, dates = dates,
         connection_params = connection_params, ssp = if (length(ssps)) ssps else NULL,
@@ -247,13 +303,16 @@ prepare_weather_manifest <- function(
         epsilon = epsilon, weather_source = weather_source, proj_source = proj_source,
         weather_collect = weather_collect, weather_threads = weather_threads,
         weather_consumer = function(key, weather, metadata = NULL) {
+          if (isTRUE(metadata$forecast)) {
+            key <- paste0("member_", metadata$forecast_member)
+          }
           frames[[key]] <<- weather
         },
         keep_continuous = TRUE
-      ),
+      ), forecast),
       error = function(e) {
         if (length(frames)) stop(e)
-        weather_fn(
+        .step2_weather_call(weather_fn, list(
           survey_data = survey_data, selected_surveys = selected_surveys,
           selected_weather = selected_weather, dates = dates,
           connection_params = connection_params, ssp = if (length(ssps)) ssps else NULL,
@@ -261,8 +320,14 @@ prepare_weather_manifest <- function(
           perturbation_method = perturbation_method, stored_breaks = stored_breaks,
           epsilon = epsilon, weather_source = weather_source, proj_source = proj_source,
           weather_collect = weather_collect, weather_threads = weather_threads,
+          weather_consumer = function(key, weather, metadata = NULL) {
+            if (isTRUE(metadata$forecast)) {
+              key <- paste0("member_", metadata$forecast_member)
+            }
+            frames[[key]] <<- weather
+          },
           keep_continuous = TRUE
-        )
+        ), forecast)
       }
     )
     if (is.list(weather_result) && length(weather_result)) {
@@ -297,6 +362,7 @@ prepare_weather_manifest <- function(
 #' @param cp               List. Connection parameters.
 #' @param fp_list          List of character(2) vectors. Future period date ranges.
 #' @param ssps             Character vector. Climate SSP codes.
+#' @param forecast         Optional selected forecast list(run, start, len).
 #' @param residuals        Character. Residual method.
 #' @param skip_coef_draws  Logical. If TRUE bypass Cholesky draws.
 #' @param propagate_all_covariate_uncertainty Logical. When FALSE (default)
@@ -411,7 +477,8 @@ fct_run_simulation <- function(sw,
                                 preview_fn = NULL,
                                 partial_fn = NULL,
                                 display = NULL,
-                                checkpoint_fn = NULL) {
+                                checkpoint_fn = NULL,
+                                forecast = NULL) {
   memory_profile <- if (identical(tolower(Sys.getenv("WISEAPP_MEMORY_PROFILE", "")), "1")) {
     new.env(parent = emptyenv())
   } else {
@@ -453,9 +520,33 @@ fct_run_simulation <- function(sw,
   if (is.na(seed)) seed <- WISEAPP_DEFAULT_SEED
   withr::local_seed(seed)
   has_future <- length(fp_list) > 0 && length(ssps) > 0
+  has_forecast <- !is.null(forecast)
+  forecast_group <- if (has_forecast) .step2_forecast_group(forecast) else NULL
+  if (has_forecast) {
+    forecast$run$label <- forecast$run$label %||% forecast$run$id
+    forecast_group <- .step2_forecast_group(forecast)
+  }
+  forecast_member_order <- 0L
+  forecast_member_metadata <- list()
+  forecast_member_info <- function(key) {
+    forecast_member_order <<- forecast_member_order + 1L
+    member <- as.integer(sub("^member_", "", key))
+    list(
+      forecast = TRUE,
+      forecast_run = forecast$run$id,
+      forecast_member = member,
+      member_index = forecast_member_order,
+      period_members = length(forecast$run$members),
+      start = forecast$start,
+      len = as.integer(forecast$len),
+      label = forecast_group$label,
+      order = forecast_member_order,
+      is_historical = FALSE
+    )
+  }
   weather_store <- NULL
   weather_store_published <- FALSE
-  if (identical(weather_storage, "reference") && isTRUE(has_future)) {
+  if (identical(weather_storage, "reference") && isTRUE(has_future || has_forecast)) {
     run_id <- paste0(
       format(Sys.time(), "%Y%m%dT%H%M%OS3"), "-",
       substr(digest::digest(list(Sys.getpid(), Sys.time())), 1L, 12L)
@@ -463,8 +554,9 @@ fct_run_simulation <- function(sw,
     weather_store <- step2_weather_store_create(
       run_id = run_id,
       signature = digest::digest(list(
-        ss, fp_list, ssps, sim_dates,
-        perturbation_method, weather_terms
+        ss, fp_list, ssps, sim_dates, perturbation_method, weather_terms,
+        if (has_forecast) .step2_forecast_signature(forecast$run, list(start = forecast$start,
+          idx = c(1L, as.integer(forecast$len))))
       )),
       root = weather_store_root
     )
@@ -475,7 +567,8 @@ fct_run_simulation <- function(sw,
   }
 
   ssp_labels <- .STEP2_SSP_LABELS
-  groups_total <- if (has_future) length(ssps) * length(fp_list) else 0L
+  groups_total <- (if (has_future) length(ssps) * length(fp_list) else 0L) +
+    as.integer(has_forecast)
 
   # Total elapsed timer - starts here, covers everything ----
   t_start_total <- proc.time()[["elapsed"]]
@@ -644,6 +737,21 @@ fct_run_simulation <- function(sw,
     id_col = shared_id_col, weight_cols = wt_detected
   )
   profile_memory("survey_prepared", svy_prepared)
+  forecast_svy <- if (has_forecast) .step2_forecast_expand_survey(svy, forecast) else NULL
+  forecast_svy_prepared <- if (has_forecast) .step2_survey_projection(
+    forecast_svy, mf, sw, so,
+    id_col = shared_id_col, weight_cols = wt_detected
+  ) else NULL
+  forecast_weather_join_cache <- if (has_forecast && isTRUE(join_cache) &&
+    all(c("code", "year", "survname", "loc_id", "int_month") %in%
+      names(forecast_svy_prepared))) {
+    build_weather_join_cache(dplyr::mutate(
+      forecast_svy_prepared, .svy_row_id = rep(seq_len(nrow(svy)), times = as.integer(forecast$len))
+    ))
+  } else NULL
+  if (has_forecast && !is.null(forecast_svy_prepared)) {
+    forecast_svy_prepared$.svy_row_id <- rep(seq_len(nrow(svy)), times = as.integer(forecast$len))
+  }
   weather_join_cache <- if (isTRUE(join_cache) &&
     all(c(
       "code", "year", "survname", "loc_id",
@@ -770,9 +878,8 @@ fct_run_simulation <- function(sw,
     groups_done <<- groups_done + 1L
     if (identical(open_gk, gk)) open_gk <<- NULL
     meta <- group_meta[[gk]]
-    label <- if (is.null(meta)) gk else {
+    label <- if (is.null(meta)) gk else meta$label %||%
       .step2_scenario_display_key(meta$ssp_code, meta$year_range)
-    }
     n_ok <- as.integer(group_n[[gk]] %||% 0L)
     n_req <- as.integer(group_requested[[gk]] %||% 0L)
     checkpoint("group_completed", n_keys, extra = list(
@@ -826,16 +933,34 @@ fct_run_simulation <- function(sw,
     emitted_keys <<- c(emitted_keys, key)
     n_keys <<- n_keys + 1L
     is_hist <- identical(key, "historical")
-    key_group <- if (is_hist) NULL else .key_group(key)
+    if (!is.null(metadata) && isTRUE(metadata$forecast)) {
+      forecast_member_order <<- max(forecast_member_order, as.integer(metadata$order %||% 0L))
+      forecast_member_metadata[[key]] <<- metadata
+    }
+    if (is.null(metadata) && has_forecast && grepl("^member_[0-9]+$", key)) {
+      metadata <- forecast_member_info(key)
+    }
+    key_group <- if (is_hist) NULL else if (isTRUE(metadata$forecast)) {
+      list(
+        gk = forecast_group$gk,
+        forecast = TRUE,
+        label = forecast_group$label,
+        member = metadata$forecast_member
+      )
+    } else .key_group(key)
     if (!is.null(key_group)) {
       gk0 <- key_group$gk
       group_requested[[gk0]] <<- (group_requested[[gk0]] %||% 0L) + 1L
       if (is.null(group_meta[[gk0]])) {
-        group_meta[[gk0]] <<- list(
+        group_meta[[gk0]] <<- if (isTRUE(key_group$forecast)) {
+          list(forecast = TRUE, label = key_group$label, forecast_group = forecast_group,
+            forecast_members = forecast$run$members)
+        } else list(
           ssp_code = key_group$ssp_code,
           year_range = key_group$yr_parts
         )
       }
+      if (isTRUE(key_group$forecast)) forecast_member_metadata[[key]] <<- metadata
     }
     record_weather_support(key, is_hist, weather_input, key_group)
     # Trigger (b): a key from another group (or historical) closes the open one.
@@ -852,9 +977,8 @@ fct_run_simulation <- function(sw,
           is.numeric(pm) && length(pm) == 1L && is.finite(pm)) {
         current_member <<- list(
           member_index = as.integer(mi), period_members = as.integer(pm),
-          current_label = .step2_scenario_display_key(
-            key_group$ssp_code, key_group$yr_parts
-          )
+          current_label = if (isTRUE(key_group$forecast)) key_group$label else
+            .step2_scenario_display_key(key_group$ssp_code, key_group$yr_parts)
         )
         # Trigger (a): last member by metadata. May be unreachable if empty
         # models were skipped upstream; (b) and (c) cover that case.
@@ -862,6 +986,7 @@ fct_run_simulation <- function(sw,
       }
     }
     checkpoint("pipeline_started", n_keys)
+    if (isTRUE(metadata$forecast)) attr(weather_input, "forecast_window_year") <- forecast_group$sim_year
     key_err <- key_err_override
     out <- if (isTRUE(out_supplied) || !is.null(key_err_override)) {
       if (!is.null(key_err)) {
@@ -870,12 +995,15 @@ fct_run_simulation <- function(sw,
       out_override
     } else tryCatch(
       pipeline_fn(
-        weather_raw = weather_input, svy = svy, sw = sw, so = so,
+        weather_raw = weather_input,
+        svy = if (isTRUE(metadata$forecast)) forecast_svy else svy,
+        sw = sw, so = so,
         model = model, residuals = residuals, train_data = train_data,
         engine = engine, chol_obj = chol_obj, fit_multi = fit_multi,
         taus = taus, weather_cols = weather_cols,
         precomputed_train_aug = precomputed_train_aug,
-        svy_prepared = svy_prepared, weather_join_cache = weather_join_cache,
+        svy_prepared = if (isTRUE(metadata$forecast)) forecast_svy_prepared else svy_prepared,
+        weather_join_cache = if (isTRUE(metadata$forecast)) forecast_weather_join_cache else weather_join_cache,
         precomputed_ecdf_train = precomputed_ecdf_train,
         direct_rif_predictions = direct_rif_predictions,
         direct_rif_metadata = direct_rif_metadata,
@@ -996,11 +1124,17 @@ fct_run_simulation <- function(sw,
         }
       }
       if (is.null(group_n[[gk]])) group_n[[gk]] <<- 0L
-      member_type <- sub(".*_(ensemble_mean|ensemble_lo|ensemble_hi)$", "\\1", key)
-      if (!nchar(member_type) || member_type == key) {
+      member_type <- if (isTRUE(key_group$forecast)) {
+        paste0("member_", as.integer(metadata$forecast_member %||% sub("^member_", "", key)))
+      } else sub(".*_(ensemble_mean|ensemble_lo|ensemble_hi)$", "\\1", key)
+      if (!nchar(member_type) || member_type == key ||
+          (isTRUE(key_group$forecast) && !grepl("^member_[0-9]+$", member_type))) {
         # Keep the GCM name from the member key; fall back to model_<n>.
-        gcm <- sub("^ssp[^_]+_[^_]+_[^_]+_[0-9]{4}_[0-9]{4}_", "", key)
-        member_type <- if (nzchar(gcm) && gcm != key &&
+        gcm <- if (isTRUE(key_group$forecast)) "" else
+          sub("^ssp[^_]+_[^_]+_[^_]+_[0-9]{4}_[0-9]{4}_", "", key)
+        member_type <- if (isTRUE(key_group$forecast)) {
+          paste0("member_", as.integer(metadata$forecast_member %||% sub("^member_", "", key)))
+        } else if (nzchar(gcm) && gcm != key &&
                            !gcm %in% names(group_agg[[gk]])) {
           gcm
         } else {
@@ -1008,6 +1142,15 @@ fct_run_simulation <- function(sw,
         }
       }
       if (identical(weather_storage, "reference")) out$weather_raw <- weather_refs[[key]]
+      if (isTRUE(key_group$forecast)) {
+        out$forecast_window <- list(
+          start = forecast$start, len = as.integer(forecast$len),
+          end = forecast_group$label
+        )
+        out$forecast_metadata <- metadata
+        out$forecast_run <- forecast$run$id
+        out$forecast_member <- metadata$forecast_member
+      }
       group_agg[[gk]][[member_type]] <<- out
       profile_memory("future_pipeline", out, detail = key)
       group_n[[gk]] <<- group_n[[gk]] + 1L
@@ -1030,34 +1173,42 @@ fct_run_simulation <- function(sw,
       weather_collect = weather_collect, weather_threads = weather_threads,
       prepared_weather_cache = prepared_weather_cache,
       prepared_weather_cache_root = prepared_weather_cache_root,
-      weather_fn = weather_fn
+      weather_fn = weather_fn,
+      forecast = forecast
     )
     if (!inherits(manifest, "wiseapp_weather_manifest")) {
       stop("weather_manifest must be created by prepare_weather_manifest().", call. = FALSE)
     }
     manifest$frames
   } else tryCatch(
-    weather_fn(
+    .step2_weather_call(weather_fn, list(
       survey_data = svy, selected_surveys = ss, selected_weather = sw,
       dates = sim_dates, connection_params = cp,
       ssp = if (has_future) ssps else NULL,
       future_period = if (has_future) fp_list else NULL,
-      perturbation_method = perturbation_method, stored_breaks = stored_breaks,
-      weather_collect = weather_collect, weather_threads = weather_threads,
-      weather_consumer = consume_key, keep_continuous = TRUE
-    ),
+       perturbation_method = perturbation_method, stored_breaks = stored_breaks,
+       weather_collect = weather_collect, weather_threads = weather_threads,
+       weather_consumer = function(key, weather, metadata = NULL) {
+         if (isTRUE(metadata$forecast)) {
+           consume_key(paste0("member_", metadata$forecast_member), weather, metadata)
+        } else {
+          consume_key(key, weather, metadata)
+        }
+        }, keep_continuous = TRUE
+    ), forecast),
     error = function(e) {
       if (inherits(e, "wiseapp_step2_cancelled")) stop(e)
       if (length(emitted_keys)) stop(e)
-      weather_fn(
+      .step2_weather_call(weather_fn, list(
         survey_data = svy, selected_surveys = ss, selected_weather = sw,
         dates = sim_dates, connection_params = cp,
         ssp = if (has_future) ssps else NULL,
         future_period = if (has_future) fp_list else NULL,
-        perturbation_method = perturbation_method,
-        stored_breaks = stored_breaks, weather_collect = weather_collect,
-        weather_threads = weather_threads, keep_continuous = TRUE
-      )
+         perturbation_method = perturbation_method,
+         stored_breaks = stored_breaks,
+         weather_collect = weather_collect,
+          weather_threads = weather_threads, keep_continuous = TRUE
+      ), forecast)
     }
   )
   t_weather <- proc.time()[["elapsed"]] - t_weather_start
@@ -1074,7 +1225,8 @@ fct_run_simulation <- function(sw,
     all_keys <- unique(c(all_keys, setdiff(names(weather_result), emitted_keys)))
   }
   n_future_keys <- sum(all_keys != "historical")
-  total_runs <- n_hist_yrs * (1L + n_future_keys)
+  n_forecast_keys <- sum(grepl("^member_[0-9]+$", all_keys))
+  total_runs <- n_hist_yrs * (1L + n_future_keys - n_forecast_keys) + n_forecast_keys
 
   compact_train_aug <- .compact_residual_context(
     precomputed_train_aug, shared_id_col, residuals,
@@ -1117,7 +1269,7 @@ fct_run_simulation <- function(sw,
         if (is.null(meta)) {
           return(gk)
         }
-        pretty <- ssp_labels[meta$ssp_code] %||% meta$ssp_code
+        pretty <- meta$label %||% ssp_labels[meta$ssp_code] %||% meta$ssp_code
         yr <- meta$year_range
         paste0(
           pretty, " / ",
@@ -1152,7 +1304,7 @@ fct_run_simulation <- function(sw,
       }
     }
     meta <- group_meta[[gk]]
-    display_key <- .step2_scenario_display_key(meta$ssp_code, meta$year_range)
+    display_key <- meta$label %||% .step2_scenario_display_key(meta$ssp_code, meta$year_range)
     new_scenarios[[display_key]] <- list(
       pipelines = group_agg[[gk]],
       weather_raw = group_weather_rep[[gk]],
@@ -1163,6 +1315,10 @@ fct_run_simulation <- function(sw,
       n_models_requested = group_requested[[gk]] %||% group_n[[gk]],
       residuals = residuals
     )
+    if (isTRUE(meta$forecast)) {
+      new_scenarios[[display_key]]$forecast <- meta$forecast_group
+      new_scenarios[[display_key]]$forecast_members <- meta$forecast_members
+    }
     if (!is.null(group_weather_shared[[gk]])) {
       new_scenarios[[display_key]]$weather_shared <- group_weather_shared[[gk]]
     }
@@ -1252,6 +1408,30 @@ fct_run_simulation <- function(sw,
         taus = taus
       )
     )
+  }
+  if (has_forecast) result$forecast <- list(
+    product = forecast$run$product,
+    run = forecast$run$id,
+    label = forecast$run$label,
+    display_key = forecast_group$label,
+    start = forecast$start,
+    len = as.integer(forecast$len),
+    sim_year = forecast_group$sim_year,
+    members = forecast$run$members,
+    forecast_months = seq(as.Date(paste0(forecast$start, "-01")), by = "month",
+      length.out = as.integer(forecast$len)),
+    window_end = format(seq(as.Date(paste0(forecast$start, "-01")), by = "month",
+      length.out = as.integer(forecast$len))[[as.integer(forecast$len)]], "%Y-%m"),
+    data_sha256 = forecast$run$data_sha256,
+    manifest_sha256 = forecast$run$manifest_sha256,
+    historical_sha256 = forecast$run$historical_sha256,
+    member_metadata = forecast_member_metadata
+  )
+  if (has_forecast) result$n_forecast_members <- length(forecast$run$members)
+  if (has_forecast) for (scenario_name in names(result$new_scenarios)) {
+    if (.step2_is_forecast_scenario(scenario_name)) {
+      result$new_scenarios[[scenario_name]]$forecast <- result$forecast
+    }
   }
   if (!is.null(memory_profile)) {
     profile_memory("final_result", result)

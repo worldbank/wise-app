@@ -108,6 +108,35 @@ test_that("step2_compute preserves serial result values and attaches metadata", 
   expect_true(is.character(out$result$.run$generated_at_utc))
 })
 
+test_that("forecast identity participates in signatures while NULL preserves legacy shape", {
+  input <- step2_compute_fixture()
+  legacy_signature <- .step2_compute_signature(input, 123L, "same-run")
+  forecast <- list(
+    product = "seasonal",
+    run = list(
+      id = "pilot-a", product = "seasonal", model_id = "model-a",
+      init = as.Date("2030-10-01"), observed_through = as.Date("2030-09-01"),
+      n_leads = 6L, members = 0:1, variables = "temp", file = "pilot.parquet",
+      adjustment = "additive_mean_bias_only", data_sha256 = "data-a",
+      manifest_sha256 = "manifest-a", historical_sha256 = "history-a"
+    ),
+    start = "2030-11", len = 3L
+  )
+  a <- utils::modifyList(input, list(forecast = forecast))
+  b <- utils::modifyList(input, list(forecast = utils::modifyList(forecast,
+    list(run = utils::modifyList(forecast$run, list(data_sha256 = "data-b")))
+  )))
+  sig_a <- .step2_compute_signature(a, 123L, "same-run")
+  sig_b <- .step2_compute_signature(b, 123L, "same-run")
+  expect_false("forecast" %in% names(legacy_signature))
+  expect_identical(sig_a$forecast$run$data_sha256, "data-a")
+  expect_false(identical(sig_a, sig_b))
+  testthat::local_mocked_bindings(.forecast_catalogue_runs = function(...) {
+    list("pilot-a" = utils::modifyList(forecast$run, list(manifest_sha256 = "replaced")))
+  })
+  expect_error(step2_compute(a, seed = 123L, run_id = "same-run"), "forecast data changed")
+})
+
 test_that("step2_compute emits ordered stage events and restores RNG state", {
   input <- step2_compute_fixture()
   weather <- step2_compute_weather()

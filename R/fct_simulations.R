@@ -707,6 +707,7 @@ run_sim_pipeline <- function(weather_raw,
   # the survey join or the prediction, so predictions are exactly those of a
   # frame without them.
   weather_full <- weather_raw
+  target_window_year <- attr(weather_full, "forecast_window_year", exact = TRUE)
   companions <- .weather_companion_cols(weather_raw, sw$name)
   if (length(companions)) {
     weather_raw <- weather_raw[, setdiff(names(weather_raw), companions), drop = FALSE]
@@ -731,7 +732,11 @@ run_sim_pipeline <- function(weather_raw,
   # Tag svy with row IDs so downstream consumers can broadcast per-household
   # quantities (RIF delta correction; Module 3 policy-delta application) back
   # to the (HH x year) rows produced by prepare_hist_weather().
-  svy_for_predict$.svy_row_id <- seq_len(nrow(svy_for_predict))
+  if (is.null(target_window_year)) {
+    svy_for_predict$.svy_row_id <- seq_len(nrow(svy_for_predict))
+  } else {
+    stopifnot(".svy_row_id" %in% names(svy_for_predict))
+  }
 
   # Use pre-prepared survey (columns already dropped, year converted) when
   # available. RIF policy mode and Module 3 callers prepare svy differently,
@@ -938,6 +943,9 @@ run_sim_pipeline <- function(weather_raw,
 
   # Simulation year and weights ----
   sim_year <- out$sim_year
+  if (!is.null(target_window_year)) {
+    sim_year[] <- as.integer(target_window_year)
+  }
 
   weight <- if ("weight" %in% names(out)) out$weight else NULL
 

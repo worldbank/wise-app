@@ -1,10 +1,8 @@
 # Seasonal forecast controls for the Step 2 sidebar ----
 #
-# UI scaffolding only: no forecast data is wired and nothing here reaches the
-# simulation run. `.step2_forecast_runs()` is the single seam for the data
-# source; it returns NULL (forecast shown as unavailable) unless the developer
-# option `wiseapp.forecast_scaffold` is TRUE, which supplies one placeholder
-# run so the controls can be exercised. See wise-app-data/dev/forecast_pipeline_plan.md.
+# Local forecast runs come from the validated country catalogue. The developer
+# option `wiseapp.forecast_scaffold` supplies a metadata-only placeholder for
+# control tests; the placeholder never reaches simulation runs.
 
 # Initial data-preparation scope, not a permanent limit on forecast variables.
 .STEP2_FORECAST_VARS <- "t"
@@ -50,15 +48,17 @@
 
 .step2_forecast_scaffold <- function() isTRUE(getOption("wiseapp.forecast_scaffold", FALSE))
 
-#' Available forecast runs for the baseline country (placeholder)
+#' Available forecast runs for the baseline country
 #'
 #' @param scaffold Logical; supply the placeholder run.
+#' @param connection_params Local data connection parameters.
+#' @param code Baseline country code.
 #' @return NULL when no forecast is available, else a named list of runs, each
 #'   with `id`, `product`, `lead_unit`, `label`, `model`, `init` (first of the initialization month),
 #'   `released`, `next_release`, `observed_through`, `n_members` and `n_leads`.
 #' @noRd
-.step2_forecast_runs <- function(scaffold = .step2_forecast_scaffold()) {
-  if (!isTRUE(scaffold)) return(NULL)
+.step2_forecast_runs <- function(scaffold = .step2_forecast_scaffold(), connection_params = NULL, code = NULL) {
+  if (!isTRUE(scaffold)) return(.forecast_catalogue_runs(connection_params, code))
   list("2026-10" = list(
     id = "2026-10",
     product = "seasonal",
@@ -292,14 +292,21 @@ forecast_strip_legend <- function() {
 
 #' Forecast inputs that enter the simulation run signature
 #'
-#' Run, product, target start and length. Member and data-version fields join
-#' once the published run catalogue carries them.
+#' Run, product, target start, length and immutable data/member identity.
 #' @noRd
 .step2_forecast_signature <- function(run, window) {
-  list(
+  out <- list(
     product = run$product %||% "seasonal",
     run = run$id,
     start = window$start,
     len = window$idx[[2L]] - window$idx[[1L]] + 1L
   )
+  if (!is.null(run$data_sha256)) {
+    out$data_version <- run$data_version
+    out$data_sha256 <- run$data_sha256
+    out$manifest_sha256 <- run$manifest_sha256
+    out$historical_sha256 <- run$historical_sha256
+    out$members <- run$members
+  }
+  out
 }

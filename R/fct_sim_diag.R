@@ -427,7 +427,13 @@ build_ridge_kde_data <- function(hist_preds,
   }
 
   scen_nms <- names(scenario_groups)
-  ssp_keys <- vapply(scen_nms, .normalise_ssp, character(1))
+  ssp_keys <- vapply(scen_nms, function(nm) {
+    if (.step2_is_forecast_scenario(nm) || grepl("^(Seasonal|Subseasonal) forecast / ", nm)) {
+      "Forecast"
+    } else {
+      .normalise_ssp(nm)
+    }
+  }, character(1))
   fore_yrs_raw <- vapply(scen_nms, function(nm) {
     m <- regmatches(nm, regexpr("[0-9]{4}", nm))
     if (length(m) == 0L) NA_integer_ else as.integer(m)
@@ -512,6 +518,7 @@ build_ridge_kde_data <- function(hist_preds,
 .diag_weather_source_label <- function(x) {
   if (identical(x, "Full historical")) return("Historical")
   if (identical(x, "Model support")) return(x)
+  if (.step2_is_forecast_scenario(x) || grepl("^(Seasonal|Subseasonal) forecast / ", x)) return(x)
   ssp <- .normalise_ssp(x)
   if (is.na(ssp)) {
     digits <- regmatches(x, regexpr("(?i)SSP[2345]", x, perl = TRUE))
@@ -711,8 +718,12 @@ echart_weather_density_panel <- function(survey_weather,
         }
         for (nm in names(cs$scenarios)) {
           display_source <- .diag_weather_source_label(nm)
-          ssp_key <- .normalise_ssp(display_source)
-          col <- if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours)) {
+          ssp_key <- if (.step2_is_forecast_scenario(display_source) ||
+            grepl("^(Seasonal|Subseasonal) forecast / ", display_source)) "Forecast" else
+            .normalise_ssp(display_source)
+          col <- if (identical(ssp_key, "Forecast")) {
+            .wise_forecast
+          } else if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours)) {
             unname(.ssp_colours[[ssp_key]])
           } else {
             "#cccccc"
@@ -806,8 +817,11 @@ echart_weather_density_panel <- function(survey_weather,
     sw_df <- scenario_weather[[nm]]
     if (is.null(sw_df) || !wv %in% names(sw_df)) next
     source <- .diag_weather_source_label(nm)
-    ssp_key <- .normalise_ssp(source)
-    colour <- if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours)) {
+    ssp_key <- if (.step2_is_forecast_scenario(source) ||
+      grepl("^(Seasonal|Subseasonal) forecast / ", source)) "Forecast" else .normalise_ssp(source)
+    colour <- if (identical(ssp_key, "Forecast")) {
+      .wise_forecast
+    } else if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours)) {
       unname(.ssp_colours[[ssp_key]])
     } else {
       "#cccccc"
@@ -910,6 +924,9 @@ echart_weather_density_panel <- function(survey_weather,
   colors <- function(source) {
     if (identical(source, "Historical")) return(.wise_history)
     if (identical(source, "Model support")) return(.wise_support)
+    if (.step2_is_forecast_scenario(source) || grepl("^(Seasonal|Subseasonal) forecast / ", source)) {
+      return(.wise_forecast)
+    }
     key <- .normalise_ssp(source)
     if (!is.na(key) && key %in% names(.ssp_colours)) unname(.ssp_colours[[key]]) else "#cccccc"
   }

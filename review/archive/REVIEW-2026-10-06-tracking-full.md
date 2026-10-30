@@ -1,5 +1,30 @@
 
 
+### Decision: Experimental Seasonal Forecast (2026-10-30)
+
+User request (2026-10-30): inspect the locally prepared forecast pilot and continue the seasonal roadmap. Initial data preparation covers `t`; this is not a permanent variable restriction. Existing historical/SSP outputs must stay unchanged when the forecast is off.
+
+Before: only historical/SSP weather states were computed; forecast controls were a metadata-only preview. After: a local adjusted forecast supplies one target-window state per ensemble member. For each of L target months, evaluate every baseline household with its fitted monthly predictor windows and weight `weight / L`. Apply the fitted model and residuals before aggregation. Each member's metric is the weighted mixture of household-month outcomes; do not average predictors or household welfare before nonlinear prediction/metrics. The internal simulation-year anchor is the target-start year, without changing actual weather timestamps or survey-wave identity. Missing predictor months are rejected, with no climatology fill. Forecast weather is already adjusted upstream (`era5land_mean + t_raw - hindcast_mean`); the app does not rebias it.
+
+Alternatives rejected: applying the target only to households interviewed in its calendar months (changes the represented population); replicating the forecast over historical years (manufactures annual samples); treating ensemble spread as calibrated probabilities or annual return periods; silently applying Step 3's annual exposure contract to monthly forecast replicas. Step 3 forecast runs are explicitly blocked pending a deliberate contract extension. No production promotion or data upload is authorized.
+
+Implementation: `fct_forecast_catalogue.R`, `fct_forecast_weather.R`, `get_weather()`, `fct_run_simulation()`, `run_sim_pipeline()` and Step 2 snapshot/payload integration. The catalogue checks immutable forecast/manifest/historical identities. Optional forecast fields are absent from no-forecast signatures.
+
+Before/after evidence: BFA household welfare, log outcome, fixest linear model, baseline 2021 fitted on 2018 and 2021, continuous t and r at lag 1, historical 1991-2020 only, coefficient uncertainty off, seed 123. Before code: `623ee30`; after: working implementation based on that commit. Both builds installed to separate scratch libraries and used `targets::tar_make()` in the main process. Same run/fit/simulation IDs; all 80 headline numeric entries matched exactly, including missingness. R 4.5.1 with the local 4.6 package library appended was required on this machine.
+
+| Residual Rule | Metric | Measure | Before | After | Absolute Change |
+|---|---|---|---:|---:|---:|
+| Original | Mean | Expected | 4.360604835901721 | 4.360604835901721 | 0 |
+| Original | Poverty | Expected | 0.435765884619909 | 0.435765884619909 | 0 |
+| Original | Mean | Adverse years | 4.267492532692523 | 4.267492532692523 | 0 |
+| Original | Poverty | Adverse years | 0.452062785091784 | 0.452062785091784 | 0 |
+| Resample | Mean | Expected | 4.775853485055060 | 4.775853485055060 | 0 |
+| Resample | Poverty | Expected | 0.404493111192024 | 0.404493111192024 | 0 |
+| Resample | Mean | Adverse years | 4.641470944987419 | 4.641470944987419 | 0 |
+| Resample | Poverty | Adverse years | 0.424092169506243 | 0.424092169506243 | 0 |
+
+Relative changes are zero. No existing numeric characterization expectations were changed. Separate pilot execution: BFA continuous t lag 1, October 2026 run, November 2026-January 2027, original residuals, coefficient uncertainty off, 51 members plus historical; 1,304,424 predictions, no failures or missing predictions. This establishes execution, not forecast skill. Browser inspection used the default t-only binned model; further verification outcomes and open gates are maintained in `roadmap/seasonal_forecast.md`. Subseasonal, scientific backtesting, production publication and forecast Step 3 remain open.
+
 ### Dropped checks (2026-10-23, user agreed)
 
 BFA before/after headline numbers for CR-BUG-02, R2-BUG-04, R2-BUG-06, R2-BUG-07 (B4) and SP P0-8 are dropped. Each fix has a Decision log row with a synthetic check and a regression test that fails before and passes after. A clean "before" no longer exists: the batch pipeline arrived on 2026-10-19, after those commits, and reverting them on today's `dev` conflicts with DOC-10 and DOC-13 in the same code. The scoped Databricks bearer-token secret (CR-SEC-03) was confirmed on Connect by the user on 2026-10-23.

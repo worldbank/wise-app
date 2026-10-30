@@ -63,6 +63,21 @@ test_that("continuous weather ridges retain every selected variable and source",
   expect_true(is.null(names(ch$x$opts$series)))
 })
 
+test_that("forecast diagnostics keep a distinct label and palette", {
+  f <- diag_weather_chart_fixture()
+  f$scenarios <- list("Seasonal forecast / Nov 2026 - Jan 2027 (2026-10 run)" = data.frame(
+    temp = c(13, 14), rain = c(6, 7),
+    temp_bin = factor(c("(10, 12]", "(10, 12]"), levels = levels(f$raw$temp_bin)),
+    rain_bin = factor(c("(2, 4]", "(2, 4]"), levels = levels(f$raw$rain_bin))
+  ))
+  ch <- echart_weather_density_panel(
+    f$survey, f$raw, "temp", scenario_weather = f$scenarios, show_regression = TRUE
+  )
+  forecast <- Filter(function(s) grepl("Seasonal forecast /", s$name, fixed = TRUE), ch$x$opts$series)
+  expect_length(forecast, 1L)
+  expect_identical(forecast[[1L]]$lineStyle$color, .wise_forecast)
+})
+
 test_that("single continuous weather uses the shared 256-point ridge", {
   f <- diag_weather_chart_fixture()
   specs <- data.frame(

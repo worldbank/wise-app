@@ -152,10 +152,17 @@ step2_pointrange_bands <- function(series, bq_ens, hist_ref = 0, mm_fn = by_mode
       return(NULL)
     }
     vals <- mm$vals
+    is_forecast <- !is_hist && .step2_is_forecast_scenario(scenario_label)
+    coef_sd <- if (is_forecast && "value_all_sd" %in% names(tbl)) {
+      mean(as.numeric(unlist(tbl$value_all_sd)), na.rm = TRUE)
+    } else {
+      NA_real_
+    }
+    center <- if (is_forecast) mean(as.numeric(vals), na.rm = TRUE) else NA_real_
 
-    # Inter-model spread: per-model mean across years, then quantile across models.
-    model_means <- rowMeans(vals, na.rm = TRUE)
-    intermod <- if (is_hist || length(model_means) <= 1L) {
+    # Forecast members are the weather-uncertainty units, distinct from models.
+    model_means <- if (is_forecast) as.numeric(vals) else rowMeans(vals, na.rm = TRUE)
+    intermod <- if (is_hist || (!is_forecast && length(model_means) <= 1L)) {
       mean_v <- mean(model_means, na.rm = TRUE)
       c(lo = mean_v, hi = mean_v)
     } else {
@@ -167,7 +174,9 @@ step2_pointrange_bands <- function(series, bq_ens, hist_ref = 0, mm_fn = by_mode
 
     # Inter-annual variability: for each model take the band_q quantile
     # across years, then average across models.
-    if (is_hist) {
+    if (is_forecast) {
+      interann <- c(lo = NA_real_, hi = NA_real_)
+    } else if (is_hist) {
       v_flat <- as.numeric(vals)
       interann <- c(
         lo = unname(stats::quantile(v_flat, bq_ens[["lo"]], na.rm = TRUE)),
@@ -190,6 +199,8 @@ step2_pointrange_bands <- function(series, bq_ens, hist_ref = 0, mm_fn = by_mode
     # then take the equal-weight mean across models (the headline centre).
     ens_mean <- if (is_hist) {
       mean(as.numeric(vals), na.rm = TRUE)
+    } else if (is_forecast) {
+      mean(as.numeric(vals), na.rm = TRUE)
     } else {
       mean(model_means, na.rm = TRUE)
     }
@@ -201,8 +212,11 @@ step2_pointrange_bands <- function(series, bq_ens, hist_ref = 0, mm_fn = by_mode
       interann_hi = unname(interann[["hi"]]) - hist_ref,
       intermod_lo = unname(intermod[["lo"]]) - hist_ref,
       intermod_hi = unname(intermod[["hi"]]) - hist_ref,
+      coef_lo = if (is_forecast) center - stats::qnorm(0.95) * coef_sd - hist_ref else NA_real_,
+      coef_hi = if (is_forecast) center + stats::qnorm(0.95) * coef_sd - hist_ref else NA_real_,
       is_historical = is_hist,
-      n_models = length(mm$model_ids)
+      n_models = length(mm$model_ids),
+      n_members = if (is_forecast) length(mm$model_ids) else NA_integer_
     )
   }
 
@@ -213,6 +227,9 @@ step2_pointrange_bands <- function(series, bq_ens, hist_ref = 0, mm_fn = by_mode
   support_tables <- lapply(Filter(Negate(is.null), rows), attr, which = "adverse_support")
   out <- dplyr::bind_rows(Filter(Negate(is.null), rows))
   attr(out, "adverse_support") <- dplyr::bind_rows(Filter(Negate(is.null), support_tables))
+  if (!any(.step2_is_forecast_scenario(names(series)))) {
+    out <- out[, setdiff(names(out), c("coef_lo", "coef_hi", "n_members")), drop = FALSE]
+  }
   out
 }
 
@@ -227,7 +244,10 @@ step2_headline_bands <- function(bands, series, hist_ref = 0, mm_fn = by_model_m
   for (i in seq_len(nrow(bands))) {
     vals <- mm_fn(series[[bands$scenario[[i]]]])$vals
     vals[!is.finite(vals)] <- NA_real_
-    bands$value[[i]] <- mean(rowMeans(vals, na.rm = TRUE), na.rm = TRUE) - hist_ref
+    forecast <- .step2_is_forecast_scenario(bands$scenario[[i]])
+    bands$value[[i]] <- if (forecast) mean(as.numeric(vals), na.rm = TRUE) - hist_ref else
+      mean(rowMeans(vals, na.rm = TRUE), na.rm = TRUE) - hist_ref
+    if (forecast) bands$interann_lo[[i]] <- bands$interann_hi[[i]] <- NA_real_
   }
   bands$center_method <- "equal_model_mean"
   bands
@@ -239,6 +259,9 @@ step2_headline_bands <- function(bands, series, hist_ref = 0, mm_fn = by_model_m
 step2_timeseries_curves <- function(series, hist_ref = 0, mm_fn = by_model_matrix) {
   one_scenario <- function(tbl, scenario_label, is_hist) {
     if (is.null(tbl) || nrow(tbl) == 0L) {
+      return(NULL)
+    }
+    if (!is_hist && .step2_is_forecast_scenario(scenario_label)) {
       return(NULL)
     }
     mm <- mm_fn(tbl)
@@ -262,7 +285,9 @@ step2_timeseries_curves <- function(series, hist_ref = 0, mm_fn = by_model_matri
     label <- names(series)[[i]]
     one_scenario(series[[i]], label, identical(label, "Historical"))
   })
-  dplyr::bind_rows(Filter(Negate(is.null), rows))
+  non_forecast_rows <- Filter(Negate(is.null), rows)
+  if (!length(non_forecast_rows)) return(NULL)
+  dplyr::bind_rows(non_forecast_rows)
 }
 
 #' One row per scenario, three variance components
@@ -276,6 +301,8 @@ step2_variance_breakdown <- function(series, mm_fn = by_model_matrix) {
     if (is.null(tbl) || !nrow(tbl)) {
       return(NULL)
     }
+    is_forecast <- !is_hist && .step2_is_forecast_scenario(scenario_label)
+    n_members <- if (is_forecast && "model_id" %in% names(tbl)) length(unique(unlist(tbl$model_id))) else NA_integer_
     sds_flat <- as.numeric(unlist(tbl$value_all_sd))
     # value_all_sd is sqrt(var_coef + var_resid); the residual-draw part gets
     # its own component (zero for the "original" rule and without the column).
@@ -295,14 +322,14 @@ step2_variance_breakdown <- function(series, mm_fn = by_model_matrix) {
     # including year-to-year spread.)
     mm <- mm_fn(tbl)
     vals <- if (is.null(mm)) NULL else mm$vals
-    var_within <- if (!is.null(vals) && ncol(vals) > 1L) {
+    var_within <- if (!is_forecast && !is.null(vals) && ncol(vals) > 1L) {
       v <- mean(apply(vals, 1L, stats::var, na.rm = TRUE), na.rm = TRUE)
       if (is.finite(v)) v else 0
     } else {
       0
     }
     var_across <- if (!is_hist && !is.null(vals) && nrow(vals) > 1L) {
-      v <- stats::var(rowMeans(vals, na.rm = TRUE), na.rm = TRUE)
+      v <- stats::var(if (is_forecast) as.numeric(vals) else rowMeans(vals, na.rm = TRUE), na.rm = TRUE)
       if (is.finite(v)) v else 0
     } else {
       0
@@ -351,6 +378,8 @@ step2_threshold_table <- function(series, bq_coef, bq_ens, hist_ref = 0, method 
     if (is.null(tbl) || nrow(tbl) == 0L) {
       return(NULL)
     }
+    # Annual return periods are not defined for one target-window forecast state.
+    if (!is_hist && .step2_is_forecast_scenario(scenario_label)) return(NULL)
     mm <- mm_fn(tbl)
     if (is.null(mm)) {
       return(NULL)
@@ -505,7 +534,9 @@ step2_threshold_table <- function(series, bq_coef, bq_ens, hist_ref = 0, method 
     label <- names(series)[[i]]
     one_scenario(series[[i]], label, identical(label, "Historical"))
   })
-  dplyr::bind_rows(Filter(Negate(is.null), rows))
+  non_forecast_rows <- Filter(Negate(is.null), rows)
+  if (!length(non_forecast_rows)) return(NULL)
+  dplyr::bind_rows(non_forecast_rows)
 }
 
 #' The return-period decision table shown in the Results pane
@@ -598,7 +629,7 @@ step2_baseline_check_view <- function(hs, hist_tbl, method, pov_line, weight_key
 #' @noRd
 step2_delta_ci_view <- function(bands, hist_tbl, scn_tbls) {
   fut <- bands[!bands$is_historical, , drop = FALSE]
-  if (!nrow(fut)) {
+  if (!nrow(fut) || .step2_is_forecast_scenario(fut$scenario[[1L]])) {
     return(NULL)
   }
   step2_delta_ci(hist_tbl, scn_tbls[[fut$scenario[[1L]]]])
@@ -710,7 +741,15 @@ step2_run_aggregates <- function(hs, scenarios, skip_coef, pov_line = NULL, band
   }
   hist <- suite(hs$pipeline, so, hs$shared_context, TRUE)
   scn <- lapply(scenarios, function(s) {
-    suite(s$pipelines, s$so, s$shared_context, FALSE)$tables
+    tables <- suite(s$pipelines, s$so, s$shared_context, FALSE)$tables
+    forecast <- !is.null(s$forecast)
+    if (forecast) {
+      tables <- lapply(tables, function(tbl) {
+        if (!is.null(tbl) && nrow(tbl)) tbl$sim_year <- as.integer(s$forecast$sim_year %||% format(as.Date(paste0(s$forecast$start, "-01")), "%Y"))
+        tbl
+      })
+    }
+    tables
   })
   list(
     methods = methods, weight_key = hist$weight_key, pov_line = pov_line,
@@ -985,16 +1024,32 @@ step2_sim_weather_table <- function(scenarios) {
   rows <- list()
   for (label in names(scenarios)) {
     s <- scenarios[[label]]
-    yr <- suppressWarnings(as.numeric(s$year_range))
+    forecast <- .step2_is_forecast_scenario(label)
+    forecast <- forecast || grepl("^(Seasonal|Subseasonal) forecast / ", label)
+    yr <- if (forecast) numeric(0L) else suppressWarnings(as.numeric(s$year_range))
+    forecast_start <- if (forecast && !is.null(s$forecast$start)) {
+      as.character(s$forecast$start)
+    } else {
+      NA_character_
+    }
+    forecast_len <- if (forecast && !is.null(s$forecast$len)) as.numeric(s$forecast$len) else NA_real_
     rows[[length(rows) + 1L]] <- row(
       label, "scenario",
-      c("period_start", "period_end", "n_models", "n_models_requested"),
-      value = c(yr[1], yr[2], s$n_models %||% length(s$pipelines),
-        s$n_models_requested %||% s$n_models %||% length(s$pipelines))
+      if (forecast) c("target_start", "target_length_months", "n_members") else
+        c("period_start", "period_end", "n_models", "n_models_requested"),
+      value = if (forecast) {
+        c(NA_real_, forecast_len, if (!is.null(s$forecast$members)) length(s$forecast$members) else
+          s$n_forecast_members %||% s$n_models %||% length(s$pipelines))
+      } else {
+        c(yr[1], yr[2], s$n_models %||% length(s$pipelines),
+          s$n_models_requested %||% s$n_models %||% length(s$pipelines))
+      },
+      text = if (forecast) c(forecast_start, NA_character_, NA_character_) else NA_character_
     )
     members <- names(s$pipelines) %||% paste0("model_", seq_along(s$pipelines))
     if (length(members)) {
-      rows[[length(rows) + 1L]] <- row(label, "members", "member", member = members, value = 1)
+      rows[[length(rows) + 1L]] <- row(label, "members",
+        if (forecast) "forecast_member" else "member", member = members, value = 1)
     }
     ws <- s$weather_support
     if (is.data.frame(ws) && nrow(ws)) {
