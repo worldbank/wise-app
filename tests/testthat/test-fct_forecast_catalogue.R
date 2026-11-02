@@ -36,7 +36,7 @@ make_forecast_catalogue_fixture <- function() {
 
 test_that("local catalogues discover only complete draft-2 runs newest first", {
   fx <- make_forecast_catalogue_fixture()
-  runs <- .step2_forecast_runs(scaffold = FALSE, connection_params = fx$cp, code = "BFA")
+  runs <- .forecast_catalogue_runs(fx$cp, "BFA")
   expect_named(runs, c("2026-10", "2026-05"))
   expect_identical(runs[[1L]]$members, 0:1)
   expect_identical(runs[[1L]]$init, as.Date("2026-10-01"))

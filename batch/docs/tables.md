@@ -41,10 +41,12 @@ Forecast summary rows describe target-window outcomes and member spread;
 annual adverse-year/return-period rows are not produced for forecast scenarios.
 Coefficient uncertainty is separate from ensemble-member spread. Forecast
 member probabilities are not calibrated and skill is not yet established.
-The worker validates publication hashes when it executes. Automatic `targets`
-invalidation when local pilot files change under an existing run ID is not yet
-wired; explicitly invalidate the simulation target before replaying replaced
-pilot publications.
+The worker validates publication hashes when it executes. The resolved spec
+carries the run's publication identity (`data_sha256`, `manifest_sha256`, file,
+members, data version), so replacing files under an existing run id changes
+`sim_id` and reruns the simulation target. A forecast run also writes the
+`forecast` table and the `placement`, `skill` and `season` sections of
+`summary`.
 
 12 hex characters, each a hash of the spec sections the stage depends on.
 
@@ -232,6 +234,9 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `uncertainty` | `var_coef`, `var_resid`, `var_within`, `var_across` | Variance components: coefficient (for the stored view, a level; no residual part), residual draws (0 under `original`), weather year within models (under `resample` it also holds the year-to-year residual noise), between models. |
 | `headline` | `Expected change`, `Adverse weather years`, `Signal vs noise`, `Year-to-year range`, `Simulation years` / `historical`, `focus`, `difference`, `range`, `count` | Headline cards for the focus scenario (the first future scenario, else historical). `text` holds the displayed value on the `focus` row. |
 | `incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean effect of the scenario on each fixed baseline decile, in outcome units; `n` = households. |
+| `placement` | forecast scenarios only; `n_members`, `member_median`, `reference_median`, `difference_median`, `reference_adverse_1in10`, `share_worse_than_median`, `share_worse_than_1in10`, `median_member_return_period`, `median_member_beyond` (1 or 0), `n_beyond` | Where the forecast members fall in the same-window reference (see `forecast`). `n` = reference years. Each is one row per metric. |
+| `skill` | forecast scenarios only; `skill_flag` / `group` = target month (`YYYY-MM`) | Hindcast skill flag of each target month in `text` (`none`, `weak`, `useful`), `estimate` = anomaly correlation, `n` = lead. One row of text ("not assessed") when the run has no skill table. `metric` is `NA`. |
+| `season` | forecast scenarios only; `training_month_share`, `training_month_expected` | Share of the model's training observations interviewed in the target months, and the share an even spread over the year would give. `metric` is `NA`. |
 
 **Policy arm** sections start with `policy_`; stored for every metric:
 
@@ -245,6 +250,22 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `policy_headline` | card label / `card_<k>_value`, `card_<k>_note` | Headline cards; on `card_1_value`, `lo`, `hi` are the 95% interval of the effect. |
 | `policy_incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean policy effect per baseline decile for the weather-year basis in `return_period` (`mean`, `adverse_5`, `adverse_10`, `adverse_20`); `metric` `NA`. |
 
+### forecast
+
+Key `sim_id`; written only when a run has a forecast scenario with a same-window
+reference. Long form: `scenario`, `metric`, `kind` (`member`: a forecast member;
+`reference`: one past year), `id` (the member, or `refyear_<year>`), `year` (the
+reference year; `NA` for members), `value` (the target-window aggregate:
+every baseline household in every target month at `weight / len`, the same
+model, residual rule and lag windows for members and reference years),
+`p_adverse` (members: the share of reference years at least as adverse as the
+member), `return_period` (`1 / p_adverse`) and `beyond` (`TRUE` when the member
+is rarer than half the number of reference years, or beyond every reference
+year; `return_period` is then `NA`). The reference years are the years of
+`sim.hist_years`; a year without observed weather for every target and
+predictor month is left out. The share of members is an indicator, not a
+probability.
+
 ### sim_weather
 
 Key `sim_id`. Long form: `scenario` (projection scenarios; the historical run is
@@ -252,7 +273,7 @@ the reference), `section`, `member`, `variable`, `statistic`, `value`, `text`.
 
 | `section` | `statistic` | Meaning |
 |---|---|---|
-| `scenario` | `period_start`, `period_end`; `n_models`, `n_models_requested` | The projection period; models that ran and models requested (they differ when a model lacks coverage; see `failures.parquet`). |
+| `scenario` | `period_start`, `period_end`; `n_models`, `n_models_requested`. For a forecast: `target_start`, `target_length_months`, `n_members` | The projection period; models that ran and models requested (they differ when a model lacks coverage; see `failures.parquet`). |
 | `members` | `member` | One row per climate-model member (`value` = 1). |
 | `support` | `n_reference`, `n_scenario`, `robust_lo`, `robust_hi`, `outside_n`, `outside_share`, `warning`, `n_members`, `max_member_share`; `reference_label`, `warning_rule`, `is_binned` (`text`) | The weather-support summary of the Diagnostics tab per variable: fitted-sample and simulated value counts, the 1%-99% support of the fitted sample, simulated values outside it (or in a bin the fitted sample never had), and `warning` = 1 when more than 5% are outside (the model extrapolates). |
 

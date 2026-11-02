@@ -1082,15 +1082,20 @@ step2_sim_weather_table <- function(scenarios) {
 #'   `new_scenarios` (`step2_compute()$result` after `wise_step2_annotate()`).
 #' @param skip_coef Coefficient uncertainty was skipped in the run.
 #' @param selected_weather Selected weather (labels), or `NULL`.
-#' @return A list: `annual`, `summary`, `sim_weather`.
+#' @return A list: `annual`, `summary`, `sim_weather`, and `forecast` when the run has a forecast with a
+#'   same-window reference (its placement, skill and season rows are also added to `summary`).
 #' @noRd
 step2_batch_tables <- function(result, skip_coef, selected_weather = NULL) {
   hs <- result$hist_sim_result
   scenarios <- result$new_scenarios
   agg <- step2_run_aggregates(hs, scenarios, skip_coef)
-  list(
+  summary <- step2_summary_table(agg, hs, scenarios, selected_weather)
+  fc <- step2_forecast_batch_tables(hs, scenarios, agg)
+  out <- list(
     annual = step2_annual_table(agg),
-    summary = step2_summary_table(agg, hs, scenarios, selected_weather),
+    summary = if (is.null(fc)) summary else dplyr::bind_rows(summary, fc$summary),
     sim_weather = step2_sim_weather_table(scenarios)
   )
+  if (!is.null(fc)) out$forecast <- fc$forecast
+  out
 }

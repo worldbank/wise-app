@@ -6,7 +6,7 @@ depends_on: [notation, framework, data, outcomes, weather-measures, model-specif
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: []
-verified_against: 623ee30
+verified_against: 523a585
 ---
 
 # Assumptions and limitations in one place
@@ -52,7 +52,7 @@ The app produces three kinds of statements ([01_framework](01_framework.md)): a 
 | Climate change enters as a change in monthly weather, applied to the observed record | [01_framework](01_framework.md#assumptions) A5; [30_simulation](30_simulation.md#assumptions) A5; [31_climate_scenarios](31_climate_scenarios.md#assumptions) A1 to A3, A5 | Variance and day-to-day structure are those of the observed record. |
 | Equal weights for climate models | [31_climate_scenarios](31_climate_scenarios.md#assumptions) A4 | The spread across models is disagreement, not a probability. |
 | Survey weights are fixed; years are exchangeable; thresholds are meaningful for the outcome | [32_metrics](32_metrics.md#assumptions) A1 to A4 | Thirty years support a 1-in-10 return period with three years only. |
-| Mean-bias-adjusted forecast weather supports the fitted response, with equally weighted members | [34_seasonal_forecast](34_seasonal_forecast.md#assumptions) A1 to A3 | The experimental local pilot starts with temperature only. Skill is not established; mean adjustment does not calibrate spread or probabilities. Target months have equal weight and form one state per member, not an annual return-period sample. |
+| Mean-bias-adjusted forecast weather supports the fitted response, with equally weighted members | [34_seasonal_forecast](34_seasonal_forecast.md#assumptions) A1 to A5 | The experimental local pilot starts with temperature only. Skill is not established; mean adjustment does not calibrate spread or probabilities. Target months have equal weight and form one state per member, not an annual return-period sample; a member is placed in the same-window reference years instead. The weather response is assumed to hold across seasons, and the cards warn when few training interviews fall in the target months. |
 
 ## Uncertainty
 

@@ -690,7 +690,7 @@ wise_batch_sim <- function(item, connection_params = NULL) {
           stop("Step 3 policy runs are not supported with sim.forecast; remove the policy section.", call. = FALSE)
         }
         country <- spec$sample$countries[[1L]]
-        runs <- .step2_forecast_runs(scaffold = FALSE, connection_params = cp, code = country)
+        runs <- .forecast_catalogue_runs(cp, country)
         forecast_run <- runs[[sim$forecast$run]]
         if (is.null(forecast_run)) {
           stop("sim.forecast.run is not available in the local forecast catalogue: ",
@@ -1074,6 +1074,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
     )
   }
   .write_table(pick(sim_tables, "sim_weather"), out_dir, "sim_weather")
+  .write_table(pick(sim_tables, "forecast"), out_dir, "forecast")
   for (name in c("decomposition", "policy_measures")) {
     .write_table(pick(policy_tables, name), out_dir, name)
   }

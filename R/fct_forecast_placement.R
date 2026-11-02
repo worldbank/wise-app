@@ -216,3 +216,76 @@ echart_forecast_placement <- function(placement, x_label = "Outcome", height = "
   )
   wise_echart_theme(e)
 }
+
+#' Batch tables of the forecast scenarios of one Step 2 run
+#'
+#' For every forecast scenario with a same-window reference and every metric of the Results tab:
+#' `forecast` (one row per member and per reference year: outcome, adverse-side share and return period)
+#' and `summary` rows with sections `placement` (the summary of `.forecast_placement_stats()`), `skill`
+#' (the flag of each target month, in `text`; `n` is the lead) and `season` (the share of the model's
+#' training observations interviewed in the target months, and the share an even spread would give).
+#'
+#' @param hs,scenarios Historical result and scenario entries.
+#' @param agg Result of `step2_run_aggregates()` (supplies the metrics and the poverty line).
+#' @return `NULL` without a forecast, else a list: `forecast`, `summary`.
+#' @noRd
+step2_forecast_batch_tables <- function(hs, scenarios, agg) {
+  has_reference <- vapply(scenarios %||% list(), function(s) length(s$reference_pipelines) > 0L, logical(1L))
+  if (!any(has_reference)) return(NULL)
+  methods <- setdiff(agg$methods, "prosperity_gap")
+  summ_row <- function(scenario, metric, section, measure, group = NA_character_, estimate = NA_real_,
+                       n = NA_real_, text = NA_character_) {
+    k <- max(lengths(list(measure, group, estimate, n, text)))
+    data.frame(
+      scenario = scenario, metric = rep_len(as.character(metric), k), section = section,
+      measure = rep_len(as.character(measure), k), group = rep_len(as.character(group), k),
+      return_period = NA_character_, estimate = rep_len(as.numeric(estimate), k),
+      lo = NA_real_, hi = NA_real_, n = rep_len(as.numeric(n), k), text = rep_len(as.character(text), k),
+      stringsAsFactors = FALSE
+    )
+  }
+  forecast <- list()
+  summary <- list()
+  for (label in names(scenarios)[has_reference]) {
+    s <- scenarios[[label]]
+    for (m in methods) {
+      pl <- step2_forecast_placement(
+        s, m, hs$so, hs$residuals %||% "original", skip_coef = TRUE, pov_line = agg$pov_line,
+        seed = .step2_run_seed(hs)
+      )
+      if (is.null(pl)) next
+      forecast[[length(forecast) + 1L]] <- rbind(
+        data.frame(scenario = label, metric = m, kind = "member", id = pl$members$member, year = NA_integer_,
+          value = pl$members$value, p_adverse = pl$members$p_adverse,
+          return_period = pl$members$return_period, beyond = pl$members$beyond, stringsAsFactors = FALSE),
+        data.frame(scenario = label, metric = m, kind = "reference",
+          id = paste0("refyear_", pl$reference$year), year = as.integer(pl$reference$year),
+          value = pl$reference$value, p_adverse = NA_real_, return_period = NA_real_, beyond = NA,
+          stringsAsFactors = FALSE)
+      )
+      stats <- unlist(lapply(pl$summary, as.numeric))
+      summary[[length(summary) + 1L]] <- summ_row(
+        label, m, "placement", names(stats), estimate = stats, n = pl$n_reference
+      )
+    }
+    sk <- s$skill
+    if (!is.null(sk)) {
+      if (is.data.frame(sk$months)) {
+        summary[[length(summary) + 1L]] <- summ_row(
+          label, NA_character_, "skill", "skill_flag", group = format(sk$months$month, "%Y-%m"),
+          estimate = sk$months$acc, n = sk$months$lead_month, text = sk$months$skill_flag
+        )
+      } else {
+        summary[[length(summary) + 1L]] <- summ_row(label, NA_character_, "skill", "skill_flag", text = sk$text)
+      }
+    }
+    tm <- s$training_months
+    if (!is.null(tm)) {
+      summary[[length(summary) + 1L]] <- summ_row(
+        label, NA_character_, "season", c("training_month_share", "training_month_expected"),
+        estimate = c(tm$share, tm$expected)
+      )
+    }
+  }
+  list(forecast = dplyr::bind_rows(forecast), summary = dplyr::bind_rows(summary))
+}

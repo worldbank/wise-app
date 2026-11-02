@@ -8,18 +8,6 @@ run <- list(
   product = "seasonal", lead_unit = "month"
 )
 
-test_that("the placeholder run source is off unless the scaffold option is set", {
-  expect_null(.step2_forecast_runs(scaffold = FALSE))
-  withr::with_options(list(wiseapp.forecast_scaffold = NULL), expect_null(.step2_forecast_runs()))
-  withr::with_options(list(wiseapp.forecast_scaffold = TRUE), {
-    runs <- .step2_forecast_runs()
-    expect_named(runs, "2026-10")
-    expect_identical(runs[[1L]]$n_leads, 6L)
-    expect_identical(runs[[1L]]$product, "seasonal")
-    expect_identical(runs[[1L]]$lead_unit, "month")
-  })
-})
-
 test_that("the month strip has observed context, forecast leads and months beyond", {
   m <- .step2_forecast_months(run)
   expect_identical(nrow(m), 11L)

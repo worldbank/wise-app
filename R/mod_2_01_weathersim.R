@@ -259,7 +259,10 @@ mod_2_01_weathersim_ui <- function(id) {
     ),
 
     # Seasonal forecast flyout ----
-    # Local experimental forecast runs; metadata-only scaffold remains for tests.
+    # Local experimental forecast runs. Shown only for a country with a forecast catalogue (or a catalogue
+    # error, so it is not silently hidden).
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("forecast_available"), "']"),
     config_flyout_block(
       ns("forecast_toggle"),
       "Seasonal forecast",
@@ -276,6 +279,7 @@ mod_2_01_weathersim_ui <- function(id) {
       shiny::uiOutput(ns("forecast_body_ui")),
       shiny::uiOutput(ns("forecast_readout_ui")),
       shiny::uiOutput(ns("forecast_notes_ui"))
+    )
     ),
     shiny::tags$hr(style = "margin: 10px 0;"),
 
@@ -525,7 +529,7 @@ mod_2_01_weathersim_server <- function(id,
     forecast_runs <- reactive({
       code <- unique(baseline_surveys()$code)
       tryCatch({
-        runs <- .step2_forecast_runs(connection_params = connection_params(), code = code)
+        runs <- .forecast_catalogue_runs(connection_params(), code)
         forecast_catalogue_error(NULL)
         runs
       }, error = function(e) {
@@ -533,6 +537,12 @@ mod_2_01_weathersim_server <- function(id,
         NULL
       })
     })
+
+    forecast_available <- shiny::reactive({
+      length(forecast_runs()) > 0L || !is.null(forecast_catalogue_error())
+    })
+    output$forecast_available <- forecast_available
+    shiny::outputOptions(output, "forecast_available", suspendWhenHidden = FALSE)
 
     forecast_weather_names <- reactive({
       tryCatch(as.character(selected_weather()$name), error = function(e) character(0))
@@ -600,9 +610,7 @@ mod_2_01_weathersim_server <- function(id,
           style = "font-size: 12px; margin: 4px 0;", why
         ))
       }
-      if (.step2_forecast_scaffold()) {
-        shiny::helpText("Preview only: the forecast is not yet used by simulation runs.")
-      } else if (isTRUE(forecast_run()$experimental)) {
+      if (isTRUE(forecast_run()$experimental)) {
         shiny::helpText(
           "Experimental DEV forecast data. Forecast skill and scientific usefulness are not established. ",
           "The member spread is not a calibrated probability. ",
@@ -1230,7 +1238,7 @@ mod_2_01_weathersim_server <- function(id,
         hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
         residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
         stored_breaks = stored_breaks(), slim = TRUE,
-        forecast = if (forecast_on() && !.step2_forecast_scaffold()) {
+        forecast = if (forecast_on()) {
           list(run = forecast_run(), start = forecast_window()$start, len = as.integer(input$fc_len %||% "3"))
         }
       )
@@ -1529,7 +1537,7 @@ mod_2_01_weathersim_server <- function(id,
           hist_years = unlist(sh$year_range), periods = fut_periods, ssps = sf$ssp,
           residuals = sh$residuals, coef_uncertainty = input$include_coef_uncertainty,
           stored_breaks = stored_breaks(), slim = FALSE,
-          forecast = if (forecast_on() && !.step2_forecast_scaffold()) {
+          forecast = if (forecast_on()) {
             list(run = forecast_run(), start = forecast_window()$start, len = as.integer(input$fc_len %||% "3"))
           }
         )

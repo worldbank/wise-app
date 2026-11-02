@@ -240,6 +240,8 @@ test_that("the seasonal forecast is unavailable and out of the summary without a
       baseline_survey = "AAA|2020", fc_include = TRUE,
       fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
     expect_match(forecast_block(), "No seasonal forecast")
+    # No catalogue for the country: the flyout is not offered.
+    expect_false(forecast_available())
     expect_false(forecast_on())
     expect_identical(output$forecast_summary, "Not available")
     expect_identical(output$projections_summary, "2 SSPs \u00b7 1 period")
@@ -247,11 +249,22 @@ test_that("the seasonal forecast is unavailable and out of the summary without a
   })
 })
 
-test_that("with the scaffold run the window clamps and joins the summary", {
+# A catalogue run as `.forecast_catalogue_runs()` returns it (no data files needed for the controls).
+mock_forecast_run <- function() {
+  list(
+    id = "2026-10", product = "seasonal", lead_unit = "month", label = "October 2026", model = "ECMWF SEAS5",
+    init = as.Date("2026-10-01"), released = as.Date("2026-10-06"), next_release = as.Date("2026-11-06"),
+    observed_through = as.Date("2025-12-01"), n_members = 51L, n_leads = 6L
+  )
+}
+
+test_that("with a catalogue run the window clamps and joins the summary", {
   survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
                        survname = "SRV", loc_id = "L1", int_month = 1:2,
                        welfare = 1:2, temp = 3:4)
-  withr::local_options(wiseapp.forecast_scaffold = TRUE)
+  testthat::local_mocked_bindings(.forecast_catalogue_runs = function(connection_params, code) {
+    if (identical(code, "AAA")) list("2026-10" = mock_forecast_run()) else NULL
+  })
   testServer(mod_2_01_weathersim_server, args = list(
     id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
     selected_outcome = reactiveVal(data.frame(name = "welfare")),
@@ -264,6 +277,7 @@ test_that("with the scaffold run the window clamps and joins the summary", {
       baseline_survey = "AAA|2020", fc_include = TRUE, fc_len = "3", fc_start = "2027-03",
       fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
     expect_null(forecast_block())
+    expect_true(forecast_available())
     expect_true(forecast_on())
     expect_identical(forecast_window()$start, "2027-01")
     expect_identical(output$forecast_summary, "Jan\u2013Mar \u00b7 on")
@@ -289,15 +303,13 @@ test_that("with the scaffold run the window clamps and joins the summary", {
 })
 
 test_that("a local catalogue drives real forecast selection and versioned signatures", {
-  run <- .step2_forecast_runs(scaffold = TRUE)[[1L]]
+  run <- mock_forecast_run()
   run$experimental <- TRUE
   run$status <- "draft"
   run$data_version <- "test-1"
   run$data_sha256 <- paste(rep("a", 64), collapse = "")
   run$manifest_sha256 <- paste(rep("b", 64), collapse = "")
-  run$historical_sha256 <- paste(rep("c", 64), collapse = "")
   run$members <- 0:50
-  withr::local_options(wiseapp.forecast_scaffold = FALSE)
   testthat::local_mocked_bindings(.forecast_catalogue_runs = function(connection_params, code) {
     if (identical(code, "AAA")) list("2026-10" = run) else NULL
   })

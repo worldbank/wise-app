@@ -52,25 +52,28 @@ If adopted, the UI change is small: a "Forecast type" toggle (Seasonal, Subseaso
 
 ## Plan from 2026-11-02 (replaces the open parts of items 1 to 9)
 
+Decisions (2026-11-02, all recommended options): Step 3 stays blocked until real-data acceptance, then static levers only as a separate PR; new batch `forecast` table and `summary` rows; step 6 remainder deferred to a follow-up PR; hide the forecast button without data; one PR into `dev` from the chunked commits, opened only after the forecast is fully tested with real data; a private-data-free forecast batch test in CI.
+
 Status: items 1, 3, 4, 5 and 8 (method page) are done for the draft-2 schema and tested on a synthetic fixture (`dev/make_fixture_forecast_draft2.R`); item 2 (backtest, adjustment test, skill flag) is running in `wise-app-data`. Details and findings: `roadmap/seasonal_forecast_review.md`. Open decisions are marked **Decision** and listed with options in the review's "Decisions needed".
 
 **A. Real-data acceptance (blocked on `wise-app-data` producing draft-2 files).** Run `Rscript dev/check_forecast_data.R BFA` and `dev/bench/bench_forecast_weather.R` against the real root; fix any mismatch with the reader (the first fixture caught one: `context_months` is a list upstream). Review BFA placement, skill flags and member spread by eye before anyone uses them. Gate for the PR into `dev`.
 
 **B. Batch (checked 2026-11-02).** A `sim.forecast` batch run works end to end on the fixture (targets pipeline, `annual`, `summary`, `sim_weather` tables, 0 failures). Done: the resolved spec carries the run's publication identity, so replacing files under the same run id changes `sim_id` and reruns the target. Gaps:
-  1. The batch tables carry no reference or placement: the same-window reference years, each member's placement, the headline placement summary, the skill flags and the training-month share are missing. **Decision:** table design (see review).
-  2. No batch forecast test runs without private data. Add a forecast option to `batch_fixture_tree()` (a tiny draft-2 run for the `TST` economy) so CI covers `sim.forecast`.
-  3. Update `batch/docs/tables.md` for the new tables and the identity rule.
+  1. Done: the `forecast` table (member and reference-year values, adverse-side share, return period) and `summary` sections `placement`, `skill` and `season`.
+  2. Done: `batch_fixture_tree(forecast = TRUE)` writes a tiny draft-2 run for the `TST` economy; `tests/testthat/test-batch-pipeline.R` runs a `sim.forecast` batch from it.
+  3. Done: `batch/docs/tables.md` and `batch/README.md`.
 
-**C. Step 3 with a forecast.** Still rejected in the app and in batch. The blocker is the annual exposure validator (`R/fct_policy_metric_decompose.R`): it requires the exposure table's `int_month` to equal the survey's, and the prediction weight to equal the survey weight, which the forecast breaks by design (weather month versus interview month, `weight / L`). Design note with options: `roadmap/seasonal_forecast_step3_design.md`. **Decision:** scope (static levers only, shock-responsive too, or stay blocked).
+**C. Step 3 with a forecast.** Waits for A. Still rejected in the app and in batch. The blocker is the annual exposure validator (`R/fct_policy_metric_decompose.R`): it requires the exposure table's `int_month` to equal the survey's, and the prediction weight to equal the survey weight, which the forecast breaks by design (weather month versus interview month, `weight / L`). Design note with options: `roadmap/seasonal_forecast_step3_design.md`. **Decision:** scope (static levers only, shock-responsive too, or stay blocked).
 
-**D. Step 6 remainder (shared weather helpers, scenario `kind`).** Defer to a follow-up PR after real-data acceptance: the helper extraction touches protected numerics and needs parity runs on all engines. The label detector and the forecast identity are already single-sourced. **Decision:** confirm deferral.
+**D. Step 6 remainder (shared weather helpers, scenario `kind`).** Deferred to a follow-up PR after real-data acceptance: the helper extraction touches protected numerics and needs parity runs on all engines. The label detector and the forecast identity are already single-sourced.
 
 **E. Before the PR into `dev`.**
-  1. Remove the `wiseapp.forecast_scaffold` option and its "Preview only" note (item 7). **Decision:** button visibility without data.
-  2. Add the forecast to `docs/50_assumptions_limitations.md`; refresh `verified_against` in `docs/34_seasonal_forecast.md`.
+  1. Done: the scaffold option and its "Preview only" note are gone; the flyout is shown only for a country with a forecast catalogue (or a catalogue error). Controls tests use a mocked catalogue.
+  2. Done: assumptions A4 and A5 and the limitation text in `docs/34_seasonal_forecast.md` and `docs/50_assumptions_limitations.md`. Refresh `verified_against` again at the end.
   3. Config export and import replay with real forecast data (the four `fc_*` inputs).
   4. Regenerate `manifest.json` (`Rscript dev/00_make_manifest.R`) last; `deploy-contract` fails until then. Do not do it earlier.
   5. Full test suite and `Rscript dev/docs_check.R`, `dev/agents_check.R`.
+  6. Open the PR into `dev` only after A passes on real data.
 
 **F. Subseasonal (item 10).** Unchanged, after A to E.
 

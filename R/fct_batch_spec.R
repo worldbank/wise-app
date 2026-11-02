@@ -854,8 +854,7 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
     if (length(forecast_code) != 1L) {
       stop("sim.forecast requires exactly one sample country.", call. = FALSE)
     }
-    runs <- .step2_forecast_runs(scaffold = FALSE, connection_params = connection_params,
-      code = forecast_code[[1L]])
+    runs <- .forecast_catalogue_runs(connection_params, forecast_code[[1L]])
     run <- runs[[spec$sim$forecast$run]]
     if (is.null(run) || !identical(run$product, "seasonal")) {
       stop("sim.forecast.run is not an available seasonal forecast for ", forecast_code[[1L]], ".", call. = FALSE)

@@ -907,3 +907,59 @@ test_that("a shock-responsive policy stores its member-year rows and its program
   expect_identical(f$stage, "policy")
   expect_match(f$message, "stored Step 2 run is missing|failed")
 })
+
+test_that("a forecast simulation writes the forecast table and the placement, skill and season rows", {
+  skip_if_not_installed("qs2")
+  skip_if_not_installed("digest")
+  data <- withr::local_tempdir()
+  batch_fixture_tree(data, forecast = TRUE)
+  proj <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_DATA_PATH = data)
+  write_project(proj, c(
+    "seed: 7",
+    "model: {}",
+    "sim:",
+    "  hist_years: [2018, 2019]",
+    "  future_periods: []",
+    "  ssps: []",
+    "  coef_uncertainty: false",
+    "  forecast: {product: seasonal, run: '2021-01', start: '2021-02', len: 3}",
+    "profiles:",
+    "  weather:",
+    "    t_1m: {t: {ref_period: [1, 1], form: continuous}}",
+    "axes:",
+    "  country: [TST]",
+    "  weather: [t_1m]"
+  ))
+  g <- wise_spec_expand(file.path(proj, "spec.yaml"))
+  expect_identical(nrow(g), 1L)
+  expect_match(g$spec[[1L]]$sim$forecast$identity$data_sha256, "^[0-9a-f]{64}$")
+
+  make_it(proj)
+  out <- file.path(proj, "results")
+  expect_identical(nrow(arrow::read_parquet(file.path(out, "failures.parquet"))), 0L)
+  label <- "Seasonal forecast / Feb 2021 - Apr 2021 (January 2021 run)"
+
+  annual <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
+  expect_setequal(unique(annual$scenario), c("Historical", label))
+  expect_length(unique(annual$member[annual$scenario == label]), 3L)
+
+  fc <- arrow::open_dataset(file.path(out, "tables", "forecast")) |> dplyr::collect()
+  expect_identical(
+    names(fc)[names(fc) != "code"],
+    c("sim_id", "scenario", "metric", "kind", "id", "year", "value", "p_adverse", "return_period", "beyond")
+  )
+  mean_rows <- fc[fc$metric == "mean", ]
+  expect_identical(sum(mean_rows$kind == "member"), 3L)
+  expect_setequal(mean_rows$id[mean_rows$kind == "reference"], c("refyear_2018", "refyear_2019"))
+  expect_setequal(mean_rows$year[mean_rows$kind == "reference"], 2018:2019)
+  expect_true(all(is.finite(mean_rows$value)))
+  expect_true(all(mean_rows$p_adverse[mean_rows$kind == "member"] >= 0))
+
+  summ <- arrow::open_dataset(file.path(out, "tables", "summary")) |> dplyr::collect()
+  placement <- summ[summ$section == "placement" & summ$metric == "mean", ]
+  expect_true(all(c("member_median", "reference_median", "share_worse_than_1in10") %in% placement$measure))
+  expect_true(all(placement$n == 2))
+  expect_setequal(summ$measure[summ$section == "season"], c("training_month_share", "training_month_expected"))
+  expect_match(summ$text[summ$section == "skill"], "not assessed")
+})

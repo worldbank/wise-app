@@ -1,8 +1,7 @@
 # Seasonal forecast controls for the Step 2 sidebar ----
 #
-# Local forecast runs come from the validated country catalogue. The developer
-# option `wiseapp.forecast_scaffold` supplies a metadata-only placeholder for
-# control tests; the placeholder never reaches simulation runs.
+# Local forecast runs come from the validated country catalogue
+# (`.forecast_catalogue_runs()`).
 
 # Initial data-preparation scope, not a permanent limit on forecast variables.
 .STEP2_FORECAST_VARS <- "t"
@@ -44,34 +43,6 @@
   ends <- ends[!is.na(ends)]
   if (!length(ends)) return(0L)
   max(ends, 0L)
-}
-
-.step2_forecast_scaffold <- function() isTRUE(getOption("wiseapp.forecast_scaffold", FALSE))
-
-#' Available forecast runs for the baseline country
-#'
-#' @param scaffold Logical; supply the placeholder run.
-#' @param connection_params Local data connection parameters.
-#' @param code Baseline country code.
-#' @return NULL when no forecast is available, else a named list of runs, each
-#'   with `id`, `product`, `lead_unit`, `label`, `model`, `init` (first of the initialization month),
-#'   `released`, `next_release`, `observed_through`, `n_members` and `n_leads`.
-#' @noRd
-.step2_forecast_runs <- function(scaffold = .step2_forecast_scaffold(), connection_params = NULL, code = NULL) {
-  if (!isTRUE(scaffold)) return(.forecast_catalogue_runs(connection_params, code))
-  list("2026-10" = list(
-    id = "2026-10",
-    product = "seasonal",
-    lead_unit = "month",
-    label = "October 2026",
-    model = "ECMWF SEAS5",
-    init = as.Date("2026-10-01"),
-    released = as.Date("2026-10-06"),
-    next_release = as.Date("2026-11-06"),
-    observed_through = as.Date("2025-12-01"),
-    n_members = 51L,
-    n_leads = 6L
-  ))
 }
 
 #' Month strip of a forecast run: observed context, forecast leads, beyond
@@ -297,7 +268,7 @@ forecast_strip_legend <- function() {
 #' Identity of one forecast selection: run, target window and immutable data/member identity
 #'
 #' The one place that decides which fields make two forecast selections the same. The run signature,
-#' the weather-group key and the prepared-weather cache key all derive from it. A scaffold run without a
+#' the weather-group key and the prepared-weather cache key all derive from it. A run without a
 #' data checksum carries only run, product, start and length.
 #' @noRd
 .forecast_identity <- function(run, start, len) {
