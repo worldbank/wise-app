@@ -51,6 +51,7 @@ src/*.dll
 # Run outputs and test artifacts
 dev/outputs/
 dev/output/
+dev/fixtures/
 tests/e2e/out/
 tests/testthat/testthat-problems.rds
 _targets/
