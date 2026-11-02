@@ -116,19 +116,36 @@ make_fixture_forecast_draft2 <- function(
       sum(CASE WHEN t IS NULL OR NOT isfinite(t) THEN 1 ELSE 0 END) AS n_missing
     FROM read_parquet('%s')", data_file))
   sha <- function(f) digest::digest(file = f, algo = "sha256")
+  # Synthetic hindcast skill (schema of forecast_skill_columns in wise-app-data): skill fades with lead.
+  skill_rel <- file.path("skill", sprintf("ecmwf_seas51_%02d_1993_2016.parquet", as.integer(format(init, "%m"))))
+  dir.create(file.path(fc_dir, "skill"), showWarnings = FALSE)
+  acc <- c(0.55, 0.35, 0.2, 0.1, 0.05, 0.02)[seq_len(n_leads)]
+  skill <- data.frame(
+    init_month = as.integer(format(init, "%m")), lead_month = seq_len(n_leads), level = "country",
+    acc = acc, acc_detrended = acc - 0.05, crpss = c(0.2, 0.08, 0.01, -0.03, -0.05, -0.08)[seq_len(n_leads)],
+    roc_lower_tercile = 0.5 + acc / 2, roc_upper_tercile = 0.5 + acc / 2, n_years = 24L,
+    skill_flag = c("useful", "weak", "none", "none", "none", "none")[seq_len(n_leads)]
+  )
+  duckdb::duckdb_register(con, "skill_tbl", skill)
+  DBI::dbExecute(con, sprintf("COPY skill_tbl TO '%s' (FORMAT parquet, COMPRESSION zstd)", file.path(fc_dir, skill_rel)))
   manifest <- list(
     schema_version = "draft-2", status = "draft", experimental = TRUE, synthetic = TRUE,
     product = "seasonal", lead_unit = "month", run_id = run_id, model = "ecmwf_seas51", system = 51L,
     initialized_at = format(init), reference_years = 1993:2016, leads = seq_len(n_leads),
     members = list(first = 0L, last = n_members - 1L), n_members = n_members,
     valid_months = format(forecast_months),
-    context_months = context_months, context_source = "era5land;era5land_t",
+    # As the pipeline writes it: a count with the first and last context month and each month's source.
+    context_months = list(n = context_months, first = format(min(context)), last = format(max(context)),
+      sources = stats::setNames(as.list(ifelse(context <= as.Date("2025-12-01"), "era5land", "era5land_t")),
+        format(context))),
     variables = "t", units = list(t = "degrees_C"),
     h3 = list(resolution = 6L, type = "int64", mapping = "nearest_source_coordinate_to_h3_centroid"),
     adjustment = "additive_mean_bias_only",
     adjustment_formula = "t = era5land_mean + (t_raw - hindcast_mean)",
     observed_through = format(seq(init, by = "-1 month", length.out = 2L)[2L]),
-    output_sha256 = stats::setNames(list(sha(data_file)), basename(data_file)),
+    output_sha256 = stats::setNames(list(sha(data_file), sha(file.path(fc_dir, skill_rel))),
+      c(basename(data_file), skill_rel)),
+    skill_file = skill_rel,
     input_sha256 = list(historical = sha(hist_file)),
     checks = as.list(chk),
     limitations = "Synthetic fixture: climatology plus noise, no skill",
@@ -141,7 +158,7 @@ make_fixture_forecast_draft2 <- function(
     label = format(init, "%B %Y"), model = "ECMWF SEAS5", init = format(init),
     released = format(init + 5L), next_release = format(seq(init, by = "month", length.out = 2L)[2L] + 5L),
     n_members = n_members, n_leads = n_leads, observed_through = manifest$observed_through,
-    context_months = context_months, context_source = manifest$context_source, variables = "t",
+    context_months = context_months, context_source = "era5land;era5land_t", variables = "t",
     adjustment = manifest$adjustment,
     file = paste0("hazard/weather/forecasts/", code, "/", basename(data_file)),
     data_sha256 = sha(data_file), manifest_sha256 = sha(manifest_file),

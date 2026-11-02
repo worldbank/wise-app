@@ -5,7 +5,7 @@ app_step: 2
 depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
-code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_run_simulation.R]
+code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_skill.R, R/fct_run_simulation.R]
 verified_against: 623ee30
 ---
 
@@ -53,6 +53,8 @@ The Historical scenario evaluates each household in its own interview month. Its
 
 Each member's aggregate $A_m$ is placed in the reference distribution. With $n$ reference years, $p_m$ is the share of reference years at least as adverse as $A_m$ (the adverse side follows the metric), and the member is "about a $1/p_m$-in-years outcome". Return periods beyond $n/2$ (about 1-in-15 for 30 years) are reported as beyond the observed range, not extrapolated. The Results cards report the median member's placement and the share of members worse than the reference 1-in-10 level. There is no return period for the ensemble mean, because averaging pulls it towards the centre. The member share is an indicator, not a probability.
 
+Skill: a run may publish a hindcast skill table (anomaly correlation, CRPSS, tercile ROC area, a `skill_flag` of `none`, `weak` or `useful`) per initialization month and lead. The thresholds behind the flag are fixed upstream; the app reads and reports the flags. The flyout and the cards name the skill of each target month, worst first, and the basis strip carries a warning unless every target month is `useful`. A run without a skill table says that skill was not assessed.
+
 Season check: the cards warn when fewer than half of an even share of the model's training observations were interviewed in the target months, because the weather response is then applied to months it was barely estimated from. A calendar-month anomaly predictor with interview-month fixed effects is the recommended specification for forecast use.
 
 ## Interpretation
@@ -99,6 +101,7 @@ None yet. Entries will be added with the backtest. Full entries are in [referenc
 | Local run discovery and publication identity | 1 | `R/fct_forecast_catalogue.R` `.forecast_catalogue_runs()` |
 | Same-window reference weather (`refyear_<year>` frames) | 4 | `R/fct_forecast_weather.R` `.get_forecast_weather(reference_years = )` |
 | Reference pipelines and the interview-month join key | 3, 4 | `R/fct_run_simulation.R` `consume_reference()`, `.step2_forecast_join_keys()` |
+| Hindcast skill of the target months | 4 | `R/fct_forecast_skill.R` `.forecast_skill_table()`, `.forecast_skill_summary()` |
 | Member placement in the reference | 4 | `R/fct_forecast_placement.R` `.forecast_placement_stats()`, `step2_forecast_placement()` |
 | Cards comparator and training-month warning | 4 | `R/fct_sim_compare.R` `step2_headline_cards()` |
 | Adjusted monthly weather and fitted predictor windows | 2 | `R/fct_forecast_weather.R` `.get_forecast_weather()` |

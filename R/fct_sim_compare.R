@@ -866,6 +866,17 @@ step2_headline_cards <- function(bands,
       card1$basis_text <- paste(card1$basis_text, season_txt, sep = " \u00b7 ")
     }
   }
+  if (forecast_focus) {
+    sk <- saved_scenarios[[as.character(focus$scenario)]]$skill
+    if (!is.null(sk)) {
+      card1$info <- paste(card1$info, sk$text)
+      # The basis strip only carries what weakens the reading.
+      if (!isTRUE(sk$assessed) || !identical(sk$flag, "useful")) {
+        card1$basis_text <- paste(card1$basis_text, sk$text, sep = " \u00b7 ")
+      }
+      card1$forecast_skill <- sk
+    }
+  }
   card1$value_native <- as.numeric(c(base_value, if (has_future) focus$value else NA_real_))
   card1$change_native <- change_1
   card1$change_ci_native <- if (!is.null(ci_1)) c(ci_1$lo, ci_1$hi) else c(NA_real_, NA_real_)

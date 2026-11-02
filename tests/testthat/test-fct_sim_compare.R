@@ -109,3 +109,26 @@ test_that("the uncertainty-source chart names the member spread for forecast row
   expect_true("Inter-model / member spread" %in% names_of(mixed))
   expect_true("Inter-model spread" %in% names_of(tbl[tbl$scenario == "Historical", ]))
 })
+
+test_that("forecast cards carry the hindcast skill of the target months", {
+  label <- "Seasonal forecast / Nov 2026 - Jan 2027 (2026-10 run)"
+  bands <- tibble::tibble(
+    scenario = c("Historical", label), value = c(10, 8), interann_lo = c(8, NA), interann_hi = c(12, NA),
+    intermod_lo = c(NA, 7), intermod_hi = c(NA, 9), coef_lo = c(9, 7.5), coef_hi = c(11, 8.5),
+    is_historical = c(TRUE, FALSE), n_models = c(1L, 51L)
+  )
+  run <- list(init = as.Date("2026-10-01"))
+  mk <- function(flags) {
+    skill <- data.frame(init_month = 10L, lead_month = 2:4, level = "country", skill_flag = flags)
+    setNames(list(list(skill = .forecast_skill_summary(skill, run, "2026-11", 3L))), label)
+  }
+  weak <- step2_headline_cards(bands, saved_scenarios = mk(c("useful", "weak", "none")))[[1L]]
+  expect_match(weak$basis_text, "No demonstrated hindcast skill")
+  expect_match(weak$info, "none for Jan 2027")
+  useful <- step2_headline_cards(bands, saved_scenarios = mk(rep("useful", 3)))[[1L]]
+  expect_false(grepl("hindcast skill", useful$basis_text))
+  expect_match(useful$info, "Hindcast skill is useful for Nov 2026, Dec 2026, Jan 2027")
+  none <- step2_headline_cards(bands, saved_scenarios = setNames(
+    list(list(skill = .forecast_skill_summary(NULL, run, "2026-11", 3L))), label))[[1L]]
+  expect_match(none$basis_text, "not assessed")
+})

@@ -668,7 +668,23 @@ mod_2_01_weathersim_server <- function(id,
             shiny::tags$b(if (w$lead_from == w$lead_to) w$lead_from else paste0(w$lead_from, "\u2013", w$lead_to))
           )
         ),
-        if (!is.null(lag)) shiny::helpText(lag)
+        if (!is.null(lag)) shiny::helpText(lag),
+        {
+          skill <- tryCatch(
+            .forecast_skill_for_window(
+              connection_params(), forecast_run(), w$start, w$idx[[2L]] - w$idx[[1L]] + 1L
+            ),
+            error = function(e) NULL
+          )
+          if (!is.null(skill)) {
+            shiny::tags$div(
+              class = "forecast-skill-note",
+              style = if (!isTRUE(skill$assessed) || identical(skill$flag, "none")) "color: #b45309; font-size: 12px; margin: 4px 0;" else
+                "font-size: 12px; margin: 4px 0;",
+              skill$text
+            )
+          }
+        }
       )
     })
 

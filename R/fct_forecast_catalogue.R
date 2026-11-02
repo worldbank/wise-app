@@ -87,6 +87,8 @@
   }
   members <- seq.int(member_bounds[1L], member_bounds[2L])
   run$variables <- strsplit(run$variables, ";", fixed = TRUE)[[1L]]
+  # The manifest carries `context_months` as a count or as list(n, first, last, sources).
+  manifest_context_n <- if (is.list(manifest$context_months)) manifest$context_months$n else manifest$context_months
   if (!identical(manifest$product, run$product) || !identical(manifest$lead_unit, run$lead_unit) ||
       !identical(manifest$initialized_at, format(run$init)) ||
       !identical(manifest$observed_through, format(run$observed_through)) ||
@@ -103,8 +105,7 @@
       !identical(as.character(manifest$valid_months),
         format(seq(run$init, by = "month", length.out = run$n_leads))) ||
       is.na(run$context_months) || run$context_months < 1L ||
-      !identical(as.integer(manifest$context_months), run$context_months) ||
-      !identical(run$context_source, manifest$context_source) ||
+      !identical(as.integer(manifest_context_n), run$context_months) ||
       !identical(run$observed_through, .step2_month_add(run$init, -1L))) {
     stop("Seasonal forecast catalogue and manifest disagree.", call. = FALSE)
   }
@@ -116,6 +117,22 @@
   manifest_sha256 <- digest::digest(file = manifest_path, algo = "sha256")
   if (!identical(manifest_sha256, run$manifest_sha256)) {
     stop("Seasonal forecast manifest checksum does not match the catalogue.", call. = FALSE)
+  }
+  # Optional hindcast skill table, relative to the run's directory; its checksum is part of the identity.
+  skill_file <- manifest$skill_file
+  if (length(skill_file) == 1L && !is.na(skill_file) && nzchar(skill_file)) {
+    if (!grepl("^[A-Za-z0-9_]+/[A-Za-z0-9_.-]+\\.parquet$", skill_file)) {
+      stop("Invalid seasonal forecast skill path.", call. = FALSE)
+    }
+    skill_path <- file.path(dirname(data_path), skill_file)
+    skill_sha <- manifest$output_sha256[[skill_file]]
+    if (!file.exists(skill_path) || length(skill_sha) != 1L ||
+        !identical(skill_sha, digest::digest(file = skill_path, algo = "sha256"))) {
+      stop("Seasonal forecast skill file is missing or does not match its manifest.", call. = FALSE)
+    }
+    run$skill_file <- file.path(dirname(run$file), skill_file)
+  } else {
+    run$skill_file <- NA_character_
   }
   run$members <- as.integer(members)
   run$model_id <- manifest$model

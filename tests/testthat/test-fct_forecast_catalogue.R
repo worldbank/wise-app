@@ -14,7 +14,9 @@ make_forecast_catalogue_fixture <- function() {
       adjustment = "additive_mean_bias_only", h3 = list(type = "int64", resolution = 6L),
       members = list(first = 0L, last = 1L), n_members = 2L, leads = 1:6,
       valid_months = format(seq(init, by = "month", length.out = 6L)), variables = "t",
-      context_months = 12L, context_source = "era5land;era5land_t",
+      # The pipeline writes a count with the first and last context month and each month's source.
+      context_months = list(n = 12L, first = format(.step2_month_add(init, -12L)),
+        last = format(.step2_month_add(init, -1L)), sources = list()),
       model = "test_model", run_id = paste0("BFA_", id),
       output_sha256 = stats::setNames(list(digest::digest(file = data, algo = "sha256")), basename(data))
     )
@@ -95,10 +97,38 @@ test_that("the catalogue errors only when no run is valid or the catalogue itsel
   fx <- make_forecast_catalogue_fixture()
   entries <- fx$entries
   entries[[1L]]$file <- "hazard/weather/forecasts/BFA/../outside.parquet"
-  entries[[2L]]$context_source <- "other"
+  entries[[2L]]$context_months <- "11"
   utils::write.csv(do.call(rbind, entries), fx$catalogue, row.names = FALSE)
   expect_error(.forecast_catalogue_runs(fx$cp, "BFA"), "No valid seasonal forecast run")
   entries[[2L]] <- entries[[1L]]
   utils::write.csv(do.call(rbind, entries), fx$catalogue, row.names = FALSE)
   expect_error(.forecast_catalogue_runs(fx$cp, "BFA"), "Invalid seasonal forecast catalogue")
+})
+
+test_that("an optional skill file is part of the run identity", {
+  fx <- make_forecast_catalogue_fixture()
+  expect_true(all(is.na(vapply(.forecast_catalogue_runs(fx$cp, "BFA"), `[[`, "", "skill_file"))))
+  data <- file.path(fx$root, fx$entries[[2L]]$file)
+  manifest_path <- sub("parquet$", "json", data)
+  dir.create(file.path(dirname(data), "skill"))
+  skill_path <- file.path(dirname(data), "skill", "ecmwf_seas51_10_1993_2016.parquet")
+  writeBin(charToRaw("skill"), skill_path)
+  manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = TRUE)
+  manifest$skill_file <- "skill/ecmwf_seas51_10_1993_2016.parquet"
+  manifest$output_sha256[["skill/ecmwf_seas51_10_1993_2016.parquet"]] <- digest::digest(file = skill_path, algo = "sha256")
+  jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
+  entries <- fx$entries
+  entries[[2L]]$manifest_sha256 <- digest::digest(file = manifest_path, algo = "sha256")
+  utils::write.csv(do.call(rbind, entries), fx$catalogue, row.names = FALSE)
+  runs <- .forecast_catalogue_runs(fx$cp, "BFA")
+  expect_identical(runs[["2026-10"]]$skill_file,
+    "hazard/weather/forecasts/BFA/skill/ecmwf_seas51_10_1993_2016.parquet")
+  writeBin(charToRaw("changed"), skill_path)
+  skipped <- attr(.forecast_catalogue_runs(fx$cp, "BFA"), "skipped")
+  expect_match(skipped$reason, "skill file")
+  manifest$skill_file <- "../outside.parquet"
+  jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
+  entries[[2L]]$manifest_sha256 <- digest::digest(file = manifest_path, algo = "sha256")
+  utils::write.csv(do.call(rbind, entries), fx$catalogue, row.names = FALSE)
+  expect_match(attr(.forecast_catalogue_runs(fx$cp, "BFA"), "skipped")$reason, "skill path")
 })
