@@ -457,7 +457,8 @@
           "inter-model spread is the standard deviation of model means across climate models; ",
           "coefficient uncertainty is the analytic delta-method SE from the fitted model covariance ",
           "for the selected view (level or difference from the historical mean or median); ",
-          "residual draws, when the \"resample\" rule is on, are shown separately."
+          "residual draws, when the \"resample\" rule is on, are shown separately. ",
+          "For a seasonal forecast, the spread across ensemble members replaces the inter-model spread."
         )
       )
     )

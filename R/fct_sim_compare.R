@@ -2016,8 +2016,18 @@ echart_variance_contribution <- function(var_tbl, height = "300px", percent = FA
   )
   has_resid <- "var_resid" %in% names(df) && any(df$var_resid > 0, na.rm = TRUE)
   df$sd_resid <- if ("var_resid" %in% names(df)) sqrt(pmax(df$var_resid, 0)) else 0
+  # Forecast rows spread over ensemble members, not climate models.
+  future_scn <- setdiff(unique(as.character(df$scenario)), "Historical")
+  is_fc <- vapply(future_scn, .step2_is_forecast_scenario, logical(1L))
+  across_label <- if (length(is_fc) && all(is_fc)) {
+    "Forecast member spread"
+  } else if (any(is_fc)) {
+    "Inter-model / member spread"
+  } else {
+    "Inter-model spread"
+  }
   src_levels <- c(
-    "Inter-model spread", "Inter-annual variability", coef_label,
+    across_label, "Inter-annual variability", coef_label,
     if (has_resid) "Residual draws"
   )
   src_cols <- c(.wise_cat[[3]], .wise_cat[[2]], .wise_cat[[1]], if (has_resid) .wise_cat[[4]])

@@ -98,3 +98,14 @@ test_that("forecast cards warn when the target months are rare in the training d
   expect_false(grepl("training observations",
     step2_headline_cards(bands, saved_scenarios = common)[[1L]]$basis_text))
 })
+
+test_that("the uncertainty-source chart names the member spread for forecast rows", {
+  fc <- "Seasonal forecast / Nov 2026 - Jan 2027 (2026-10 run)"
+  tbl <- data.frame(scenario = c("Historical", fc), var_within = c(1, 0), var_across = c(0, 0.5),
+    var_coef = c(0.2, 0.3))
+  names_of <- function(t) vapply(echart_variance_contribution(t)$x$opts$series, `[[`, "", "name")
+  expect_true("Forecast member spread" %in% names_of(tbl))
+  mixed <- rbind(tbl, data.frame(scenario = "SSP3-7.0 / 2025-2035", var_within = 1, var_across = 1, var_coef = 0.1))
+  expect_true("Inter-model / member spread" %in% names_of(mixed))
+  expect_true("Inter-model spread" %in% names_of(tbl[tbl$scenario == "Historical", ]))
+})

@@ -55,35 +55,35 @@ mod_2_03_diagnostics_ui <- function(id) {
     ),
 
     # 2. Climate-model robustness (Figure D2-3A default) ----
-    shiny::h4(
-      "Are expected outcomes consistent across climate models?",
-      info_popover(
-        title = "Climate-model agreement",
-        shiny::p(
-          "Each point is one climate model's mean outcome across simulated",
-          "weather years for a scenario and projection period. Historical is",
-          "shown once as the neutral reference."
-        ),
-        docs = TRUE
-      ),
-      class = "diagnostic-section-heading"
-    ),
+    shiny::uiOutput(ns("robustness_heading_ui")),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
       wise_chart_output(ns("model_robustness_plot"),
         "Climate-model mean outcome by scenario and period",
         height = "420px"
       ),
-      shiny::tags$p(
-        class = "diagnostic-note",
-        paste0(
-          "Each scenario-coloured point is one climate model's mean across simulated weather-year draws. ",
-          "The orange point is the median model mean."
-        )
-      )
+      shiny::uiOutput(ns("robustness_note_ui"))
     ),
 
     # 3. Weather-year trajectories (Figure D2-3B advanced) ----
+    # A forecast alone has no annual weather-year draws; the trajectories apply to the other scenarios.
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("forecast_only"), "']"),
+      shiny::div(
+        class = "results-section-card diagnostic-section-card",
+        shiny::tags$p(
+          class = "diagnostic-note", style = "margin: 0;",
+          paste0(
+            "Weather-year trajectories describe annual weather draws, so they do not apply to a seasonal ",
+            "forecast alone. Each forecast member is one target-window state; see the Results tab for ",
+            "where the forecast falls among past years."
+          )
+        )
+      )
+    ),
+    shiny::conditionalPanel(
+      condition = paste0("!output['", ns("forecast_only"), "']"),
+      shiny::tagList(
     shiny::h4(
       "How much can outcomes vary across weather-year draws?",
       info_popover(
@@ -112,6 +112,8 @@ mod_2_03_diagnostics_ui <- function(id) {
           "Projection windows are separate regimes, not continuous annual forecasts. ",
           "See the documentation for details on the simulation and perturbation method."
         )
+      )
+    )
       )
     )
   )
@@ -151,6 +153,48 @@ mod_2_03_diagnostics_server <- function(id,
     # INT-08: stale banner above the diagnostics pane.
     output$stale_banner <- shiny::renderUI({
       if (isTRUE(stale())) .stale_banner("Step 2 diagnostics") else NULL
+    })
+
+    # Forecast alone: the climate-model wording and annual trajectories do not apply.
+    forecast_only <- reactive({
+      nm <- tryCatch(names(saved_scenarios()), error = function(e) NULL)
+      length(nm) > 0L && all(vapply(nm, .step2_is_forecast_scenario, logical(1L)))
+    })
+    output$forecast_only <- shiny::reactive(forecast_only())
+    outputOptions(output, "forecast_only", suspendWhenHidden = FALSE)
+    output$robustness_heading_ui <- shiny::renderUI({
+      fc <- forecast_only()
+      shiny::h4(
+        if (fc) "Are expected outcomes consistent across forecast members?" else
+          "Are expected outcomes consistent across climate models?",
+        info_popover(
+          title = if (fc) "Forecast member agreement" else "Climate-model agreement",
+          shiny::p(
+            if (fc) {
+              paste("Each point is one forecast member's outcome for the target window. Historical is",
+                "shown once as the neutral reference.")
+            } else {
+              paste("Each point is one climate model's mean outcome across simulated",
+                "weather years for a scenario and projection period. Historical is",
+                "shown once as the neutral reference.")
+            }
+          ),
+          docs = TRUE
+        ),
+        class = "diagnostic-section-heading"
+      )
+    })
+    output$robustness_note_ui <- shiny::renderUI({
+      shiny::tags$p(
+        class = "diagnostic-note",
+        if (forecast_only()) {
+          paste0("Each point is one forecast member's outcome for the target window. ",
+            "The orange point is the median member.")
+        } else {
+          paste0("Each scenario-coloured point is one climate model's mean across simulated weather-year draws. ",
+            "The orange point is the median model mean.")
+        }
+      )
     })
 
     output$simulation_summary_ui <- shiny::renderUI({
