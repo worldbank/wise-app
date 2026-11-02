@@ -94,8 +94,7 @@ resolve_band_q <- function(band_key) {
 .step2_scenario_order <- function(scenarios) {
   scenarios <- unique(as.character(scenarios))
   historical <- scenarios[scenarios == "Historical"]
-  forecast <- scenarios[vapply(scenarios, .step2_is_forecast_scenario, logical(1L)) |
-    grepl("^(Seasonal|Subseasonal) forecast / ", scenarios)]
+  forecast <- scenarios[.step2_is_forecast_scenario(scenarios)]
   future <- sort(setdiff(scenarios, c(historical, forecast)))
   c(historical, forecast, future)
 }
@@ -129,7 +128,7 @@ resolve_band_q <- function(band_key) {
     df <- df[!(df$is_historical & df$source == "Policy"), , drop = FALSE]
   }
   is_forecast <- vapply(df$scenario, function(x) {
-    .step2_is_forecast_scenario(x) || grepl("^(Seasonal|Subseasonal) forecast / ", x)
+    .step2_is_forecast_scenario(x)
   }, logical(1L))
   df$ssp_key <- ifelse(df$is_historical, "Historical",
     ifelse(is_forecast, "Forecast", vapply(df$scenario, .normalise_ssp, character(1L)))
@@ -646,7 +645,6 @@ step2_headline_cards <- function(bands,
   focus <- if (nrow(fut_rows)) fut_rows[1L, ] else hist
   has_future <- nrow(fut_rows) > 0L
   forecast_focus <- has_future && .step2_is_forecast_scenario(as.character(focus$scenario[[1L]]))
-  forecast_focus <- forecast_focus || (has_future && grepl("^(Seasonal|Subseasonal) forecast / ", as.character(focus$scenario[[1L]])))
 
   so <- if (!is.null(hist_sim)) hist_sim$so else NULL
   metadata <- metadata %||% metric_metadata(method, so)
@@ -692,7 +690,6 @@ step2_headline_cards <- function(bands,
 
   scen_lab <- if (has_future) as.character(focus$scenario) else NULL
   forecast_focus <- has_future && .step2_is_forecast_scenario(scen_lab)
-  forecast_focus <- forecast_focus || (has_future && grepl("^(Seasonal|Subseasonal) forecast / ", scen_lab))
   has_curves <- !is.null(timeseries_curves) && nrow(timeseries_curves) &&
     all(c("scenario", "value") %in% names(timeseries_curves))
   if (forecast_focus && !is.null(timeseries_curves) && nrow(timeseries_curves) &&
@@ -1146,8 +1143,7 @@ step2_headline_cards <- function(bands,
   # the lower and upper endpoints across models. This is different from taking
   # quantiles of the pooled model-year values, which can overweight extremes.
   scenario_year_range <- function(scenario) {
-    forecast_scenario <- .step2_is_forecast_scenario(scenario) ||
-      grepl("^(Seasonal|Subseasonal) forecast / ", scenario)
+    forecast_scenario <- .step2_is_forecast_scenario(scenario)
     if (forecast_scenario) {
       x <- if (has_curves) timeseries_curves$value[timeseries_curves$scenario == scenario] else numeric(0L)
       return(finite_range(x))
@@ -2127,7 +2123,7 @@ echart_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
     if (identical(s, "Historical")) {
       return(.wise_support)
     }
-    if (.step2_is_forecast_scenario(s) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", s)) {
+    if (.step2_is_forecast_scenario(s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
@@ -2341,14 +2337,14 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
     if (s == "Historical") {
       return(.wise_support)
     }
-    if (.step2_is_forecast_scenario(s) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", s)) {
+    if (.step2_is_forecast_scenario(s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
     if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else "grey50"
   }, character(1L))
   forecast_only <- length(scen_levels) == 1L &&
-    (.step2_is_forecast_scenario(scen_levels[[1L]]) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", scen_levels[[1L]]))
+    .step2_is_forecast_scenario(scen_levels[[1L]])
 
   env_grp <- c("scenario", if (has_source) "source", "sim_year")
   env_df <- df |>
@@ -2561,7 +2557,7 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
   cat_idx <- setNames(as.character(seq_along(cats) - 1L), cats)
   colours <- stats::setNames(vapply(cats, function(s) {
     if (identical(s, "Historical")) return(.wise_history)
-    if (.step2_is_forecast_scenario(s) || grepl("^(Seasonal|Subseasonal)( forecast)? / ", s)) {
+    if (.step2_is_forecast_scenario(s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)

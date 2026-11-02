@@ -1026,7 +1026,6 @@ step2_sim_weather_table <- function(scenarios) {
   for (label in names(scenarios)) {
     s <- scenarios[[label]]
     forecast <- .step2_is_forecast_scenario(label)
-    forecast <- forecast || grepl("^(Seasonal|Subseasonal) forecast / ", label)
     yr <- if (forecast) numeric(0L) else suppressWarnings(as.numeric(s$year_range))
     forecast_start <- if (forecast && !is.null(s$forecast$start)) {
       as.character(s$forecast$start)

@@ -294,22 +294,31 @@ forecast_strip_legend <- function() {
   paste0(product, " / ", window$label, " (", run$label, " run)")
 }
 
-#' Forecast inputs that enter the simulation run signature
+#' Identity of one forecast selection: run, target window and immutable data/member identity
 #'
-#' Run, product, target start, length and immutable data/member identity.
+#' The one place that decides which fields make two forecast selections the same. The run signature,
+#' the weather-group key and the prepared-weather cache key all derive from it. A scaffold run without a
+#' data checksum carries only run, product, start and length.
 #' @noRd
-.step2_forecast_signature <- function(run, window) {
+.forecast_identity <- function(run, start, len) {
   out <- list(
     product = run$product %||% "seasonal",
     run = run$id,
-    start = window$start,
-    len = window$idx[[2L]] - window$idx[[1L]] + 1L
+    start = start,
+    len = as.integer(len)
   )
   if (!is.null(run$data_sha256)) {
     out$data_version <- run$data_version
     out$data_sha256 <- run$data_sha256
     out$manifest_sha256 <- run$manifest_sha256
+    out$file <- run$file
     out$members <- run$members
   }
   out
+}
+
+#' Forecast inputs that enter the simulation run signature
+#' @noRd
+.step2_forecast_signature <- function(run, window) {
+  .forecast_identity(run, window$start, window$idx[[2L]] - window$idx[[1L]] + 1L)
 }

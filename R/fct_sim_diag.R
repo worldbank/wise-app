@@ -428,7 +428,7 @@ build_ridge_kde_data <- function(hist_preds,
 
   scen_nms <- names(scenario_groups)
   ssp_keys <- vapply(scen_nms, function(nm) {
-    if (.step2_is_forecast_scenario(nm) || grepl("^(Seasonal|Subseasonal) forecast / ", nm)) {
+    if (.step2_is_forecast_scenario(nm)) {
       "Forecast"
     } else {
       .normalise_ssp(nm)
@@ -518,7 +518,7 @@ build_ridge_kde_data <- function(hist_preds,
 .diag_weather_source_label <- function(x) {
   if (identical(x, "Full historical")) return("Historical")
   if (identical(x, "Model support")) return(x)
-  if (.step2_is_forecast_scenario(x) || grepl("^(Seasonal|Subseasonal) forecast / ", x)) return(x)
+  if (.step2_is_forecast_scenario(x)) return(x)
   ssp <- .normalise_ssp(x)
   if (is.na(ssp)) {
     digits <- regmatches(x, regexpr("(?i)SSP[2345]", x, perl = TRUE))
@@ -718,8 +718,7 @@ echart_weather_density_panel <- function(survey_weather,
         }
         for (nm in names(cs$scenarios)) {
           display_source <- .diag_weather_source_label(nm)
-          ssp_key <- if (.step2_is_forecast_scenario(display_source) ||
-            grepl("^(Seasonal|Subseasonal) forecast / ", display_source)) "Forecast" else
+          ssp_key <- if (.step2_is_forecast_scenario(display_source)) "Forecast" else
             .normalise_ssp(display_source)
           col <- if (identical(ssp_key, "Forecast")) {
             .wise_forecast
@@ -817,8 +816,7 @@ echart_weather_density_panel <- function(survey_weather,
     sw_df <- scenario_weather[[nm]]
     if (is.null(sw_df) || !wv %in% names(sw_df)) next
     source <- .diag_weather_source_label(nm)
-    ssp_key <- if (.step2_is_forecast_scenario(source) ||
-      grepl("^(Seasonal|Subseasonal) forecast / ", source)) "Forecast" else .normalise_ssp(source)
+    ssp_key <- if (.step2_is_forecast_scenario(source)) "Forecast" else .normalise_ssp(source)
     colour <- if (identical(ssp_key, "Forecast")) {
       .wise_forecast
     } else if (!is.na(ssp_key) && ssp_key %in% names(.ssp_colours)) {
@@ -924,7 +922,7 @@ echart_weather_density_panel <- function(survey_weather,
   colors <- function(source) {
     if (identical(source, "Historical")) return(.wise_history)
     if (identical(source, "Model support")) return(.wise_support)
-    if (.step2_is_forecast_scenario(source) || grepl("^(Seasonal|Subseasonal) forecast / ", source)) {
+    if (.step2_is_forecast_scenario(source)) {
       return(.wise_forecast)
     }
     key <- .normalise_ssp(source)

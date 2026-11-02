@@ -32,9 +32,7 @@
   end <- seq(start, by = "month", length.out = as.integer(forecast$len))[[as.integer(forecast$len)]]
   list(
     gk = paste0("forecast_", digest::digest(
-      list(run$id, run$data_sha256, run$manifest_sha256, run$members,
-        forecast$start, forecast$len),
-      algo = "sha256"
+      .forecast_identity(run, forecast$start, forecast$len), algo = "sha256"
     )),
     label = .step2_forecast_display_key(run, list(label = if (forecast$len == 1L) {
       format(start, "%b %Y")
@@ -288,18 +286,8 @@ prepare_weather_manifest <- function(
   prepared_weather_cache <- match.arg(prepared_weather_cache)
   fp_list <- future_period %||% list()
   ssps <- ssp %||% character(0)
-  forecast_cache_identity <- if (is.null(forecast)) NULL else list(
-    id = forecast$run$id,
-    data_sha256 = forecast$run$data_sha256,
-    manifest_sha256 = forecast$run$manifest_sha256,
-    file = forecast$run$file,
-    members = forecast$run$members,
-    start = forecast$start,
-    len = forecast$len
-  )
-  forecast_cache_signature <- if (is.null(forecast)) NULL else list(
-    run = forecast_cache_identity, start = forecast$start, len = forecast$len
-  )
+  forecast_cache_signature <- if (is.null(forecast)) NULL else
+    .forecast_identity(forecast$run, forecast$start, forecast$len)
   signature <- .step2_prepared_weather_cache_signature(
     selected_weather, selected_surveys, survey_data, connection_params, dates,
     fp_list, ssps, perturbation_method, stored_breaks, epsilon,
@@ -562,11 +550,8 @@ fct_run_simulation <- function(sw,
     )
   }
   forecast_reference_pipelines <- list()
+  if (has_forecast) forecast$run$label <- forecast$run$label %||% forecast$run$id
   forecast_group <- if (has_forecast) .step2_forecast_group(forecast) else NULL
-  if (has_forecast) {
-    forecast$run$label <- forecast$run$label %||% forecast$run$id
-    forecast_group <- .step2_forecast_group(forecast)
-  }
   forecast_member_order <- 0L
   forecast_member_metadata <- list()
   forecast_member_info <- function(key) {
@@ -1281,15 +1266,16 @@ fct_run_simulation <- function(sw,
       dates = sim_dates, connection_params = cp,
       ssp = if (has_future) ssps else NULL,
       future_period = if (has_future) fp_list else NULL,
-       perturbation_method = perturbation_method, stored_breaks = stored_breaks,
-       weather_collect = weather_collect, weather_threads = weather_threads,
-       weather_consumer = function(key, weather, metadata = NULL) {
-         if (isTRUE(metadata$forecast)) {
-           consume_key(paste0("member_", metadata$forecast_member), weather, metadata)
+      perturbation_method = perturbation_method, stored_breaks = stored_breaks,
+      weather_collect = weather_collect, weather_threads = weather_threads,
+      weather_consumer = function(key, weather, metadata = NULL) {
+        if (isTRUE(metadata$forecast)) {
+          consume_key(paste0("member_", metadata$forecast_member), weather, metadata)
         } else {
           consume_key(key, weather, metadata)
         }
-        }, keep_continuous = TRUE
+      },
+      keep_continuous = TRUE
     ), forecast),
     error = function(e) {
       if (inherits(e, "wiseapp_step2_cancelled")) stop(e)
@@ -1299,10 +1285,10 @@ fct_run_simulation <- function(sw,
         dates = sim_dates, connection_params = cp,
         ssp = if (has_future) ssps else NULL,
         future_period = if (has_future) fp_list else NULL,
-         perturbation_method = perturbation_method,
-         stored_breaks = stored_breaks,
-         weather_collect = weather_collect,
-          weather_threads = weather_threads, keep_continuous = TRUE
+        perturbation_method = perturbation_method,
+        stored_breaks = stored_breaks,
+        weather_collect = weather_collect,
+        weather_threads = weather_threads, keep_continuous = TRUE
       ), forecast)
     }
   )

@@ -194,3 +194,25 @@ test_that("reference-year frames run through the forecast pipeline apart from th
   expect_equal(sort(scenario$pipelines$member_0$y_point), c(11, 11, 21, 21), tolerance = 1e-8)
   expect_identical(result$n_keys, 3L)
 })
+
+test_that("one forecast identity drives the group key, the run signature and the cache key", {
+  run <- list(id = "2026-10", product = "seasonal", label = "October 2026", members = 0:1,
+    data_sha256 = "d", manifest_sha256 = "m", data_version = "v1", file = "f.parquet")
+  forecast <- list(run = run, start = "2026-12", len = 2L)
+  id <- .forecast_identity(run, "2026-12", 2L)
+  expect_identical(id$members, 0:1)
+  expect_identical(id$file, "f.parquet")
+  window <- list(start = "2026-12", idx = c(1L, 2L))
+  expect_identical(.step2_forecast_signature(run, window), id)
+  expect_identical(.step2_forecast_group(forecast)$gk,
+    paste0("forecast_", digest::digest(id, algo = "sha256")))
+  for (field in c("data_sha256", "manifest_sha256", "data_version", "file", "members")) {
+    changed <- run
+    changed[[field]] <- if (field == "members") 0:2 else "other"
+    expect_false(identical(.forecast_identity(changed, "2026-12", 2L), id), info = field)
+  }
+  expect_false(identical(.forecast_identity(run, "2027-01", 2L), id))
+  expect_false(identical(.forecast_identity(run, "2026-12", 3L), id))
+  # A scaffold run without checksums carries no data identity.
+  expect_null(.forecast_identity(list(id = "x"), "2026-12", 1L)$data_sha256)
+})
