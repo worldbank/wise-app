@@ -137,6 +137,21 @@ Proposal: publish, with each run, an immutable observed-context file, `<run_id>_
 
 **H. Stale handover.** `dev/forecast_handover.md` still says the app does not read the files and does not enforce the predictor-window rule. Update it when item A is agreed.
 
+## Status (2026-11-02)
+
+Done on `seasonal-forecast` (tested on the synthetic draft-2 fixture, `dev/make_fixture_forecast_draft2.R`; no real draft-2 files exist yet):
+
+- Order of work 1 to 5, 7 (skill) and the reduced step 6. The draft-2 reader skips invalid runs (item 7 and upstream A), the weather builder is bit-identical and about 100 times faster, the `int_month` and `n_forecast_members` bugs are fixed, the same-window reference and member placement drive the cards and a placement chart, and annual sections are hidden for a forecast-only run.
+- Skill: the app reads the pipeline's `skill_flag` (agreed rule "balanced", `acc_detrended` and `crpss`, set upstream) and reports it per target month.
+- `dev/check_forecast_data.R` checks a real data root against the reader.
+
+Open:
+
+- Real draft-2 files from `wise-app-data` (CDS requests need approval there), then a first review of placement and skill on real BFA data.
+- Step 6 not done: a `kind` field on scenarios and tables, and shared weather helpers with `get_weather()` (protected numerics; needs parity runs on all engines).
+- Step 3 still rejects policy runs with a forecast (the annual exposure contract has no target-month replication).
+- `manifest.json` is regenerated only when the branch is ready for the PR into `dev` (`deploy-contract` fails until then).
+
 ## Proposed order of work
 
 1. Performance fixes 1 to 4 in section 2, with bit-identical member frames on BFA (save the current output first) and a `wise-benchmark` before/after.
