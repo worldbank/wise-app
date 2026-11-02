@@ -851,6 +851,17 @@ test_that("sim_id follows the fit and the simulation settings that change result
   expect_identical(hist("ssp2_4_5"), hist("ssp5_8_5"))
 })
 
+test_that("a replaced forecast publication under the same run id changes sim_id", {
+  with_identity <- function(sha) {
+    spec <- sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)))
+    spec$sim$forecast$identity <- list(data_sha256 = sha, manifest_sha256 = "m")
+    spec
+  }
+  expect_identical(wise_spec_ids(with_identity("a"))$sim_id, wise_spec_ids(with_identity("a"))$sim_id)
+  expect_false(identical(wise_spec_ids(with_identity("a"))$sim_id, wise_spec_ids(with_identity("b"))$sim_id))
+  expect_identical(wise_spec_ids(with_identity("a"))$fit_id, wise_spec_ids(with_identity("b"))$fit_id)
+})
+
 test_that("forecast specs are optional, canonical and distinct in sim_id", {
   base <- sim_spec(list(future_periods = list(), ssps = list()))
   forecast <- sim_spec(list(forecast = list(

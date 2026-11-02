@@ -148,9 +148,21 @@ Done on `seasonal-forecast` (tested on the synthetic draft-2 fixture, `dev/make_
 Open:
 
 - Real draft-2 files from `wise-app-data` (CDS requests need approval there), then a first review of placement and skill on real BFA data.
-- Step 6 not done: a `kind` field on scenarios and tables, and shared weather helpers with `get_weather()` (protected numerics; needs parity runs on all engines).
-- Step 3 still rejects policy runs with a forecast (the annual exposure contract has no target-month replication).
+- Step 6 not done: a `kind` field on scenarios and tables, and shared weather helpers with `get_weather()` (protected numerics; needs parity runs on all engines). Decision 3.
+- Step 3 still rejects policy runs with a forecast: the exposure validator needs the interview month, the weight scale and the target month separated. Design and options: `roadmap/seasonal_forecast_step3_design.md`. Decision 1.
+- Batch: a `sim.forecast` run works end to end on the fixture and its `sim_id` now carries the run's publication identity. The tables carry no reference, placement, skill or season check yet (decision 2), and CI has no private-data-free forecast test (decision 6).
 - `manifest.json` is regenerated only when the branch is ready for the PR into `dev` (`deploy-contract` fails until then).
+
+## Decisions needed (2026-11-02)
+
+Each has a recommended option first.
+
+1. **Step 3 scope** (`roadmap/seasonal_forecast_step3_design.md`). (a) Keep blocked until real-data acceptance, then static levers only, as a separate PR. (b) Static levers now. (c) Static plus shock-responsive transfers triggered by the same-window reference. (d) Keep blocked indefinitely.
+2. **Batch tables for a forecast.** (a) One new `forecast` table (member and reference values, placement, return period) plus `summary` rows for the placement, skill flags and training-month share. (b) Reference years as extra rows of `annual` under a "Same-window reference" scenario only. (c) No new batch output.
+3. **Step 6 remainder** (shared weather helpers with `get_weather()`, scenario `kind`). (a) Defer to a follow-up PR after real-data acceptance. (b) Do now, before the PR. (c) Drop.
+4. **Forecast button without data.** (a) Hide it for countries with no forecast. (b) Show it disabled with the reason. (c) Always show, as the scaffold does.
+5. **PR shape.** (a) One PR into `dev` from the chunked commits. (b) Two PRs: reader, bug fixes and speed-up first, then reference, placement, skill and UI. (c) Squash.
+6. **CI coverage without private data.** (a) Add a forecast option to `batch_fixture_tree()` (tiny `TST` draft-2 run) so `sim.forecast` is tested in CI. (b) Skip; rely on local fixture runs.
 
 ## Proposed order of work
 

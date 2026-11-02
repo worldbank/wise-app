@@ -865,6 +865,8 @@ wise_spec_resolve <- function(spec, metadata, connection_params, survey_columns 
     if (is.null(window)) stop("sim.forecast target window is not available in the selected run.", call. = FALSE)
     spec$sim$forecast$run <- run$id
     spec$sim$forecast$product <- run$product
+    # Immutable publication identity: replaced files under the same run id change sim_id and rerun the target.
+    spec$sim$forecast$identity <- .forecast_identity(run, spec$sim$forecast$start, spec$sim$forecast$len)
   }
   wvars <- get_weather_vars(metadata$variable_list)
   vars <- wise_spec_weather_vars(spec$weather)
