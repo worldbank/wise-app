@@ -666,6 +666,7 @@ compact_step2_result <- function(result,
   result$new_scenarios <- lapply(result$new_scenarios %||% list(), function(s) {
     s$shared_context <- context
     s$pipelines <- lapply(s$pipelines %||% list(), .compact_pipeline)
+    if (length(s$reference_pipelines)) s$reference_pipelines <- lapply(s$reference_pipelines, .compact_pipeline)
     s
   })
   result$payload_mode <- "compact"
@@ -716,6 +717,7 @@ step2_share_constants <- function(result) {
   if (!is.null(result$new_scenarios)) {
     result$new_scenarios <- lapply(result$new_scenarios, function(s) {
       if (is.list(s) && is.list(s$pipelines)) s$pipelines <- lapply(s$pipelines, share_pipe)
+      if (is.list(s) && length(s$reference_pipelines)) s$reference_pipelines <- lapply(s$reference_pipelines, share_pipe)
       s
     })
   }
@@ -748,6 +750,7 @@ step2_unshare_constants <- function(result) {
   if (!is.null(result$new_scenarios)) {
     result$new_scenarios <- lapply(result$new_scenarios, function(s) {
       if (is.list(s) && is.list(s$pipelines)) s$pipelines <- lapply(s$pipelines, unshare_pipe)
+      if (is.list(s) && length(s$reference_pipelines)) s$reference_pipelines <- lapply(s$reference_pipelines, unshare_pipe)
       s
     })
   }

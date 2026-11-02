@@ -750,6 +750,7 @@ run_sim_pipeline <- function(weather_raw,
       dplyr::mutate(year = as.character(year)) |>
       dplyr::select(-dplyr::any_of(drop_cols))
   }
+  svy_join <- .step2_forecast_join_keys(svy_join)
 
   # Keep a narrow locator to the exact prepared weather rows used below.
   # IDs are assigned before either join path so duplicate timestamps remain
@@ -767,7 +768,8 @@ run_sim_pipeline <- function(weather_raw,
       .add_sim_timestamp_fields() |>
       dplyr::select(-timestamp) |>
       dplyr::inner_join(svy_join, by = c("code", "year", "survname", "loc_id", "int_month")) |>
-      dplyr::mutate(year = as.factor(year))
+      dplyr::mutate(year = as.factor(year)) |>
+      .step2_restore_int_month()
   }, detail = if (!is.null(weather_join_cache) && !is_rif_policy) "compact_cache" else "inline")
   rm(svy_join)
   survey_wd_sim$.policy_prediction_row_id <- seq_len(nrow(survey_wd_sim))
@@ -1423,7 +1425,7 @@ join_weather_survey_cached <- function(weather_raw, cache) {
   }
   weather_rows <- rep.int(seq_len(nrow(weather)), n_matches)
   survey_rows <- unlist(matches[n_matches > 0L], use.names = FALSE)
-  as.data.frame(dplyr::mutate(
+  .step2_restore_int_month(as.data.frame(dplyr::mutate(
     dplyr::bind_cols(
       tibble::as_tibble(weather[weather_rows, , drop = FALSE]),
       tibble::as_tibble(cache$survey[survey_rows, cache$survey_nonjoin,
@@ -1431,7 +1433,7 @@ join_weather_survey_cached <- function(weather_raw, cache) {
       ])
     ),
     year = as.factor(year)
-  ))
+  )))
 }
 
 #' Prepare Historical Weather Data for Simulation

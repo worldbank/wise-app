@@ -629,7 +629,8 @@ step2_headline_cards <- function(bands,
                                  metadata = NULL,
                                  baseline_check = NULL,
                                  delta_ci = NULL,
-                                 weather_support = NULL) {
+                                 weather_support = NULL,
+                                 forecast_placement = NULL) {
   if (is.null(bands) || !nrow(bands) ||
     !all(c("is_historical", "scenario") %in% names(bands))) {
     return(NULL)
@@ -715,18 +716,25 @@ step2_headline_cards <- function(bands,
     poor_change_text(change, w_pop)
   }
 
-  # 1. Expected change (focus scenario vs historical, average year)
-  change_1 <- if (has_future) focus$value - hist$value else NA_real_
+  # A forecast is compared with the same-window reference (observed weather for the same calendar months
+  # in each reference year), not with Historical (interview months). Only at outcome level: a deviation
+  # view is already relative to the historical mean.
+  fp <- if (forecast_focus && identical(deviation, "none")) forecast_placement else NULL
+  base_value <- if (!is.null(fp)) mean(fp$reference$value) else hist$value
+  base_label <- if (!is.null(fp)) "Same-window climatology" else "Historical"
+
+  # 1. Expected change (focus scenario vs its comparator, average year)
+  change_1 <- if (has_future) focus$value - base_value else NA_real_
   val_1 <- if (has_future) display_value(change_1, change = TRUE) else display_value(hist$value)
   line1_1 <- if (has_future && is_change) {
     deviation_label
   } else if (has_future) {
-    paste0(display_value(hist$value), arrow, display_value(focus$value))
+    paste0(display_value(base_value), arrow, display_value(focus$value))
   } else {
     "Historical baseline"
   }
   line2_1 <- if (has_future) {
-    paste0("Historical", arrow, scen_lab, if (forecast_focus) " \u00b7 target window" else " \u00b7 average year")
+    paste0(base_label, arrow, scen_lab, if (forecast_focus) " \u00b7 target window" else " \u00b7 average year")
   } else {
     "Average year"
   }
@@ -766,7 +774,8 @@ step2_headline_cards <- function(bands,
       if (forecast_focus) {
         paste(
           "Expected aggregate outcome for the selected forecast target window compared with the",
-          "historical baseline (mean across forecast members)."
+          if (!is.null(fp)) "same-window climatology" else "historical baseline",
+          "(mean across forecast members)."
         )
       } else {
         paste(
@@ -790,7 +799,7 @@ step2_headline_cards <- function(bands,
        ),
       "Weather values outside the historical range need",
       "extrapolation: the Diagnostics tab flags them under weather support.",
-      if (has_future) paste0("Historical: ", display_value(hist$value),
+      if (has_future) paste0(base_label, ": ", display_value(base_value),
         ". Scenario: ", display_value(focus$value), "."),
       metric_context_note(metadata)
     ),
@@ -848,7 +857,19 @@ step2_headline_cards <- function(bands,
     }
     card1$weather_support <- weather_support
   }
-  card1$value_native <- as.numeric(c(hist$value, if (has_future) focus$value else NA_real_))
+  if (forecast_focus) {
+    tm <- saved_scenarios[[as.character(focus$scenario)]]$training_months
+    if (is.finite(tm$share %||% NA_real_) && tm$share < 0.5 * tm$expected) {
+      season_txt <- paste0(
+        "Only ", formatC(100 * tm$share, format = "f", digits = 0), "% of the model's training observations ",
+        "were interviewed in the target months: the weather response is applied to months it was ",
+        "barely estimated from."
+      )
+      card1$info <- paste(card1$info, season_txt)
+      card1$basis_text <- paste(card1$basis_text, season_txt, sep = " \u00b7 ")
+    }
+  }
+  card1$value_native <- as.numeric(c(base_value, if (has_future) focus$value else NA_real_))
   card1$change_native <- change_1
   card1$change_ci_native <- if (!is.null(ci_1)) c(ci_1$lo, ci_1$hi) else c(NA_real_, NA_real_)
   card1$change_display <- if (has_future) display_value(change_1, change = TRUE) else ""
@@ -964,6 +985,18 @@ step2_headline_cards <- function(bands,
   card2$return_period_native <- if (forecast_focus) NA_real_ else rp_focus
   if (forecast_focus) card2$status <- NULL
   if (forecast_focus) card2$change_native <- NA_real_
+  if (!is.null(fp)) {
+    txt <- .forecast_placement_text(fp)
+    card2$label <- "Placement in climatology"
+    card2$value <- txt$value
+    card2$note <- paste(c(txt$median_text, txt$note), collapse = " \u00b7 ")
+    card2$note_html <- shiny::tagList(
+      shiny::tags$div(txt$median_text),
+      shiny::tags$div(style = "font-weight: 600;", txt$note)
+    )
+    card2$info <- txt$info
+    card2$value_native <- as.numeric(fp$summary$share_worse_than_1in10)
+  }
   if (both_20) card2$status <- headline_status(change_2, direction, display = card2$change_display)
   if (nzchar(card2$change_display)) {
     card2$note <- paste(card2$note, paste("Difference:", card2$change_display), sep = " \u00b7 ")
@@ -1228,11 +1261,11 @@ step2_headline_cards <- function(bands,
   if (forecast_focus) n_years <- 1L
 
   n_scenarios <- length(saved_scenarios %||% list())
-  if (forecast_focus) n_mods <- as.integer(focus$n_forecast_members %||% focus$n_models %||% 1L)
+  # A forecast row's `n_models` is its member count (`fct_run_simulation()` groups members per scenario).
+  if (forecast_focus) n_mods <- as.integer(focus[["n_models"]] %||% 1L)
   if (!n_scenarios && nrow(fut_rows)) {
     n_scenarios <- length(unique(as.character(fut_rows$scenario)))
   }
-  if (forecast_focus) n_mods <- as.integer(focus$n_forecast_members %||% focus$n_models %||% 1L)
 
   # Total simulated model-years across all scenarios, models, and weather years
   total_runs <- if (!is.null(timeseries_curves) && nrow(timeseries_curves)) {
@@ -1301,7 +1334,7 @@ step2_headline_cards <- function(bands,
     n_members <- if (!is.null(focus_curves) && nrow(focus_curves) && "model_id" %in% names(focus_curves)) {
       length(unique(focus_curves$model_id))
     } else {
-      as.integer(focus$n_forecast_members %||% focus$n_models %||% NA_integer_)
+      as.integer(focus[["n_models"]] %||% NA_integer_)
     }
     line1_5 <- paste(n_members, "forecast members; one target window each")
     if (!is.finite(n_members)) line1_5 <- "Forecast member count unavailable"

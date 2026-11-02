@@ -44,3 +44,57 @@ test_that("forecast chart preparation uses its own key and forecast palette", {
   expect_no_error(cards <- step2_headline_cards(bands))
   expect_length(cards, 5L)
 })
+
+test_that("forecast headline cards read the member count without tibble warnings", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "Seasonal forecast / Nov 2026 - Jan 2027 (2026-10 run)"),
+    value = c(1, 2), interann_lo = c(0, NA), interann_hi = c(2, NA),
+    intermod_lo = c(NA, 1.5), intermod_hi = c(NA, 2.5),
+    coef_lo = c(0.5, 1.7), coef_hi = c(1.5, 2.3),
+    is_historical = c(TRUE, FALSE), n_models = c(1L, 51L)
+  )
+  expect_no_warning(cards <- step2_headline_cards(bands))
+  expect_match(paste(unlist(cards), collapse = " "), "51 forecast members")
+})
+
+test_that("forecast cards compare with the same-window reference and show the placement", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "Seasonal forecast / Nov 2026 - Jan 2027 (2026-10 run)"),
+    value = c(10, 8), interann_lo = c(8, NA), interann_hi = c(12, NA),
+    intermod_lo = c(NA, 7), intermod_hi = c(NA, 9),
+    coef_lo = c(9, 7.5), coef_hi = c(11, 8.5),
+    is_historical = c(TRUE, FALSE), n_models = c(1L, 51L)
+  )
+  reference <- 1:20 / 2 + 3
+  placement <- c(.forecast_placement_stats(c(4, 5, 6, 7, 8), reference, "low"),
+    list(reference = data.frame(year = 1991:2010, value = reference), method = "mean", adverse_tail = "low"))
+  expect_no_warning(cards <- step2_headline_cards(bands, forecast_placement = placement))
+  # Comparator is the reference mean (8.25), not Historical (10).
+  expect_equal(cards[[1L]]$value_native, c(mean(reference), 8))
+  expect_equal(cards[[1L]]$change_native, 8 - mean(reference))
+  expect_match(cards[[1L]]$note, "Same-window climatology")
+  expect_false(grepl("Historical", cards[[1L]]$note))
+  expect_identical(cards[[2L]]$label, "Placement in climatology")
+  expect_match(cards[[2L]]$value, "% of members")
+  expect_match(cards[[2L]]$info, "not a probability")
+  # Without a placement, or in a deviation view, the cards keep the Historical comparator.
+  plain <- step2_headline_cards(bands)
+  expect_equal(plain[[1L]]$value_native, c(10, 8))
+  dev <- step2_headline_cards(bands, forecast_placement = placement, deviation = "mean")
+  expect_equal(dev[[1L]]$value_native, c(10, 8))
+})
+
+test_that("forecast cards warn when the target months are rare in the training data", {
+  label <- "Seasonal forecast / Mar 2027 (2026-10 run)"
+  bands <- tibble::tibble(
+    scenario = c("Historical", label), value = c(10, 8), interann_lo = c(8, NA), interann_hi = c(12, NA),
+    intermod_lo = c(NA, 7), intermod_hi = c(NA, 9), coef_lo = c(9, 7.5), coef_hi = c(11, 8.5),
+    is_historical = c(TRUE, FALSE), n_models = c(1L, 51L)
+  )
+  rare <- setNames(list(list(training_months = list(share = 0, expected = 1 / 12))), label)
+  common <- setNames(list(list(training_months = list(share = 0.09, expected = 1 / 12))), label)
+  expect_match(step2_headline_cards(bands, saved_scenarios = rare)[[1L]]$basis_text,
+    "0% of the model's training observations")
+  expect_false(grepl("training observations",
+    step2_headline_cards(bands, saved_scenarios = common)[[1L]]$basis_text))
+})

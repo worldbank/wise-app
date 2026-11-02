@@ -90,6 +90,9 @@
     length.out = n_before + run$n_leads + .STEP2_FORECAST_AFTER)
   fc <- seq(run$init, by = "month", length.out = run$n_leads)
   observed <- run$observed_through %||% as.Date(NA)
+  # A draft-2 run carries `context_months` observed months before init; earlier months are not in the run.
+  first_obs <- if (is.null(run$context_months)) as.Date(NA) else .step2_month_add(run$init, -run$context_months)
+  in_context <- function(x) is.na(first_obs) | x >= as.numeric(first_obs)
   lags <- if (is.null(selected_weather)) {
     seq.int(0L, lag)
   } else {
@@ -99,14 +102,15 @@
   }
   predictor_ok <- vapply(month, function(target) {
     needed <- vapply(lags, function(n) as.numeric(.step2_month_add(target, -n)), numeric(1))
-    all((!is.na(observed) & needed <= as.numeric(observed)) | needed %in% as.numeric(fc))
+    all((!is.na(observed) & needed <= as.numeric(observed) & in_context(needed)) | needed %in% as.numeric(fc))
   }, logical(1))
   data.frame(
     month = month,
     value = format(month, "%Y-%m"),
     name = format(month, "%b"),
     year = format(month, "%Y"),
-    kind = ifelse(month %in% fc, "fc", ifelse(!is.na(observed) & month <= observed, "obs", "na")),
+    kind = ifelse(month %in% fc, "fc",
+      ifelse(!is.na(observed) & month <= observed & in_context(as.numeric(month)), "obs", "na")),
     predictor_ok = predictor_ok,
     stringsAsFactors = FALSE
   )
@@ -305,7 +309,6 @@ forecast_strip_legend <- function() {
     out$data_version <- run$data_version
     out$data_sha256 <- run$data_sha256
     out$manifest_sha256 <- run$manifest_sha256
-    out$historical_sha256 <- run$historical_sha256
     out$members <- run$members
   }
   out

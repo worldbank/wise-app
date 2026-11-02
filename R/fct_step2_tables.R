@@ -859,6 +859,7 @@ step2_method_views <- function(agg, hs, scenarios, method, selected_weather = NU
         step2_weather_support_view(hb, scenarios, selected_weather),
         error = function(e) NULL
       ),
+      forecast_placement = step2_forecast_placement_view(scenarios, method, hs, agg$pov_line),
       metadata = step2_card_metadata(hs, method, agg$pov_line, agg$weight_key)
     )
   }

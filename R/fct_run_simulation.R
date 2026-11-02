@@ -52,7 +52,9 @@
   weight_col <- if ("weight" %in% names(svy)) "weight" else NULL
   expanded <- lapply(months, function(month) {
     month_svy <- svy
-    month_svy$int_month <- as.integer(format(month, "%m"))
+    # `int_month` stays the household's interview month (a fixed effect in the model); the target
+    # month only selects the weather.
+    month_svy$.wx_month <- as.integer(format(month, "%m"))
     if (!is.null(weight_col)) month_svy[[weight_col]] <- month_svy[[weight_col]] / length(months)
     month_svy
   })
@@ -60,6 +62,39 @@
   rownames(out) <- NULL
   out$.svy_row_id <- rep(seq_len(nrow(svy)), times = length(months))
   out
+}
+
+# Share of the model's training observations interviewed in the target window's calendar months, and
+# the share an even spread over the year would give. The weather effect is estimated mostly from these
+# seasons; a low share means the forecast applies it to months the model has barely seen. `share` is NA
+# when the training data has no interview month.
+.step2_forecast_training_months <- function(train_data, forecast) {
+  start <- as.Date(paste0(forecast$start, "-01"))
+  months <- unique(as.integer(format(seq(start, by = "month", length.out = as.integer(forecast$len)), "%m")))
+  share <- if (is.data.frame(train_data) && "int_month" %in% names(train_data)) {
+    mean(train_data$int_month %in% months, na.rm = TRUE)
+  } else NA_real_
+  list(share = share, expected = length(months) / 12)
+}
+
+# The weather join matches on `int_month`; for a forecast that must be the target month (`.wx_month`),
+# while the household's interview month moves to `.int_month_svy` and is restored after the join
+# (`.step2_restore_int_month()`), so the model's `int_month` fixed effect is evaluated at the survey value.
+# A frame without `.wx_month` (historical, SSP, or already swapped) is returned unchanged.
+.step2_forecast_join_keys <- function(svy_prepared) {
+  if (!".wx_month" %in% names(svy_prepared)) return(svy_prepared)
+  svy_prepared$.int_month_svy <- svy_prepared$int_month
+  svy_prepared$int_month <- svy_prepared$.wx_month
+  svy_prepared$.wx_month <- NULL
+  svy_prepared
+}
+
+.step2_restore_int_month <- function(df) {
+  if (".int_month_svy" %in% names(df)) {
+    df$int_month <- df$.int_month_svy
+    df$.int_month_svy <- NULL
+  }
+  df
 }
 
 # Step 2 data-quality counts ----
@@ -257,7 +292,6 @@ prepare_weather_manifest <- function(
     id = forecast$run$id,
     data_sha256 = forecast$run$data_sha256,
     manifest_sha256 = forecast$run$manifest_sha256,
-    historical_sha256 = forecast$run$historical_sha256,
     file = forecast$run$file,
     members = forecast$run$members,
     start = forecast$start,
@@ -521,6 +555,13 @@ fct_run_simulation <- function(sw,
   withr::local_seed(seed)
   has_future <- length(fp_list) > 0 && length(ssps) > 0
   has_forecast <- !is.null(forecast)
+  # Same-window reference: the Historical period's years, evaluated on the forecast's target months.
+  if (has_forecast && is.null(forecast$reference_years) && length(sim_dates) >= 1L) {
+    forecast$reference_years <- seq.int(
+      as.integer(format(min(as.Date(sim_dates)), "%Y")), as.integer(format(max(as.Date(sim_dates)), "%Y"))
+    )
+  }
+  forecast_reference_pipelines <- list()
   forecast_group <- if (has_forecast) .step2_forecast_group(forecast) else NULL
   if (has_forecast) {
     forecast$run$label <- forecast$run$label %||% forecast$run$id
@@ -738,15 +779,20 @@ fct_run_simulation <- function(sw,
   )
   profile_memory("survey_prepared", svy_prepared)
   forecast_svy <- if (has_forecast) .step2_forecast_expand_survey(svy, forecast) else NULL
-  forecast_svy_prepared <- if (has_forecast) .step2_survey_projection(
-    forecast_svy, mf, sw, so,
-    id_col = shared_id_col, weight_cols = wt_detected
-  ) else NULL
+  forecast_svy_prepared <- if (has_forecast) {
+    prepared <- .step2_survey_projection(
+      forecast_svy, mf, sw, so,
+      id_col = shared_id_col, weight_cols = wt_detected
+    )
+    prepared$.wx_month <- forecast_svy$.wx_month
+    prepared
+  } else NULL
   forecast_weather_join_cache <- if (has_forecast && isTRUE(join_cache) &&
     all(c("code", "year", "survname", "loc_id", "int_month") %in%
       names(forecast_svy_prepared))) {
     build_weather_join_cache(dplyr::mutate(
-      forecast_svy_prepared, .svy_row_id = rep(seq_len(nrow(svy)), times = as.integer(forecast$len))
+      .step2_forecast_join_keys(forecast_svy_prepared),
+      .svy_row_id = rep(seq_len(nrow(svy)), times = as.integer(forecast$len))
     ))
   } else NULL
   if (has_forecast && !is.null(forecast_svy_prepared)) {
@@ -923,6 +969,45 @@ fct_run_simulation <- function(sw,
     invisible(NULL)
   }
 
+  # One reference year: observed weather for the target months, run through the forecast's survey
+  # expansion and the same pipeline. Kept apart from the members (`reference_pipelines`), so every
+  # member-based aggregation is unchanged.
+  consume_reference <- function(key, weather_input) {
+    year <- as.integer(sub("^refyear_", "", key))
+    attr(weather_input, "forecast_window_year") <- year
+    out <- tryCatch(
+      pipeline_fn(
+        weather_raw = weather_input, svy = forecast_svy, sw = sw, so = so,
+        model = model, residuals = residuals, train_data = train_data,
+        engine = engine, chol_obj = chol_obj, fit_multi = fit_multi,
+        taus = taus, weather_cols = weather_cols,
+        precomputed_train_aug = precomputed_train_aug,
+        svy_prepared = forecast_svy_prepared, weather_join_cache = forecast_weather_join_cache,
+        precomputed_ecdf_train = precomputed_ecdf_train,
+        direct_rif_predictions = direct_rif_predictions,
+        direct_rif_metadata = direct_rif_metadata,
+        direct_rif_baseline_cache = direct_rif_baseline_cache
+      ),
+      error = function(e) {
+        if (inherits(e, "wiseapp_step2_cancelled")) stop(e)
+        failures[[length(failures) + 1L]] <<- list(
+          key = key, gk = forecast_group$gk, is_hist = FALSE, error = conditionMessage(e)
+        )
+        NULL
+      }
+    )
+    if (is.null(out)) return(invisible(NULL))
+    if (anyNA(out$y_point)) {
+      stop(
+        "The model returned ", sum(is.na(out$y_point)), " missing predictions for the same-window reference (",
+        year, "). Results would silently drop households, so the run was stopped.", call. = FALSE
+      )
+    }
+    out$weather_raw <- NULL
+    forecast_reference_pipelines[[key]] <<- out
+    invisible(NULL)
+  }
+
   weather_refs <- list()
   emitted_keys <- character(0)
   n_keys <- 0L
@@ -931,6 +1016,9 @@ fct_run_simulation <- function(sw,
                           out_override = NULL, key_err_override = NULL,
                           out_supplied = FALSE) {
     emitted_keys <<- c(emitted_keys, key)
+    if (has_forecast && grepl("^refyear_[0-9]{4}$", key)) {
+      return(consume_reference(key, weather_input))
+    }
     n_keys <<- n_keys + 1L
     is_hist <- identical(key, "historical")
     if (!is.null(metadata) && isTRUE(metadata$forecast)) {
@@ -1028,6 +1116,13 @@ fct_run_simulation <- function(sw,
     }
     if (identical(weather_storage, "reference") && !is_hist) {
       weather_refs[[key]] <<- step2_weather_store_put(weather_store, key, weather_input)
+    }
+    if (isTRUE(metadata$forecast) && anyNA(out$y_point)) {
+      stop(
+        "The model returned ", sum(is.na(out$y_point)), " missing predictions for the seasonal forecast. ",
+        "Forecast results would silently drop households, so the run was stopped.",
+        call. = FALSE
+      )
     }
     n_pipeline_completed <<- n_pipeline_completed + 1L
     data_quality <<- .step2_data_quality_add(data_quality, out, is_hist)
@@ -1224,7 +1319,7 @@ fct_run_simulation <- function(sw,
   if (is.list(weather_result)) {
     all_keys <- unique(c(all_keys, setdiff(names(weather_result), emitted_keys)))
   }
-  n_future_keys <- sum(all_keys != "historical")
+  n_future_keys <- sum(all_keys != "historical" & !grepl("^refyear_[0-9]{4}$", all_keys))
   n_forecast_keys <- sum(grepl("^member_[0-9]+$", all_keys))
   total_runs <- n_hist_yrs * (1L + n_future_keys - n_forecast_keys) + n_forecast_keys
 
@@ -1318,6 +1413,10 @@ fct_run_simulation <- function(sw,
     if (isTRUE(meta$forecast)) {
       new_scenarios[[display_key]]$forecast <- meta$forecast_group
       new_scenarios[[display_key]]$forecast_members <- meta$forecast_members
+      new_scenarios[[display_key]]$training_months <- .step2_forecast_training_months(train_data, forecast)
+      new_scenarios[[display_key]]$reference_pipelines <- forecast_reference_pipelines
+      new_scenarios[[display_key]]$reference_years <- as.integer(sub("^refyear_", "",
+        names(forecast_reference_pipelines)))
     }
     if (!is.null(group_weather_shared[[gk]])) {
       new_scenarios[[display_key]]$weather_shared <- group_weather_shared[[gk]]
@@ -1417,6 +1516,7 @@ fct_run_simulation <- function(sw,
     start = forecast$start,
     len = as.integer(forecast$len),
     sim_year = forecast_group$sim_year,
+    reference_years = as.integer(sub("^refyear_", "", names(forecast_reference_pipelines))),
     members = forecast$run$members,
     forecast_months = seq(as.Date(paste0(forecast$start, "-01")), by = "month",
       length.out = as.integer(forecast$len)),
@@ -1424,7 +1524,6 @@ fct_run_simulation <- function(sw,
       length.out = as.integer(forecast$len))[[as.integer(forecast$len)]], "%Y-%m"),
     data_sha256 = forecast$run$data_sha256,
     manifest_sha256 = forecast$run$manifest_sha256,
-    historical_sha256 = forecast$run$historical_sha256,
     member_metadata = forecast_member_metadata
   )
   if (has_forecast) result$n_forecast_members <- length(forecast$run$members)

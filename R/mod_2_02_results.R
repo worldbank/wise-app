@@ -205,6 +205,58 @@
       )
     ),
 
+    # Forecast placement: members against the same-window reference (any run with a forecast) ----
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("has_forecast"), "']"),
+      shiny::h4(
+        "Where does the seasonal forecast fall among past years?",
+        info_popover(
+          title = "Forecast placement",
+          shiny::p(
+            "Each forecast member gives one outcome for the target months. Each grey dot is the same",
+            "outcome under observed weather for the same calendar months in one past year."
+          ),
+          shiny::p(
+            "A member to the adverse side of the dashed 1-in-10 line is worse than all but about one in ten",
+            "of the reference years. The share of members is an indicator, not a probability."
+          ),
+          docs = TRUE
+        ),
+        style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+      ),
+      shiny::div(
+        class = "results-section-card",
+        wise_chart_output(
+          ns("forecast_placement_plot"),
+          "Forecast members placed among same-window outcomes of past years",
+          height = "300px"
+        ),
+        shiny::uiOutput(ns("forecast_placement_note"))
+      )
+    ),
+    # A forecast alone has no annual weather years: say so where the annual sections would be.
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("forecast_only"), "']"),
+      shiny::div(
+        class = "results-section-card",
+        style = "margin-top: 24px;",
+        shiny::tags$p(
+          class = "text-muted small", style = "margin: 0;",
+          paste0(
+            "Adverse weather years, exceedance probabilities and return-period tables describe annual ",
+            "weather samples, so they do not apply to a seasonal forecast alone. Each forecast member is one ",
+            "target-window state: see where the forecast falls among past years above. Add a climate scenario ",
+            "to see these annual views."
+          )
+        )
+      )
+    ),
+
+    # Sections 2 to 4 are annual-weather views: hidden for a forecast-only run ----
+    shiny::conditionalPanel(
+      condition = paste0("!output['", ns("forecast_only"), "']"),
+      shiny::tagList(
+
     # Section 2: Adverse weather years (tail risk) ----
     shiny::h4(
       "What outcomes are predicted in adverse weather years?",
@@ -350,6 +402,9 @@
             "equal-model mean across SSP models; this differs from distribution-curve medians. Bounds are existing ",
             "diagnostics, not uncertainty estimates for the equal-model mean."
           )
+      )
+    ),
+
       )
     ),
 
@@ -796,6 +851,62 @@ mod_2_02_results_server <- function(id,
       )
     })
 
+    # Which annual views apply: none of the annual sections for a forecast-only run.
+    .scenario_kinds <- function() {
+      nm <- tryCatch(names(.display_saved_scenarios()), error = function(e) NULL)
+      vapply(nm %||% character(0), .step2_is_forecast_scenario, logical(1L))
+    }
+    output$forecast_only <- shiny::reactive({
+      kinds <- .scenario_kinds()
+      length(kinds) > 0L && all(kinds)
+    })
+    output$has_forecast <- shiny::reactive(any(.scenario_kinds()))
+    outputOptions(output, "forecast_only", suspendWhenHidden = FALSE)
+    outputOptions(output, "has_forecast", suspendWhenHidden = FALSE)
+
+    forecast_placement_chart <- function() {
+      pl <- forecast_placement_rv()
+      req(!is.null(pl))
+      echart_forecast_placement(
+        pl, metric_axis_label(.selected_method(), results_source()$so, "none"), height = "300px"
+      )
+    }
+    output$forecast_placement_plot <- echarts4r::renderEcharts4r({
+      .smooth_echart(forecast_placement_chart(), "forecast_placement_plot")
+    })
+    outputOptions(output, "forecast_placement_plot", suspendWhenHidden = TRUE)
+    output$forecast_placement_note <- shiny::renderUI({
+      pl <- forecast_placement_rv()
+      if (is.null(pl)) {
+        return(shiny::tags$p(class = "text-muted small", style = "margin: 8px 0 0;",
+          "Placement is unavailable: the run has no same-window reference."))
+      }
+      txt <- .forecast_placement_text(pl)
+      shiny::tags$p(
+        class = "text-muted small", style = "margin: 8px 0 0;",
+        shiny::tags$strong(paste0(txt$value, " are worse than the 1-in-10 reference year. ")),
+        paste0(txt$median_text, ". ", txt$info)
+      )
+    })
+    wise_export_figure(
+      key = "forecast_placement",
+      label = "Forecast placement among past years",
+      step = 2L,
+      fun = .committed_only(forecast_placement_chart),
+      description = "Forecast member outcomes against the same-window outcomes of each reference year.",
+      width = 9, height = 4
+    )
+
+    # Forecast members placed in the same-window reference (committed results with a forecast only).
+    forecast_placement_rv <- reactive({
+      req(headline_bands_rv())
+      if (.is_provisional()) return(NULL)
+      step2_forecast_placement_view(
+        .display_saved_scenarios(), .selected_method(), .display_hist_sim(),
+        pov_line_val(), bandwidth_p0()
+      )
+    })
+
     headline_cards_data_rv <- reactive({
       req(headline_bands_rv())
       bands <- headline_bands_rv()
@@ -816,6 +927,7 @@ mod_2_02_results_server <- function(id,
         baseline_check = tryCatch(baseline_check_rv(), error = function(e) NULL),
         delta_ci = tryCatch(delta_ci_rv(), error = function(e) NULL),
         weather_support = tryCatch(weather_support_rv(), error = function(e) NULL),
+        forecast_placement = tryCatch(forecast_placement_rv(), error = function(e) NULL),
         metadata = step2_card_metadata(
           tryCatch(.display_hist_sim(), error = function(e) NULL),
           .selected_method(), pov_line_val(), weight_key()

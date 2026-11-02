@@ -215,15 +215,13 @@ step2_slim_model_fit <- function(mf) {
         file = forecast$run$file %||% "",
         adjustment = forecast$run$adjustment %||% "",
         data_sha256 = forecast$run$data_sha256 %||% "",
-        manifest_sha256 = forecast$run$manifest_sha256 %||% "",
-        historical_sha256 = forecast$run$historical_sha256 %||% ""
+        manifest_sha256 = forecast$run$manifest_sha256 %||% ""
       ),
       start = forecast$start,
       len = as.integer(forecast$len),
       run_identity = .sig_plain(list(
         id = forecast$run$id, data_sha256 = forecast$run$data_sha256 %||% "",
         manifest_sha256 = forecast$run$manifest_sha256 %||% "",
-        historical_sha256 = forecast$run$historical_sha256 %||% "",
         file = forecast$run$file %||% "", members = forecast$run$members,
         released = forecast$run$released %||% as.Date(NA),
         next_release = forecast$run$next_release %||% as.Date(NA)
@@ -401,7 +399,6 @@ step2_compute <- function(input,
     if (is.null(current) ||
         !identical(current$data_sha256, simulation_args$forecast$run$data_sha256) ||
         !identical(current$manifest_sha256, simulation_args$forecast$run$manifest_sha256) ||
-        !identical(current$historical_sha256, simulation_args$forecast$run$historical_sha256) ||
         !identical(current$members, simulation_args$forecast$run$members)) {
       stop("Selected forecast data changed after the Step 2 snapshot was created; refresh the forecast selection.",
         call. = FALSE

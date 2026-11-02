@@ -2,10 +2,17 @@
 
 #' Construct location-month weather for each member of one seasonal run.
 #'
-#' Forecast values are already adjusted by the data pipeline. This builder
-#' combines them with observed months only for fitted predictor windows, then
-#' applies the same rolling, climate-reference, binning, and rounding rules as
-#' `get_weather()`.
+#' The run file (draft-2 schema) holds a complete monthly series per member: observed
+#' context months, then adjusted forecast months. This builder rolls the fitted
+#' predictor windows over that series, then applies the same climate-reference,
+#' binning, and rounding rules as `get_weather()`. `run` must come from
+#' `.forecast_catalogue_runs()`, which verifies its checksums; the caller does not verify again.
+#'
+#' With `reference_years`, the same target calendar months are also built from observed ERA5-Land for
+#' each of those years (the same-window reference): frames named `refyear_<year>` (the year the window
+#' starts in), delivered through `weather_consumer` with metadata `forecast_reference = TRUE`, or as
+#' `attr(, "forecast_reference")`. A year whose target or predictor months are not all observed is
+#' left out and listed in `attr(, "forecast_reference_skipped")`.
 #'
 #' @noRd
 .get_forecast_weather <- function(
@@ -19,36 +26,22 @@
   stored_breaks = NULL,
   keep_continuous = FALSE,
   seed = WISEAPP_DEFAULT_SEED,
-  weather_consumer = NULL
+  weather_consumer = NULL,
+  reference_years = NULL
 ) {
   required_run <- c(
-    "id", "product", "model_id", "init", "observed_through", "n_leads",
+    "id", "product", "model_id", "init", "observed_through", "context_months", "n_leads",
     "members", "variables", "file", "adjustment"
   )
   missing_run <- setdiff(required_run, names(run))
   if (length(missing_run)) {
     stop("Forecast run is missing field(s): ", paste(missing_run, collapse = ", "), call. = FALSE)
   }
-  if (!identical(run$adjustment, "additive_mean_bias_only")) {
-    stop("Forecast run must declare the pipeline's additive mean-bias adjustment.", call. = FALSE)
+  if (!run$adjustment %in% .FORECAST_ADJUSTMENTS) {
+    stop("Forecast run must declare a supported pipeline adjustment.", call. = FALSE)
   }
   if (!identical(as.character(run$product), "seasonal")) {
     stop("Only monthly seasonal forecast runs are supported.", call. = FALSE)
-  }
-  if (!is.null(run$data_sha256)) {
-    code <- unique(as.character(survey_data$code))
-    if (length(code) != 1L || is.na(code)) {
-      stop("Verified forecast runs require one selected country code.", call. = FALSE)
-    }
-    current_runs <- .forecast_catalogue_runs(connection_params, code)
-    current <- if (is.null(current_runs)) NULL else current_runs[[run$id]]
-    identity_fields <- c(
-      "file", "model_id", "init", "observed_through", "n_leads", "members",
-      "variables", "adjustment", "data_sha256", "manifest_sha256", "historical_sha256"
-    )
-    if (is.null(current) || !identical(run[identity_fields], current[identity_fields])) {
-      stop("The selected forecast publication changed; reload the forecast run.", call. = FALSE)
-    }
   }
   if (!nrow(selected_weather) || !all(selected_weather$name %in% run$variables)) {
     stop("The forecast run does not provide every selected weather variable.", call. = FALSE)
@@ -71,10 +64,8 @@
   target_start <- as.Date(paste0(start, "-01"))
   targets <- seq.Date(target_start, by = "month", length.out = len)
   init <- as.Date(run$init)
-  observed_through <- as.Date(run$observed_through)
   forecast_months <- seq.Date(init, by = "month", length.out = as.integer(run$n_leads))
-  if (anyNA(c(init, observed_through)) || len > length(forecast_months) ||
-      !all(targets %in% forecast_months)) {
+  if (is.na(init) || len > length(forecast_months) || !all(targets %in% forecast_months)) {
     stop("The complete target window must lie within this forecast run.", call. = FALSE)
   }
 
@@ -83,7 +74,8 @@
   allowed_starts <- .step2_forecast_starts(visible_months, len)
   if (!start %in% allowed_starts) {
     stop(
-      "Forecast predictor months must be observed through observed_through or present in this run; missing months are not filled.",
+      "Forecast predictor months must lie in the run's observed context or forecast months; ",
+      "missing months are not filled.",
       call. = FALSE
     )
   }
@@ -96,52 +88,49 @@
     vapply(lags, function(lag) as.numeric(.step2_month_add(target, -lag)), numeric(1L))
   }), use.names = FALSE), origin = "1970-01-01")
   needed_months <- sort(unique(c(targets, predictor_months)))
-  forecast_needed <- needed_months[needed_months > observed_through]
-  if (any(forecast_needed > max(forecast_months))) {
-    stop("Forecast predictor months are not covered by observations or the selected run.", call. = FALSE)
-  }
 
   members <- sort(as.integer(run$members))
   if (!length(members) || anyNA(members) || anyDuplicated(members)) {
     stop("Forecast run member identifiers are invalid.", call. = FALSE)
   }
   codes <- unique(as.character(survey_data$code))
-  weather_fnames <- paste0(
-    "hazard/weather/historical/", codes, "/", codes, "_era5land.parquet"
-  )
   if (length(codes) != 1L || is.na(codes)) {
     stop("A forecast run requires survey data for exactly one country.", call. = FALSE)
   }
+  weather_fnames <- paste0(
+    "hazard/weather/historical/", codes, "/", codes, "_era5land.parquet"
+  )
   h3_fnames <- selected_surveys |>
     dplyr::distinct(code, year, survname, source) |>
     dplyr::mutate(fname = paste0(
       "microdata/h3/", code, "/", code, "_", year, "_", survname, "_", source, "_h3.parquet"
     )) |>
     dplyr::pull(fname)
+  # Observed ERA5-Land is only the climate reference (1991-2020) and, when no breaks are stored, the
+  # survey months used to compute them. The predictor series comes from the run file itself.
+  survey_timestamps <- unique(as.Date(survey_data$timestamp[!is.na(survey_data$timestamp)]))
   date_min <- min(
     seq.Date(as.Date("1991-01-01"), by = paste0("-", max(c(0L, lags)), " months"), length.out = 2L)[[2L]],
     min(needed_months)
   )
-  date_max <- max(as.Date("2020-12-31"), observed_through)
+  reference_years <- sort(unique(as.integer(reference_years)))
+  date_max <- max(c(as.Date("2020-12-31"), survey_timestamps,
+    if (length(reference_years)) as.Date(paste0(max(reference_years) + 1L, "-12-31"))))
 
   .duck_load_ext("h3")
   con <- .duck_con()
-  forecast_cols <- c("model", "initialized_at", "member", "h3", "timestamp", "lead_month", vars)
+  # Complete member series: observed context months and forecast months, adjusted by the pipeline.
   forecast <- .wx_cache_load(
-    run$file, connection_params, cols = forecast_cols, tcol = NULL
-  )
-  forecast <- forecast |>
-    dplyr::filter(
-      model == !!as.character(run$model_id),
-      initialized_at == !!init
-    )
+    run$file, connection_params,
+    cols = c("member", "h3", "timestamp", "source", vars), tcol = NULL
+  ) |>
+    dplyr::filter(timestamp %in% !!needed_months)
   observed <- .wx_cache_load(
     weather_fnames, connection_params,
     cols = c("h3", "timestamp", vars), tmin = date_min, tmax = date_max
   ) |>
     dplyr::filter(timestamp >= !!date_min, timestamp <= !!date_max)
 
-  # The published pilot uses int64 H3 at the same resolution as ERA5-Land.
   h3_cols <- c("h3", "code", "year", "survname", "loc_id", "pop_2020")
   h3_slim <- .wx_cache_load(
     h3_fnames, connection_params, cols = h3_cols, tcol = NULL
@@ -158,7 +147,17 @@
   h3_slim <- h3_slim |>
     dplyr::group_by(code, year, survname, loc_id, h3) |>
     dplyr::summarise(pop_2020 = sum(pop_2020, na.rm = TRUE), .groups = "drop")
-  h3_slim <- h3_slim |> dplyr::compute(temporary = TRUE)
+  # Explicit table names: dbplyr's generated names repeat under a fixed seed and collide across runs.
+  tmp_names <- character()
+  tmp_name <- function(tag) {
+    name <- basename(tempfile(paste0("lw_forecast_", tag, "_")))
+    tmp_names <<- c(tmp_names, name)
+    name
+  }
+  on.exit(for (name in tmp_names) {
+    try(DBI::dbExecute(con, paste("DROP TABLE IF EXISTS", DBI::dbQuoteIdentifier(con, name))), silent = TRUE)
+  }, add = TRUE)
+  h3_slim <- h3_slim |> dplyr::compute(name = tmp_name("h3"), temporary = TRUE)
 
   forecast_h3 <- .harmonise_h3(h3_slim, forecast, con)
   observed_h3 <- .harmonise_h3(h3_slim, observed, con)
@@ -188,139 +187,40 @@
         .groups = "drop"
       )
   }
-  forecast_h3$weather <- forecast_h3$weather |> dplyr::compute(temporary = TRUE)
-  observed_h3$weather <- observed_h3$weather |> dplyr::compute(temporary = TRUE)
-  forecast_h3$h3_slim <- forecast_h3$h3_slim |> dplyr::compute(temporary = TRUE)
-  observed_h3$h3_slim <- observed_h3$h3_slim |> dplyr::compute(temporary = TRUE)
-  expected_h3 <- forecast_h3$h3_slim |>
-    dplyr::distinct(h3_weather) |>
-    dplyr::collect()
-  observed_grid <- observed_h3$weather |>
-    dplyr::distinct(h3, timestamp) |>
-    dplyr::collect()
-  observed_grid <- observed_grid[observed_grid$timestamp <= observed_through, , drop = FALSE]
-  forecast_all_h3 <- forecast_h3$weather |>
-    dplyr::distinct(h3) |>
-    dplyr::collect() |>
-    dplyr::pull(h3)
-  if (!all(as.character(forecast_all_h3) %in% as.character(observed_grid$h3)) ||
-      !all(as.character(observed_grid$h3) %in% as.character(forecast_all_h3))) {
-    stop("Observed weather cells do not match the forecast H3 grid.", call. = FALSE)
-  }
-  forecast_loc <- .pop_weighted(forecast_h3$weather, forecast_h3$h3_slim, "member")
+  # Materialised once; every later query (coverage, window, observed roll) reads these tables.
+  monthly <- .pop_weighted(forecast_h3$weather, forecast_h3$h3_slim, "member") |>
+    dplyr::compute(name = tmp_name("monthly"), temporary = TRUE)
   observed_loc <- .pop_weighted(observed_h3$weather, observed_h3$h3_slim, character()) |>
-    dplyr::filter(timestamp <= !!observed_through)
+    dplyr::compute(name = tmp_name("observed"), temporary = TRUE)
 
-  # Reject identity drift, duplicate grid-month rows, and member/lead omissions.
-  member_values <- forecast_loc |> dplyr::distinct(member) |> dplyr::collect() |> dplyr::pull(member)
-  if (!identical(sort(as.integer(member_values)), members)) {
-    stop("Forecast file member identifiers do not match the selected run.", call. = FALSE)
-  }
-  expected_leads <- data.frame(
-    lead_month = seq_len(as.integer(run$n_leads)),
-    timestamp = forecast_months
-  )
-  actual_leads <- forecast |>
-    dplyr::distinct(lead_month, timestamp) |>
-    dplyr::collect() |>
-    dplyr::arrange(lead_month)
-  if (!identical(as.integer(actual_leads$lead_month), expected_leads$lead_month) ||
-      !identical(as.Date(actual_leads$timestamp), expected_leads$timestamp)) {
-    stop("Forecast file lead months do not match the selected run.", call. = FALSE)
-  }
-  duplicate_forecast <- forecast_loc |>
-    dplyr::count(member, code, year, survname, loc_id, timestamp) |>
-    dplyr::filter(n != 1L) |>
-    utils::head(1L) |>
-    dplyr::collect()
-  if (nrow(duplicate_forecast)) {
-    stop("Forecast contains duplicate member/location/month rows.", call. = FALSE)
-  }
-
-  duplicate_h3_month <- forecast_h3$weather |>
-    dplyr::count(h3, member, timestamp) |>
-    dplyr::filter(n != 1L) |>
-    utils::head(1L) |>
-    dplyr::collect()
-  if (nrow(duplicate_h3_month)) {
-    stop("Forecast contains duplicate H3/member/month values.", call. = FALSE)
-  }
-  expected_grid <- merge(
-    merge(expected_h3, data.frame(member = members), by = NULL),
-    data.frame(timestamp = forecast_months), by = NULL
-  )
-  grid_name <- basename(tempfile("lw_forecast_grid_"))
-  duckdb::duckdb_register(con, grid_name, expected_grid)
-  on.exit(try(duckdb::duckdb_unregister(con, grid_name), silent = TRUE), add = TRUE)
-  forecast_grid <- forecast_h3$weather |>
-    dplyr::filter(timestamp %in% !!expected_grid$timestamp) |>
-    dplyr::select(h3, member, timestamp) |>
-    dplyr::distinct()
-  missing_h3 <- dplyr::tbl(con, grid_name) |>
-    dplyr::anti_join(
-      forecast_grid,
-      by = c("h3_weather" = "h3", "member", "timestamp")
-    ) |>
-    utils::head(1L) |>
-    dplyr::collect()
-  if (nrow(missing_h3)) {
-    stop("Forecast is missing an H3/member/month predictor value.", call. = FALSE)
-  }
-  missing_weather <- forecast_h3$weather |>
-    dplyr::filter(timestamp %in% !!expected_grid$timestamp) |>
-    dplyr::summarise(dplyr::across(
-      dplyr::all_of(vars), ~ sum(as.integer(is.na(.x)))
-    )) |>
-    dplyr::collect()
-  if (any(vapply(missing_weather, as.numeric, numeric(1L)) > 0)) {
-    stop("Forecast has missing weather values on its H3/member/month grid.", call. = FALSE)
-  }
-
-  # Replicate only the observed monthly predictor source across member keys.
-  # Forecast and observed periods do not overlap under the run availability rule.
-  member_tbl <- forecast_loc |> dplyr::distinct(member)
-  monthly_cols <- c("member", "code", "year", "survname", "loc_id", "timestamp", vars)
-  observed_by_member <- dplyr::cross_join(observed_loc, member_tbl) |>
-    dplyr::select(dplyr::all_of(monthly_cols))
-  monthly <- dplyr::union_all(
-    observed_by_member,
-    forecast_loc |> dplyr::select(dplyr::all_of(monthly_cols))
-  )
-
-  locations <- h3_slim |>
-    dplyr::distinct(code, year, survname, loc_id) |>
-    dplyr::collect()
-  if (!nrow(locations)) {
+  # The pipeline guarantees the run file's grid; check only what the survey locations need: every
+  # member present for every location and needed month, once, with no missing predictor.
+  n_locations <- h3_slim |> dplyr::distinct(code, year, survname, loc_id) |> dplyr::count() |>
+    dplyr::pull(n) |> as.numeric()
+  if (!n_locations) {
     stop("Forecast has no location rows matching the selected surveys.", call. = FALSE)
   }
-  expected <- merge(
-    merge(locations, data.frame(member = members), by = NULL),
-    data.frame(timestamp = needed_months), by = NULL
-  )
-  expected_name <- basename(tempfile("lw_forecast_expected_"))
-  duckdb::duckdb_register(con, expected_name, expected)
-  on.exit(try(duckdb::duckdb_unregister(con, expected_name), silent = TRUE), add = TRUE)
-  coverage_keys <- c("code", "year", "survname", "loc_id", "member", "timestamp")
-  expected_tbl <- dplyr::tbl(con, expected_name)
-  missing_key <- expected_tbl |>
-    dplyr::anti_join(monthly, by = coverage_keys) |>
-    utils::head(1L) |>
-    dplyr::collect()
-  duplicate_key <- monthly |>
-    dplyr::count(dplyr::across(dplyr::all_of(coverage_keys))) |>
-    dplyr::filter(n != 1L) |>
-    utils::head(1L) |>
-    dplyr::collect()
-  if (nrow(missing_key) || nrow(duplicate_key)) {
-    stop("Forecast predictor months are missing or duplicated for selected locations.", call. = FALSE)
-  }
   coverage <- monthly |>
-    dplyr::inner_join(expected_tbl, by = coverage_keys) |>
-    dplyr::summarise(dplyr::across(
-      dplyr::all_of(vars), ~ sum(as.integer(is.na(.x)))
-    )) |>
+    dplyr::summarise(
+      n = dplyr::n(),
+      n_keys = dplyr::n_distinct(member, code, year, survname, loc_id, timestamp),
+      n_members = dplyr::n_distinct(member),
+      min_member = min(member, na.rm = TRUE),
+      max_member = max(member, na.rm = TRUE),
+      dplyr::across(dplyr::all_of(vars), ~ sum(as.integer(is.na(.x))))
+    ) |>
     dplyr::collect()
-  missing_values <- vapply(coverage, as.numeric, numeric(1L))
+  if (as.integer(coverage$n_members) != length(members) || as.integer(coverage$min_member) != members[[1L]] ||
+      as.integer(coverage$max_member) != members[[length(members)]]) {
+    stop("Forecast file member identifiers do not match the selected run.", call. = FALSE)
+  }
+  if (coverage$n != coverage$n_keys) {
+    stop("Forecast contains duplicate member/location/month rows.", call. = FALSE)
+  }
+  if (coverage$n != n_locations * length(members) * length(needed_months)) {
+    stop("Forecast predictor months are missing for selected locations.", call. = FALSE)
+  }
+  missing_values <- vapply(coverage[vars], as.numeric, numeric(1L))
   if (any(missing_values > 0)) {
     stop(
       "Forecast predictor coverage is incomplete for variable(s): ",
@@ -328,6 +228,11 @@
       ". Missing predictor months are not filled.", call. = FALSE
     )
   }
+  # Preliminary (ERA5-Land-T) observed months that feed a predictor, for the interface to flag.
+  preliminary <- forecast |>
+    dplyr::filter(source == "era5land_t") |>
+    dplyr::distinct(timestamp) |>
+    dplyr::collect()
 
   agg_fn_map <- c(Mean = "AVG", Median = "MEDIAN", Min = "MIN", Max = "MAX", Sum = "SUM")
   make_roll_exprs <- function(partition) stats::setNames(lapply(seq_len(nrow(selected_weather)), function(i) {
@@ -349,13 +254,12 @@
   observed_roll_exprs <- make_roll_exprs("code")
   observed_roll <- observed_loc |>
     dplyr::mutate(!!!observed_roll_exprs) |>
-    dplyr::compute(temporary = TRUE)
+    dplyr::compute(name = tmp_name("roll"), temporary = TRUE)
   climate_ref <- .build_climate_reference(observed_roll, selected_weather)
   if (!is.null(climate_ref)) .warn_zero_sd_reference(climate_ref)
   has_binning <- "cont_binned" %in% names(selected_weather) &&
     any(!is.na(selected_weather$cont_binned) & selected_weather$cont_binned == "Binned")
   if (has_binning && (is.null(stored_breaks) || !length(stored_breaks))) {
-    survey_timestamps <- unique(as.Date(survey_data$timestamp[!is.na(survey_data$timestamp)]))
     hist_frame <- observed_loc |>
       dplyr::mutate(!!!observed_roll_exprs) |>
       .apply_transformations(selected_weather, observed_roll, climate_ref = climate_ref) |>
@@ -365,30 +269,61 @@
     hist_frame <- .wx_round_weather_values(hist_frame, vars)
     stored_breaks <- .compute_breaks(hist_frame, selected_weather, seed = seed)
   }
-  expected_output <- nrow(locations) * len
+  expected_output <- n_locations * len
   if (!is.null(weather_consumer) && !is.function(weather_consumer)) {
     stop("weather_consumer must be NULL or a function.", call. = FALSE)
+  }
+  # One window query for all members; the partition already includes `member`.
+  frames <- monthly |>
+    dplyr::mutate(!!!roll_exprs) |>
+    .apply_transformations(selected_weather, observed_roll, climate_ref = climate_ref) |>
+    dplyr::filter(timestamp %in% !!targets) |>
+    dplyr::arrange(member, code, year, survname, loc_id, timestamp) |>
+    dplyr::collect()
+  frames <- .wx_round_weather_values(frames, vars)
+  if (has_binning) frames <- .apply_binning(frames, stored_breaks, keep_continuous)
+  frames <- split(frames, factor(frames$member, levels = members))
+  # Same-window reference: observed weather for the target calendar months of each reference year.
+  start_year <- as.integer(format(target_start, "%Y"))
+  reference <- list()
+  reference_skipped <- integer()
+  if (length(reference_years)) {
+    ref_months <- lapply(reference_years, function(y) {
+      as.Date(vapply(targets, function(m) as.numeric(.step2_month_add(m, 12L * (y - start_year))), numeric(1L)),
+        origin = "1970-01-01")
+    })
+    ref_all <- observed_roll |>
+      .apply_transformations(selected_weather, observed_roll, climate_ref = climate_ref) |>
+      dplyr::filter(timestamp %in% !!as.Date(unlist(ref_months), origin = "1970-01-01")) |>
+      dplyr::arrange(code, year, survname, loc_id, timestamp) |>
+      dplyr::collect()
+    ref_all <- .wx_round_weather_values(ref_all, vars)
+    if (has_binning) ref_all <- .apply_binning(ref_all, stored_breaks, keep_continuous)
+    for (i in seq_along(reference_years)) {
+      frame <- ref_all[ref_all$timestamp %in% ref_months[[i]], , drop = FALSE]
+      complete <- nrow(frame) == expected_output && !anyNA(frame[vars])
+      if (!complete) {
+        reference_skipped <- c(reference_skipped, reference_years[[i]])
+        next
+      }
+      rownames(frame) <- NULL
+      attr(frame, "forecast_reference_year") <- reference_years[[i]]
+      reference[[paste0("refyear_", reference_years[[i]])]] <- frame
+    }
   }
   output <- if (is.null(weather_consumer)) vector("list", length(members)) else list()
   window <- .step2_forecast_window(visible_months, start, len)
   window$months <- targets
   for (member_index in seq_along(members)) {
     member_id <- members[[member_index]]
-    frame <- monthly |>
-      dplyr::filter(member == !!member_id) |>
-      dplyr::mutate(!!!roll_exprs) |>
-      .apply_transformations(selected_weather, observed_roll, climate_ref = climate_ref) |>
-      dplyr::filter(timestamp %in% !!targets) |>
-      dplyr::arrange(code, year, survname, loc_id, timestamp) |>
-      dplyr::collect()
-    frame <- .wx_round_weather_values(frame, vars)
-    if (has_binning) frame <- .apply_binning(frame, stored_breaks, keep_continuous)
+    frame <- frames[[member_index]]
     if (nrow(frame) != expected_output) {
       stop(
         "Forecast member ", member_id,
         " does not contain every selected location for every target month.", call. = FALSE
       )
     }
+    rownames(frame) <- NULL
     frame$member <- NULL
     attr(frame, "forecast_member") <- member_id
     attr(frame, "forecast_run") <- run$id
@@ -411,10 +346,23 @@
       ))
     }
   }
-  if (is.null(weather_consumer)) names(output) <- paste0("member_", members)
+  if (is.null(weather_consumer)) {
+    names(output) <- paste0("member_", members)
+  } else {
+    for (key in names(reference)) {
+      weather_consumer(reference[[key]], list(
+        forecast_reference = TRUE,
+        forecast_reference_year = attr(reference[[key]], "forecast_reference_year"),
+        forecast_run = run$id, start = start, len = len, is_historical = FALSE
+      ))
+    }
+  }
   attr(output, "forecast_members") <- members
   attr(output, "forecast_window") <- window
   attr(output, "forecast_run") <- run$id
+  attr(output, "forecast_reference") <- if (is.null(weather_consumer)) reference else NULL
+  attr(output, "forecast_reference_skipped") <- reference_skipped
+  attr(output, "forecast_preliminary_months") <- sort(as.Date(preliminary$timestamp))
   if (has_binning) attr(output, "stored_breaks") <- stored_breaks
   output
 }

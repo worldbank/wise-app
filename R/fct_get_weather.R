@@ -2427,10 +2427,11 @@ get_weather <- function(
       selected_weather = selected_weather, connection_params = connection_params,
       run = forecast$run, start = forecast$start, len = forecast$len,
       stored_breaks = stored_breaks, keep_continuous = keep_continuous, seed = seed,
-      weather_consumer = NULL
+      weather_consumer = NULL, reference_years = forecast$reference_years
     )
+    forecast_reference <- attr(forecast_result, "forecast_reference")
     if (is.null(weather_consumer)) {
-      result <- c(result, forecast_result)
+      result <- c(result, forecast_result, forecast_reference)
     } else {
       forecast_members <- attr(forecast_result, "forecast_members") %||%
         sub("^member_", "", names(forecast_result))
@@ -2453,6 +2454,14 @@ get_weather <- function(
         )
         emitted_order <<- emitted_order + 1L
         weather_consumer(paste0("member_", member), frame, metadata)
+      }
+      for (key in names(forecast_reference)) {
+        weather_consumer(key, forecast_reference[[key]], list(
+          forecast_reference = TRUE,
+          forecast_reference_year = attr(forecast_reference[[key]], "forecast_reference_year"),
+          forecast_run = forecast$run$id, order = emitted_order + 1L, is_historical = FALSE
+        ))
+        emitted_order <<- emitted_order + 1L
       }
     }
   }
