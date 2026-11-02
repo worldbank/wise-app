@@ -5,7 +5,7 @@ app_step: 2
 depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
-code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_run_simulation.R]
+code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_run_simulation.R]
 verified_against: 623ee30
 ---
 
@@ -33,9 +33,9 @@ where $x^{\ m}_{\ell t}$ is the raw forecast, $\bar x^{\text{fc}}_{\ell\mu}$ is 
 
 ### 2. Predictors for the target window
 
-For a target month $t$, each lagged predictor of the fitted model uses the same lag window and aggregation as in estimation (see [12_weather_measures](12_weather_measures.md)). Required months up to the run's `observed_through` are observed values; forecast months use values from the same run and member, including the initialization month (lead 1). The longest reach-back among the fitted predictors sets how many earlier months the strip shows, capped at six; the availability check is not capped.
+For a target month $t$, each lagged predictor of the fitted model uses the same lag window and aggregation as in estimation (see [12_weather_measures](12_weather_measures.md)). A run file carries a complete monthly series per member: `context_months` (12) observed months before initialization, then every forecast lead. Required months up to the run's `observed_through` (the month before initialization) are observed values from the same file; forecast months use the member's values, including the initialization month (lead 1). Observed context months from ERA5-Land-T are preliminary (`source = era5land_t`) and are reported with the run. The longest reach-back among the fitted predictors sets how many earlier months the strip shows, capped at six; the availability check is not capped.
 
-Observed weather ends before the most recent months. Every target month must lie in the forecast horizon, and every month its fitted predictors need must be observed through `observed_through` or forecast by this run. A multi-month window is available only when all its target months pass this check. There is no gap fill or climatology substitution. With an October 2026 run and observations ending in December 2025, lag 1-1 permits November to March, lag 0-0 permits October to March, and lag 1-3 permits January to March. Both the controls and the weather builder enforce this rule.
+Every target month must lie in the forecast horizon, and every month its fitted predictors need must lie in the run's observed context or forecast months. A multi-month window is available only when all its target months pass this check. There is no gap fill or climatology substitution. With an October 2026 run and 12 context months, every lag up to 12 permits November to March. Both the controls and the weather builder enforce this rule.
 
 ### 3. One state per member
 
@@ -43,7 +43,17 @@ Each member gives one complete weather state for the target window. Everything a
 
 Every baseline household is evaluated for every target month, regardless of its original interview month. Survey-wave identity and observed welfare stay fixed. Predictors and nonlinear transformations are evaluated month by month, not averaged before prediction. With a target window of $L$ months, each household-month uses its population weight divided by $L$. The member's metric therefore describes the equally weighted mixture of target-month household outcomes, not a metric of each household's averaged welfare. Only then are summaries taken across ensemble members. A single simulation-year anchor identifies the target-window state internally, including a window crossing December; it is not an annual forecast or a return-period sample.
 
-The app validates the catalogue against its run manifest, rejects a missing adjustment declaration, and checks forecast and observed-weather SHA-256 identities. The run signature includes the member IDs, data version and file hashes so a changed publication cannot silently reuse the same forecast cache identity.
+The app validates the catalogue against its run manifest, rejects a missing adjustment declaration, and checks the run file's SHA-256 identity. An invalid run is skipped and reported, not fatal. The run signature includes the member IDs, data version and file hashes so a changed publication cannot silently reuse the same forecast cache identity.
+
+The household's interview month stays its own: `int_month` is a model fixed effect and keeps the survey value, while the weather is joined on the target month. Only the weather moves to the target month, so the seasonal welfare level of each household is unchanged and a target month without interviews is not a problem. Any missing forecast prediction stops the run.
+
+### 4. Same-window reference and placement
+
+The Historical scenario evaluates each household in its own interview month. Its months generally differ from the target months, so a forecast-versus-Historical difference mostly measures seasonality. The forecast is therefore compared with a **same-window reference**: the identical computation (same model, residual treatment, weights, household-month expansion and lag windows) with observed weather for the target calendar months in each year of the Historical period. Each reference year gives one target-window aggregate $R_y$, like a member.
+
+Each member's aggregate $A_m$ is placed in the reference distribution. With $n$ reference years, $p_m$ is the share of reference years at least as adverse as $A_m$ (the adverse side follows the metric), and the member is "about a $1/p_m$-in-years outcome". Return periods beyond $n/2$ (about 1-in-15 for 30 years) are reported as beyond the observed range, not extrapolated. The Results cards report the median member's placement and the share of members worse than the reference 1-in-10 level. There is no return period for the ensemble mean, because averaging pulls it towards the centre. The member share is an indicator, not a probability.
+
+Season check: the cards warn when fewer than half of an even share of the model's training observations were interviewed in the target months, because the weather response is then applied to months it was barely estimated from. A calendar-month anomaly predictor with interview-month fixed effects is the recommended specification for forecast use.
 
 ## Interpretation
 
@@ -62,12 +72,14 @@ The band across members shows how much the forecast weather moves the model's ou
 - Skill is unproven for most seasons and leads. A backtest against held-out observations is planned before any season is shown without a warning.
 - Welfare responses are conditional on the fitted model; no adaptation within the target window.
 - Target months have equal weight, not weight proportional to their number of days. This is a monthly-state summary, not an annual welfare forecast.
-- Forecast windows are not historical-year samples; adverse-year and annual return-period interpretations do not apply.
+- Forecast windows are not historical-year samples; the annual adverse-year and return-period views do not apply. The placement in the same-window reference replaces them.
 - Step 3 policy runs must currently be preceded by a Step 2 rerun with the forecast switched off. The annual policy-exposure contract has not been extended to target-month population replication.
 
 ## In the app
 
 - Step 2 > Seasonal forecast: include the forecast, choose the run, the length of the window (1, 3 or 6 months) and the start month on the strip. The forecast is unavailable, with a reason, when the country has no forecast or the fitted model uses a variable the forecast does not provide.
+
+- Step 2 > Results: with a forecast, the cards compare with the same-window climatology and show the placement, and a chart shows the members against the reference years. A forecast-only run hides the annual adverse-year, exceedance and return-period sections and says why; with a climate scenario they remain for the scenarios.
 
 User guide: [wise-app-docs](https://github.com/worldbank/wise-app-docs).
 
@@ -85,4 +97,8 @@ None yet. Entries will be added with the backtest. Full entries are in [referenc
 | Variables the forecast provides | 1 | `R/utils_forecast_ui.R` `.step2_forecast_unsupported()` |
 | Forecast scenario name and run signature | 3 | `R/utils_forecast_ui.R` `.step2_forecast_display_key()`, `.step2_forecast_signature()` |
 | Local run discovery and publication identity | 1 | `R/fct_forecast_catalogue.R` `.forecast_catalogue_runs()` |
+| Same-window reference weather (`refyear_<year>` frames) | 4 | `R/fct_forecast_weather.R` `.get_forecast_weather(reference_years = )` |
+| Reference pipelines and the interview-month join key | 3, 4 | `R/fct_run_simulation.R` `consume_reference()`, `.step2_forecast_join_keys()` |
+| Member placement in the reference | 4 | `R/fct_forecast_placement.R` `.forecast_placement_stats()`, `step2_forecast_placement()` |
+| Cards comparator and training-month warning | 4 | `R/fct_sim_compare.R` `step2_headline_cards()` |
 | Adjusted monthly weather and fitted predictor windows | 2 | `R/fct_forecast_weather.R` `.get_forecast_weather()` |
