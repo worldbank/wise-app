@@ -120,12 +120,17 @@ make_fixture_forecast_draft2 <- function(
   skill_rel <- file.path("skill", sprintf("ecmwf_seas51_%02d_1993_2016.parquet", as.integer(format(init, "%m"))))
   dir.create(file.path(fc_dir, "skill"), showWarnings = FALSE)
   acc <- c(0.55, 0.35, 0.2, 0.1, 0.05, 0.02)[seq_len(n_leads)]
+  acc_d <- acc - 0.05
+  crpss <- c(0.2, 0.08, 0.01, -0.03, -0.05, -0.08)[seq_len(n_leads)]
   skill <- data.frame(
     init_month = as.integer(format(init, "%m")), lead_month = seq_len(n_leads), level = "country",
-    acc = acc, acc_detrended = acc - 0.05, crpss = c(0.2, 0.08, 0.01, -0.03, -0.05, -0.08)[seq_len(n_leads)],
-    roc_lower_tercile = 0.5 + acc / 2, roc_upper_tercile = 0.5 + acc / 2, n_years = 24L,
-    skill_flag = c("useful", "weak", "none", "none", "none", "none")[seq_len(n_leads)]
+    acc = acc, acc_detrended = acc_d, acc_detrended_lo = acc_d - 0.3, acc_detrended_hi = acc_d + 0.3,
+    crpss = crpss, n_years = 24L, skill_flag = "none"
   )
+  # The agreed rule (wise-app-data, 2026-11-02, "balanced"): useful = acc_detrended >= 0.40 and crpss > 0;
+  # weak = not useful, acc_detrended >= 0.20 and crpss >= 0; none otherwise.
+  skill$skill_flag <- ifelse(acc_d >= 0.40 & crpss > 0, "useful",
+    ifelse(acc_d >= 0.20 & crpss >= 0, "weak", "none"))
   duckdb::duckdb_register(con, "skill_tbl", skill)
   DBI::dbExecute(con, sprintf("COPY skill_tbl TO '%s' (FORMAT parquet, COMPRESSION zstd)", file.path(fc_dir, skill_rel)))
   manifest <- list(
