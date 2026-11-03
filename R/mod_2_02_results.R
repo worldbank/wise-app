@@ -199,8 +199,8 @@
           "Each dot is one simulated weather-year annual aggregate for the fixed baseline population. ",
           "The selected violin or boxplot summarizes the distribution; open circles mark scenario means. ",
           "This captures weather-year variability, not household inequality. ",
-          "For a seasonal forecast, each dot instead represents one member's complete target-window aggregate; ",
-          "the spread is not an annual probability or a calibrated forecast probability."
+          "A seasonal forecast is not drawn here: its members describe one target window, not annual weather, ",
+          "so see the placement chart below."
         )
       )
     ),
@@ -1529,7 +1529,8 @@ mod_2_02_results_server <- function(id,
       sa <- scenario_agg_rv()
       if (!is.null(sa) && length(sa) > 0L) {
         for (dk in names(sa)) {
-          if (!dk %in% selected_scenario_names()) next
+          # A forecast target window is not an annual weather sample, so it has no exceedance curve.
+          if (!dk %in% selected_scenario_names() || .step2_is_forecast_scenario(dk)) next
           rows[[length(rows) + 1L]] <- one_scenario(
             .apply_contrast_sd(sa[[dk]][[wk]][[method]], hist_F_agg_ref()),
             dk, FALSE

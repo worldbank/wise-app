@@ -209,7 +209,7 @@ echart_forecast_placement <- function(placement, x_label = "Outcome", height = "
     )),
     splitLine = list(show = FALSE)
   ))
-  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 24, top = 24, bottom = 14)
+  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 24, top = 24, bottom = 44)
   e$x$opts$tooltip <- list(
     trigger = "item",
     formatter = htmlwidgets::JS("function(p){ return p.name + ': ' + Number(p.value[0]).toLocaleString('en-US',{maximumFractionDigits:3}); }")
