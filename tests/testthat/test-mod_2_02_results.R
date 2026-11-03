@@ -872,7 +872,7 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "What outcomes are predicted in adverse weather years?", fixed = TRUE)
   expect_match(html, "What is the probability of severe outcomes occurring?", fixed = TRUE)
   expect_match(html, "results-exceedance_model_spread", fixed = TRUE)
-  expect_match(html, "Climate model spread", fixed = TRUE)
+  expect_match(html, "Ensemble spread", fixed = TRUE)
   expect_match(html, "Full ensemble spread", fixed = TRUE)
   expect_match(html, "results-ensemble_band", fixed = TRUE)
   expect_match(html, "value=\"none\"", fixed = TRUE)

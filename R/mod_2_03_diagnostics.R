@@ -75,8 +75,8 @@ mod_2_03_diagnostics_ui <- function(id) {
           class = "diagnostic-note", style = "margin: 0;",
           paste0(
             "Weather-year trajectories describe annual weather draws, so they do not apply to a seasonal ",
-            "forecast alone. Each forecast member is one target-window state; see the Results tab for ",
-            "where the forecast falls among past years."
+            "forecast alone. Each forecast member is one target-window state; the Results tab compares the ",
+            "members with Historical for the same months in the target-month group of each section."
           )
         )
       )

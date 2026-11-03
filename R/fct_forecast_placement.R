@@ -134,7 +134,7 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
   median_text <- if (!is.finite(p_med)) {
     "Placement unavailable"
   } else if (p_med >= 0.5) {
-    "Median member is better than the median reference year"
+    "Median member is better than the median historical year"
   } else if (isTRUE(s$median_member_beyond)) {
     "Median member is beyond the observed range"
   } else {
@@ -144,77 +144,15 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
   list(
     value = paste0(formatC(100 * s$share_worse_than_1in10, format = "f", digits = 0), "% of members"),
     median_text = median_text,
-    note = paste0("Worse than the 1-in-10 reference year \u00b7 ", n_ref, " reference years"),
+    note = paste0("Worse than the historical 1-in-10 \u00b7 ", n_ref, " historical years, same months"),
     info = paste0(
       "Each forecast member is placed in the distribution of the same outcome under observed weather ",
-      "for the same calendar months in each reference year. ",
+      "for the same calendar months in each historical year. ",
       "The share of members is an indicator, not a probability: the member spread is not calibrated and ",
       "skill is not established. Outcomes rarer than about 1-in-", floor(n_ref / 2),
       " are reported as beyond the observed range, not extrapolated."
     )
   )
-}
-
-#' Strip chart of the forecast members against the same-window reference years
-#'
-#' One dot per forecast member and one per reference year on a common outcome axis, with the reference
-#' median and the adverse 1-in-10 level marked. Dots are spread vertically by rank only to keep them
-#' apart; the vertical position carries no value.
-#' @param placement Result of `step2_forecast_placement()`.
-#' @param x_label Axis label (the metric's outcome label).
-#' @noRd
-echart_forecast_placement <- function(placement, x_label = "Outcome", height = "300px") {
-  members <- if (is.list(placement)) placement$members$value
-  reference <- if (is.list(placement)) placement$reference$value
-  if (!length(members) || !length(reference)) {
-    return(echart_blank("Forecast placement unavailable.", height = height))
-  }
-  spread <- function(n, centre) centre + ((seq_len(n) * 7L) %% 11L - 5L) / 25
-  dots <- function(values, centre, ids) {
-    out <- vector("list", length(values))
-    for (i in seq_along(values)) out[[i]] <- list(value = list(round(values[[i]], 5), spread(length(values), centre)[[i]]), name = ids[[i]])
-    out
-  }
-  s <- placement$summary
-  marker <- function(x, label, color, position) list(
-    xAxis = x, lineStyle = list(color = color, type = "dashed", width = 1),
-    label = list(show = TRUE, formatter = label, position = position, color = color, fontSize = 10)
-  )
-  e <- .e_new(height)
-  e$x$opts$series <- list(
-    list(
-      name = "Reference years", type = "scatter", symbolSize = 7,
-      data = dots(reference, 1, paste("Reference", placement$reference$year)),
-      itemStyle = list(color = .wise_slate, opacity = 0.75),
-      markLine = list(symbol = "none", silent = TRUE, animation = FALSE, data = list(
-        marker(s$reference_median, "Reference median", .wise_slate, "insideEndTop"),
-        marker(s$reference_adverse_1in10, "Reference 1-in-10", .wise_marker, "insideEndBottom")
-      ))
-    ),
-    list(
-      name = "Forecast members", type = "scatter", symbolSize = 7,
-      data = dots(members, 2, placement$members$member),
-      itemStyle = list(color = .wise_forecast, opacity = 0.8)
-    )
-  )
-  e$x$opts$xAxis <- list(list(
-    type = "value", scale = TRUE, name = stringr::str_wrap(x_label, 40),
-    nameLocation = "middle", nameGap = 30, nameTextStyle = wise_eaxis_name(),
-    axisLabel = wise_eaxis_label(fontSize = 10), splitLine = wise_esplit_line()
-  ))
-  e$x$opts$yAxis <- list(list(
-    type = "value", min = 0, max = 3, interval = 1,
-    axisLabel = wise_eaxis_label(formatter = htmlwidgets::JS(
-      "function(v){ return v === 1 ? 'Reference years' : (v === 2 ? 'Forecast members' : ''); }"
-    )),
-    splitLine = list(show = FALSE)
-  ))
-  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 24, top = 24, bottom = 44)
-  e$x$opts$tooltip <- list(
-    trigger = "item",
-    formatter = htmlwidgets::JS("function(p){ return p.name + ': ' + Number(p.value[0]).toLocaleString('en-US',{maximumFractionDigits:3}); }")
-  )
-  wise_echart_theme(e)
 }
 
 #' Batch tables of the forecast scenarios of one Step 2 run

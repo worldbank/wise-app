@@ -5,7 +5,7 @@ app_step: 2
 depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
-code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_skill.R, R/fct_run_simulation.R]
+code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_window.R, R/fct_forecast_skill.R, R/fct_run_simulation.R]
 verified_against: 523a585
 ---
 
@@ -53,13 +53,15 @@ The Historical scenario evaluates each household in its own interview month. Its
 
 Each member's aggregate $A_m$ is placed in the reference distribution. With $n$ reference years, $p_m$ is the share of reference years at least as adverse as $A_m$ (the adverse side follows the metric), and the member is "about a $1/p_m$-in-years outcome". Return periods beyond $n/2$ (about 1-in-15 for 30 years) are reported as beyond the observed range, not extrapolated. The Results cards report the median member's placement and the share of members worse than the reference 1-in-10 level. There is no return period for the ensemble mean, because averaging pulls it towards the centre. The member share is an indicator, not a probability.
 
+Forecast window views: each Results section has a second group for the target months, under the all-months group of Historical and the climate scenarios and on the same outcome axis. The group compares the members $\{A_m\}$ with Historical for the same months, the reference years $\{R_y\}$ (labelled "Historical (Nov - Jan)"), and has its own baseline: a difference view subtracts the mean or median of $R_y$. The distribution shows both samples. The adverse levels are the 1-in-$k$ quantiles of $R_y$ (Hazen positions), with one Forecast row: the median member and the band from the 10th to the 90th percentile of the members. The exceedance chart shows the curve of $R_y$ over the whole probability range and marks where the median member, and the 10th to 90th percentile members, fall on it: the historical return period each lines up with. In the uncertainty bars the member spread is an across-member component, as across climate models; one window has no year-to-year component. The cards add $|\bar A - \bar R| / s_R$, with $s_R$ the standard deviation of $R_y$, and $s_A / s_R$. A gap between the two groups is seasonality: the all-months outcomes cover each household's interview months.
+
 Skill: a run may publish a hindcast skill table (anomaly correlation, CRPSS, tercile ROC area, a `skill_flag` of `none`, `weak` or `useful`) per initialization month and lead. The thresholds behind the flag are fixed upstream; the app reads and reports the flags. The flyout and the cards name the skill of each target month, worst first, and the basis strip carries a warning unless every target month is `useful`. A run without a skill table says that skill was not assessed.
 
 Season check: the cards warn when fewer than half of an even share of the model's training observations were interviewed in the target months, because the weather response is then applied to months it was barely estimated from. A calendar-month anomaly predictor with interview-month fixed effects is the recommended specification for forecast use.
 
 ### 5. Policy under the forecast (Step 3)
 
-The policy effect on a household is a static change of its characteristics or transfer, row-aligned with the Step 2 prediction rows, so the same correction $\Delta_h$ applies to household $h$ in every target month. Each member $m$ gives a baseline aggregate $A_m$ and a policy aggregate $A^{\text{pol}}_m$ over the same $L$ target months and the same weights $w_h / L$; each reference year $y$ does the same, giving $R_y$ and $R^{\text{pol}}_y$. The app reports the median of $A^{\text{pol}}_m - A_m$ and of $R^{\text{pol}}_y - R_y$, and the share of members at or below the baseline 1-in-10 reference level without and with the policy at that one fixed level. The policy has no timing within the window. A shock-responsive transfer takes its triggers from annual weather and is not available with a forecast. The annual views of Step 3 (weather years, adverse years, exceedance, tables, decomposition) read the annual scenarios only.
+The policy effect on a household is a static change of its characteristics or transfer, row-aligned with the Step 2 prediction rows, so the same correction $\Delta_h$ applies to household $h$ in every target month. Each member $m$ gives a baseline aggregate $A_m$ and a policy aggregate $A^{\text{pol}}_m$ over the same $L$ target months and the same weights $w_h / L$; each reference year $y$ does the same, giving $R_y$ and $R^{\text{pol}}_y$. The app reports the median of $A^{\text{pol}}_m - A_m$ and of $R^{\text{pol}}_y - R_y$, and the share of members at or below the baseline 1-in-10 reference level without and with the policy at that one fixed level. The policy has no timing within the window. A shock-responsive transfer takes its triggers from annual weather and is not available with a forecast. The annual groups of Step 3 (weather years, adverse years, exceedance, tables, decomposition) read the annual scenarios only; the target-month group of each section compares baseline and policy for Historical of the same months and for the members.
 
 ## Interpretation
 
@@ -80,16 +82,16 @@ The band across members shows how much the forecast weather moves the model's ou
 - Skill is unproven for most seasons and leads. A backtest against held-out observations is planned before any season is shown without a warning.
 - Welfare responses are conditional on the fitted model; no adaptation within the target window.
 - Target months have equal weight, not weight proportional to their number of days. This is a monthly-state summary, not an annual welfare forecast.
-- Forecast windows are not historical-year samples; the annual adverse-year and return-period views do not apply. The placement in the same-window reference replaces them.
+- Forecast windows are not annual weather years: the forecast is compared with Historical for the same months, not with the all-months Historical or the climate scenarios, whose outcomes cover the interview months. Return periods of the same-month historical years are resolved only up to about 1-in-15. Climate scenarios for the target months are not simulated.
 - Step 3 applies static policies to the window and to the reference years. A shock-responsive transfer is not available with a forecast, and the policy-channel decomposition is annual only.
 
 ## In the app
 
 - Step 2 > Seasonal forecast: include the forecast, choose the run, the length of the window (1, 3 or 6 months) and the start month on the strip. The forecast is unavailable, with a reason, when the country has no forecast or the fitted model uses a variable the forecast does not provide.
 
-- Step 3: a policy run with a forecast adds "What does the policy do under the seasonal forecast?" to the Results tab: members and reference years without and with the policy. The annual views leave the forecast out.
+- Step 3: a policy run with a forecast has the same two groups in the cards and in each Results section: all months (Historical and the climate scenarios, baseline and policy) and the target months (Historical for the same months and the forecast members, baseline and policy). The target-month cards give the median policy effect of the members and of the historical years and the share of members worse than the historical 1-in-10 without and with the policy. The exceedance chart places the median member of each arm on the no-policy historical curve of the same months. The ensemble-spread controls set the member band as they set the climate-model band.
 
-- Step 2 > Results: with a forecast, the cards compare with the same-window climatology and show the placement, and a chart shows the members against the reference years. A forecast-only run hides the annual adverse-year, exceedance and return-period sections and says why; with a climate scenario they remain for the scenarios.
+- Step 2 > Results: with a forecast, the cards and every section have two groups: "All months" (Historical and the climate scenarios, as without a forecast) and the target months ("Historical (Nov - Jan)" and the forecast), on a shared outcome axis. The return-period table has rows for both. The cards of the target months show the placement, the shift against the historical spread of the same months and the member range.
 
 User guide: [wise-app-docs](https://github.com/worldbank/wise-app-docs).
 
@@ -111,7 +113,8 @@ None yet. Entries will be added with the backtest. Full entries are in [referenc
 | Reference pipelines and the interview-month join key | 3, 4 | `R/fct_run_simulation.R` `consume_reference()`, `.step2_forecast_join_keys()` |
 | Hindcast skill of the target months | 4 | `R/fct_forecast_skill.R` `.forecast_skill_table()`, `.forecast_skill_summary()` |
 | Policy under the forecast: exposure contract for the window, reference pipelines | 5 | `R/fct_policy_metric_decompose.R` `.policy_forecast_window()`, `.validate_policy_annual_exposure()`; `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()` |
-| Policy effect view and batch rows | 5 | `R/fct_forecast_policy.R` `step3_forecast_policy()`, `step3_forecast_batch_tables()` |
+| Policy effect: window views, cards, batch rows | 5 | `R/fct_forecast_window.R` `step3_window_views()`, `.step3_window_cards()`; `R/fct_forecast_policy.R` `step3_forecast_policy()`, `step3_forecast_batch_tables()` |
 | Member placement in the reference | 4 | `R/fct_forecast_placement.R` `.forecast_placement_stats()`, `step2_forecast_placement()` |
 | Cards comparator and training-month warning | 4 | `R/fct_sim_compare.R` `step2_headline_cards()` |
+| Forecast window views: the target-month samples through the annual view builders, the Forecast row, the exceedance position, shared axes | 4 | `R/fct_forecast_window.R` `step2_window_series()`, `step2_window_views()`, `.step2_window_adverse_dots()`, `.step2_window_exceedance_position()`; `R/mod_2_02_results.R` (second group per section) |
 | Adjusted monthly weather and fitted predictor windows | 2 | `R/fct_forecast_weather.R` `.get_forecast_weather()` |

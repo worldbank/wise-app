@@ -35,16 +35,3 @@ test_that("a scenario without reference pipelines gives no placement", {
   expect_null(step2_forecast_placement(list(pipelines = list(1)), "mean",
     list(type = "numeric", name = "welfare", transform = "none"), "none", TRUE, 3))
 })
-
-test_that("the placement chart has one series per group and the reference markers", {
-  placement <- c(.forecast_placement_stats(c(4, 5, 6), 1:20 / 2, "low"),
-    list(reference = data.frame(year = 1991:2010, value = 1:20 / 2), members = NULL))
-  placement$members <- data.frame(value = c(4, 5, 6), member = paste0("member_", 0:2))
-  ch <- echart_forecast_placement(placement, "Mean outcome")
-  expect_s3_class(ch, "echarts4r")
-  expect_length(ch$x$opts$series, 2L)
-  expect_length(ch$x$opts$series[[1L]]$data, 20L)
-  expect_length(ch$x$opts$series[[2L]]$data, 3L)
-  expect_length(ch$x$opts$series[[1L]]$markLine$data, 2L)
-  expect_s3_class(echart_forecast_placement(NULL), "echarts4r")
-})

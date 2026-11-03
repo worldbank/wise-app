@@ -1,0 +1,200 @@
+window_fixture_scenario <- function() {
+  members <- lapply(1:5, function(i) step2_fixture_pipe(300L + i, 2026L, 3.6 + 0.1 * i))
+  names(members) <- paste0("member_", 0:4)
+  reference <- lapply(1:6, function(i) step2_fixture_pipe(400L + i, 1990L + i, 3.8 + 0.05 * i))
+  names(reference) <- paste0("refyear_", 1991:1996)
+  list(
+    so = step2_fixture_outcome(), pipelines = members, reference_pipelines = reference, n_models = 5L,
+    forecast = list(
+      forecast_months = as.Date(c("2026-11-01", "2026-12-01", "2027-01-01")), reference_years = 1991:1996
+    )
+  )
+}
+window_fixture_label <- "Seasonal forecast / Nov 2026 - Jan 2027 (October 2026 run)"
+
+test_that("the window member label is a forecast colour but not a members-as-models forecast", {
+  lab <- .step2_window_forecast_label(window_fixture_label)
+  expect_identical(lab, "Forecast (Nov 2026 - Jan 2027)")
+  expect_false(.step2_is_forecast_scenario(lab))
+  expect_true(.step2_is_window_forecast(lab))
+  expect_identical(.step2_is_forecast_like(c(lab, window_fixture_label, "SSP2-4.5 / 2030-2050")), c(TRUE, TRUE, FALSE))
+  expect_identical(.step2_window_reference_label(window_fixture_scenario()), "Historical (Nov - Jan)")
+})
+
+test_that("window series lay out reference years and members as one sample each, as placement aggregates them", {
+  sc <- window_fixture_scenario()
+  so <- step2_fixture_outcome()
+  w <- step2_window_series(sc, window_fixture_label, "mean", so, "none", TRUE, 3, seed = 123L)
+  expect_identical(w$label, "Forecast (Nov 2026 - Jan 2027)")
+  expect_identical(w$historical$sim_year, 1991:1996)
+  expect_identical(unique(unlist(w$historical$model_id)), "Historical")
+  expect_identical(w$members$sim_year, 1:5)
+  expect_identical(unique(unlist(w$members$model_id)), w$label)
+  expect_identical(w$member_ids, names(sc$pipelines))
+  pl <- step2_forecast_placement(sc, "mean", so, "none", TRUE, 3, seed = 123L)
+  expect_equal(w$historical$value, pl$reference$value[order(pl$reference$year)])
+  expect_equal(w$members$value, pl$members$value)
+  expect_identical(dim(by_model_matrix(w$historical)$vals), c(1L, 6L))
+  expect_identical(dim(by_model_matrix(w$members)$vals), c(1L, 5L))
+  # Members are one sample of units: the annual views give them a spread, not a member-as-model collapse.
+  series <- stats::setNames(list(w$historical, w$members), c("Historical", w$label))
+  bands <- step2_pointrange_bands(series, c(lo = 0.1, hi = 0.9))
+  expect_true(all(is.finite(bands$interann_lo)) && all(bands$interann_hi > bands$interann_lo))
+  curves <- step2_timeseries_curves(series)
+  expect_identical(as.integer(table(curves$scenario)[c("Historical", w$label)]), c(6L, 5L))
+  expect_null(step2_window_series(list(pipelines = sc$pipelines), window_fixture_label, "mean", so, "none", TRUE, 3))
+})
+
+test_that("headline cards in the window scope read the shift against the reference-year spread", {
+  sc <- window_fixture_scenario()
+  so <- step2_fixture_outcome()
+  w <- step2_window_series(sc, window_fixture_label, "mean", so, "none", TRUE, 3, seed = 123L)
+  series <- stats::setNames(list(w$historical, w$members), c("Historical", w$label))
+  bands <- step2_headline_bands(step2_pointrange_bands(series, c(lo = 0.5, hi = 0.5)), series)
+  cards <- step2_headline_cards(
+    bands, hist_sim = list(so = so), saved_scenarios = stats::setNames(list(sc), w$label), method = "mean",
+    timeseries_curves = step2_timeseries_curves(series)
+  )
+  expect_identical(cards[[1L]]$label, "Expected target-window outcome")
+  expect_identical(cards[[3L]]$label, "Signal vs noise")
+  ref <- w$historical$value
+  expect_equal(cards[[3L]]$snr_native, abs(mean(w$members$value) - mean(ref)) / stats::sd(ref))
+  expect_equal(cards[[3L]]$member_spread_ratio_native, stats::sd(w$members$value) / stats::sd(ref))
+  expect_identical(cards[[4L]]$label, "Forecast member range")
+  expect_equal(unname(cards[[4L]]$value_range_native), range(w$members$value))
+  expect_identical(cards[[5L]]$value_native, 5)
+})
+
+test_that("relabelling names the Historical row by its target months in data, text and axis formatters", {
+  ref <- "Historical (Nov - Jan)"
+  x <- list(
+    series = list(list(name = "Historical"), list(name = "Historical mean")),
+    note = "Difference from historical median",
+    formatter = htmlwidgets::JS('function(v){ var m = {"1":"Historical","2":"SSP"}; return m[v]; }'),
+    df = data.frame(scenario = factor(c("Historical", "SSP")), Estimate = c("Single historical estimate", "x"))
+  )
+  out <- .step2_window_relabel(x, ref)
+  expect_identical(out$series[[1L]]$name, ref)
+  expect_identical(out$series[[2L]]$name, "Historical mean")
+  expect_identical(out$note, "Difference from historical median")
+  expect_s3_class(out$formatter, "JS_EVAL")
+  expect_match(out$formatter, paste0('"1":"', ref, '"'), fixed = TRUE)
+  expect_identical(levels(out$df$scenario), c(ref, "SSP"))
+  expect_identical(out$df$Estimate, c("Central estimate", "x"))
+  expect_s3_class(.step2_window_relabel(echart_blank("Historical"), ref), "htmlwidget")
+})
+
+test_that("the forecast position on the Historical exceedance curve uses the curve's plotting positions", {
+  ref <- c(1, 2, 3, 4, 5)
+  # Lower is worse: the most adverse year (1) sits at p = 0.1, the next at 0.3.
+  pos <- .step2_window_exceedance_position(ref, c(2, 2, 2), "low")
+  expect_equal(unname(pos$p), rep(0.3, 3L))
+  pos <- .step2_window_exceedance_position(ref, seq(1.5, 2.5, length.out = 11L), "low")
+  expect_equal(pos$p[["mid"]], 0.3)
+  expect_equal(pos$value[["mid"]], 2)
+  # Higher is worse: 5 is the most adverse year.
+  expect_equal(.step2_window_exceedance_position(ref, 5, "high")$p[["mid"]], 0.1)
+  # Beyond the observed range: the end probability.
+  expect_equal(.step2_window_exceedance_position(ref, 0, "low")$p[["mid"]], 0.1)
+  expect_null(.step2_window_exceedance_position(1, 2, "low"))
+  e <- .step2_window_exceedance_overlay(echart_blank("x"), .step2_window_exceedance_position(ref, 4.9, "low"))
+  over <- e$x$opts$series[[length(e$x$opts$series)]]
+  expect_identical(over$name, "forecast__position")
+  expect_match(over$markLine$data[[1L]]$label$formatter, "better than the median year")
+  expect_equal(over$markLine$data[[1L]]$xAxis, 0.55)
+})
+
+test_that("the window adverse chart keeps the Historical levels and adds one Forecast row with the member band", {
+  dot <- tibble::tibble(
+    scenario = c("Historical", "Historical", "X"), is_historical = c(TRUE, TRUE, FALSE),
+    rp_label = factor(c("Expected", "Adverse 1-in-10", "Expected"), levels = c("Adverse 1-in-10", "Expected")),
+    value = c(4, 3.5, 4.2), intermod_lo = NA_real_, intermod_hi = NA_real_
+  )
+  out <- .step2_window_adverse_dots(dot, 1:11, "Forecast (Nov 2026 - Jan 2027)")
+  expect_identical(levels(out$rp_label), c("Forecast", "Adverse 1-in-10", "Expected"))
+  fc <- out[!out$is_historical, ]
+  expect_identical(nrow(fc), 1L)
+  expect_identical(as.character(fc$rp_label), "Forecast")
+  expect_equal(c(fc$intermod_lo, fc$value, fc$intermod_hi), c(2, 6, 10))
+  e <- echart_step2_adverse_dot(out, "Mean")
+  expect_s3_class(.step2_window_adverse_guides(e, out$value[out$is_historical]), "htmlwidget")
+})
+
+test_that("the window views run the annual builders on the target-month samples with their own baseline", {
+  sc <- window_fixture_scenario()
+  so <- step2_fixture_outcome()
+  w <- step2_window_series(sc, window_fixture_label, "mean", so, "none", TRUE, 3, seed = 123L)
+  expect_identical(w$months_label, "Nov - Jan")
+  expect_identical(w$scenario_label, window_fixture_label)
+  v <- step2_window_views(w, "mean", so, scenario = sc, hist_sim = list(so = so))
+  expect_identical(sort(unique(v$curves$scenario)), sort(c("Historical", w$label)))
+  expect_identical(sum(v$dots$rp_label == "Forecast"), 1L)
+  fc <- .step2_is_window_forecast(v$variance$scenario)
+  expect_identical(v$variance$var_within[fc], 0)
+  expect_gt(v$variance$var_across[fc], 0)
+  expect_identical(nrow(v$exceedance), 6L)
+  expect_equal(max(v$exceedance$exceed_prob), 5.5 / 6)
+  expect_identical(v$cards[[3L]]$label, "Signal vs noise")
+  # Deviation: the Historical mean of the same months is the baseline of this group.
+  d <- step2_window_views(w, "mean", so, deviation = "mean", scenario = sc, hist_sim = list(so = so))
+  expect_equal(d$ref, mean(w$historical$value))
+  expect_equal(mean(d$curves$value[d$curves$scenario == "Historical"]), 0)
+  expect_null(step2_window_views(NULL, "mean", so))
+})
+
+test_that("a shared axis range is set on the chart's value axis", {
+  e <- .step2_set_axis_range(echart_annual_distribution(tibble::tibble(
+    scenario = "Historical", model_id = "Historical", sim_year = 1:3, value = c(1, 2, 3), is_historical = TRUE
+  )), "xAxis", c(0, 10))
+  expect_identical(c(e$x$opts$xAxis$min, e$x$opts$xAxis$max), c(0, 10))
+  expect_equal(.step2_padded_range(c(0, 10, NA)), c(-0.4, 10.4))
+  expect_null(.step2_padded_range(NA_real_))
+})
+
+test_that("the member band follows the ensemble-spread control and is off with no band", {
+  ref <- c(1, 2, 3, 4, 5)
+  pos <- .step2_window_exceedance_position(ref, 1:11, "low", band_q = NULL)
+  expect_true(is.na(pos$p[["lo"]]) && is.na(pos$p[["hi"]]) && is.finite(pos$p[["mid"]]))
+  over <- .step2_window_exceedance_overlay(echart_blank("x"), pos)$x$opts$series
+  expect_null(over[[length(over)]]$markArea)
+  full <- .step2_window_exceedance_position(ref, 1:11, "low", band_q = c(lo = 0, hi = 1))
+  expect_equal(unname(full$value[c("lo", "hi")]), c(1, 11))
+  dot <- tibble::tibble(
+    scenario = "Historical", is_historical = TRUE, rp_label = factor("Expected"), value = 4,
+    intermod_lo = NA_real_, intermod_hi = NA_real_
+  )
+  out <- .step2_window_adverse_dots(dot, 1:11, "Forecast (x)", band_q = NULL)
+  expect_true(is.na(out$intermod_lo[!out$is_historical]))
+  expect_equal(out$value[!out$is_historical], 6)
+})
+
+test_that("the Step 3 window views pair baseline and policy for Historical and the forecast", {
+  sc <- window_fixture_scenario()
+  pol <- sc
+  shift <- function(p) {
+    p$y_point <- p$y_point + 0.1
+    p
+  }
+  pol$pipelines <- lapply(pol$pipelines, shift)
+  pol$reference_pipelines <- lapply(pol$reference_pipelines, shift)
+  so <- step2_fixture_outcome()
+  wb <- step2_window_series(sc, window_fixture_label, "mean", so, "none", TRUE, 3, seed = 123L)
+  wp <- step2_window_series(pol, window_fixture_label, "mean", so, "none", TRUE, 3, seed = 123L)
+  v <- step3_window_views(wb, wp, "mean", so, band_adverse = c(lo = 0.1, hi = 0.9))
+  expect_identical(sort(unique(v$curves$source)), c("Baseline", "Policy"))
+  expect_identical(as.integer(table(v$curves$source)), c(11L, 11L))
+  fc <- v$dots[!v$dots$is_historical, ]
+  expect_identical(as.character(fc$rp_label), "Forecast")
+  expect_gt(fc$policy_val, fc$baseline_val)
+  expect_true(is.finite(fc$base_lo) && is.finite(fc$policy_hi))
+  expect_true(all(v$dots$policy_val[v$dots$is_historical] > v$dots$baseline_val[v$dots$is_historical]))
+  expect_gt(v$effect$member_median, 0)
+  expect_gt(v$effect$reference_median, 0)
+  expect_identical(nrow(v$exceedance), 6L)
+  # Both arms' members are placed on the no-policy Historical curve.
+  expect_true(v$position$policy$p[["mid"]] >= v$position$baseline$p[["mid"]])
+  cards <- .step3_window_cards(v, metric_metadata("mean", so))
+  expect_length(cards, 3L)
+  expect_match(cards[[3L]]$value, "%")
+  expect_null(step3_window_views(wb, NULL, "mean", so))
+})

@@ -233,7 +233,7 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
   }
   df <- tbl
   df$scenario <- as.character(df$scenario)
-  is_forecast <- vapply(df$scenario, .step2_is_forecast_scenario, logical(1L))
+  is_forecast <- vapply(df$scenario, .step2_is_forecast_like, logical(1L))
   df$period <- ifelse(df$scenario == "Historical", "Historical",
     ifelse(is_forecast, df$scenario, vapply(df$scenario, .parse_year, character(1L)))
   )
@@ -246,14 +246,14 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
     df$scenario[df$scenario != "Historical"], pending
   ))
   scenario_palette <- c(Historical = .wise_history)
-  forecast_scenarios <- scenario_levels[vapply(scenario_levels, .step2_is_forecast_scenario, logical(1L))]
+  forecast_scenarios <- scenario_levels[vapply(scenario_levels, .step2_is_forecast_like, logical(1L))]
   if (length(forecast_scenarios)) scenario_palette[forecast_scenarios] <- .wise_forecast
   pending_ssps <- vapply(pending, function(x) {
-    if (.step2_is_forecast_scenario(x)) "Forecast" else .normalise_ssp(x)
+    if (.step2_is_forecast_like(x)) "Forecast" else .normalise_ssp(x)
   }, character(1L))
   for (ssp in setdiff(unique(c(df$ssp[df$ssp != "Historical"], unname(pending_ssps))), "Forecast")) {
     members <- scenario_levels[scenario_levels != "Historical" &
-      !vapply(scenario_levels, .step2_is_forecast_scenario, logical(1L))]
+      !vapply(scenario_levels, .step2_is_forecast_like, logical(1L))]
     members <- members[vapply(members, function(s) {
       identical(.normalise_ssp(s), ssp)
     }, logical(1L))]
@@ -679,7 +679,7 @@ echart_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
     if (identical(s, "Historical")) {
       return(.wise_support)
     }
-    if (.step2_is_forecast_scenario(s)) {
+    if (.step2_is_forecast_like(s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
@@ -1960,44 +1960,15 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     ),
 
     # 2. Headline cards ----
+    .step2_window_panel(ns, shiny::div(
+      style = paste0(
+        "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
+        "letter-spacing: 0.03em; margin: 4px 0 6px;"
+      ),
+      "All months: climate scenarios against Historical"
+    )),
     shiny::uiOutput(ns("headline_cards_ui")),
-
-    # Policy under a seasonal forecast: members and same-window reference years, without and with the policy ----
-    shiny::conditionalPanel(
-      condition = paste0("output['", ns("has_forecast"), "']"),
-      shiny::h4(
-        "What does the policy do under the seasonal forecast?",
-        info_popover(
-          title = "Policy under the forecast",
-          shiny::p(
-            "Each forecast member gives one outcome for the target months, without and with the policy.",
-            "Each grey dot is the same outcome under observed weather for the same calendar months in one past year."
-          ),
-          shiny::p(
-            "The policy acts identically in every month of the window. The dashed line is the baseline 1-in-10",
-            "reference level; the shares of members are indicators, not probabilities."
-          ),
-          docs = TRUE
-        ),
-        style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
-      ),
-      shiny::div(
-        class = "results-section-card",
-        wise_chart_output(
-          ns("forecast_policy_plot"),
-          "Forecast members and past years placed without and with the policy",
-          height = "340px"
-        ),
-        shiny::uiOutput(ns("forecast_policy_note"))
-      ),
-      shiny::tags$p(
-        class = "text-muted small", style = "margin: 8px 0 0;",
-        paste0(
-          "The annual views below (weather years, adverse years, exceedance, tables) exclude the forecast: ",
-          "its members describe one target window, not annual weather samples."
-        )
-      )
-    ),
+    .step2_window_panel(ns, shiny::uiOutput(ns("headline_cards_window_ui"))),
 
     # Section 1: Annual weather variation & policy shift ----
     shiny::h4(
@@ -2031,15 +2002,30 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           layout   = "horizontal"
         )
       ),
-      wise_chart_output(
-        ns("annual_distribution_plot"),
-        "Distribution of annual aggregates across simulated weather years: baseline and policy",
-        height = "470px"
-      ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 18px; margin-bottom: 0;",
-        "Each dot is one simulated weather-year annual aggregate for the fixed population. The selected violin or boxplot summarizes the distribution; dodged pairs contrast baseline (muted, upper) with policy (highlighted, lower), and circle markers mark series means."
+      .step2_groups(
+        ns, section = "dist",
+        annual_chart = wise_chart_output(
+          ns("annual_distribution_plot"),
+          "Distribution of annual aggregates across simulated weather years: baseline and policy",
+          height = "470px"
+        ),
+        window_chart = wise_chart_output(
+          ns("window_distribution_plot"),
+          "Distribution of target-month outcomes, baseline and policy: Historical and forecast members",
+          height = "420px"
+        ),
+        annual = paste(
+          "Each dot is one simulated weather-year annual aggregate for the fixed population. The selected violin or",
+          "boxplot summarizes the distribution; dodged pairs contrast baseline (muted, upper) with policy",
+          "(highlighted, lower), and circle markers mark series means."
+        ),
+        window = paste(
+          "Each dot is one outcome for the target months: one per historical year (observed weather for the same",
+          "months) and one per forecast member, without and with the policy. The policy acts identically in every",
+          "month of the window. The climate scenarios are in the all-months chart above, on the same axis: a gap",
+          "between the two groups is seasonality."
+        ),
+        style = "margin-top: 18px; margin-bottom: 0;"
       )
     ),
 
@@ -2067,7 +2053,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
         pill_toggle(
           ns("ensemble_band"),
-          label = "Climate model spread",
+          label = "Ensemble spread",
           choices = c(
             "None"                 = "none",
             "Full ensemble spread" = "minmax",
@@ -2079,15 +2065,28 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           layout = "horizontal"
         )
       ),
-      wise_chart_output(
-        ns("adverse_dot_plot"),
-        "Expected and adverse-year outcomes: baseline and policy with model ensemble spread",
-        height = "380px"
-      ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-        "Open circles = baseline (no policy); red filled circles = policy. Connecting lines show the policy buffer. Horizontal intervals show the selected climate-model spread under the policy."
+      .step2_groups(
+        ns, section = "adverse",
+        annual_chart = wise_chart_output(
+          ns("adverse_dot_plot"),
+          "Expected and adverse-year outcomes: baseline and policy with model ensemble spread",
+          height = "380px"
+        ),
+        window_chart = wise_chart_output(
+          ns("window_adverse_plot"),
+          "Target-month adverse levels and the forecast, baseline and policy",
+          height = "360px"
+        ),
+        annual = paste(
+          "Open circles = baseline (no policy); red filled circles = policy. Connecting lines show the policy",
+          "buffer. Horizontal intervals show the selected climate-model spread under the policy."
+        ),
+        window = paste(
+          "Historical rows: the target-month outcome reached in about one historical year in five, ten or twenty,",
+          "without (open) and with (filled) the policy. The Forecast row shows the median member of each arm; the",
+          "Ensemble spread control adds the band across members. The member spread is not a calibrated probability."
+        ),
+        style = "margin-top: 8px; margin-bottom: 0;"
       )
     ),
 
@@ -2112,7 +2111,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
         pill_toggle(
           inputId = ns("exceedance_model_spread"),
-          label = "Climate model spread",
+          label = "Ensemble spread",
           choices = c(
             "None"                 = "none",
             "Full ensemble spread" = "minmax",
@@ -2124,15 +2123,32 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           layout = "horizontal"
         )
       ),
-      wise_chart_output(
-        ns("exceedance_plot"),
-        "Exceedance probability curves: baseline and policy across climate scenarios",
-        height = "400px"
-      ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-        "Read each curve as the annual probability of reaching an outcome level in the adverse direction. Colour identifies the SSP family and line type identifies the projection period. Baseline and policy share the same scenario line; open endpoint circles mark baseline and filled vermillion circles mark policy. Shaded ribbons show selected climate-model disagreement. Return-period ticks are limited to the available simulated years per climate model; unsupported periods are not extrapolated."
+      .step2_groups(
+        ns, section = "exceed",
+        annual_chart = wise_chart_output(
+          ns("exceedance_plot"),
+          "Exceedance probability curves: baseline and policy across climate scenarios",
+          height = "400px"
+        ),
+        window_chart = wise_chart_output(
+          ns("window_exceedance_plot"),
+          "Target-month exceedance curves, baseline and policy, with the forecast position",
+          height = "400px"
+        ),
+        annual = paste(
+          "Read each curve as the annual probability of reaching an outcome level in the adverse direction. Colour",
+          "identifies the SSP family and line type identifies the projection period. Baseline and policy share the",
+          "same scenario line; open endpoint circles mark baseline and filled vermillion circles mark policy. Shaded",
+          "ribbons show selected climate-model disagreement. Return-period ticks are limited to the available",
+          "simulated years per climate model; unsupported periods are not extrapolated."
+        ),
+        window = paste(
+          "The curve is the share of historical years whose target months reached an outcome level without the",
+          "policy. The vertical lines mark where the median forecast member falls on it, without (dashed) and with",
+          "(solid) the policy: the no-policy historical return period each lines up with. The Ensemble spread",
+          "control shades where the members of that band fall."
+        ),
+        style = "margin-top: 8px; margin-bottom: 0;"
       )
     ),
 
@@ -2160,7 +2176,15 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
         "Central estimates summarize each model's weather years at the selected return period, then take the equal-weight mean across climate models for baseline and policy. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled). Policy bands include the estimation uncertainty of the policy variables' own coefficients. A cash transfer uses no estimated policy coefficient, so the Coef band of its effect is close to zero and its spread comes from climate models and weather years; this is not evidence that the effect is precisely estimated."
-      )
+      ),
+      .step2_window_panel(ns, shiny::tags$p(
+        class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
+        paste(
+          "Target-month rows: Historical rows are quantiles across historical years, Forecast rows the same",
+          "quantiles across members (shares of members, not calibrated probabilities), each without and with the",
+          "policy. Bounds are coefficient uncertainty only."
+        )
+      ))
     ),
   )
 }
@@ -2199,7 +2223,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                                  analysis_unit = reactive(NULL),
                                  annual_channels = reactive(NULL)) {
   # A forecast window is not an annual weather sample. Every annual view here (cards, violin, adverse years,
-  # exceedance, tables, decomposition) reads the annual scenarios only; the forecast has its own section.
+  # exceedance, tables, decomposition) reads the annual scenarios only; the forecast has the second group of each
+  # section (Historical for the target months and the members, without and with the policy).
   baseline_saved_all <- baseline_saved_scenarios
   policy_saved_all <- policy_saved_scenarios
   baseline_saved_scenarios <- reactive(.step3_annual_scenarios(baseline_saved_all()))
@@ -3182,7 +3207,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   # bundle (guidelines sec. 7 pattern); static renderers are archived under
   # dev/archive/static_plots/.
   annual_distribution_chart <- function() {
-    echart_step3_annual_distribution(
+    e <- echart_step3_annual_distribution(
       timeseries_curves_rv(),
       x_label = metric_axis_label(
         aggregation_method(),
@@ -3192,6 +3217,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       plot_type = input$annual_distribution_type %||% "violin",
       height = "470px"
     )
+    .step2_set_grid_left(.step2_set_axis_range(e, "xAxis", .distribution_range()), .distribution_left())
   }
   output$annual_distribution_plot <- echarts4r::renderEcharts4r({
     ch <- annual_distribution_chart()
@@ -3218,7 +3244,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   })
 
   adverse_dot_chart <- function() {
-    echart_step3_adverse_dot(
+    e <- echart_step3_adverse_dot(
       adverse_dot_data_rv(),
       x_label = metric_axis_label(
         aggregation_method(),
@@ -3227,6 +3253,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       ),
       height = "380px"
     )
+    .step2_set_axis_range(e, "xAxis", .adverse_range())
   }
   output$adverse_dot_plot <- echarts4r::renderEcharts4r({
     ch <- adverse_dot_chart()
@@ -3235,58 +3262,169 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   })
   outputOptions(output, "adverse_dot_plot", suspendWhenHidden = TRUE)
 
-  # Policy under a seasonal forecast ----
-  output$has_forecast <- shiny::reactive(any(vapply(
-    names(baseline_saved_all()) %||% character(0), .step2_is_forecast_scenario, logical(1L)
-  )))
-  outputOptions(output, "has_forecast", suspendWhenHidden = FALSE)
-  forecast_policy_rv <- reactive({
+  # Forecast window: baseline and policy for the target months, the second group of each section ----
+  .window_label <- reactive({
     if (isTRUE(stale()) || !identical(policy_endpoint_status()$status, "ok")) return(NULL)
     base <- baseline_saved_all()
     pol <- policy_saved_all()
-    hs <- baseline_hist_sim()
     keep <- names(base)[vapply(names(base), .step2_is_forecast_scenario, logical(1L)) &
       vapply(base, function(x) length(x$reference_pipelines) > 0L, logical(1L))]
-    keep <- intersect(keep, names(pol))
-    if (!length(keep) || is.null(hs$so)) return(NULL)
-    tryCatch(
-      step3_forecast_policy(
-        base[[keep[[1L]]]], pol[[keep[[1L]]]], aggregation_method(), hs$so, hs$residuals %||% "original",
-        skip_coef = TRUE, pov_line = pov_line_val() %||% step2_default_pov_line(hs$so),
-        seed = .step2_run_seed(hs)
-      ),
-      error = function(e) NULL
-    )
+    keep <- keep[vapply(keep, function(k) length(pol[[k]]$reference_pipelines) > 0L, logical(1L))]
+    if (length(keep)) keep[[1L]] else NULL
   })
-  forecast_policy_chart <- function() {
-    view <- forecast_policy_rv()
-    req(!is.null(view))
-    echart_forecast_policy(view, metric_axis_label(aggregation_method(), baseline_hist_sim()$so, "none"))
+  .has_window <- reactive(!is.null(.window_label()))
+  output$has_window <- shiny::reactive(.has_window())
+  outputOptions(output, "has_window", suspendWhenHidden = FALSE)
+  .window_arm <- function(scenarios) {
+    label <- .window_label()
+    hs <- baseline_hist_sim()
+    req(label, hs$so)
+    sc <- scenarios[[label]]
+    step2_window_series(
+      sc, label, aggregation_method(), hs$so, hs$residuals %||% "original",
+      skip_coef = is.null(sc$pipelines[[1L]]$F_loading),
+      pov_line = pov_line_val() %||% step2_default_pov_line(hs$so), seed = .step2_run_seed(hs)
+    )
   }
-  output$forecast_policy_plot <- echarts4r::renderEcharts4r({
-    forecast_policy_chart()
-  })
-  outputOptions(output, "forecast_policy_plot", suspendWhenHidden = TRUE)
-  output$forecast_policy_note <- shiny::renderUI({
-    view <- forecast_policy_rv()
-    if (is.null(view)) {
-      return(shiny::tags$p(class = "text-muted small", style = "margin: 8px 0 0;",
-        "The policy view is unavailable for this run."))
-    }
-    txt <- .forecast_policy_text(view)
-    shiny::tags$p(
-      class = "text-muted small", style = "margin: 8px 0 0;",
-      shiny::tags$strong(txt$headline), " ", txt$tail, " ", txt$info
+  window_baseline_rv <- reactive(.window_arm(baseline_saved_all()))
+  window_policy_rv <- reactive(.window_arm(policy_saved_all()))
+  .band_q_or_null <- function(key) if (identical(key %||% "none", "none")) NULL else resolve_band_q(key)
+  window_views_rv <- reactive({
+    req(.has_window())
+    step3_window_views(
+      window_baseline_rv(), window_policy_rv(), aggregation_method(), baseline_hist_sim()$so,
+      deviation = input$cmp_deviation %||% "none",
+      band_adverse = .band_q_or_null(input$ensemble_band),
+      band_exceedance = .band_q_or_null(input$exceedance_model_spread)
     )
   })
-  wise_export_figure(
-    key = "policy_forecast",
-    label = "Policy under the seasonal forecast",
-    step = 3L,
-    fun = forecast_policy_chart,
-    description = "Forecast members and same-window past years, without and with the policy.",
-    width = 9, height = 4.5
+  for (sec in c("dist", "adverse", "exceed")) local({
+    id <- paste0("group_window_", sec)
+    output[[id]] <- shiny::renderText(paste0(window_views_rv()$months_label, ": Historical and the seasonal forecast"))
+  })
+  .window_relabel <- function(x) .step2_window_relabel(x, window_views_rv()$reference_label)
+  .wv <- function() if (isTRUE(.has_window())) tryCatch(window_views_rv(), error = function(e) NULL)
+  .shared_range <- function(annual, window) if (isTRUE(.has_window())) .step2_padded_range(c(annual, window))
+  .distribution_range <- function() .shared_range(timeseries_curves_rv()$value, .wv()$curves$value)
+  .adverse_range <- function() {
+    cols <- c("baseline_val", "policy_val", "base_lo", "base_hi", "policy_lo", "policy_hi")
+    vals <- function(d) if (is.null(d) || !nrow(d)) numeric(0) else unlist(d[intersect(cols, names(d))])
+    .shared_range(vals(adverse_dot_data_rv()), vals(.wv()$dots))
+  }
+  .exceedance_range <- function() {
+    wv <- .wv()
+    .shared_range(exceedance_curves_rv()$welfare_val, c(
+      wv$exceedance$welfare_val, wv$position$baseline$value, wv$position$policy$value
+    ))
+  }
+  .distribution_left <- function() {
+    if (!isTRUE(.has_window())) return(NULL)
+    wv <- .wv()
+    labels <- c(wv$reference_label, wv$label, unlist(strsplit(selected_scenario_names(), " / ", fixed = TRUE)))
+    24 + 7 * max(nchar(labels))
+  }
+  .window_axis_label <- function() {
+    metric_axis_label(aggregation_method(), baseline_hist_sim()$so, input$cmp_deviation %||% "none")
+  }
+  window_distribution_chart <- function() {
+    wv <- window_views_rv()
+    req(wv$curves, nrow(wv$curves))
+    e <- echart_step3_annual_distribution(
+      wv$curves, x_label = .window_axis_label(), plot_type = input$annual_distribution_type %||% "violin",
+      height = "420px"
+    )
+    e <- .step2_set_grid_left(.step2_set_axis_range(e, "xAxis", .distribution_range()), .distribution_left())
+    .window_relabel(e)
+  }
+  window_adverse_chart <- function() {
+    wv <- window_views_rv()
+    req(wv$dots, nrow(wv$dots))
+    e <- echart_step3_adverse_dot(wv$dots, x_label = .window_axis_label(), height = "360px")
+    e <- .step2_window_adverse_guides(e, wv$dots$baseline_val[wv$dots$is_historical])
+    .window_relabel(.step2_set_axis_range(e, "xAxis", .adverse_range()))
+  }
+  window_exceedance_chart <- function() {
+    wv <- window_views_rv()
+    req(wv$exceedance, nrow(wv$exceedance))
+    p_max <- 0.99
+    e <- echart_exceedance(
+      curves_tbl = wv$exceedance, x_label = .window_axis_label(), n_sim_years = wv$n_reference, logit_x = TRUE,
+      band_q = NULL, ensemble_band_q = c(lo = 0.5, hi = 0.5), height = "400px", p_max = p_max
+    )
+    e <- .step2_window_exceedance_overlay(
+      e, wv$position$baseline, x_max = p_max, label = "Forecast median, baseline", line_type = "dashed",
+      name = "forecast__baseline"
+    )
+    e <- .step2_window_exceedance_overlay(
+      e, wv$position$policy, x_max = p_max, label = "Forecast median, policy", colour = .wise_policy,
+      name = "forecast__policy", label_position = "insideEndBottom"
+    )
+    .window_relabel(.step2_set_axis_range(e, "yAxis", .exceedance_range()))
+  }
+  window_charts <- list(
+    window_distribution_plot = list(fun = window_distribution_chart, key = "policy_window_distribution",
+      label = "Target-month baseline and policy distribution: Historical and the seasonal forecast"),
+    window_adverse_plot = list(fun = window_adverse_chart, key = "policy_window_adverse_levels",
+      label = "Target-month adverse levels and the forecast, baseline and policy"),
+    window_exceedance_plot = list(fun = window_exceedance_chart, key = "policy_window_exceedance",
+      label = "Target-month exceedance curves, baseline and policy, with the forecast position")
   )
+  for (id in names(window_charts)) local({
+    chart_id <- id
+    spec <- window_charts[[id]]
+    output[[chart_id]] <- echarts4r::renderEcharts4r({
+      req(.has_window())
+      spec$fun()
+    })
+    outputOptions(output, chart_id, suspendWhenHidden = TRUE)
+    wise_export_figure(
+      key = spec$key, label = spec$label, step = 3L,
+      fun = function() if (isTRUE(.has_window())) spec$fun(),
+      description = paste0(
+        spec$label, ": Historical for the forecast target months and the forecast members, without and with the ",
+        "policy."
+      ),
+      width = 10, height = 5.5
+    )
+  })
+  window_cards_rv <- reactive({
+    wv <- window_views_rv()
+    req(wv)
+    .step3_window_cards(wv, metric_metadata(aggregation_method(), baseline_hist_sim()$so))
+  })
+  output$headline_cards_window_ui <- shiny::renderUI({
+    req(.has_window())
+    shiny::tagList(
+      shiny::div(
+        style = paste0(
+          "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
+          "letter-spacing: 0.03em; margin: 14px 0 6px;"
+        ),
+        paste0(window_views_rv()$months_label, ": the policy under the seasonal forecast")
+      ),
+      headline_cards_ui(window_cards_rv())
+    )
+  })
+  # Target-month rows of the return-period table, one arm at a time: the table drops a Historical Policy row as a
+  # copy of the baseline, which holds for the annual Historical but not for the target months.
+  .window_threshold_df <- function(n_cols) {
+    wv <- .wv()
+    if (is.null(wv$threshold) || !nrow(wv$threshold)) return(NULL)
+    so_obj <- baseline_hist_sim()$so
+    arms <- lapply(c("Baseline", "Policy"), function(src) {
+      tbl <- wv$threshold[wv$threshold$source == src, setdiff(names(wv$threshold), "source"), drop = FALSE]
+      df <- build_threshold_table_df(
+        threshold_tbl = tbl, group_order = input$cmp_group_order %||% "scenario_x_year", show_coef = TRUE,
+        adverse_only = TRUE, method = aggregation_method(), so = so_obj, n_hist_years = wv$n_reference
+      )
+      if (is.null(df) || !nrow(df)) return(NULL)
+      df$Source <- src
+      df[!grepl("^(Pooled|Ensemble) |^Equal-model mean$", df$Estimate), , drop = FALSE]
+    })
+    out <- dplyr::bind_rows(Filter(Negate(is.null), arms))
+    if (!nrow(out)) return(NULL)
+    .window_relabel(out[, intersect(n_cols, names(out)), drop = FALSE])
+  }
 
   # Section 4: Decision & return-period table ----
   threshold_table_df <- function() {
@@ -3304,7 +3442,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       error = function(e) max(tbl$n_obs, na.rm = TRUE)
     )
 
-    build_threshold_table_df(
+    df <- build_threshold_table_df(
       threshold_tbl = tbl,
       group_order   = input$cmp_group_order %||% "scenario_x_year",
       show_coef     = TRUE,
@@ -3313,6 +3451,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       so            = so_obj,
       n_hist_years  = n_h_yrs
     )
+    wdf <- if (isTRUE(.has_window()) && !is.null(df)) .window_threshold_df(names(df))
+    if (is.null(wdf)) df else dplyr::bind_rows(df, wdf)
   }
 
   # The threshold table's Download CSV is a client-side
@@ -3466,7 +3606,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     } else {
       resolve_band_q(sel_spread)
     }
-    echart_exceedance(
+    e <- echart_exceedance(
       curves_tbl = curves,
       x_label = metric_axis_label(
         aggregation_method(),
@@ -3479,6 +3619,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       ensemble_band_q = ens_q,
       height = "400px"
     )
+    .step2_set_axis_range(e, "yAxis", .exceedance_range())
   }
 
   wise_export_figure(

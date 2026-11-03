@@ -72,8 +72,7 @@ test_that("forecast cards compare with the same-window reference and show the pl
   # Comparator is the reference mean (8.25), not Historical (10).
   expect_equal(cards[[1L]]$value_native, c(mean(reference), 8))
   expect_equal(cards[[1L]]$change_native, 8 - mean(reference))
-  expect_match(cards[[1L]]$note, "Same-window climatology")
-  expect_false(grepl("Historical", cards[[1L]]$note))
+  expect_match(cards[[1L]]$note, "Historical, same months")
   expect_identical(cards[[2L]]$label, "Placement in climatology")
   expect_match(cards[[2L]]$value, "% of members")
   expect_match(cards[[2L]]$info, "not a probability")

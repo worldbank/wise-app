@@ -94,7 +94,7 @@ resolve_band_q <- function(band_key) {
 .step2_scenario_order <- function(scenarios) {
   scenarios <- unique(as.character(scenarios))
   historical <- scenarios[scenarios == "Historical"]
-  forecast <- scenarios[.step2_is_forecast_scenario(scenarios)]
+  forecast <- scenarios[.step2_is_forecast_like(scenarios)]
   future <- sort(setdiff(scenarios, c(historical, forecast)))
   c(historical, forecast, future)
 }
@@ -128,7 +128,7 @@ resolve_band_q <- function(band_key) {
     df <- df[!(df$is_historical & df$source == "Policy"), , drop = FALSE]
   }
   is_forecast <- vapply(df$scenario, function(x) {
-    .step2_is_forecast_scenario(x)
+    .step2_is_forecast_like(x)
   }, logical(1L))
   df$ssp_key <- ifelse(df$is_historical, "Historical",
     ifelse(is_forecast, "Forecast", vapply(df$scenario, .normalise_ssp, character(1L)))
@@ -448,11 +448,11 @@ step2_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   }
 
   central$ssp_key <- ifelse(central$is_historical, "Historical",
-    ifelse(vapply(central$scenario, .step2_is_forecast_scenario, logical(1L)),
+    ifelse(vapply(central$scenario, .step2_is_forecast_like, logical(1L)),
       "Forecast", vapply(central$scenario, .normalise_ssp, character(1L)))
   )
   central$yr_lbl <- ifelse(central$is_historical, "Historical",
-    ifelse(vapply(central$scenario, .step2_is_forecast_scenario, logical(1L)),
+    ifelse(vapply(central$scenario, .step2_is_forecast_like, logical(1L)),
       as.character(central$scenario), vapply(central$scenario, .parse_year, character(1L)))
   )
   central <- central[is.finite(central$value), , drop = FALSE]
@@ -644,7 +644,7 @@ step2_headline_cards <- function(bands,
   hist <- if (nrow(hist_rows)) hist_rows[1L, ] else fut_rows[1L, ]
   focus <- if (nrow(fut_rows)) fut_rows[1L, ] else hist
   has_future <- nrow(fut_rows) > 0L
-  forecast_focus <- has_future && .step2_is_forecast_scenario(as.character(focus$scenario[[1L]]))
+  forecast_focus <- has_future && .step2_is_forecast_like(as.character(focus$scenario[[1L]]))
 
   so <- if (!is.null(hist_sim)) hist_sim$so else NULL
   metadata <- metadata %||% metric_metadata(method, so)
@@ -689,14 +689,13 @@ step2_headline_cards <- function(bands,
   }
 
   scen_lab <- if (has_future) as.character(focus$scenario) else NULL
-  forecast_focus <- has_future && .step2_is_forecast_scenario(scen_lab)
+  forecast_focus <- has_future && .step2_is_forecast_like(scen_lab)
   has_curves <- !is.null(timeseries_curves) && nrow(timeseries_curves) &&
     all(c("scenario", "value") %in% names(timeseries_curves))
   if (forecast_focus && !is.null(timeseries_curves) && nrow(timeseries_curves) &&
       "model_id" %in% names(timeseries_curves)) {
-    focus$n_members <- length(unique(timeseries_curves$model_id[
-      timeseries_curves$scenario == focus$scenario
-    ]))
+    # One curve row per member, as members-as-models (one year) or as one window-scope sample.
+    focus$n_members <- sum(timeseries_curves$scenario == focus$scenario)
   }
   if (forecast_focus) delta_ci <- NULL
   # Weighted population (people) for translating a rate change into the
@@ -718,7 +717,7 @@ step2_headline_cards <- function(bands,
   # view is already relative to the historical mean.
   fp <- if (forecast_focus && identical(deviation, "none")) forecast_placement else NULL
   base_value <- if (!is.null(fp)) mean(fp$reference$value) else hist$value
-  base_label <- if (!is.null(fp)) "Same-window climatology" else "Historical"
+  base_label <- if (!is.null(fp)) "Historical, same months" else "Historical"
 
   # 1. Expected change (focus scenario vs its comparator, average year)
   change_1 <- if (has_future) focus$value - base_value else NA_real_
@@ -771,7 +770,7 @@ step2_headline_cards <- function(bands,
       if (forecast_focus) {
         paste(
           "Expected aggregate outcome for the selected forecast target window compared with the",
-          if (!is.null(fp)) "same-window climatology" else "historical baseline",
+          if (!is.null(fp)) "historical outcome of the same months" else "historical baseline",
           "(mean across forecast members)."
         )
       } else {
@@ -1082,6 +1081,10 @@ step2_headline_cards <- function(bands,
     info = if (forecast_focus) paste(
       "The target-window spread across forecast members is shown separately from coefficient uncertainty.",
       "It is not a calibrated probability.",
+      if (is.finite(snr)) paste(
+        "The second line compares the shift of the mean member from the reference-year mean with the",
+        "standard deviation of the same-window outcome across reference years."
+      ),
       if (all(c("coef_lo", "coef_hi") %in% names(focus)) &&
         is.finite(focus$coef_lo) && is.finite(focus$coef_hi)) paste0(
           "Coefficient uncertainty is separate: ", display_value(focus$coef_lo), " to ",
@@ -1127,6 +1130,33 @@ step2_headline_cards <- function(bands,
       card3$info,
       "Forecast skill has not been established for this pilot."
     )
+  }
+  # Window scope: the comparator is the same-window reference, so the shift and the member spread are read
+  # against the year-to-year spread of the same months (card 4 carries the member range).
+  if (forecast_focus && .step2_is_window_forecast(scen_lab)) {
+    member_sd <- if (length(focus_vals) >= 3L) stats::sd(focus_vals, na.rm = TRUE) else NA_real_
+    sharp <- if (is.finite(member_sd) && is.finite(hist_sd) && hist_sd > 0) member_sd / hist_sd else NA_real_
+    times <- function(x) paste0(format(round(x, 1), nsmall = 1), "\u00d7")
+    line1_3 <- "shift of the mean member, in historical standard deviations (same months)"
+    line2_3 <- if (is.finite(sharp)) paste0("Member spread is ", times(sharp), " the historical spread")
+    card3$label <- "Signal vs noise"
+    card3$value <- if (is.finite(snr)) times(snr) else "Unavailable"
+    card3$note <- paste(c(line1_3, line2_3, line3_3), collapse = " \u00b7 ")
+    card3$note_html <- shiny::tagList(
+      shiny::tags$div(line1_3),
+      if (!is.null(line2_3)) shiny::tags$div(line2_3),
+      if (!is.null(line3_3)) shiny::tags$div(style = "font-weight: 600;", line3_3)
+    )
+    card3$info <- paste(
+      "The shift of the mean forecast member from the historical mean of the same months, divided by the standard",
+      "deviation of that outcome across historical years (a shift well below 1\u00d7 is hard to tell apart from an",
+      "ordinary year). The second line compares the spread across members with that year-to-year spread: below",
+      "1\u00d7 the members are more concentrated than past years. Neither is a calibrated probability, and",
+      "forecast skill has not been established for this pilot."
+    )
+    card3$value_native <- snr
+    card3$snr_native <- snr
+    card3$member_spread_ratio_native <- sharp
   }
   if (is.finite(agree_share)) {
     card3$status <- if (agree_share >= 0.8) {
@@ -1338,8 +1368,8 @@ step2_headline_cards <- function(bands,
     paste0("1 historical \u00d7 ", n_years, " yrs")
   }
   if (forecast_focus) {
-    n_members <- if (!is.null(focus_curves) && nrow(focus_curves) && "model_id" %in% names(focus_curves)) {
-      length(unique(focus_curves$model_id))
+    n_members <- if (!is.null(focus_curves) && nrow(focus_curves)) {
+      nrow(focus_curves)
     } else {
       as.integer(focus[["n_models"]] %||% NA_integer_)
     }
@@ -2025,7 +2055,7 @@ echart_variance_contribution <- function(var_tbl, height = "300px", percent = FA
   df$sd_resid <- if ("var_resid" %in% names(df)) sqrt(pmax(df$var_resid, 0)) else 0
   # Forecast rows spread over ensemble members, not climate models.
   future_scn <- setdiff(unique(as.character(df$scenario)), "Historical")
-  is_fc <- vapply(future_scn, .step2_is_forecast_scenario, logical(1L))
+  is_fc <- vapply(future_scn, .step2_is_forecast_like, logical(1L))
   across_label <- if (length(is_fc) && all(is_fc)) {
     "Forecast member spread"
   } else if (any(is_fc)) {
@@ -2134,7 +2164,7 @@ echart_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
     if (identical(s, "Historical")) {
       return(.wise_support)
     }
-    if (.step2_is_forecast_scenario(s)) {
+    if (.step2_is_forecast_like(s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
@@ -2673,6 +2703,7 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
 #' - logit_x has no echarts counterpart: the probability axis uses log10
 #'   with the same supported return-period tick labels (percent-formatted).
 #'   Custom label and tick positions use ECharts >= 5.5.1.
+#' @param p_max Upper end of the probability axis in the adverse-tail view (0.55: the adverse half).
 #' @noRd
 echart_exceedance <- function(curves_tbl,
                               x_label,
@@ -2680,7 +2711,8 @@ echart_exceedance <- function(curves_tbl,
                               logit_x = FALSE,
                               band_q = c(lo = 0.10, hi = 0.90),
                               ensemble_band_q = c(lo = 0, hi = 1),
-                              height = "400px") {
+                              height = "400px",
+                              p_max = 0.55) {
   if (is.null(curves_tbl) || nrow(curves_tbl) == 0L) {
     return(echart_blank("Run a simulation to see exceedance probabilities.", height = height))
   }
@@ -2739,7 +2771,7 @@ echart_exceedance <- function(curves_tbl,
     if (identical(s, "Historical")) {
       return(.wise_support)
     }
-    if (.step2_is_forecast_scenario(s)) {
+    if (.step2_is_forecast_like(s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
@@ -2747,17 +2779,17 @@ echart_exceedance <- function(curves_tbl,
   }, character(1L)), scenario_levels)
   # Period linetypes from the static builder's year-style resolution.
   agg_df$yr_lbl <- ifelse(agg_df$is_historical, "Historical",
-    ifelse(vapply(agg_df$scenario, .step2_is_forecast_scenario, logical(1L)),
+    ifelse(vapply(agg_df$scenario, .step2_is_forecast_like, logical(1L)),
       as.character(agg_df$scenario), vapply(agg_df$scenario, .parse_year, character(1L)))
   )
   fut_yr_labels <- sort(unique(agg_df$yr_lbl[
     agg_df$yr_lbl != "Historical" &
-      !vapply(agg_df$scenario, .step2_is_forecast_scenario, logical(1L))
+      !vapply(agg_df$scenario, .step2_is_forecast_like, logical(1L))
   ]))
   yr_styles <- .resolve_year_styles(fut_yr_labels)
   line_type_map <- c("Historical" = "solid", yr_styles$linetype_map)
   e_type_of <- function(scn) {
-    if (.step2_is_forecast_scenario(scn)) return("solid")
+    if (.step2_is_forecast_like(scn)) return("solid")
     yr <- .parse_year(scn)
     t <- if (!is.null(yr) && !is.na(yr) && yr %in% names(line_type_map)) {
       unname(line_type_map[[yr]])
@@ -2769,7 +2801,7 @@ echart_exceedance <- function(curves_tbl,
   }
 
   max_prob <- max(agg_df$exceed_prob, na.rm = TRUE)
-  is_adverse_tail <- max_prob <= 0.55
+  is_adverse_tail <- max_prob <= max(0.55, p_max)
   support_years <- if (!is.null(n_sim_years) && is.finite(n_sim_years)) {
     max(2L, floor(n_sim_years))
   } else {
@@ -2846,7 +2878,7 @@ echart_exceedance <- function(curves_tbl,
     tick_vals <- log_breaks[keep_b]
     tick_labels <- log_labels[keep_b]
     x_min <- low_lim
-    x_max <- 0.55
+    x_max <- p_max
   } else {
     rp_low <- supported_rp(RP_LOW)
     rp_high <- supported_rp(RP_HIGH)
