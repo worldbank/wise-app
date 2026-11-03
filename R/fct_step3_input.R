@@ -441,7 +441,7 @@ wise_labor_config <- function(x, defaults) {
 # First missing prerequisite of a policy run as a message for the user, or NULL
 # when the run can start. Order matters: it is the order the checks were made
 # in mod_3_06_policy_sim_server()'s run().
-.step3_run_prerequisite_error <- function(mf, hs, sw, svy) {
+.step3_run_prerequisite_error <- function(mf, hs, sw, svy, ss = NULL, sp = NULL) {
   if (is.null(mf)) {
     return(paste(
       "No fitted model. Run the Step 1 model before simulating policy",
@@ -465,6 +465,12 @@ wise_labor_config <- function(x, defaults) {
   }
   if (is.null(svy)) {
     return("Survey data not available.")
+  }
+  if (identical(sp$sp_type, "shock") && any(.step2_is_forecast_scenario(names(ss)))) {
+    return(paste(
+      "A shock-responsive transfer cannot be combined with a seasonal forecast window: its triggers come from",
+      "annual weather. Use a regular transfer, or rerun Step 2 without the forecast."
+    ))
   }
   NULL
 }

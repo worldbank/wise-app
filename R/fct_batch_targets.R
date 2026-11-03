@@ -686,9 +686,6 @@ wise_batch_sim <- function(item, connection_params = NULL) {
         if (length(spec$sample$countries) != 1L) {
           stop("sim.forecast requires exactly one sample country.", call. = FALSE)
         }
-        if (!is.null(spec$policy)) {
-          stop("Step 3 policy runs are not supported with sim.forecast; remove the policy section.", call. = FALSE)
-        }
         country <- spec$sample$countries[[1L]]
         runs <- .forecast_catalogue_runs(cp, country)
         forecast_run <- runs[[sim$forecast$run]]
@@ -1068,13 +1065,12 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
   }
   # The baseline arm (policy_id NA) comes from the simulations, the policy arms
   # from the policy runs.
-  for (name in c("annual", "summary")) {
+  for (name in c("annual", "summary", "forecast")) {
     .write_table(
       dplyr::bind_rows(pick(sim_tables, name), pick(policy_tables, name)), out_dir, name
     )
   }
   .write_table(pick(sim_tables, "sim_weather"), out_dir, "sim_weather")
-  .write_table(pick(sim_tables, "forecast"), out_dir, "forecast")
   for (name in c("decomposition", "policy_measures")) {
     .write_table(pick(policy_tables, name), out_dir, name)
   }

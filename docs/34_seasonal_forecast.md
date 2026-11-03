@@ -11,7 +11,7 @@ verified_against: 523a585
 
 # Seasonal forecast scenario (experimental pilot)
 
-> **Status: experimental local pilot.** BFA has two draft runs, May and October 2026, prepared for DEV testing. The app reads adjusted forecast weather from the local data root. Skill and scientific usefulness are not established. Draft runs are not offered on Posit Connect. Step 3 policy simulation for forecast windows remains unsupported and is explicitly blocked.
+> **Status: experimental local pilot.** BFA has two draft runs, May and October 2026, prepared for DEV testing. The app reads adjusted forecast weather from the local data root. Skill and scientific usefulness are not established. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows; a shock-responsive transfer is blocked with a forecast.
 
 > A seasonal forecast is one more weather state, next to the historical record and the climate scenarios. It describes one dated target window, for example November to January, by the members of a forecast ensemble. The fitted model, the residual treatment and the metrics are the ones used for every other scenario.
 
@@ -57,6 +57,10 @@ Skill: a run may publish a hindcast skill table (anomaly correlation, CRPSS, ter
 
 Season check: the cards warn when fewer than half of an even share of the model's training observations were interviewed in the target months, because the weather response is then applied to months it was barely estimated from. A calendar-month anomaly predictor with interview-month fixed effects is the recommended specification for forecast use.
 
+### 5. Policy under the forecast (Step 3)
+
+The policy effect on a household is a static change of its characteristics or transfer, row-aligned with the Step 2 prediction rows, so the same correction $\Delta_h$ applies to household $h$ in every target month. Each member $m$ gives a baseline aggregate $A_m$ and a policy aggregate $A^{\text{pol}}_m$ over the same $L$ target months and the same weights $w_h / L$; each reference year $y$ does the same, giving $R_y$ and $R^{\text{pol}}_y$. The app reports the median of $A^{\text{pol}}_m - A_m$ and of $R^{\text{pol}}_y - R_y$, and the share of members at or below the baseline 1-in-10 reference level without and with the policy at that one fixed level. The policy has no timing within the window. A shock-responsive transfer takes its triggers from annual weather and is not available with a forecast. The annual views of Step 3 (weather years, adverse years, exceedance, tables, decomposition) read the annual scenarios only.
+
 ## Interpretation
 
 The band across members shows how much the forecast weather moves the model's outcome. It is not a calibrated probability. A forecast with no skill for the season and lead still produces a band, so the app must say where skill is weak.
@@ -77,11 +81,13 @@ The band across members shows how much the forecast weather moves the model's ou
 - Welfare responses are conditional on the fitted model; no adaptation within the target window.
 - Target months have equal weight, not weight proportional to their number of days. This is a monthly-state summary, not an annual welfare forecast.
 - Forecast windows are not historical-year samples; the annual adverse-year and return-period views do not apply. The placement in the same-window reference replaces them.
-- Step 3 policy runs must currently be preceded by a Step 2 rerun with the forecast switched off. The annual policy-exposure contract has not been extended to target-month population replication.
+- Step 3 applies static policies to the window and to the reference years. A shock-responsive transfer is not available with a forecast, and the policy-channel decomposition is annual only.
 
 ## In the app
 
 - Step 2 > Seasonal forecast: include the forecast, choose the run, the length of the window (1, 3 or 6 months) and the start month on the strip. The forecast is unavailable, with a reason, when the country has no forecast or the fitted model uses a variable the forecast does not provide.
+
+- Step 3: a policy run with a forecast adds "What does the policy do under the seasonal forecast?" to the Results tab: members and reference years without and with the policy. The annual views leave the forecast out.
 
 - Step 2 > Results: with a forecast, the cards compare with the same-window climatology and show the placement, and a chart shows the members against the reference years. A forecast-only run hides the annual adverse-year, exceedance and return-period sections and says why; with a climate scenario they remain for the scenarios.
 
@@ -104,6 +110,8 @@ None yet. Entries will be added with the backtest. Full entries are in [referenc
 | Same-window reference weather (`refyear_<year>` frames) | 4 | `R/fct_forecast_weather.R` `.get_forecast_weather(reference_years = )` |
 | Reference pipelines and the interview-month join key | 3, 4 | `R/fct_run_simulation.R` `consume_reference()`, `.step2_forecast_join_keys()` |
 | Hindcast skill of the target months | 4 | `R/fct_forecast_skill.R` `.forecast_skill_table()`, `.forecast_skill_summary()` |
+| Policy under the forecast: exposure contract for the window, reference pipelines | 5 | `R/fct_policy_metric_decompose.R` `.policy_forecast_window()`, `.validate_policy_annual_exposure()`; `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()` |
+| Policy effect view and batch rows | 5 | `R/fct_forecast_policy.R` `step3_forecast_policy()`, `step3_forecast_batch_tables()` |
 | Member placement in the reference | 4 | `R/fct_forecast_placement.R` `.forecast_placement_stats()`, `step2_forecast_placement()` |
 | Cards comparator and training-month warning | 4 | `R/fct_sim_compare.R` `step2_headline_cards()` |
 | Adjusted monthly weather and fitted predictor windows | 2 | `R/fct_forecast_weather.R` `.get_forecast_weather()` |

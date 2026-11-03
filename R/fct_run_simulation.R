@@ -988,7 +988,7 @@ fct_run_simulation <- function(sw,
         year, "). Results would silently drop households, so the run was stopped.", call. = FALSE
       )
     }
-    out$weather_raw <- NULL
+    # Kept (as for members): Step 3 rebuilds the exposure mapping from it to apply a policy to the reference.
     forecast_reference_pipelines[[key]] <<- out
     invisible(NULL)
   }

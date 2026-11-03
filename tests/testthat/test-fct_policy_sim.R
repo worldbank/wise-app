@@ -1,9 +1,13 @@
-test_that("policy runs reject forecast windows before annual exposure calculations", {
+test_that("a shock-responsive transfer is rejected for forecast windows, other policies are not", {
+  scenarios <- list("Seasonal forecast / Nov 2026 (October 2026 run)" = list())
+  expect_match(.step3_run_prerequisite_error(list(), list(), list(1), list(1), scenarios, list(sp_type = "shock")),
+    "shock-responsive transfer cannot be combined")
   expect_error(apply_policy_delta_to_baseline(
     svy_baseline = data.frame(hhid = 1L), svy_policy = data.frame(hhid = 1L),
     model_fit = list(engine = "fixest"), so = list(name = "welfare"), hist_sim_baseline = list(),
-    saved_scenarios_baseline = list("Seasonal forecast / Nov 2026 (October 2026 run)" = list())
-  ), "Rerun Step 2 with the seasonal forecast switched off", fixed = TRUE)
+    saved_scenarios_baseline = scenarios, sp = list(sp_type = "shock")
+  ), "shock-responsive transfer is not supported", fixed = TRUE)
+  expect_null(.step3_run_prerequisite_error(list(), list(), list(1), list(1), scenarios, list(sp_type = "regular")))
 })
 
 test_that(".apply_binary_access hits the weighted share asked for (DOC-13)", {

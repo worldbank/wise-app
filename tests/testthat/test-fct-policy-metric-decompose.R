@@ -975,3 +975,41 @@ test_that("the main effect adds the interview-weather interaction, never the rep
     if (engine == "fixest") expect_equal(at_interview$delta_res1, rep(0, fx$context$n))
   }
 })
+
+test_that("the exposure validator accepts a forecast window and still rejects tampered months or weights", {
+  w <- c(10, 20)
+  ts <- as.Date(c("2026-11-01", "2026-11-01", "2027-01-01", "2027-01-01"))
+  table <- data.frame(
+    .policy_exposure_id = 1:4, code = "TST", year = "2021", survname = "s", loc_id = c(1L, 2L, 1L, 2L),
+    int_month = as.integer(format(ts, "%m")), sim_year = as.integer(format(ts, "%Y")), timestamp = ts,
+    t = c(20, 21, 22, 23)
+  )
+  pipeline <- list(
+    y_point = c(1, 2, 3, 4), svy_row_id = c(1L, 2L, 1L, 2L), sim_year = rep(2026L, 4L),
+    weight = rep(w, 2L) / 2, id_vec = 1:4,
+    weather_exposure = list(
+      status = "ok", table = table, row_index = 1:4, prediction_row_id = 1:4,
+      svy_row_id = c(1L, 2L, 1L, 2L), sim_year = rep(2026L, 4L), weight = rep(w, 2L) / 2,
+      id_vec = 1:4, id_col = "id"
+    )
+  )
+  context <- list(
+    n = 2L, weather_vars = "t",
+    svy_baseline = data.frame(code = "TST", year = "2021", survname = "s", loc_id = 1:2,
+      int_month = c(5L, 6L), weight = w, t = c(25, 26))
+  )
+  owner <- list(forecast = list(len = 2L, forecast_months = as.Date(c("2026-11-01", "2026-12-01", "2027-01-01"))[c(1, 3)]))
+  expect_identical(.validate_policy_annual_exposure(pipeline, context, owner)$status, "ok")
+  # Without the forecast owner the same rows break the annual contract (interview month, weights).
+  expect_error(.validate_policy_annual_exposure(pipeline, context, NULL), "mismatch")
+  # A weight that is not the survey weight over the window length.
+  bad_weight <- pipeline
+  bad_weight$weight <- rep(w, 2L)
+  bad_weight$weather_exposure$weight <- bad_weight$weight
+  expect_error(.validate_policy_annual_exposure(bad_weight, context, owner), "weight mismatch")
+  # A weather month outside the target window.
+  bad_month <- pipeline
+  bad_month$weather_exposure$table$timestamp[3:4] <- as.Date("2027-03-01")
+  bad_month$weather_exposure$table$int_month[3:4] <- 3L
+  expect_error(.validate_policy_annual_exposure(bad_month, context, owner), "anchor")
+})

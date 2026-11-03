@@ -108,6 +108,15 @@
   prepared
 }
 
+# Target window of a seasonal-forecast scenario (`owner` = the scenario list): its length and calendar months,
+# or NULL for any other owner.
+.policy_forecast_window <- function(owner) {
+  fc <- if (is.list(owner)) owner$forecast
+  if (is.null(fc) || is.null(fc$len) || is.null(fc$forecast_months)) return(NULL)
+  list(len = as.integer(fc$len),
+    months = unique(as.integer(format(as.Date(fc$forecast_months), "%m"))))
+}
+
 .validate_policy_annual_exposure <- function(pipeline, context, owner = NULL,
                                               cache = NULL) {
   # Schema-2 pipelines store a compact recipe; rebuild the exact mapping from
@@ -127,6 +136,10 @@
   ids <- pipeline$svy_row_id
   idx <- exposure$row_index
   ordinal <- exposure$prediction_row_id
+  # A seasonal forecast expands each household over the L target months: the weather month (the exposure
+  # table's `int_month`) is the target month, not the interview month, the weight is the survey weight / L,
+  # and a window can cross a year end. Everything else is the annual contract.
+  forecast_window <- .policy_forecast_window(owner)
   key_cols <- c("code", "year", "survname", "loc_id", "int_month", "timestamp")
   # Everything below except the weather values depends only on the row
   # structure (ids, years, weights, anchor index and the anchor key columns).
@@ -170,19 +183,31 @@
     if (!all(join_keys %in% names(context$svy_baseline))) {
       stop("Survey join identity unavailable in run context.", call. = FALSE)
     }
+    if (!is.null(forecast_window)) join_keys <- setdiff(join_keys, "int_month")
     for (key in join_keys) {
       if (!identical(as.character(exposure$table[[key]][idx]),
         as.character(context$svy_baseline[[key]][ids]))) {
         stop("Weather exposure/survey identity mismatch: ", key, call. = FALSE)
       }
     }
-    if (!is.null(pipeline$weight) && "weight" %in% names(context$svy_baseline) &&
-      !identical(pipeline$weight, context$svy_baseline$weight[ids])) {
-      stop("Prediction/survey weight mismatch.", call. = FALSE)
+    if (!is.null(pipeline$weight) && "weight" %in% names(context$svy_baseline)) {
+      expected_weight <- context$svy_baseline$weight[ids]
+      same <- if (is.null(forecast_window)) {
+        identical(pipeline$weight, expected_weight)
+      } else {
+        isTRUE(all.equal(as.numeric(pipeline$weight), as.numeric(expected_weight) / forecast_window$len,
+          tolerance = 1e-12))
+      }
+      if (!same) stop("Prediction/survey weight mismatch.", call. = FALSE)
     }
     ts <- as.POSIXlt(exposure$table$timestamp[idx])
-    if (!all(as.integer(ts$year + 1900L) == pipeline$sim_year) ||
-      !all(as.integer(ts$mon + 1L) == exposure$table$int_month[idx])) {
+    anchor_month <- as.integer(ts$mon + 1L) == exposure$table$int_month[idx]
+    anchor_year <- if (is.null(forecast_window)) {
+      as.integer(ts$year + 1900L) == pipeline$sim_year
+    } else {
+      as.integer(ts$mon + 1L) %in% forecast_window$months
+    }
+    if (!all(anchor_year) || !all(anchor_month)) {
       stop("Weather anchor does not match simulation year/month.", call. = FALSE)
     }
     # Remember the structure only after every structural check has passed.

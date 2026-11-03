@@ -1962,6 +1962,43 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     # 2. Headline cards ----
     shiny::uiOutput(ns("headline_cards_ui")),
 
+    # Policy under a seasonal forecast: members and same-window reference years, without and with the policy ----
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("has_forecast"), "']"),
+      shiny::h4(
+        "What does the policy do under the seasonal forecast?",
+        info_popover(
+          title = "Policy under the forecast",
+          shiny::p(
+            "Each forecast member gives one outcome for the target months, without and with the policy.",
+            "Each grey dot is the same outcome under observed weather for the same calendar months in one past year."
+          ),
+          shiny::p(
+            "The policy acts identically in every month of the window. The dashed line is the baseline 1-in-10",
+            "reference level; the shares of members are indicators, not probabilities."
+          ),
+          docs = TRUE
+        ),
+        style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+      ),
+      shiny::div(
+        class = "results-section-card",
+        wise_chart_output(
+          ns("forecast_policy_plot"),
+          "Forecast members and past years placed without and with the policy",
+          height = "340px"
+        ),
+        shiny::uiOutput(ns("forecast_policy_note"))
+      ),
+      shiny::tags$p(
+        class = "text-muted small", style = "margin: 8px 0 0;",
+        paste0(
+          "The annual views below (weather years, adverse years, exceedance, tables) exclude the forecast: ",
+          "its members describe one target window, not annual weather samples."
+        )
+      )
+    ),
+
     # Section 1: Annual weather variation & policy shift ----
     shiny::h4(
       sec1_heading,
@@ -2134,6 +2171,11 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
 #' compares them side-by-side. Controls (aggregation method, deviation,
 #' weights, scenario filter) drive both sources jointly.
 #' @noRd
+# Scenarios of an annual view: the forecast ones are left out.
+.step3_annual_scenarios <- function(scenarios) {
+  scenarios[!vapply(names(scenarios) %||% character(0), .step2_is_forecast_scenario, logical(1L))]
+}
+
 .wire_results_pane <- function(input, output, session,
                                baseline_hist_sim,
                                baseline_saved_scenarios,
@@ -2156,6 +2198,12 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                                  aggregation_cache = NULL,
                                  analysis_unit = reactive(NULL),
                                  annual_channels = reactive(NULL)) {
+  # A forecast window is not an annual weather sample. Every annual view here (cards, violin, adverse years,
+  # exceedance, tables, decomposition) reads the annual scenarios only; the forecast has its own section.
+  baseline_saved_all <- baseline_saved_scenarios
+  policy_saved_all <- policy_saved_scenarios
+  baseline_saved_scenarios <- reactive(.step3_annual_scenarios(baseline_saved_all()))
+  policy_saved_scenarios <- reactive(.step3_annual_scenarios(policy_saved_all()))
   aggregation_method <- reactive({
     hs <- baseline_hist_sim()
     choices <- unname(hist_aggregate_choices(hs$so$type, hs$so$name))
@@ -3186,6 +3234,59 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     ch
   })
   outputOptions(output, "adverse_dot_plot", suspendWhenHidden = TRUE)
+
+  # Policy under a seasonal forecast ----
+  output$has_forecast <- shiny::reactive(any(vapply(
+    names(baseline_saved_all()) %||% character(0), .step2_is_forecast_scenario, logical(1L)
+  )))
+  outputOptions(output, "has_forecast", suspendWhenHidden = FALSE)
+  forecast_policy_rv <- reactive({
+    if (isTRUE(stale()) || !identical(policy_endpoint_status()$status, "ok")) return(NULL)
+    base <- baseline_saved_all()
+    pol <- policy_saved_all()
+    hs <- baseline_hist_sim()
+    keep <- names(base)[vapply(names(base), .step2_is_forecast_scenario, logical(1L)) &
+      vapply(base, function(x) length(x$reference_pipelines) > 0L, logical(1L))]
+    keep <- intersect(keep, names(pol))
+    if (!length(keep) || is.null(hs$so)) return(NULL)
+    tryCatch(
+      step3_forecast_policy(
+        base[[keep[[1L]]]], pol[[keep[[1L]]]], aggregation_method(), hs$so, hs$residuals %||% "original",
+        skip_coef = TRUE, pov_line = pov_line_val() %||% step2_default_pov_line(hs$so),
+        seed = .step2_run_seed(hs)
+      ),
+      error = function(e) NULL
+    )
+  })
+  forecast_policy_chart <- function() {
+    view <- forecast_policy_rv()
+    req(!is.null(view))
+    echart_forecast_policy(view, metric_axis_label(aggregation_method(), baseline_hist_sim()$so, "none"))
+  }
+  output$forecast_policy_plot <- echarts4r::renderEcharts4r({
+    forecast_policy_chart()
+  })
+  outputOptions(output, "forecast_policy_plot", suspendWhenHidden = TRUE)
+  output$forecast_policy_note <- shiny::renderUI({
+    view <- forecast_policy_rv()
+    if (is.null(view)) {
+      return(shiny::tags$p(class = "text-muted small", style = "margin: 8px 0 0;",
+        "The policy view is unavailable for this run."))
+    }
+    txt <- .forecast_policy_text(view)
+    shiny::tags$p(
+      class = "text-muted small", style = "margin: 8px 0 0;",
+      shiny::tags$strong(txt$headline), " ", txt$tail, " ", txt$info
+    )
+  })
+  wise_export_figure(
+    key = "policy_forecast",
+    label = "Policy under the seasonal forecast",
+    step = 3L,
+    fun = forecast_policy_chart,
+    description = "Forecast members and same-window past years, without and with the policy.",
+    width = 9, height = 4.5
+  )
 
   # Section 4: Decision & return-period table ----
   threshold_table_df <- function() {

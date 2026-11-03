@@ -1669,10 +1669,10 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     is.null(hist_sim_baseline)) {
     return(NULL)
   }
-  if (any(.step2_is_forecast_scenario(names(saved_scenarios_baseline)))) {
+  if (identical(sp$sp_type, "shock") && any(.step2_is_forecast_scenario(names(saved_scenarios_baseline)))) {
     stop(paste0(
-      "Policy simulation for seasonal forecast windows is not yet supported. ",
-      "Rerun Step 2 with the seasonal forecast switched off before running Step 3."
+      "A shock-responsive transfer is not supported for a seasonal forecast window: its triggers come from ",
+      "annual weather. Use a regular transfer or another lever, or rerun Step 2 without the forecast."
     ), call. = FALSE)
   }
   if (!is.null(decomp_context) && is.null(run_identity)) {
@@ -1747,7 +1747,9 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     pipes_new <- lapply(seq_along(s$pipelines), function(j) {
       result <- .apply_policy_annual_pipeline(
         s$pipelines[[j]], annual_channels, run_identity,
-        scenario = names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
+        # A forecast window is not an annual sample: no annual decomposition rows for it.
+        scenario = if (.step2_is_forecast_scenario(names(saved_scenarios_baseline)[i])) NULL else
+          names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
         member = names(s$pipelines)[j] %||% paste0("Member ", j),
         year_range = s$year_range %||% c(NA_integer_, NA_integer_),
         chunk_size = chunk_size, owner = s, exposure_cache = exposure_cache
@@ -1763,6 +1765,17 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     })
     names(pipes_new) <- names(s$pipelines)
     s$pipelines <- pipes_new
+    # The same-window reference years get the same policy, so the policy effect is comparable with the
+    # forecast's. They enter no decomposition table.
+    if (length(s$reference_pipelines)) {
+      s$reference_pipelines <- Map(function(p, nm) {
+        .apply_policy_annual_pipeline(
+          p, annual_channels, run_identity, scenario = NULL, member = nm,
+          year_range = s$year_range %||% c(NA_integer_, NA_integer_),
+          chunk_size = chunk_size, owner = s, exposure_cache = exposure_cache
+        )$pipeline
+      }, s$reference_pipelines, names(s$reference_pipelines))
+    }
     s$policy_correction_version <- annual_channels$correction_version
     s
   })

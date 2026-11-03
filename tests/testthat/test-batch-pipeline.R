@@ -963,3 +963,54 @@ test_that("a forecast simulation writes the forecast table and the placement, sk
   expect_setequal(summ$measure[summ$section == "season"], c("training_month_share", "training_month_expected"))
   expect_match(summ$text[summ$section == "skill"], "not assessed")
 })
+
+test_that("a policy on a forecast window writes the policy arm of the forecast table and the policy effect", {
+  skip_if_not_installed("qs2")
+  skip_if_not_installed("digest")
+  data <- withr::local_tempdir()
+  batch_fixture_tree(data, forecast = TRUE)
+  proj <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_DATA_PATH = data)
+  write_project(proj, c(
+    "seed: 7",
+    "model: {}",
+    "sim:",
+    "  hist_years: [2018, 2019]",
+    "  future_periods: []",
+    "  ssps: []",
+    "  coef_uncertainty: false",
+    "  forecast: {product: seasonal, run: '2021-01', start: '2021-02', len: 3}",
+    "profiles:",
+    "  weather:",
+    "    t_1m: {t: {ref_period: [1, 1], form: continuous}}",
+    "  policy:",
+    "    cash: {sp: {transfer_amount_usd: 60, targeting: exante_poor, targeting_threshold_pct: 30}}",
+    "axes:",
+    "  country: [TST]",
+    "  weather: [t_1m]",
+    "  policy: [cash]"
+  ))
+  make_it(proj)
+  out <- file.path(proj, "results")
+  expect_identical(nrow(arrow::read_parquet(file.path(out, "failures.parquet"))), 0L)
+  label <- "Seasonal forecast / Feb 2021 - Apr 2021 (January 2021 run)"
+
+  fc <- arrow::open_dataset(file.path(out, "tables", "forecast")) |> dplyr::collect()
+  expect_true(any(is.na(fc$policy_id)) && any(!is.na(fc$policy_id)))
+  base <- fc[is.na(fc$policy_id) & fc$metric == "mean" & fc$kind == "member", ]
+  pol <- fc[!is.na(fc$policy_id) & fc$metric == "mean" & fc$kind == "member", ]
+  expect_identical(sort(base$id), sort(pol$id))
+  expect_true(all(pol$value[match(base$id, pol$id)] >= base$value))
+  expect_true(any(pol$value[match(base$id, pol$id)] > base$value))
+
+  summ <- arrow::open_dataset(file.path(out, "tables", "summary")) |> dplyr::collect()
+  eff <- summ[summ$section == "policy_effect" & summ$metric == "mean" & summ$scenario == label, ]
+  expect_true(all(c("effect_member_median", "effect_reference_median", "share_worse_baseline",
+    "share_worse_policy") %in% eff$measure))
+  expect_gt(eff$estimate[eff$measure == "effect_member_median"], 0)
+  expect_gt(eff$estimate[eff$measure == "effect_reference_median"], 0)
+  expect_lte(eff$estimate[eff$measure == "share_worse_policy"], eff$estimate[eff$measure == "share_worse_baseline"])
+  # The annual tables of the policy arm carry no forecast scenario.
+  annual <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
+  expect_false(label %in% annual$scenario[!is.na(annual$policy_id)])
+})

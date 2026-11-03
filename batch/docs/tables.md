@@ -29,8 +29,11 @@ An optional `sim.forecast` descriptor selects local pilot data, for example
 `{product: seasonal, run: '2026-10', start: '2026-11', len: 3}`. The run is a
 country catalogue ID. Forecast data is currently local-only; preparation starts
 with `t`. The worker resolves and validates the run manifest and immutable file
-identities. Policy specifications with a forecast are rejected until Step 3's
-annual exposure contract supports forecast windows.
+identities. A policy section is allowed with a forecast, except a shock-responsive
+transfer (`sp_type: shock`), which is rejected: its triggers come from annual
+weather. The policy applies identically in every target month and to every
+reference year. The annual tables of the policy arm carry the annual scenarios
+only.
 
 A forecast scenario is named `Seasonal forecast / <target window> (<run> run)`.
 Its `member` identifies a forecast ensemble member, not a climate model.
@@ -237,6 +240,7 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `placement` | forecast scenarios only; `n_members`, `member_median`, `reference_median`, `difference_median`, `reference_adverse_1in10`, `share_worse_than_median`, `share_worse_than_1in10`, `median_member_return_period`, `median_member_beyond` (1 or 0), `n_beyond` | Where the forecast members fall in the same-window reference (see `forecast`). `n` = reference years. Each is one row per metric. |
 | `skill` | forecast scenarios only; `skill_flag` / `group` = target month (`YYYY-MM`, prefixed by the variable when the model has several) | Hindcast skill flag of each target month in `text` (`none`, `weak`, `useful`), `estimate` = anomaly correlation, `n` = lead. One row of text ("not assessed") when the run has no skill table. `metric` is `NA`. |
 | `season` | forecast scenarios only; `training_month_share`, `training_month_expected` | Share of the model's training observations interviewed in the target months, and the share an even spread over the year would give. `metric` is `NA`. |
+| `policy_effect` | policy arm of forecast scenarios only; `effect_member_median`, `effect_reference_median`, `share_worse_baseline`, `share_worse_policy`, `reference_adverse_1in10` | Policy effect under the forecast; see the `forecast` table. `n` = members. |
 
 **Policy arm** sections start with `policy_`; stored for every metric:
 
@@ -252,8 +256,8 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 
 ### forecast
 
-Key `sim_id`; written only when a run has a forecast scenario with a same-window
-reference. Long form: `scenario`, `metric`, `kind` (`member`: a forecast member;
+Key `sim_id` (and `policy_id` for the policy arm; `NA` for the baseline arm);
+written only when a run has a forecast scenario with a same-window reference. Long form: `scenario`, `metric`, `kind` (`member`: a forecast member;
 `reference`: one past year), `id` (the member, or `refyear_<year>`), `year` (the
 reference year; `NA` for members), `value` (the target-window aggregate:
 every baseline household in every target month at `weight / len`, the same
@@ -264,7 +268,14 @@ is rarer than half the number of reference years, or beyond every reference
 year; `return_period` is then `NA`). The reference years are the years of
 `sim.hist_years`; a year without observed weather for every target and
 predictor month is left out. The share of members is an indicator, not a
-probability.
+probability. The policy arm has the same rows with the policy applied; its
+`p_adverse` and `return_period` place each member in the policy arm's own
+reference. The `summary` table adds the section `policy_effect` for a policy
+arm: `effect_member_median` and `effect_reference_median` (the median change of
+the metric with the policy, over members and over reference years),
+`share_worse_baseline` and `share_worse_policy` (the share of members at or
+beyond the baseline 1-in-10 reference level without and with the policy, at that
+one fixed level) and `reference_adverse_1in10` (that level), with `n` = members.
 
 ### sim_weather
 

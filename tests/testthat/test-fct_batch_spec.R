@@ -886,10 +886,13 @@ test_that("forecast specs are optional, canonical and distinct in sim_id", {
   expect_identical(effective$future_periods, list(c(2030L, 2040L)))
   expect_identical(effective$ssps, c("ssp2_4_5", "ssp5_8_5"))
   expect_identical(effective$forecast$run, "2026-10")
+  # Step 3 runs with a forecast; a shock-responsive transfer does not.
+  expect_no_error(sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)),
+    policy = list(sp = list())))
   expect_error(
     sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)),
-      policy = list(sp = list())),
-    "not supported with sim.forecast"
+      policy = list(sp = list(sp_type = "shock"))),
+    "shock-responsive transfer is not supported with sim.forecast"
   )
 })
 

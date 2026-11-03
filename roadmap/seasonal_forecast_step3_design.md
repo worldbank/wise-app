@@ -1,6 +1,6 @@
 # Step 3 (policy) with a seasonal forecast: design note
 
-Date: 2026-11-02. Status: not started; scope decision pending (see "Options"). Companion to `roadmap/seasonal_forecast.md` (plan, item C) and `roadmap/seasonal_forecast_review.md`.
+Date: 2026-11-02. Status: option A built on 2026-11-03 in the `seasonal-forecast` branch (see `roadmap/seasonal_forecast.md`, item C); B and C not pursued. Companion to `roadmap/seasonal_forecast.md` (plan, item C) and `roadmap/seasonal_forecast_review.md`.
 
 ## What Step 3 does with a Step 2 scenario
 

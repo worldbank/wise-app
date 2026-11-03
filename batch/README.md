@@ -59,7 +59,7 @@ before it:
 | (none) | survey and weather statistics | `variable_stats`, `interview_dates`, `weather_stats` |
 | `model: {}` | Step 1 model | `model_terms`, `model_fit`, `model_vcov` |
 | `sim: {}` | Step 2 simulation (needs `model`) | `annual`, `summary`, `sim_weather`, and `forecast` with `sim.forecast` |
-| `policy: {...}` | Step 3 policy (needs `sim`) | policy arm of `annual` and `summary`, `decomposition`, `policy_measures` |
+| `policy: {...}` | Step 3 policy (needs `sim`) | policy arm of `annual`, `summary` and `forecast`, `decomposition`, `policy_measures` |
 
 `{}` means the app defaults. A step cannot run alone, but upstream stages are
 cached, so after one full run a change to `policy` reruns only the policy

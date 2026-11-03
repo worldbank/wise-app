@@ -614,7 +614,7 @@ mod_2_01_weathersim_server <- function(id,
         shiny::helpText(
           "Experimental DEV forecast data. Forecast skill and scientific usefulness are not established. ",
           "The member spread is not a calibrated probability. ",
-          "Step 3 policy runs currently require switching the forecast off and rerunning Step 2."
+          "Step 3 applies policies to the forecast window; shock-responsive transfers are not available with it."
         )
       }
     })

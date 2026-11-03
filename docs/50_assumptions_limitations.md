@@ -92,7 +92,7 @@ Across the pages, the app does not model the following.
 - Behavioural responses to a transfer.
 - A policy arm for logistic regression, binary outcomes and machine-learning models.
 - A causal reading of any policy lever effect.
-- Calibrated seasonal forecast probabilities, proven seasonal forecast skill, or policy simulation for seasonal target windows. The local pilot is experimental DEV data; Step 3 requires rerunning Step 2 with the forecast off.
+- Calibrated seasonal forecast probabilities, proven seasonal forecast skill, or a shock-responsive transfer for seasonal target windows. The local pilot is experimental DEV data; Step 3 applies static policies to the window.
 
 ## In the app
 
