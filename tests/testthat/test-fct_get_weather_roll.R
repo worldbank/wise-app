@@ -185,3 +185,40 @@ test_that("Median, odd windows and the env switch keep the legacy window", {
     expect_true(.wx_roll_fast_spec_ok(roll_selected("Mean")))
   })
 })
+
+# Counts of days: multiplicative, and each perturbed monthly term limited to the days of its calendar month.
+test_that("fast roll bounds a days variable by the days of each lagged month and keeps missing values", {
+  con <- roll_setup(roll_loc_monthly(null_base = TRUE))
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
+  bounded <- roll_fast_run(con, roll_selected("Sum", 0L, 3L), c(t = "multiplicative_days", p = "multiplicative_days"), roll_dates)
+  plain <- roll_fast_run(con, roll_selected("Sum", 0L, 3L), c(t = "multiplicative", p = "multiplicative"), roll_dates)
+  expect_false(is.null(bounded))
+  expect_identical(dim(bounded), dim(plain))
+  # bounding can only lower a sum of non-negative terms, never raise it, and never creates or removes NA
+  expect_true(all(bounded$p <= plain$p + 1e-9, na.rm = TRUE))
+  expect_true(any(bounded$p < plain$p - 1e-6, na.rm = TRUE))      # the bound binds on this fixture
+  expect_identical(is.na(bounded$p), is.na(plain$p))
+  # a 4-month sum of terms each at most the days of its month is at most 123 days
+  expect_true(all(bounded$p <= 123 + 1e-9, na.rm = TRUE))
+  # exact value for lag 0: min(p * delta, days in the month)
+  one <- roll_fast_run(con, roll_selected("Sum", 0L, 0L), c(t = "multiplicative_days", p = "multiplicative_days"), roll_dates)
+  lm <- DBI::dbGetQuery(con, "SELECT * FROM lm"); dl <- DBI::dbGetQuery(con, "SELECT * FROM deltas")
+  m <- merge(merge(one[c("model", "loc_id", "timestamp", "p")], lm[c("loc_id", "timestamp", "p")],
+                   by = c("loc_id", "timestamp"), suffixes = c("", "_base")),
+             transform(dl, month = month)[c("model", "loc_id", "month", "delta_p")], by = c("model", "loc_id"))
+  m <- m[as.integer(format(as.Date(m$timestamp), "%m")) == m$month, ]
+  last_day <- function(d) { d <- as.Date(d); nxt <- seq(as.Date(format(d, "%Y-%m-01")), by = "month", length.out = 2)[2]; as.integer(format(nxt - 1, "%d")) }
+  expected <- pmin(m$p_base * m$delta_p, vapply(m$timestamp, last_day, integer(1)))
+  expect_equal(m$p, expected, tolerance = 1e-9)
+})
+
+test_that(".wx_bound_days_sql limits to the days of the month and keeps NULL", {
+  con <- DBI::dbConnect(duckdb::duckdb())
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
+  q <- function(e, d) DBI::dbGetQuery(con, paste0("SELECT ", .wx_bound_days_sql(e, d), " AS v"))$v
+  expect_equal(q("45.0", "DATE '2024-02-10'"), 29)   # leap February
+  expect_equal(q("45.0", "DATE '2023-02-10'"), 28)
+  expect_equal(q("12.0", "DATE '2023-03-10'"), 12)   # below the bound: unchanged
+  expect_equal(q("45.0", "DATE '2023-04-01' - TO_MONTHS(1)"), 31)  # the lagged month (March)
+  expect_true(is.na(q("CAST(NULL AS DOUBLE)", "DATE '2023-03-10'")))
+})

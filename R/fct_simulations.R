@@ -1313,27 +1313,49 @@ residual_choices <- function() {
 
 # Perturbation method helper ----
 
+# Perturbation method by weather variable name ----
+# The climate change factor is additive or multiplicative per variable. It is defined on the variable
+# NAMES of the data directory (data/variable_list.csv of wise-app-data), not on unit strings, so a unit
+# written differently (for example "mm/day" instead of "mm") cannot silently switch a rainfall variable
+# to an additive change, which could make rainfall negative.
+#
+#  - additive:       temperatures, soil moisture and standardised indices
+#  - multiplicative: rainfall amounts and rates (r, rx5day) and counts of days (r20, tx35, tr)
+#  - days bounded:   counts of days; the perturbed monthly value cannot exceed the days of its calendar month
+#
+# A name that is not listed falls back to its unit: "mm", "mm/day" and "days" are multiplicative, and
+# "days" is also bounded by the days of the month; every other unit is additive.
+.perturbation_names <- list(
+  additive = c("t", "tn", "tx", "mrsos", "spei6"),
+  multiplicative = c("r", "rx5day", "r20", "tx35", "tr"),
+  days_bounded = c("r20", "tx35", "tr")
+)
+
 #' Build a Perturbation Method Vector for Climate Simulations
 #'
 #' Derives the named `perturbation_method` vector required by `get_weather()`
-#' when an SSP scenario is active. Precipitation and similar accumulation
-#' variables (units `"mm"` or `"days"`) use `"multiplicative"` scaling;
-#' all other variables (e.g. temperature in `"degC"`) use `"additive"` delta.
+#' when an SSP scenario is active. The method is set by variable name
+#' (`.perturbation_names`); a variable that is not listed is classified by its
+#' unit. Values are `"additive"`, `"multiplicative"` or
+#' `"multiplicative_days"` (multiplicative, with the perturbed monthly value
+#' limited to the number of days of its calendar month).
 #'
 #' @param selected_weather A data frame with columns `name` and `units`, as
 #'   returned by `build_selected_weather()`.
 #'
 #' @return A named character vector with one entry per row in
-#'   `selected_weather`, values being `"additive"` or `"multiplicative"`.
+#'   `selected_weather`.
 #'
 #' @export
 build_perturbation_method <- function(selected_weather) {
-  method <- ifelse(
-    selected_weather$units %in% c("mm", "days"),
-    "multiplicative",
-    "additive"
-  )
-  stats::setNames(method, selected_weather$name)
+  name <- as.character(selected_weather$name)
+  units <- as.character(selected_weather$units)
+  listed <- name %in% c(.perturbation_names$additive, .perturbation_names$multiplicative)
+  mult <- ifelse(listed, name %in% .perturbation_names$multiplicative,
+                 units %in% c("mm", "mm/day", "days"))
+  bounded <- mult & ifelse(listed, name %in% .perturbation_names$days_bounded, units %in% "days")
+  method <- ifelse(!mult, "additive", ifelse(bounded, "multiplicative_days", "multiplicative"))
+  stats::setNames(method, name)
 }
 
 

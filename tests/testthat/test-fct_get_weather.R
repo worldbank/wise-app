@@ -1172,6 +1172,39 @@ test_that("get_weather climate scenario works when CMIP6 is coarser than microda
   expect_equal(cmp$tx_fut - cmp$tx_hist, rep(5, nrow(cmp)), tolerance = 1e-6)
 })
 
+test_that("get_weather bounds a days variable by the days of the month (multiplicative_days)", {
+  skip_if_not_installed("arrow")
+  skip_if_not_installed("bit64")
+
+  fx <- cached_weather_fixture("cross_res_cmip6")
+  run <- function(method) {
+    result <- get_weather(
+      survey_data         = fx$survey_data,
+      selected_surveys    = fx$selected_surveys,
+      selected_weather    = sw_continuous("tx", ref_start = 0, ref_end = 0),
+      dates               = fx$dates,
+      connection_params   = fx$connection_params,
+      ssp                 = "ssp2_4_5",
+      future_period       = c("2025-01-01", "2025-12-31"),
+      perturbation_method = c(tx = method)
+    )
+    result[[grep("ssp2_4_5", names(result), value = TRUE)[1L]]]
+  }
+  plain <- run("multiplicative")
+  bounded <- run("multiplicative_days")
+  both <- merge(plain[, c("loc_id", "timestamp", "tx")], bounded[, c("loc_id", "timestamp", "tx")],
+                by = c("loc_id", "timestamp"), suffixes = c("_plain", "_bounded"))
+  both <- both[stats::complete.cases(both), ]
+  expect_true(nrow(both) > 0L)
+  days <- vapply(as.Date(both$timestamp), function(d) {
+    first <- as.Date(format(d, "%Y-%m-01"))
+    as.integer(format(seq(first, by = "month", length.out = 2L)[2L] - 1, "%d"))
+  }, integer(1))
+  # lag 0: the bounded value is the multiplicative one limited to the days of the month
+  expect_equal(both$tx_bounded, pmin(both$tx_plain, days), tolerance = 1e-6)
+  expect_true(any(both$tx_plain > days + 1e-9))   # the bound binds on this fixture
+})
+
 test_that("CR-BUG-06: CMIP6 members with partial coverage are excluded with a warning", {
   skip_if_not_installed("arrow")
   skip_if_not_installed("bit64")

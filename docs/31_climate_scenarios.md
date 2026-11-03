@@ -40,7 +40,9 @@ For each cell, member and month, the change from the baseline to the future peri
 
 $$\Delta^{m}_{c\mu} = \begin{cases} \bar x^{\ m}_{c\mu}(P_s) - \bar x^{\ m}_{c\mu}(P_0) & \text{additive} \\\\[6pt] \dfrac{\bar x^{\ m}_{c\mu}(P_s) + \varepsilon}{\bar x^{\ m}_{c\mu}(P_0) + \varepsilon} & \text{multiplicative} \end{cases} \qquad \text{(2.1)}$$
 
-with $\varepsilon = 0.001$ to avoid division by zero in dry months. A variable measured in millimetres or in days uses the multiplicative form. Every other variable, including temperature and standardised indices, uses the additive form.
+with $\varepsilon = 0.001$ to avoid division by zero in dry months. The form is set by variable name: rainfall (`r`, `rx5day`) and the counts of days (`r20`, `tx35`, `tr`) use the multiplicative form; temperatures (`t`, `tn`, `tx`), soil moisture (`mrsos`) and standardised indices (`spei6`) use the additive form. A variable that is not listed falls back to its unit: millimetres (`mm`, `mm/day`) and `days` are multiplicative and every other unit is additive. Defining the form by name keeps a unit written differently (for example `mm/day`) from silently switching rainfall to an additive change, which could make rainfall negative.
+
+A multiplicative count of days (`r20`, `tx35`, `tr`) is also limited to the days of its calendar month after the change factor is applied, because a count cannot exceed the month (`multiplicative_days` in `build_perturbation_method()`).
 
 The change at the location is the population-weighted mean of the cell changes, with the weights and the missing-value rule of Eq. (3.1) in [10_data](10_data.md). If the climate grid is coarser than the survey cells, the survey cells are mapped to their parent climate cell.
 
@@ -67,7 +69,7 @@ The simulation years of a future series are the years of the historical window. 
 - A future series keeps the observed order of wet and dry, hot and cool years of the historical window. Its monthly means are those of the future climate according to member $m$.
 - Differences between members are differences in the projected change, not in the weather sequence.
 - Near-term periods (to 2035) differ little between pathways. Pathways diverge toward mid-century.
-- A multiplicative change cannot make rainfall negative. A very large ratio in a dry month can produce a large absolute change.
+- A multiplicative change cannot make rainfall negative. A very large ratio in a dry month can produce a large absolute change, and a count of days is limited to the days of the month.
 - Because the baseline of the climate model is taken over the same window as the observed record, the change is internally consistent. A short window gives a less stable model climatology than a 30-year window.
 
 ## Assumptions

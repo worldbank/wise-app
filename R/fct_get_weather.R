@@ -1165,16 +1165,30 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
   TRUE
 }
 
+# Perturbation helpers. "multiplicative_days" is multiplicative with the perturbed monthly value
+# limited to the days of its calendar month (counts of days cannot exceed the month). A missing
+# value stays missing (LEAST would otherwise return the bound).
+.wx_is_multiplicative <- function(method) method %in% c("multiplicative", "multiplicative_days")
+.wx_bound_days_sql <- function(expr, date_sql) {
+  sprintf("CASE WHEN (%1$s) IS NULL THEN NULL ELSE LEAST(%1$s, DAY(LAST_DAY(CAST(%2$s AS DATE)))) END",
+          expr, date_sql)
+}
+
 # Rolled relation: model, keys, timestamp and one column per variable.
 .wx_roll_main_sql <- function(con, selected_weather, perturbation_method,
                               dates, bl_name, dl_name) {
   op <- function(v) {
-    if (identical(perturbation_method[[v]], "multiplicative")) "*" else "+"
+    if (.wx_is_multiplicative(perturbation_method[[v]])) "*" else "+"
   }
   specs <- .wx_roll_specs(selected_weather)
   term_cols <- unlist(lapply(specs, function(sp) {
     vapply(sp$lags, function(k) {
-      sprintf("(bl.b%d_%d %s dl.d%d_%d) AS x%d_%d", sp$i, k, op(sp$v), sp$i, k, sp$i, k)
+      expr <- sprintf("bl.b%d_%d %s dl.d%d_%d", sp$i, k, op(sp$v), sp$i, k)
+      if (identical(perturbation_method[[sp$v]], "multiplicative_days")) {
+        # the term belongs to the month k months before the row's timestamp
+        expr <- .wx_bound_days_sql(expr, sprintf("bl.\"timestamp\" - TO_MONTHS(%d)", k))
+      }
+      sprintf("(%s) AS x%d_%d", expr, sp$i, k)
     }, character(1L))
   }))
   agg_cols <- vapply(specs, function(sp) {
@@ -1240,8 +1254,10 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
 #'   projection period, e.g. `c("2045-01-01", "2055-12-31")`, **or** a list
 #'   of such vectors for multiple periods.  Required when `ssp != NULL`.
 #' @param perturbation_method Named character vector mapping each weather
-#'   variable name to `"additive"` or `"multiplicative"`. Required when
-#'   `ssp != NULL`.
+#'   variable name to `"additive"`, `"multiplicative"` or
+#'   `"multiplicative_days"` (multiplicative, with each perturbed monthly
+#'   value limited to the days of its calendar month). Required when
+#'   `ssp != NULL`; see `build_perturbation_method()`.
 #' @param epsilon           Guard constant for multiplicative delta denominators.
 #'   Default `0.001`.
 #' @param weather_source    Source identifier for observed weather files.
@@ -1404,8 +1420,9 @@ get_weather <- function(
         !is.null(perturbation_method),
       "All selected_weather variables must have an entry in perturbation_method" =
         all(selected_weather$name %in% names(perturbation_method)),
-      "perturbation_method values must be 'additive' or 'multiplicative'" =
-        all(perturbation_method[selected_weather$name] %in% c("additive", "multiplicative"))
+      "perturbation_method values must be 'additive', 'multiplicative' or 'multiplicative_days'" =
+        all(perturbation_method[selected_weather$name] %in%
+              c("additive", "multiplicative", "multiplicative_days"))
     )
 
     # Normalise future_period: a bare length-2 vector -> single-element list
@@ -1832,7 +1849,9 @@ get_weather <- function(
       stats::setNames(
         lapply(weather_vars, function(v) {
           delta_col <- paste0("delta_", v)
-          if (identical(perturbation_method[[v]], "multiplicative")) {
+          if (identical(perturbation_method[[v]], "multiplicative_days")) {
+            dbplyr::sql(.wx_bound_days_sql(paste0(v, " * ", delta_col), "timestamp"))
+          } else if (.wx_is_multiplicative(perturbation_method[[v]])) {
             dbplyr::sql(paste0(v, " * ", delta_col))
           } else {
             dbplyr::sql(paste0(v, " + ", delta_col))
