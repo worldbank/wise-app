@@ -6,7 +6,7 @@
 #   WISEAPP_DATA_PATH=/path/to/data Rscript dev/make_fixture_forecast_draft2.R   # once
 #   WISEAPP_DATA_PATH=/path/to/data /usr/bin/time -l Rscript dev/bench/bench_forecast_weather.R
 #
-# Env: WF (Binned|Continuous), FE=1 (interview-month fixed effects), FSTARTS ("2026-11:3,2027-03:1"),
+# Env: WX (weather variables, comma-separated; default t), WF (Binned|Continuous), FE=1 (interview-month fixed effects), FSTARTS ("2026-11:3,2027-03:1"),
 # WISEAPP_FORECAST_FIXTURE (data root; default dev/fixtures/data_root). The peak memory is the
 # `maximum resident set size` of /usr/bin/time -l.
 
@@ -27,7 +27,7 @@ if (identical(Sys.getenv("FE"), "1")) {
 }
 root <- normalizePath(Sys.getenv("WISEAPP_FORECAST_FIXTURE", "dev/fixtures/data_root"), mustWork = TRUE)
 cp <- build_connection_params("local", path = root)
-cfg <- list(unit = "hh", outcome = "welfare", weather = "t", weather_form = Sys.getenv("WF", "Binned"),
+cfg <- list(unit = "hh", outcome = "welfare", weather = strsplit(Sys.getenv("WX", "t"), ",")[[1L]], weather_form = Sys.getenv("WF", "Binned"),
   ref_end = 1L, hist_years = c(1991L, 2020L), models = "ols")
 inp <- suppressMessages(.bench_build_local_inputs("BFA", cfg, cp, load_overview_metadata(cp)))
 run <- .forecast_catalogue_runs(cp, "BFA")[[1L]]

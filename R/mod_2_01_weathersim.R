@@ -680,7 +680,8 @@ mod_2_01_weathersim_server <- function(id,
         {
           skill <- tryCatch(
             .forecast_skill_for_window(
-              connection_params(), forecast_run(), w$start, w$idx[[2L]] - w$idx[[1L]] + 1L
+              connection_params(), forecast_run(), w$start, w$idx[[2L]] - w$idx[[1L]] + 1L,
+              variables = forecast_weather_names()
             ),
             error = function(e) NULL
           )

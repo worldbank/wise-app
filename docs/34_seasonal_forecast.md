@@ -17,7 +17,7 @@ verified_against: 523a585
 
 ## Setup
 
-The forecast comes from a seasonal prediction system run once a month. Each run gives monthly values for the next six months for every **member** $m$ of an ensemble (51 members for ECMWF SEAS5). The pilot covers monthly mean temperature for one country. Symbols are in [00_notation](00_notation.md): $\ell$ location, $\mu$ calendar month, $v$ weather variable, $m$ member.
+The forecast comes from a seasonal prediction system run once a month. Each run gives monthly values for the next six months for every **member** $m$ of an ensemble (51 members for ECMWF SEAS5). The pilot covers monthly mean temperature (`t`) and rainfall (`r`) for one country. Symbols are in [00_notation](00_notation.md): $\ell$ location, $\mu$ calendar month, $v$ weather variable, $m$ member.
 
 The question the scenario answers is conditional: what does the fitted model imply for the target window if weather in each location follows member $m$, holding the survey's other characteristics fixed? It is not a forecast of welfare or poverty.
 
@@ -29,7 +29,7 @@ The data pipeline, not the app, puts the forecast on the scale of the observed w
 
 $$\tilde x^{\ m}_{\ell t} = \bar x^{\text{obs}}_{\ell\mu(t)} + \left(x^{\ m}_{\ell t} - \bar x^{\text{fc}}_{\ell\mu(t)}\right) \qquad \text{(1.1)}$$
 
-where $x^{\ m}_{\ell t}$ is the raw forecast, $\bar x^{\text{fc}}_{\ell\mu}$ is the mean of the forecast system's own past forecasts for the same run month, lead and calendar month, and $\bar x^{\text{obs}}_{\ell\mu}$ is the observed monthly mean over the same years. The adjustment removes the mean bias of the forecast system and keeps each member's departure from it. It does not correct the spread, reliability or skill of the forecast. Reference years are fixed in the pipeline, so the historical window chosen in Simulation settings does not change the forecast.
+where $x^{\ m}_{\ell t}$ is the raw forecast, $\bar x^{\text{fc}}_{\ell\mu}$ is the mean of the forecast system's own past forecasts for the same run month, lead and calendar month, and $\bar x^{\text{obs}}_{\ell\mu}$ is the observed monthly mean over the same years. The adjustment removes the mean bias of the forecast system and keeps each member's departure from it. It does not correct the spread, reliability or skill of the forecast. Rainfall (`r`) is adjusted by a ratio instead: the raw value is scaled by the observed over the forecast-system mean for the same calendar month, capped at 1.5 times the cell's largest observed monthly value, with a separate rule where the forecast-system mean is near zero (the manifest's `adjustment_formulas` states it). The manifest names one adjustment per variable (`adjustments`), and the catalogue lists them in variable order, separated by `;`. Reference years are fixed in the pipeline, so the historical window chosen in Simulation settings does not change the forecast.
 
 ### 2. Predictors for the target window
 
@@ -63,7 +63,7 @@ The band across members shows how much the forecast weather moves the model's ou
 
 ## Assumptions
 
-- **A1.** The additive adjustment (1.1) is enough to put the forecast on the scale of the observed weather. Amplitude is not corrected.
+- **A1.** The additive adjustment (1.1) for temperature, and the capped ratio for rainfall, are enough to put the forecast on the scale of the observed weather. Amplitude is not corrected.
 - **A2.** The fitted relationship between weather and the outcome holds for forecast weather as it does for observed weather.
 - **A3.** Member order carries no meaning; members are equally weighted.
 - **A4.** One weather coefficient applies in every season. The target months may be rare among the training interviews, which the cards flag, and the response there is then an extrapolation across seasons.
@@ -71,7 +71,7 @@ The band across members shows how much the forecast weather moves the model's ou
 
 ## Limitations and what is not modelled
 
-- Data preparation starts with monthly mean 2 m temperature (`t`) for the pilot; this is not a permanent limit on forecast variables. Minimum and maximum temperature (`tn`, `tx`) and rainfall (`r`) could be supported after their retrieval, adjustment and validation are added. Models using variables outside the prepared data cannot use the current forecast. Daily extremes, soil moisture and drought indices remain outside the monthly pilot's scope.
+- The pilot provides monthly mean 2 m temperature (`t`) and rainfall (`r`). Minimum and maximum temperature (`tn`, `tx`) could be supported after their retrieval, adjustment and validation are added. Models using variables outside the prepared data cannot use the current forecast. Rainfall skill is weak or absent at most leads, so a model with rainfall is flagged by its worst variable. The latest observed context months can be preliminary (ERA5-Land-T, source `era5land_t`) for both variables. Daily extremes, soil moisture and drought indices remain outside the monthly pilot's scope.
 - One forecast system. No weighting or blending of systems.
 - Skill is unproven for most seasons and leads. A backtest against held-out observations is planned before any season is shown without a warning.
 - Welfare responses are conditional on the fitted model; no adaptation within the target window.
@@ -98,7 +98,7 @@ None yet. Entries will be added with the backtest. Full entries are in [referenc
 | Forecast controls, window and lag text | 2 | `R/utils_forecast_ui.R` `.step2_forecast_window()`, `.step2_forecast_lag_text()` |
 | Reach-back of the fitted predictors | 2 | `R/utils_forecast_ui.R` `.step2_forecast_lag()` |
 | Predictor-month availability and allowed starts | 2 | `R/utils_forecast_ui.R` `.step2_forecast_months()`, `.step2_forecast_starts()` |
-| Variables the forecast provides | 1 | `R/utils_forecast_ui.R` `.step2_forecast_unsupported()` |
+| Variables the forecast provides | 1 | `R/utils_forecast_ui.R` `.step2_forecast_unsupported()`, `.STEP2_FORECAST_VARS` |
 | Forecast scenario name and run signature | 3 | `R/utils_forecast_ui.R` `.step2_forecast_display_key()`, `.step2_forecast_signature()` |
 | Local run discovery and publication identity | 1 | `R/fct_forecast_catalogue.R` `.forecast_catalogue_runs()` |
 | Same-window reference weather (`refyear_<year>` frames) | 4 | `R/fct_forecast_weather.R` `.get_forecast_weather(reference_years = )` |

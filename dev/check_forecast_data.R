@@ -30,7 +30,7 @@ for (run in runs) {
   if (is.null(skill)) {
     cat("  skill: none published\n")
   } else {
-    cat("  skill flags by lead:", paste0(skill$lead_month, "=", skill$skill_flag, collapse = ", "), "\n")
+    cat("  skill flags by lead:", paste0(skill$variable, ":", skill$lead_month, "=", skill$skill_flag, collapse = ", "), "\n")
   }
 }
 run <- runs[[1L]]

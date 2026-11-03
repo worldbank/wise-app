@@ -4,7 +4,7 @@
 # (`.forecast_catalogue_runs()`).
 
 # Initial data-preparation scope, not a permanent limit on forecast variables.
-.STEP2_FORECAST_VARS <- "t"
+.STEP2_FORECAST_VARS <- c("t", "r")
 
 # Months of context shown either side of the forecast months on the strip.
 .STEP2_FORECAST_BEFORE <- 2L

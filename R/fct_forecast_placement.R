@@ -271,8 +271,10 @@ step2_forecast_batch_tables <- function(hs, scenarios, agg) {
     sk <- s$skill
     if (!is.null(sk)) {
       if (is.data.frame(sk$months)) {
+        month_key <- format(sk$months$month, "%Y-%m")
+        if ("variable" %in% names(sk$months)) month_key <- paste(sk$months$variable, month_key)
         summary[[length(summary) + 1L]] <- summ_row(
-          label, NA_character_, "skill", "skill_flag", group = format(sk$months$month, "%Y-%m"),
+          label, NA_character_, "skill", "skill_flag", group = month_key,
           estimate = sk$months$acc, n = sk$months$lead_month, text = sk$months$skill_flag
         )
       } else {

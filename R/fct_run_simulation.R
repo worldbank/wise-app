@@ -1401,7 +1401,9 @@ fct_run_simulation <- function(sw,
       new_scenarios[[display_key]]$forecast_members <- meta$forecast_members
       new_scenarios[[display_key]]$training_months <- .step2_forecast_training_months(train_data, forecast)
       new_scenarios[[display_key]]$skill <- tryCatch(
-        .forecast_skill_for_window(cp, forecast$run, forecast$start, forecast$len), error = function(e) NULL
+        .forecast_skill_for_window(cp, forecast$run, forecast$start, forecast$len,
+          variables = as.character(sw$name)),
+        error = function(e) NULL
       )
       new_scenarios[[display_key]]$reference_pipelines <- forecast_reference_pipelines
       new_scenarios[[display_key]]$reference_years <- as.integer(sub("^refyear_", "",

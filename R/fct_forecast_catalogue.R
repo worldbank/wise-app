@@ -5,7 +5,7 @@
   "n_members", "n_leads", "observed_through", "context_months", "context_source", "variables",
   "adjustment", "file", "data_sha256", "manifest_sha256", "status", "data_version"
 )
-.FORECAST_ADJUSTMENTS <- c("additive_mean_bias_only", "mean_variance_scaled")
+.FORECAST_ADJUSTMENTS <- c("additive_mean_bias_only", "mean_variance_scaled", "ratio")
 .FORECAST_STATUSES <- c("draft", "validated", "published")
 
 #' Validated runs of one country's local forecast catalogue
@@ -70,7 +70,14 @@
   if (!identical(manifest$schema_version, "draft-2")) {
     stop("Seasonal forecast manifest is not schema draft-2.", call. = FALSE)
   }
-  if (length(manifest$adjustment) != 1L || !manifest$adjustment %in% .FORECAST_ADJUSTMENTS) {
+  # One adjustment per variable: `adjustments` (named by variable) when present, else the single `adjustment`.
+  manifest_adjustments <- if (length(manifest$adjustments)) {
+    unlist(manifest$adjustments)[as.character(manifest$variables)]
+  } else {
+    rep(as.character(manifest$adjustment), length(manifest$variables))
+  }
+  if (!length(manifest_adjustments) || anyNA(manifest_adjustments) ||
+      !all(manifest_adjustments %in% .FORECAST_ADJUSTMENTS)) {
     stop("Seasonal forecast must declare a supported adjustment.", call. = FALSE)
   }
   for (field in c("init", "released", "next_release", "observed_through")) {
@@ -97,7 +104,7 @@
       length(manifest$run_id) != 1L || !startsWith(manifest$run_id, paste0(code, "_")) ||
       !length(manifest$variables) || any(!manifest$variables %in% .STEP2_FORECAST_VARS) ||
       anyDuplicated(manifest$variables) || !identical(run$variables, as.character(manifest$variables)) ||
-      !identical(run$adjustment, manifest$adjustment) ||
+      !identical(run$adjustment, paste(manifest_adjustments, collapse = ";")) ||
       !identical(manifest$h3$type, "int64") || !identical(as.integer(manifest$h3$resolution), 6L) ||
       is.na(run$n_members) || run$n_members < 1L || is.na(run$n_leads) || run$n_leads < 1L ||
       !identical(as.integer(manifest$n_members), run$n_members) || length(members) != run$n_members ||

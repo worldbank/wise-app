@@ -37,7 +37,8 @@
   if (length(missing_run)) {
     stop("Forecast run is missing field(s): ", paste(missing_run, collapse = ", "), call. = FALSE)
   }
-  if (!run$adjustment %in% .FORECAST_ADJUSTMENTS) {
+  run_adjustments <- strsplit(as.character(run$adjustment), ";", fixed = TRUE)[[1L]]
+  if (!all(run_adjustments %in% .FORECAST_ADJUSTMENTS)) {
     stop("Forecast run must declare a supported pipeline adjustment.", call. = FALSE)
   }
   if (!identical(as.character(run$product), "seasonal")) {

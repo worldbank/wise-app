@@ -43,3 +43,18 @@ test_that("the skill table is read for the run's initialization month and the co
   expect_null(.forecast_skill_table(cp, list(init = as.Date("2026-10-01"), skill_file = "hazard/weather/forecasts/BFA/skill/none.parquet")))
   expect_null(.forecast_skill_table(cp, list(init = as.Date("2026-07-01"), skill_file = rel)))
 })
+
+test_that("a table with several variables is read per variable; the worst flag leads", {
+  both <- rbind(
+    transform(skill_fixture()[1:2, ], variable = "t"),
+    transform(skill_fixture()[1:2, ], variable = "r", skill_flag = c("none", "none"))
+  )
+  both_out <- .forecast_skill_summary(both, run, "2026-10", 2L)
+  expect_identical(both_out$flag, "none")
+  expect_identical(unique(both_out$months$variable), c("t", "r"))
+  expect_match(both_out$text, "^t: Hindcast skill is weak for Nov 2026; useful for Oct 2026\\. r: No demonstrated")
+  # Only the model's own variables count.
+  t_only <- .forecast_skill_summary(both, run, "2026-10", 2L, variables = "t")
+  expect_identical(t_only$flag, "weak")
+  expect_false("variable" %in% names(t_only$months))
+})

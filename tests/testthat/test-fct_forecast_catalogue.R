@@ -132,3 +132,28 @@ test_that("an optional skill file is part of the run identity", {
   utils::write.csv(do.call(rbind, entries), fx$catalogue, row.names = FALSE)
   expect_match(attr(.forecast_catalogue_runs(fx$cp, "BFA"), "skipped")$reason, "skill path")
 })
+
+test_that("a run with one adjustment per variable is accepted and the adjustments must match the catalogue", {
+  fx <- make_forecast_catalogue_fixture()
+  data <- file.path(fx$root, fx$entries[[2L]]$file)
+  manifest_path <- sub("parquet$", "json", data)
+  manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = TRUE)
+  manifest$variables <- c("t", "r")
+  manifest$adjustments <- list(t = "additive_mean_bias_only", r = "ratio")
+  jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
+  cat_rows <- utils::read.csv(fx$catalogue, colClasses = "character")
+  hit <- cat_rows$id == "2026-10"
+  cat_rows$variables[hit] <- "t;r"
+  cat_rows$adjustment[hit] <- "additive_mean_bias_only;ratio"
+  cat_rows$manifest_sha256[hit] <- digest::digest(file = manifest_path, algo = "sha256")
+  utils::write.csv(cat_rows, fx$catalogue, row.names = FALSE)
+  runs <- .forecast_catalogue_runs(fx$cp, "BFA")
+  expect_identical(runs[["2026-10"]]$variables, c("t", "r"))
+  expect_identical(runs[["2026-10"]]$adjustment, "additive_mean_bias_only;ratio")
+
+  manifest$adjustments$r <- "unknown_rule"
+  jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
+  cat_rows$manifest_sha256[hit] <- digest::digest(file = manifest_path, algo = "sha256")
+  utils::write.csv(cat_rows, fx$catalogue, row.names = FALSE)
+  expect_match(attr(.forecast_catalogue_runs(fx$cp, "BFA"), "skipped")$reason, "supported adjustment")
+})

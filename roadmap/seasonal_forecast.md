@@ -56,7 +56,7 @@ Decisions (2026-11-02, all recommended options): Step 3 stays blocked until real
 
 Status: items 1, 3, 4, 5 and 8 (method page) are done for the draft-2 schema and tested on a synthetic fixture (`dev/make_fixture_forecast_draft2.R`); item 2 (backtest, adjustment test, skill flag) is running in `wise-app-data`. Details and findings: `roadmap/seasonal_forecast_review.md`. Open decisions are marked **Decision** and listed with options in the review's "Decisions needed".
 
-**A. Real-data acceptance (blocked on `wise-app-data` producing draft-2 files).** Run `Rscript dev/check_forecast_data.R BFA` and `dev/bench/bench_forecast_weather.R` against the real root; fix any mismatch with the reader (the first fixture caught one: `context_months` is a list upstream). Review BFA placement, skill flags and member spread by eye before anyone uses them. Gate for the PR into `dev`.
+**A. Real-data acceptance (done 2026-11-03 for BFA, run 2026-10, `t` and `r`).** `Rscript dev/check_forecast_data.R BFA` found three reader mismatches, now fixed: the catalogue lists one adjustment per variable (`additive_mean_bias_only;ratio`) and the manifest adds an `adjustments` map; `r` was not in `.STEP2_FORECAST_VARS`; and the skill table has a `variable` column (the reader now reports the worst flag over the model's variables and names each). `dev/bench/bench_forecast_weather.R` (new `WX` env) on the real root: forecast weather builder 0.7 s (`t`), 1.0 s (`r`), 0.8 s (`t,r`); full Step 2 forecast run about 6-7 s, 0 failures, 51 members, peak memory about 1.1 GB. In the running app (BFA, `t` and `r`, Nov 2026 to Jan 2027) the flyout, placement chart and per-variable skill text render with no errors. Remaining by eye: review placement and spread for other countries. Not checked: other countries' files, 6-month windows, Continuous form on real data.
 
 **B. Batch (checked 2026-11-02).** A `sim.forecast` batch run works end to end on the fixture (targets pipeline, `annual`, `summary`, `sim_weather` tables, 0 failures). Done: the resolved spec carries the run's publication identity, so replacing files under the same run id changes `sim_id` and reruns the target. Gaps:
   1. Done: the `forecast` table (member and reference-year values, adverse-side share, return period) and `summary` sections `placement`, `skill` and `season`.
@@ -70,7 +70,7 @@ Status: items 1, 3, 4, 5 and 8 (method page) are done for the draft-2 schema and
 **E. Before the PR into `dev`.**
   1. Done: the scaffold option and its "Preview only" note are gone; the flyout is shown only for a country with a forecast catalogue (or a catalogue error). Controls tests use a mocked catalogue.
   2. Done: assumptions A4 and A5 and the limitation text in `docs/34_seasonal_forecast.md` and `docs/50_assumptions_limitations.md`. Refresh `verified_against` again at the end.
-  3. Config export and import replay with real forecast data (the four `fc_*` inputs).
+  3. Config export and import replay with real forecast data (the four `fc_*` inputs). Not yet done: the snapshot is generic over all inputs, but the restore order of the start radio (re-rendered by the server) is untested.
   4. Regenerate `manifest.json` (`Rscript dev/00_make_manifest.R`) last; `deploy-contract` fails until then. Do not do it earlier.
   5. Full test suite and `Rscript dev/docs_check.R`, `dev/agents_check.R`.
   6. Open the PR into `dev` only after A passes on real data.
