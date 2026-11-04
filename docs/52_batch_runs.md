@@ -6,7 +6,7 @@ depends_on: [notation, reproducibility, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
 code: [R/fct_batch_spec.R, R/fct_batch_targets.R, R/fct_spec_defaults.R, R/fct_step1_tables.R, R/fct_step2_tables.R, R/fct_step3_tables.R]
-verified_against: ce7a573
+verified_against: 8639eb2
 ---
 
 # Batch runs

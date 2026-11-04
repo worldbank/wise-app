@@ -6,7 +6,7 @@ depends_on: [notation, framework, data, outcomes, weather-measures, model-specif
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: []
-verified_against: ce7a573
+verified_against: 8639eb2
 ---
 
 # Assumptions and limitations in one place

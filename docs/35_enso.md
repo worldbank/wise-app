@@ -6,7 +6,7 @@ depends_on: [notation, data, simulation, climate-scenarios, seasonal-forecast]
 symbols: [mu, r, m]
 guide: https://github.com/worldbank/wise-app-docs
 code: [R/fct_enso.R, R/fct_forecast_window.R, R/fct_forecast_placement.R, R/fct_overview_metadata.R, R/fct_batch_targets.R, R/mod_2_02_results.R, R/fct_policy_sim_compare.R]
-verified_against: ce7a573
+verified_against: 8639eb2
 ---
 
 # ENSO labels on results

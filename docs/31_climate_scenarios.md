@@ -6,7 +6,7 @@ depends_on: [notation, data, weather-measures]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation
 code: [R/fct_get_weather.R, R/fct_simulations.R, R/fct_step2_input.R, R/fct_run_simulation.R]
-verified_against: ce7a573
+verified_against: 8639eb2
 ---
 
 # Climate scenarios (monthly delta method)

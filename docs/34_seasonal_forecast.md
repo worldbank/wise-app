@@ -6,12 +6,12 @@ depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
 code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_window.R, R/fct_forecast_skill.R, R/fct_run_simulation.R]
-verified_against: ce7a573
+verified_against: 8639eb2
 ---
 
 # Seasonal forecast scenario (experimental pilot)
 
-> **Status: experimental local pilot.** BFA has two draft runs, May and October 2026, prepared for DEV testing. The app reads adjusted forecast weather from the local data root. Skill and scientific usefulness are not established. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows; a shock-responsive transfer is blocked with a forecast.
+> **Status: experimental local pilot.** Twenty-nine countries have one draft run, October 2026, prepared for DEV testing. The app reads adjusted forecast weather from the local data root. Skill and scientific usefulness are not established. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows, and a shock-responsive transfer with a weather trigger and local, ex-post, fixed payments (Section 5).
 
 > A seasonal forecast is one more weather state, next to the historical record and the climate scenarios. It describes one dated target window, for example November to January, by the members of a forecast ensemble. The fitted model, the residual treatment and the metrics are the ones used for every other scenario.
 

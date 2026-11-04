@@ -14,9 +14,10 @@ Built and committed:
 - **Batch.** `sim.forecast`, the `forecast` table, and the `placement`, `skill`, `season`, `policy_effect` and `shock_window` summary sections. The `shock_window` rows run end to end in `test-batch-pipeline.R` (fixture, trigger of 0 so every member pays; partial triggering is covered by unit tests only).
 - **Run click fixed.** The Step 2 and Step 3 Run button is re-rendered after each run, which reset its click count, so a repeated click produced an identical event and was dropped. Manual events now carry a sequence number (`mod_2_01_weathersim.R`, `mod_3_scenario.R`). Verified on BFA: 4 of 4 Step 2 and 3 of 3 Step 3 consecutive runs started.
 - **Shock transfers, forecast off.** BFA batch tables (regular and return-period shock transfer) at `0d914ea` and at the current code are equal at `tolerance = 0` in all 11 tables (`decomposition` differs in row order only).
+- **ENSO on the forecast.** Reference-year labels, outlook line on the placement card, exports and batch tables; open items in `roadmap/enso.md`, Still open.
 - **Shock card on BFA.** Seen in the browser: 64% of the population in triggered locations for the mean member (33% in a historical year), cost of the window $2.44M ($0.25M to $3.29M). The maximum matches the annual cost in a paying year ($3.3M, 3.3M households at $1). Not separated: households against people in the 64%.
 
-Checked in the running app on BFA only (shock card and annual cost table included, 2026-11-04), run 2026-10, November to January, with SSP3-7.0 and the default model. The full test suite fails only on `test-deploy-contract.R:76`, which is expected until the manifest is regenerated.
+Checked in the running app on BFA (shock card and annual cost table included, 2026-11-04), run 2026-10, November to January, with SSP3-7.0 and the default model. MWI has had the Step 2 ENSO elements checked in the browser and a Steps 1 to 3 parity run (`dev/parity_enso.R --forecast`), which is not a review of its results. The full test suite fails only on `test-deploy-contract.R:76`, which is expected until the manifest is regenerated.
 
 ## Decisions to keep
 
@@ -40,18 +41,21 @@ Checked in the running app on BFA only (shock card and annual cost table include
    - A smoke attempt failed at "Weather variable(s) not found in data: t" when switching from `tx` to `t` after a full `tx` pipeline and model fit. Setting `t` on a fresh page works. Cause not found (suspect the selector or weather data not reloading after a fit); check by hand before editing the script.
    - With the projections flyout open, axe reports `target-size` (serious) on the period checkboxes (`input[value="2025-2035"]` and others). Not looked at further.
    - The unchanged smoke passes (`smoke ok`, 2026-11-04, with the Run-click fix below).
+   - ENSO has no element in the smoke yet: add the toggle and the colour and axe check of `roadmap/enso.md`.
 2. **Config export and import replay** with real forecast data. The restore order of the start radio, which the server re-renders, is untested.
 3. **Real-data coverage not yet checked.**
-   - Other countries: 29 are published, and only BFA has been reviewed.
-   - 6-month windows, and the Continuous form.
+   - Other countries: 29 are published, and only BFA has been reviewed. MWI has run, unreviewed.
+   - 6-month windows. The Continuous form has run in `dev/parity_enso.R --forecast` (BFA, MWI), unreviewed.
    - Levers other than social protection with a forecast.
    - Diagnostics and Decomposition tabs with a shock transfer on a forecast.
    - Pilot parity across engines.
+   - The ENSO browser checks not yet run (`roadmap/enso.md`, Still open).
 4. **Screen-reader check** of the month strip. Arrow keys and focus order are already checked.
-5. **Final gates.** Refresh `verified_against` in the methods pages, then run the full suite, `Rscript dev/docs_check.R` and `Rscript dev/agents_check.R`. Regenerate `manifest.json` last with `Rscript dev/00_make_manifest.R`, then open the PR.
+5. **Final gates.** Refresh `verified_against` in the methods pages not touched by the ENSO work, then run the full suite, `Rscript dev/docs_check.R` and `Rscript dev/agents_check.R`. Regenerate `manifest.json` last with `Rscript dev/00_make_manifest.R`, then open the PR.
 
 ## After the PR
 
+- **ENSO files on Connect.** Annual ENSO flags need the files on the production data root (`roadmap/enso.md`, request 1).
 - **Scientific usefulness (`wise-app-data` gates).** Record results including no-skill cases, then decide to continue, restrict or stop. Skill flags decide what the app shows. Production promotion is a separate approval.
 - **Data pipeline items that touch the app.** The November initialization, and the four countries without a published run (COL, DOM, LKA, TJK).
 - **App hand-off items from `wise-app-data`, to confirm.** Check that the survey's cells are a subset of the run's cells, and warn rather than fail if the historical file changed since the run.
