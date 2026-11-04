@@ -1014,3 +1014,53 @@ test_that("a policy on a forecast window writes the policy arm of the forecast t
   annual <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
   expect_false(label %in% annual$scenario[!is.na(annual$policy_id)])
 })
+
+test_that("a shock-responsive transfer on a forecast window writes the shock_window rows", {
+  skip_if_not_installed("qs2")
+  skip_if_not_installed("digest")
+  data <- withr::local_tempdir()
+  batch_fixture_tree(data, forecast = TRUE)
+  proj <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_DATA_PATH = data)
+  write_project(proj, c(
+    "seed: 7",
+    "model: {}",
+    "sim:",
+    "  hist_years: [2018, 2019]",
+    "  future_periods: []",
+    "  ssps: []",
+    "  coef_uncertainty: false",
+    "  forecast: {product: seasonal, run: '2021-01', start: '2021-02', len: 3}",
+    "profiles:",
+    "  weather:",
+    "    t_1m: {t: {ref_period: [1, 1], form: continuous}}",
+    "  policy:",
+    "    shock: {sp: {sp_type: shock, trigger_variable: t, trigger_type: weather, trigger_value: 0,",
+    "      trigger_direction: above, transfer_amount_usd: 60, targeting: exante_poor,",
+    "      targeting_threshold_pct: 30}}",
+    "axes:",
+    "  country: [TST]",
+    "  weather: [t_1m]",
+    "  policy: [shock]"
+  ))
+  make_it(proj)
+  out <- file.path(proj, "results")
+  expect_identical(nrow(arrow::read_parquet(file.path(out, "failures.parquet"))), 0L)
+  label <- "Seasonal forecast / Feb 2021 - Apr 2021 (January 2021 run)"
+
+  summ <- arrow::open_dataset(file.path(out, "tables", "summary")) |> dplyr::collect()
+  sw <- summ[summ$section == "shock_window" & summ$scenario == label, ]
+  expect_true(all(c("member_share", "reference_share", "exposed_member", "exposed_reference",
+    "cost_median", "cost_min", "cost_max", "cost_reference") %in% sw$measure))
+  expect_true(all(is.na(sw$metric)))
+  # `n` is the number of members (the fixture run has three).
+  expect_true(all(sw$n == 3))
+  # A trigger of 0 degrees pays in every member and reference year.
+  expect_equal(sw$estimate[sw$measure == "member_share"], 1)
+  expect_equal(sw$estimate[sw$measure == "reference_share"], 1)
+  expect_gt(sw$estimate[sw$measure == "cost_median"], 0)
+  expect_lte(sw$estimate[sw$measure == "cost_min"], sw$estimate[sw$measure == "cost_max"])
+  # The window payout stays out of the annual tables.
+  annual <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
+  expect_false(label %in% annual$scenario[!is.na(annual$policy_id)])
+})

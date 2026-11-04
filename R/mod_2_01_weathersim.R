@@ -1214,10 +1214,14 @@ mod_2_01_weathersim_server <- function(id,
     observeEvent(hist_sim(), sim_stale(FALSE))
 
     sim_run_event <- shiny::reactiveVal(NULL)
+    # The button is re-rendered after each run, which resets its click count to
+    # 0. The sequence keeps a repeated click distinct, so the reactiveVal fires.
+    sim_click_seq <- 0L
     shiny::observeEvent(input$run_sim,
       {
         if (shiny::isTruthy(input$run_sim)) {
-          sim_run_event(list(source = "manual", value = input$run_sim))
+          sim_click_seq <<- sim_click_seq + 1L
+          sim_run_event(list(source = "manual", value = input$run_sim, seq = sim_click_seq))
         }
       },
       ignoreInit = FALSE,
