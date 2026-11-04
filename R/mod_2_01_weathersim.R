@@ -108,8 +108,8 @@ mod_2_01_weathersim_ui <- function(id) {
     # error, so it is not silently hidden).
     shiny::conditionalPanel(
       condition = paste0("output['", ns("forecast_available"), "']"),
-      class = "step2-forecast-toggle",
-    config_flyout_block(
+      # The class sits on a child: a class on the conditionalPanel breaks its hidden state under shiny >= 1.14.
+      shiny::tags$div(class = "step2-forecast-toggle", config_flyout_block(
       ns("forecast_toggle"),
       shiny::tagList("Seasonal forecast", shiny::uiOutput(ns("forecast_info_ui"), inline = TRUE)),
       toggle_label = "Seasonal forecast",
@@ -125,7 +125,7 @@ mod_2_01_weathersim_ui <- function(id) {
       shiny::uiOutput(ns("forecast_body_ui")),
       shiny::uiOutput(ns("forecast_readout_ui")),
       shiny::uiOutput(ns("forecast_run_ui"))
-    )
+    ))
     ),
     # Climate projections flyout ----
     config_flyout_block(
