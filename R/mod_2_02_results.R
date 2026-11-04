@@ -1,3 +1,25 @@
+# Wording of the ENSO section (roadmap/enso.md, "Wording to carry").
+.ENSO_NOTE_LABELS <- paste(
+  "Labels describe the ENSO state of the months that enter the model for each household. A simulated year is a",
+  "composite, not a real year: it is El Ni\u00f1o or La Ni\u00f1a exposure when at least half of that exposure",
+  "falls in the phase, and Mixed otherwise. The index is relative Ni\u00f1o 3.4 (RONI), which flags fewer El",
+  "Ni\u00f1o months than the traditional ONI in recent decades."
+)
+.ENSO_NOTE_MODEL <- paste(
+  "Differences reflect only the selected weather variables and months, through the fitted response. Prices,",
+  "markets, fisheries, health, floods and other ENSO channels are not modelled, and a small difference does not",
+  "mean ENSO has a small welfare effect. The response is learned mostly from local differences, so it may",
+  "understate a widespread shock."
+)
+.ENSO_NOTE_FEW <- paste(
+  "Few events fall in a window and they differ from each other; past events are not a forecast. A phase is",
+  "compared with Neutral only when both have at least three years."
+)
+.ENSO_NOTE_SCENARIO <- paste(
+  "Climate scenarios keep the observed ENSO sequence of their template years; changes in ENSO under warming are",
+  "not represented."
+)
+
 #' Results tab content UI (inserted into the Results tabPanel once).
 #' @noRd
 .results_content_ui <- function(ns, so, weather_var = NULL) {
@@ -179,7 +201,21 @@
     shiny::div(
       class = "results-section-card",
       shiny::div(
-        style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+        style = paste0(
+          "display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; ",
+          "gap: 8px 16px; margin-bottom: 8px;"
+        ),
+        shiny::conditionalPanel(
+          condition = paste0("output['", ns("has_enso"), "']"),
+          pill_toggle(
+            ns("enso_mark"),
+            label    = "Mark ENSO years",
+            aria_label = "Mark El Ni\u00f1o and La Ni\u00f1a exposure years",
+            choices  = c("Off" = "off", "On" = "on"),
+            selected = "off",
+            layout   = "horizontal"
+          )
+        ),
         pill_toggle(
           ns("annual_distribution_type"),
           label    = NULL,
@@ -189,6 +225,7 @@
           layout   = "horizontal"
         )
       ),
+      shiny::uiOutput(ns("enso_legend")),
       wise_chart_output(
         ns("annual_distribution_plot"),
         "Distribution of annual aggregates across simulated weather years by climate scenario and forecast",
@@ -214,6 +251,35 @@
       )
     ),
 
+
+    # Section 1b: ENSO exposure years (item 3 of roadmap/enso.md) ----
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("has_enso"), "'] && !output['", ns("forecast_only"), "']"),
+      shiny::h4(
+        "How do outcomes compare in El Ni\u00f1o and La Ni\u00f1a years?",
+        info_popover(
+          title = "ENSO exposure years",
+          shiny::p(.ENSO_NOTE_LABELS),
+          shiny::p(.ENSO_NOTE_MODEL),
+          shiny::p(.ENSO_NOTE_FEW),
+          docs = FALSE
+        ),
+        style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+      ),
+      shiny::div(
+        class = "results-section-card",
+        shiny::div(
+          style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+          wise_reactable_csv_button(ns("enso_phase_table"), "enso_exposure_years")
+        ),
+        reactable::reactableOutput(ns("enso_phase_table")),
+        shiny::uiOutput(ns("enso_sentence")),
+        shiny::tags$p(
+          class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
+          .ENSO_NOTE_LABELS, " ", .ENSO_NOTE_MODEL, " ", .ENSO_NOTE_FEW, " ", .ENSO_NOTE_SCENARIO
+        )
+      )
+    ),
 
     # Section 2: Adverse weather years (tail risk) ----
     shiny::h4(
@@ -567,6 +633,7 @@ length.wise_lazy_aggregation_method_list <- function(x) 1L
 #' @param selected_hist   Reactive one-row data frame from weathersim.
 #' @param selected_weather Reactive data frame of selected weather variables.
 #' @param tabset_id       Character id of the parent tabset panel.
+#' @param enso            Reactive `enso_load()` result; `NULL` without the ENSO tables.
 #' @param tabset_session  Shiny session for the tabset.
 #' @param live_run        Reactive; NULL or the streaming-run list from
 #'   mod_2_01 (see review/step2_live_run_contract.md). Drives the provisional
@@ -582,6 +649,7 @@ mod_2_02_results_server <- function(id,
                                     saved_scenarios,
                                     selected_hist,
                                     selected_weather = NULL,
+                                    enso = reactive(NULL),
                                     tabset_id,
                                     tabset_session = NULL,
                                      residuals = reactive("original"),
@@ -1483,6 +1551,27 @@ mod_2_02_results_server <- function(id,
     timeseries_curves_rv <- reactive(build_timeseries_curves(TRUE))
     annual_distribution_curves_rv <- reactive(build_timeseries_curves(FALSE))
 
+    # ENSO labels of the simulated years (D1: a label on results, never an input) ----
+    # NULL without the tables, before a committed run, or when the fitted window leaves the
+    # record. SSP rows carry the label of their template year, so one table serves all series.
+    enso_labels_rv <- reactive({
+      en <- enso()
+      hs <- hist_sim()
+      if (is.null(en) || is.null(hs) || .is_provisional() || is.null(hs$baseline_months)) return(NULL)
+      curves <- tryCatch(annual_distribution_curves_rv(), error = function(e) NULL)
+      if (is.null(curves) || !"sim_year" %in% names(curves)) return(NULL)
+      lab <- enso_year_labels(
+        en$observed, sort(unique(curves$sim_year)), hs$baseline_months,
+        enso_window(hs$sim_summary$weather)
+      )
+      if (all(is.na(lab$label))) NULL else lab
+    })
+    output$has_enso <- shiny::reactive(!is.null(enso_labels_rv()))
+    outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
+    .enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels_rv()))
+
+    output$enso_legend <- shiny::renderUI(if (.enso_marking()) enso_legend_ui())
+
     # variance_breakdown_rv: one row per scenario, three components ----
     # Aggregates the per-(sim_year) var_within / var_across columns to scalars
     # and re-computes var_coef from the per-(model, year) SD list-column.
@@ -1652,8 +1741,10 @@ mod_2_02_results_server <- function(id,
 
     annual_distribution_chart <- function() {
       req(annual_distribution_curves_rv())
+      curves <- annual_distribution_curves_rv()
+      if (.enso_marking()) curves <- enso_attach_labels(curves, enso_labels_rv())
       e <- echart_annual_distribution(
-        .with_window(annual_distribution_curves_rv(), "curves"),
+        .with_window(curves, "curves"),
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -1661,7 +1752,8 @@ mod_2_02_results_server <- function(id,
         ),
         plot_type = input$annual_distribution_type %||% "violin",
         height = "470px",
-        pending = results_source()$pending_names
+        pending = results_source()$pending_names,
+        enso_marks = .enso_marking()
       )
       .annual_relabel(e)
     }
@@ -1671,7 +1763,7 @@ mod_2_02_results_server <- function(id,
     # of run, mode or display control, or the last pending scenario landing,
     # forces a full redraw because setOption() merging cannot remove series.
     .SMOOTH_CONTROLS <- c(
-      "cmp_agg_method", "cmp_deviation", "annual_distribution_type",
+      "cmp_agg_method", "cmp_deviation", "annual_distribution_type", "enso_mark",
       "ensemble_band", "exceedance_model_spread"
     )
     smooth_state <- new.env(parent = emptyenv())
@@ -1690,6 +1782,54 @@ mod_2_02_results_server <- function(id,
       if (isTRUE(key$provisional) && identical(prev, key)) ch$x$dispose <- FALSE
       ch
     }
+
+    # ENSO phase table and sentence (item 3) ----
+    enso_table_rv <- reactive({
+      lab <- enso_labels_rv()
+      req(lab)
+      enso_series_table(annual_distribution_curves_rv(), lab)
+    })
+    output$enso_phase_table <- reactable::renderReactable({
+      tbl <- enso_table_rv()
+      req(tbl)
+      x_label <- metric_axis_label(.selected_method(), results_source()$so, input$cmp_deviation %||% "none")
+      enso_phase_reactable(tbl, scale = if (nzchar(.wise_result_rate_unit(x_label))) 100 else 1)
+    })
+    wise_export_table(
+      key = "enso_exposure_years",
+      label = "Outcomes by ENSO exposure",
+      step = 2L,
+      fun = .committed_only(function() {
+        tbl <- enso_table_rv()
+        req(tbl)
+        annotate_visualization_export(
+          as.data.frame(tbl),
+          .selected_method(),
+          results_source()$so,
+          observation_unit = "annual aggregate for fixed survey population, averaged over climate models by year",
+          aggregation_order = "weighted household aggregate by model and weather year; years labelled by ENSO exposure",
+          uncertainty = "none: counts and means of the simulated years"
+        )
+      }),
+      description = paste(
+        "Years and mean outcome by El Ni\u00f1o, Neutral, La Ni\u00f1a and Mixed exposure, with the difference from",
+        "Neutral. Labels describe the ENSO state of the months that enter the model; they are not inputs."
+      )
+    )
+    output$enso_sentence <- shiny::renderUI({
+      lab <- enso_labels_rv()
+      req(lab)
+      curves <- annual_distribution_curves_rv()
+      hist <- curves[curves$scenario == "Historical" & is.finite(curves$value), , drop = FALSE]
+      adverse <- if (nrow(hist)) {
+        yearly <- stats::aggregate(value ~ sim_year, data = hist, FUN = mean)
+        enso_adverse_sentence(
+          lab, yearly, tryCatch(metric_metadata(.selected_method(), results_source()$so)$adverse_tail,
+            error = function(e) "low")
+        )
+      }
+      shiny::tags$p(style = "margin: 12px 0 0;", paste(c(adverse, enso_count_sentence(lab)), collapse = " "))
+    })
 
     output$annual_distribution_plot <- echarts4r::renderEcharts4r({
       ch <- annual_distribution_chart()
@@ -2264,6 +2404,7 @@ mod_2_02_results_server <- function(id,
       results_tab_added = results_tab_added,
       aggregation_cache = aggregation_cache,
       derived_results_frame = derived_results_frame_rv,
+      enso_labels = enso_labels_rv,
       timeseries_curves = reactive({
         # Diagnostics is never driven by provisional data: while a run
         # streams, return the last committed value (no dependency on the

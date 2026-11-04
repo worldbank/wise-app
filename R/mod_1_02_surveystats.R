@@ -25,6 +25,7 @@ mod_1_02_surveystats_ui <- function(id) {
 #' @param variable_list Reactive data frame of variable metadata.
 #' @param selected_surveys Reactive data frame of selected surveys (from mod_1_01_sample).
 #' @param cpi_ppp Reactive data frame of CPI/PPP deflators.
+#' @param enso Reactive `enso_load()` result; `NULL` without the ENSO tables.
 #' @param tabset_id Character id of the parent tabset panel to append the tab to.
 #' @param tabset_session Shiny session for the parent tabset. Defaults to the parent session.
 #' @param run_trigger Optional reactive trigger for a programmatic load.
@@ -39,6 +40,7 @@ mod_1_02_surveystats_server <- function(
   tabset_id,
   tabset_session = NULL,
   analysis_unit = NULL,
+  enso = shiny::reactive(NULL),
   run_trigger = shiny::reactive(NULL)
 ) {
   moduleServer(id, function(input, output, session) {
@@ -435,6 +437,31 @@ mod_1_02_surveystats_server <- function(
             ch
           })
 
+          # ENSO phase of the interviews, one sentence per wave (roadmap/enso.md, item 1).
+          # From the interview dates, not the month numbers of the chart, so each wave sits in its own
+          # year. Absent without the ENSO tables.
+          output$enso_interviews <- shiny::renderUI({
+            en <- enso()
+            df <- survey_data()
+            if (is.null(en) || !is.data.frame(df) || !"timestamp" %in% names(df)) return(NULL)
+            wave <- if ("countryyear" %in% names(df)) df$countryyear else paste0(df$economy, ", ", df$year)
+            w <- survey_weight_column(names(df))
+            cov <- enso_sample_coverage(en$observed, df$timestamp, if (!is.null(w)) df[[w]], wave)
+            lines <- enso_coverage_sentences(cov, survey_wave_meta()$plot_labels)
+            if (!length(lines)) return(NULL)
+            shiny::div(
+              class = "text-muted small mt-2",
+              lapply(lines, shiny::tags$p, class = "mb-1"),
+              shiny::tags$p(
+                class = "mb-0",
+                paste(
+                  "The index is relative Ni\u00f1o 3.4 (RONI). El Ni\u00f1o and La Ni\u00f1a months are",
+                  "those it flags."
+                )
+              )
+            )
+          })
+
           wise_export_figure(
             key = "interview_dates",
             label = "Interview dates",
@@ -779,7 +806,8 @@ mod_1_02_surveystats_server <- function(
                       wise_chart_output(ns("interview_date"),
                         "Bar chart of the distribution of interview dates across the selected surveys",
                         height = "300px"
-                      )
+                      ),
+                      shiny::uiOutput(ns("enso_interviews"))
                     )
                   ),
                   # Pairing a definite card height with a 100%-height map is what

@@ -2334,14 +2334,47 @@ echart_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
 echart_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                                        plot_type = "violin",
                                        height = "470px",
-                                       pending = character(0)) {
+                                       pending = character(0),
+                                       enso_marks = FALSE) {
   if (is.null(tbl) || !nrow(tbl)) {
     return(echart_blank("No annual simulation results available.", height = height))
   }
   echart_step3_annual_distribution(
     tbl, x_label = x_label, plot_type = plot_type, height = height,
-    pending = pending
+    pending = pending, enso_marks = enso_marks
   )
+}
+
+# Background bands of the El Nino and La Nina exposure years, on the first line series. Runs of
+# consecutive years of one phase form one band; Neutral and Mixed years stay unshaded. The glyph
+# in the band repeats the symbol of the distribution chart, so the phase is not carried by colour.
+.enso_year_bands <- function(series, labels, year_range) {
+  target <- which(vapply(series, function(s) identical(s$type, "line"), logical(1L)))
+  if (!length(target)) return(series)
+  labels <- labels[!is.na(labels$label) & labels$sim_year >= year_range[[1L]] &
+    labels$sim_year <= year_range[[2L]], , drop = FALSE]
+  labels <- labels[order(labels$sim_year), , drop = FALSE]
+  glyph <- c(el_nino = "\u25B2", la_nina = "\u25C6")
+  fill <- c(el_nino = "rgba(230,159,0,0.20)", la_nina = "rgba(86,180,233,0.24)")
+  runs <- rle(paste(labels$label, labels$sim_year - seq_along(labels$sim_year)))
+  ends <- cumsum(runs$lengths)
+  starts <- ends - runs$lengths + 1L
+  areas <- list()
+  for (i in seq_along(ends)) {
+    k <- labels$label[[starts[[i]]]]
+    if (!k %in% names(glyph)) next
+    areas[[length(areas) + 1L]] <- list(
+      list(
+        xAxis = labels$sim_year[[starts[[i]]]] - 0.5,
+        itemStyle = list(color = unname(fill[[k]])),
+        label = list(show = TRUE, position = "insideTop", formatter = unname(glyph[[k]]), color = .wise_support)
+      ),
+      list(xAxis = labels$sim_year[[ends[[i]]]] + 0.5)
+    )
+  }
+  if (!length(areas)) return(series)
+  series[[target[[1L]]]]$markArea <- list(silent = TRUE, data = areas)
+  series
 }
 
 # ---- echart_timeseries_spaghetti --------------------------------------------
@@ -2354,7 +2387,8 @@ echart_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
 #' @noRd
 echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
                                         ensemble_band_q = c(lo = 0, hi = 1),
-                                        height = "380px") {
+                                        height = "380px",
+                                        enso_labels = NULL) {
   if (is.null(ts_tbl) || nrow(ts_tbl) == 0L) {
     return(echart_blank("Run a simulation to see model trajectories.", height = height))
   }
@@ -2556,6 +2590,14 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
     axisLabel = .wise_result_axis_label(x_label),
     splitLine = wise_esplit_line()
   )
+  enso_text <- list()
+  if (!forecast_only && !is.null(enso_labels) && any(!is.na(enso_labels$label))) {
+    series <- .enso_year_bands(series, enso_labels, range(df$sim_year))
+    ok <- !is.na(enso_labels$label)
+    enso_text <- stats::setNames(
+      as.list(enso_label_text(enso_labels$label[ok])), as.character(enso_labels$sim_year[ok])
+    )
+  }
   e$x$opts$series <- series
   e$x$opts$legend <- modifyList(
     list(top = 4, left = "center", orient = "horizontal", data = as.list(legend_names)),
@@ -2568,6 +2610,7 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
       function esc(s) { return String(s == null ? '' : s).replace(/[&<>\"']/g, function(c) {
         return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]; }); }
       var percent = %s;
+      var enso = %s;
       function num(v) { return Number.isFinite(v) ? (percent ? v*100 : v).toLocaleString('en-US', {maximumFractionDigits: percent ? 1 : 3}) + %s : 'Not available'; }
       var groups = {}, order = [];
       ps.forEach(function(p) {
@@ -2584,8 +2627,10 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
           'Min ' + num(v[0]) + ' / Median ' + num(median) + ' / Max ' + num(v[n-1]));
       });
       if (!out.length) return '';
-      return '<b>Weather year ' + String(Math.round(ps[0].value[0])) + '</b><br>' + out.join('<br>');
+      var yr = String(Math.round(ps[0].value[0]));
+      return '<b>Weather year ' + yr + '</b>' + (enso[yr] ? '<br>ENSO exposure: ' + esc(enso[yr]) : '') + '<br>' + out.join('<br>');
     }", tolower(as.character(percent)),
+      if (length(enso_text)) jsonlite::toJSON(enso_text, auto_unbox = TRUE) else "{}",
       jsonlite::toJSON(.wise_result_rate_unit(x_label), auto_unbox = TRUE))
   ))
   e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 20, top = 86, bottom = 54)

@@ -25,17 +25,22 @@ ENSO_LABEL_TEXT <- c(
 
 #' Soft loader for the observed and forecast ENSO tables
 #'
-#' Reads `metadata/enso.csv` and `metadata/enso_forecast.csv` through `load_data()`, which
-#' covers the local, cloud and Databricks sources. Both tables are optional: a missing,
-#' empty or malformed observed table returns `NULL`; a missing or malformed forecast table
-#' only leaves `forecast` as `NULL`. Never signals an error or a warning.
+#' Reads `metadata/enso.csv` and `metadata/enso_forecast.csv` through `load_data()` (local and
+#' cloud sources). On Databricks the Overview loader fetches both files in its own request batch
+#' and passes them as `tables`, so no DuckDB session starts for them. Both tables are optional: a
+#' missing, empty or malformed observed table returns `NULL`; a missing or malformed forecast
+#' table only leaves `forecast` as `NULL`. Never signals an error or a warning.
 #'
 #' @param connection_params Named connection parameter list, as for `load_data()`.
+#' @param tables Optional list with the already read `observed` and `forecast` data frames
+#'   (`NULL` for a file that could not be read); skips reading.
 #' @return `NULL`, or a list with `observed` (tibble: `month`, `source`, `roni`, `phase`,
 #'   one row per consecutive month, sorted) and `forecast` (tibble or `NULL`).
 #' @noRd
-enso_load <- function(connection_params = list(type = "local", path = .default_data_path())) {
+enso_load <- function(connection_params = list(type = "local", path = .default_data_path()),
+                      tables = NULL) {
   read_one <- function(file) {
+    if (!is.null(tables)) return(tables[[names(ENSO_FILES)[match(file, ENSO_FILES)]]])
     tryCatch(
       suppressWarnings(suppressMessages(
         load_data(file, connection_params, collect = TRUE)
@@ -333,4 +338,212 @@ enso_forecast_outlook <- function(enso, target_months, init, system = NULL) {
     source = ifelse(is.na(fpos), NA_character_, fc_source),
     basis = ifelse(is.na(fpos), "observed", "forecast")
   )[keep, ]
+}
+
+
+# Results helpers (items 1, 2, 3 and 5) ----
+
+# Marks on the distribution chart: colour plus symbol, so the phase never rests on colour alone.
+# The colours stay clear of `.ssp_colours`, `.wise_policy` and `.wise_forecast`; the dark outline
+# keeps a light fill readable on the white chart.
+ENSO_MARKS <- list(
+  el_nino = list(color = "#E69F00", symbol = "triangle", symbol_size = 9),
+  la_nina = list(color = "#56B4E9", symbol = "diamond", symbol_size = 9)
+)
+
+#' Display text of ENSO labels
+#' @param x Character vector of label ids (`ENSO_LABEL_LEVELS`).
+#' @noRd
+enso_label_text <- function(x) unname(ENSO_LABEL_TEXT[as.character(x)])
+
+#' One sentence per survey wave on the ENSO phase of its interviews (item 1)
+#'
+#' Information, not a warning. Waves with no interview inside the ENSO record are left out.
+#'
+#' @param coverage Tibble from `enso_sample_coverage()`.
+#' @param wave_labels Optional named character vector replacing the `group` text.
+#' @return Character vector, one sentence per wave.
+#' @noRd
+enso_coverage_sentences <- function(coverage, wave_labels = NULL) {
+  if (is.null(coverage) || !nrow(coverage)) return(character(0))
+  coverage <- coverage[coverage$n > 0L, , drop = FALSE]
+  vapply(seq_len(nrow(coverage)), function(i) {
+    g <- coverage$group[[i]]
+    wave <- if (!is.null(wave_labels) && g %in% names(wave_labels)) wave_labels[[g]] else g
+    pct <- function(x) paste0(format(round(100 * x), trim = TRUE), "%")
+    paste0(
+      wave, ": ", pct(coverage$el_nino[[i]]), " of households were interviewed in El Ni\u00f1o months, ",
+      pct(coverage$la_nina[[i]]), " in La Ni\u00f1a and ", pct(coverage$neutral[[i]]),
+      " in neutral months. Highest RONI at an interview: ",
+      format(round(coverage$max_roni[[i]], 2), nsmall = 2, trim = TRUE), "."
+    )
+  }, character(1))
+}
+
+#' Attach the ENSO label of each simulation year to a table of annual outcomes
+#'
+#' Rows of the forecast target months (the forecast members, whose `sim_year` is the member
+#' index, and the Historical series of the same months) get no label: D3 treats them apart.
+#' Climate scenarios carry the label of their template year.
+#'
+#' @param tbl Data frame with `scenario` and `sim_year`.
+#' @param labels Tibble from `enso_year_labels()`.
+#' @return `tbl` with `enso_label`, `enso_el_nino`, `enso_neutral`, `enso_la_nina`, `enso_roni`.
+#' @noRd
+enso_attach_labels <- function(tbl, labels) {
+  idx <- match(as.integer(tbl$sim_year), labels$sim_year)
+  idx[.step2_is_forecast_like(tbl$scenario)] <- NA_integer_
+  tbl$enso_label <- labels$label[idx]
+  tbl$enso_el_nino <- labels$el_nino[idx]
+  tbl$enso_neutral <- labels$neutral[idx]
+  tbl$enso_la_nina <- labels$la_nina[idx]
+  tbl$enso_roni <- labels$roni_exp[idx]
+  tbl
+}
+
+#' Phase comparison table of the Results section (item 3)
+#'
+#' One row per series. Each series is averaged over its climate models by simulation year
+#' first, so a year counts once, then summarised by `enso_phase_summary()`.
+#'
+#' @param curves Data frame with `scenario`, `sim_year`, `value` and optionally `model_id`;
+#'   forecast-like series are left out.
+#' @param labels Tibble from `enso_year_labels()`.
+#' @param min_n Smallest number of years in a phase to compare it.
+#' @return Tibble: `series` and, for each of `el_nino`, `neutral`, `la_nina`, `mixed`, the
+#'   columns `n_<phase>` and `mean_<phase>`, plus `diff_el_nino` and `diff_la_nina`.
+#' @noRd
+enso_series_table <- function(curves, labels, min_n = 3L) {
+  curves <- curves[!.step2_is_forecast_like(curves$scenario), , drop = FALSE]
+  if (is.null(curves) || !nrow(curves)) return(NULL)
+  yearly <- stats::aggregate(
+    value ~ scenario + sim_year, data = curves[is.finite(curves$value), , drop = FALSE], FUN = mean
+  )
+  if (!nrow(yearly)) return(NULL)
+  yearly$scenario <- as.character(yearly$scenario)
+  values <- data.frame(series = yearly$scenario, sim_year = yearly$sim_year, value = yearly$value)
+  s <- enso_phase_summary(labels, values, min_n = min_n)
+  out <- lapply(unique(s$series), function(g) {
+    r <- s[s$series == g, , drop = FALSE]
+    pick <- function(col, k) r[[col]][r$label == k]
+    row <- list(series = g)
+    for (k in ENSO_LABEL_LEVELS) {
+      row[[paste0("n_", k)]] <- pick("n", k)
+      row[[paste0("mean_", k)]] <- pick("mean", k)
+    }
+    row$diff_el_nino <- pick("diff_neutral", "el_nino")
+    row$diff_la_nina <- pick("diff_neutral", "la_nina")
+    tibble::as_tibble(row)
+  })
+  out <- tibble::as_tibble(do.call(rbind, out))
+  out[order(match(out$series, .step2_scenario_order(out$series))), , drop = FALSE]
+}
+
+#' Reactable of the phase comparison (item 3)
+#'
+#' @param tbl Tibble from `enso_series_table()`.
+#' @param scale 100 for rates shown as percent, else 1 (the means and differences are scaled).
+#' @param digits Decimals shown.
+#' @noRd
+enso_phase_reactable <- function(tbl, scale = 1, digits = 3L) {
+  num <- function(header) {
+    reactable::colDef(
+      name = header, align = "right", minWidth = 80, class = "wise-dt-wrap",
+      cell = function(v) if (is.na(v)) "-" else formatC(v * scale, digits = digits, format = "f", big.mark = ",")
+    )
+  }
+  cnt <- function(header) reactable::colDef(name = header, align = "right", minWidth = 50)
+  diff <- function(header) {
+    reactable::colDef(
+      name = header, align = "right", minWidth = 90,
+      cell = function(v) {
+        if (is.na(v)) "-" else paste0(if (v > 0) "+" else "", formatC(v * scale, digits = digits, format = "f"))
+      }
+    )
+  }
+  reactable::reactable(
+    tbl,
+    columns = list(
+      series = reactable::colDef(name = "Series", minWidth = 170, class = "wise-dt-wrap"),
+      n_el_nino = cnt("Years"), mean_el_nino = num("Mean"), diff_el_nino = diff("vs Neutral"),
+      n_neutral = cnt("Years"), mean_neutral = num("Mean"),
+      n_la_nina = cnt("Years"), mean_la_nina = num("Mean"), diff_la_nina = diff("vs Neutral"),
+      n_mixed = cnt("Years"), mean_mixed = reactable::colDef(show = FALSE)
+    ),
+    columnGroups = list(
+      reactable::colGroup("El Ni\u00f1o exposure", c("n_el_nino", "mean_el_nino", "diff_el_nino")),
+      reactable::colGroup("Neutral", c("n_neutral", "mean_neutral")),
+      reactable::colGroup("La Ni\u00f1a exposure", c("n_la_nina", "mean_la_nina", "diff_la_nina")),
+      reactable::colGroup("Mixed", c("n_mixed", "mean_mixed"))
+    ),
+    compact = TRUE, highlight = TRUE, pagination = FALSE
+  )
+}
+
+#' Sentence on how many El Nino and La Nina exposure years a window holds (D8)
+#'
+#' @param labels Tibble from `enso_year_labels()`.
+#' @noRd
+enso_count_sentence <- function(labels) {
+  lab <- labels$label[!is.na(labels$label)]
+  n_en <- sum(lab == "el_nino")
+  paste0(
+    "This window has ", n_en, " El Ni\u00f1o and ", sum(lab == "la_nina"), " La Ni\u00f1a exposure years out of ",
+    length(lab), ".", if (n_en < 10L) " A longer historical window adds more events, and also moves the baseline."
+  )
+}
+
+#' Sentence on how many of the most adverse years are El Nino years (item 3)
+#'
+#' Looks at the `k` most adverse years of one series, about a fifth of its years and at least
+#' three. Counts only; no test (D5). `NULL` when the series has fewer than five labelled years or
+#' no El Nino year.
+#'
+#' @param labels Tibble from `enso_year_labels()`.
+#' @param values Data frame with `sim_year` and `value` (one row per year).
+#' @param adverse_tail `"low"` when low values are adverse, `"high"` when high values are.
+#' @noRd
+enso_adverse_sentence <- function(labels, values, adverse_tail = "low") {
+  d <- merge(values[c("sim_year", "value")], labels[c("sim_year", "label")], by = "sim_year")
+  d <- d[!is.na(d$label) & is.finite(d$value), , drop = FALSE]
+  n <- nrow(d)
+  n_en <- sum(d$label == "el_nino")
+  if (n < 5L || n_en == 0L) return(NULL)
+  k <- max(3L, as.integer(round(n / 5)))
+  worst <- d[order(d$value, decreasing = identical(adverse_tail, "high")), , drop = FALSE][seq_len(k), ]
+  sprintf(
+    "%d of the %d most adverse years have El Ni\u00f1o exposure; %d of %d years do.",
+    sum(worst$label == "el_nino"), k, n_en, n
+  )
+}
+
+#' Interview-month weights of a baseline survey
+#'
+#' @param svy Baseline survey-weather frame (`int_month` or `timestamp`, and `weight`).
+#' @return Length-12 vector from `enso_month_weights()`; `NA`s when the frame has no months.
+#' @noRd
+enso_baseline_months <- function(svy) {
+  col <- intersect(c("int_month", "timestamp"), names(svy))
+  if (!is.data.frame(svy) || !length(col)) return(rep(NA_real_, 12L))
+  w <- survey_weight_column(names(svy))
+  enso_month_weights(svy[[col[[1L]]]], if (!is.null(w)) svy[[w]])
+}
+
+#' Legend of the marked draws on the distribution charts
+#' @noRd
+enso_legend_ui <- function() {
+  item <- function(k, text) {
+    shiny::span(
+      style = "margin-left: 14px;",
+      shiny::span(
+        style = paste0("color:", ENSO_MARKS[[k]]$color, "; text-shadow: 0 0 1px #243746, 0 0 1px #243746;"),
+        `aria-hidden` = "true", if (k == "el_nino") "\u25B2" else "\u25C6"
+      ),
+      " ", text
+    )
+  }
+  shiny::div(
+    class = "text-muted small", style = "text-align: right; margin-bottom: 4px;",
+    "Marked draws:", item("el_nino", "El Ni\u00f1o exposure"), item("la_nina", "La Ni\u00f1a exposure")
+  )
 }

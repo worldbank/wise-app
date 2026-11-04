@@ -37,7 +37,7 @@ OVERVIEW_METADATA_REQUIRED_COLUMNS <- list(
 #' @param connection_params Named connection parameter list.
 #' @param force_refresh Skip the process-local cache and reload the source.
 #' @return A named list containing `survey_list`, `variable_list`, `cpi_ppp`,
-#'   and `pov_lines`.
+#'   `pov_lines` and `enso` (`enso_load()`, `NULL` without the ENSO tables).
 #' @noRd
 load_overview_metadata <- function(connection_params, force_refresh = FALSE,
                                    clear_credentials = FALSE) {
@@ -59,9 +59,15 @@ load_overview_metadata <- function(connection_params, force_refresh = FALSE,
     out <- .load_overview_metadata_sequential(connection_params)
   }
 
+  # Databricks fetches the ENSO files in the same request batch as the required ones.
+  enso_tables <- out$.enso_tables
   out <- .validate_overview_metadata(out, include_pov_lines = FALSE)
   out <- .finish_overview_metadata(out)
   out <- .validate_overview_metadata(out)
+  # ENSO tables are optional (D6): NULL when absent or malformed, never an error. The element
+  # stays in the bundle so a cached bundle without the file is a valid bundle.
+  out["enso"] <- list(enso_load(connection_params, tables = enso_tables))
+  out[".enso_tables"] <- NULL
   .overview_metadata_cache_set(cache_key, out)
   out
 }
@@ -185,7 +191,8 @@ overview_metadata_cache_store <- function(connection_params, value) {
 
 .overview_metadata_local_signatures <- function(connection_params) {
   root <- path.expand(connection_params$path %||% .default_data_path())
-  paths <- file.path(root, OVERVIEW_METADATA_FILES)
+  files <- c(OVERVIEW_METADATA_FILES, ENSO_FILES)
+  paths <- file.path(root, files)
   info <- file.info(paths)
   out <- lapply(seq_along(paths), function(i) {
     list(
@@ -195,7 +202,7 @@ overview_metadata_cache_store <- function(connection_params, value) {
       mtime = as.numeric(info$mtime[[i]])
     )
   })
-  stats::setNames(out, names(OVERVIEW_METADATA_FILES))
+  stats::setNames(out, names(files))
 }
 
 
@@ -324,7 +331,7 @@ overview_metadata_cache_store <- function(connection_params, value) {
   }
 
   urls <- vapply(
-    OVERVIEW_METADATA_FILES,
+    c(OVERVIEW_METADATA_FILES, ENSO_FILES),
     .resolve_data_path,
     character(1),
     connection_params = connection_params,
@@ -358,9 +365,16 @@ overview_metadata_cache_store <- function(connection_params, value) {
   }
 
   names(responses) <- names(urls)
+  # Optional (D6): a failed ENSO request or parse leaves the table NULL and is never reported.
+  enso_tables <- lapply(stats::setNames(nm = names(ENSO_FILES)), function(name) {
+    tryCatch(
+      suppressMessages(collect_deterministic(.parse_db_csv_response(responses[[name]], urls[[name]]))),
+      error = function(e) NULL
+    )
+  })
   errors <- list()
   out <- list()
-  for (name in names(responses)) {
+  for (name in names(OVERVIEW_METADATA_FILES)) {
     parsed <- tryCatch(
       {
         value <- .parse_db_csv_response(responses[[name]], urls[[name]])
@@ -380,6 +394,7 @@ overview_metadata_cache_store <- function(connection_params, value) {
 
   if (length(errors) > 0L) .overview_metadata_error(errors)
 
+  out[".enso_tables"] <- list(enso_tables)
   out
 }
 

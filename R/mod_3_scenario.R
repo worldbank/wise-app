@@ -119,6 +119,7 @@ mod_3_scenario_server <- function(id,
                                   residuals = reactive("original"),
                                   survey_version = reactive(0L),
                                   sim_stale = reactive(FALSE),
+                                  enso_labels = reactive(NULL),
                                   run_trigger = reactive(NULL),
                                   shared_aggregation_cache = NULL) {
   moduleServer(id, function(input, output, session) {
@@ -292,7 +293,8 @@ mod_3_scenario_server <- function(id,
       baseline_svy = s6$baseline_svy,
       policy_svy = s6$policy_svy,
       aggregation_cache = shared_aggregation_cache,
-      analysis_unit = analysis_unit
+      analysis_unit = analysis_unit,
+      enso_labels = enso_labels
     )
 
     # Diagnostics tab: before/after variable analysis ----

@@ -191,12 +191,46 @@ echart_before_after_hist <- function(baseline_vals, policy_vals,
     if (d.rp_label) text += '<br>' + esc(d.rp_label);
     if (d.source && d.source !== 'All') text += '<br>' + esc(d.source);
     text += '<br>' + esc(d.is_mean ? 'Scenario mean' : %s) + ': <b>' + num(d.outcome) + '</b>';
+    if (d.enso_text) text += '<br>' + esc(d.enso_text);
     if (Number.isFinite(d.baseline)) text += '<br>Baseline: ' + num(d.baseline) + '<br>Policy: ' + num(d.policy) + '<br>Policy change: ' + num(d.policy - d.baseline, true);
     if (Number.isFinite(d.lo) && Number.isFinite(d.hi) && d.hi > d.lo) text += '<br>Climate-model spread: ' + num(d.lo) + ' to ' + num(d.hi);
     return text;
   }", tolower(as.character(nzchar(.wise_result_rate_unit(x_label)))),
     jsonlite::toJSON(.wise_result_rate_unit(x_label), auto_unbox = TRUE),
     jsonlite::toJSON(x_label, auto_unbox = TRUE)))
+}
+
+#' Points of the weather-year draws with the ENSO exposure of each year
+#'
+#' Rows with a label become objects (value, tooltip text) so the tooltip can name the year and
+#' its exposure; El Nino and La Nina exposure years also get a colour and a symbol. Rows
+#' without a label stay plain `[x, y]` pairs. Same rows, same order as `dots`.
+#' @param dots Two-column matrix of `[outcome, y]`.
+#' @param rows The draws behind `dots` (`enso_*` columns and `sim_year`).
+#' @noRd
+.enso_dot_data <- function(dots, rows, scenario, source) {
+  pct <- function(x) paste0(format(round(100 * x), trim = TRUE), "%")
+  lapply(seq_len(nrow(dots)), function(i) {
+    lab <- rows$enso_label[[i]]
+    if (is.na(lab)) return(unname(dots[i, ]))
+    pt <- list(
+      value = unname(dots[i, ]), outcome = dots[i, 1L], scenario = scenario, source = source,
+      enso_text = paste0(
+        "Weather year ", rows$sim_year[[i]], ": ", enso_label_text(lab), " exposure (El Ni\u00f1o ",
+        pct(rows$enso_el_nino[[i]]), ", Neutral ", pct(rows$enso_neutral[[i]]), ", La Ni\u00f1a ",
+        pct(rows$enso_la_nina[[i]]), "; RONI ", format(round(rows$enso_roni[[i]], 2), nsmall = 2), ")"
+      )
+    )
+    mark <- ENSO_MARKS[[lab]]
+    if (!is.null(mark)) {
+      pt$symbol <- mark$symbol
+      pt$symbolSize <- mark$symbol_size
+      pt$itemStyle <- list(
+        color = mark$color, opacity = 0.95, borderColor = .wise_support, borderWidth = 1
+      )
+    }
+    pt
+  })
 }
 
 #' Step 3 annual baseline/policy distribution chart (echarts4r)
@@ -217,13 +251,17 @@ echart_before_after_hist <- function(baseline_vals, policy_vals,
 #'   results). They get a fixed, empty category row with a muted
 #'   "(computing)" axis label so rows do not shift as scenarios land. The
 #'   default leaves the output unchanged (Step 3).
+#' @param enso_marks Mark the draws of El Nino and La Nina exposure years (colour and
+#'   symbol) and add the year and exposure to their tooltip. Needs the `enso_*` columns of
+#'   `enso_attach_labels()` in `tbl`; the draws, their count and the series ids do not change.
 #'
 #' @return An `echarts4r` widget.
 #' @noRd
 echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome units)",
                                         plot_type = "violin",
                                        height = "470px",
-                                       pending = character(0)) {
+                                       pending = character(0),
+                                       enso_marks = FALSE) {
   plot_type <- match.arg(plot_type, c("violin", "boxplot"))
   if (is.null(tbl) || !nrow(tbl)) {
     return(echart_blank("No annual simulation results available.", height = height))
@@ -489,13 +527,17 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
     scen <- dot_scn[g[[1L]]]
     src <- dot_src[g[[1L]]]
     base_y <- df$row_y[rows] + if (has_source) df$y_off[rows] else 0
+    dots <- unname(cbind(
+      signif(df$value[rows], 8L), round(base_y + jit[rows], 4L)
+    ))
+    if (isTRUE(enso_marks) && "enso_label" %in% names(df)) {
+      dots <- .enso_dot_data(dots, df[rows, , drop = FALSE], scen, src)
+    }
     push(list(
       type = "scatter",
       name = scen,
       id = paste("draws", scen, src, sep = "|"),
-      data = unname(cbind(
-        signif(df$value[rows], 8L), round(base_y + jit[rows], 4L)
-      )),
+      data = dots,
       itemStyle = list(
         color = unname(scenario_palette[[scen]]), opacity = 0.2
       ),
@@ -1991,7 +2033,21 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     shiny::div(
       class = "results-section-card",
       shiny::div(
-        style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+        style = paste0(
+          "display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; ",
+          "gap: 8px 16px; margin-bottom: 8px;"
+        ),
+        shiny::conditionalPanel(
+          condition = paste0("output['", ns("has_enso"), "']"),
+          pill_toggle(
+            ns("enso_mark"),
+            label    = "Mark ENSO years",
+            aria_label = "Mark El Ni\u00f1o and La Ni\u00f1a exposure years",
+            choices  = c("Off" = "off", "On" = "on"),
+            selected = "off",
+            layout   = "horizontal"
+          )
+        ),
         pill_toggle(
           ns("annual_distribution_type"),
           label    = NULL,
@@ -2001,6 +2057,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           layout   = "horizontal"
         )
       ),
+      shiny::uiOutput(ns("enso_legend")),
       wise_chart_output(
         ns("annual_distribution_plot"),
         "Distribution of annual aggregates and target-month outcomes: baseline and policy",
@@ -2211,7 +2268,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                                  policy_svy = reactive(NULL),
                                  aggregation_cache = NULL,
                                  analysis_unit = reactive(NULL),
-                                 annual_channels = reactive(NULL)) {
+                                 annual_channels = reactive(NULL),
+                                 enso_labels = reactive(NULL)) {
   # A forecast window is not an annual weather sample. Every annual view here (cards, violin, adverse years,
   # exceedance, tables, decomposition) reads the annual scenarios only; the charts add the forecast as further series
   # (Historical for the target months and the members, without and with the policy).
@@ -3196,16 +3254,24 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   # Zero-arg echarts closures shared by the on-screen renders and the export
   # bundle (guidelines sec. 7 pattern); static renderers are archived under
   # dev/archive/static_plots/.
+  # ENSO labels come from the Step 2 run (a label on results, D1); marking changes only the dots' style.
+  output$has_enso <- shiny::reactive(!is.null(enso_labels()))
+  outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
+  enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels()))
+  output$enso_legend <- shiny::renderUI(if (enso_marking()) enso_legend_ui())
   annual_distribution_chart <- function() {
+    curves <- timeseries_curves_rv()
+    if (enso_marking() && "sim_year" %in% names(curves)) curves <- enso_attach_labels(curves, enso_labels())
     e <- echart_step3_annual_distribution(
-      .with_window(timeseries_curves_rv(), "curves"),
+      .with_window(curves, "curves"),
       x_label = metric_axis_label(
         aggregation_method(),
         baseline_hist_sim()$so,
         input$cmp_deviation %||% "none"
       ),
       plot_type = input$annual_distribution_type %||% "violin",
-      height = "470px"
+      height = "470px",
+      enso_marks = enso_marking()
     )
     .annual_relabel(e)
   }

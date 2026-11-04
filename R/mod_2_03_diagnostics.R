@@ -143,6 +143,7 @@ mod_2_03_diagnostics_server <- function(id,
                                         survey_weather,
                                         selected_weather,
                                         timeseries_curves = NULL,
+                                        enso_labels = reactive(NULL),
                                         tabset_id,
                                         tabset_session = NULL,
                                         stale = reactive(FALSE),
@@ -571,7 +572,8 @@ mod_2_03_diagnostics_server <- function(id,
       ch <- echart_timeseries_spaghetti(tc$tbl,
         x_label = tc$x_label,
         ensemble_band_q = tc$ens_q,
-        height = "380px"
+        height = "380px",
+        enso_labels = enso_labels()
       )
       req(!is.null(ch))
       ch

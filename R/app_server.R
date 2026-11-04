@@ -32,6 +32,7 @@ app_server <- function(input, output, session) {
     survey_list = overview_api$survey_list,
     variable_list = overview_api$variable_list,
     cpi_ppp = overview_api$cpi_ppp,
+    enso = overview_api$enso,
     run_trigger = run_step1_trigger,
     load_survey_trigger = load_survey_trigger,
     load_weather_trigger = load_weather_trigger
@@ -50,6 +51,7 @@ app_server <- function(input, output, session) {
     model_fit         = step1_api$model_fit,
     stored_breaks     = step1_api$stored_breaks,
     survey_version    = step1_api$survey_version,
+    enso              = overview_api$enso,
      run_trigger       = run_step2_trigger,
      shared_aggregation_cache = aggregation_cache
   )
@@ -74,6 +76,7 @@ app_server <- function(input, output, session) {
     residuals = step2_api$residuals,
     survey_version = step1_api$survey_version,
     sim_stale = step2_api$stale,
+    enso_labels = step2_api$enso_labels,
      run_trigger = run_step3_trigger,
      shared_aggregation_cache = aggregation_cache
   )

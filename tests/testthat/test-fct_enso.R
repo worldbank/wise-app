@@ -120,15 +120,18 @@ test_that("enso_load works on a Databricks source and returns NULL when it fails
   expect_null(r)
 })
 
-test_that("ENSO files do not affect the Overview metadata bundle", {
+test_that("ENSO files ride along in the Overview metadata bundle without changing it", {
   d <- withr::local_tempdir()
   batch_fixture_tree(d)
   expect_null(enso_load(enso_fixture_params(d))) # no ENSO files in the tree: optional
-  enso_fixture_tree(d)
   withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "1")
   without <- load_overview_metadata(enso_fixture_params(d))
-  expect_false("enso" %in% names(without))
-  expect_equal(nrow(enso_load(enso_fixture_params(d))$observed), 51L)
+  expect_true("enso" %in% names(without))
+  expect_null(without$enso)
+  enso_fixture_tree(d)
+  with <- load_overview_metadata(enso_fixture_params(d))
+  expect_equal(nrow(with$enso$observed), 51L)
+  expect_equal(with[setdiff(names(with), "enso")], without[setdiff(names(without), "enso")])
 })
 
 # Window and weights ----
@@ -365,4 +368,169 @@ test_that("months outside both tables give no rows", {
   expect_equal(nrow(enso_forecast_outlook(NULL, as.Date("1953-10-01"), as.Date("1953-10-01"))), 0L)
   mixed <- enso_forecast_outlook(e, as.Date(c("1953-11-01", "1960-01-01")), as.Date("1953-10-01"))
   expect_equal(nrow(mixed), 1L)
+})
+
+# Results helpers ----
+
+enso_labels_fixture <- function() {
+  tibble::tibble(
+    sim_year = 2001:2010,
+    el_nino = c(1, 1, 1, 0, 0, 0, 0, 0, 0.2, 0.2),
+    neutral = c(0, 0, 0, 1, 1, 1, 0, 0, 0.5, 0.5),
+    la_nina = c(0, 0, 0, 0, 0, 0, 1, 1, 0.3, 0.3),
+    roni_exp = c(1.2, 1.4, 1.1, 0, 0.1, 0, -1, -1.1, 0.2, 0.3),
+    label = c(rep("el_nino", 3), rep("neutral", 3), rep("la_nina", 2), rep("mixed", 2))
+  )
+}
+
+test_that("coverage sentences name the wave, the shares and the highest RONI", {
+  cov <- tibble::tibble(
+    group = c("BFA, 2021", "XXX, 1900"), n = c(10L, 0L), n_missing = c(0L, 4L),
+    el_nino = c(0.125, NA), neutral = c(0.5, NA), la_nina = c(0.375, NA), max_roni = c(0.5, NA)
+  )
+  s <- enso_coverage_sentences(cov, c("BFA, 2021" = "Burkina Faso, 2021"))
+  expect_length(s, 1L) # the wave outside the record is left out
+  expect_match(s, "^Burkina Faso, 2021: 12% of households were interviewed in El Niño months", perl = TRUE)
+  expect_match(s, "38% in La Niña and 50% in neutral months")
+  expect_match(s, "Highest RONI at an interview: 0.50\\.$")
+  expect_identical(enso_coverage_sentences(NULL), character(0))
+})
+
+test_that("labels attach by simulation year and skip the forecast-window series", {
+  tbl <- data.frame(
+    scenario = c("Historical", "Historical", "SSP3-7.0 / 2025-2035", "Historical (Nov-Jan)"),
+    sim_year = c(2001L, 2007L, 2001L, 2001L), value = 1:4
+  )
+  out <- enso_attach_labels(tbl, enso_labels_fixture())
+  expect_equal(out$enso_label[1:3], c("el_nino", "la_nina", "el_nino")) # SSP rows keep the template label
+  expect_equal(out$enso_roni[1], 1.2)
+  expect_true(is.na(out$enso_label[4]))
+  expect_equal(nrow(out), nrow(tbl))
+  # A year outside the labels, and a label table with no row, give NA rather than an error
+  tbl$sim_year[1] <- 1900L
+  expect_true(is.na(enso_attach_labels(tbl, enso_labels_fixture())$enso_label[1]))
+})
+
+test_that("the series table averages models per year and compares phases with Neutral", {
+  lab <- enso_labels_fixture()
+  d <- expand.grid(model_id = c("a", "b"), sim_year = 2001:2010, scenario = c("Historical", "SSP3-7.0 / 2025-2035"),
+    stringsAsFactors = FALSE)
+  d$value <- ifelse(d$scenario == "Historical", 10, 20) + ifelse(d$sim_year <= 2003, -1, 0) +
+    ifelse(d$model_id == "a", 1, -1) # the model offsets cancel in the year mean
+  out <- enso_series_table(d, lab)
+  expect_equal(out$series, c("Historical", "SSP3-7.0 / 2025-2035"))
+  h <- out[out$series == "Historical", ]
+  expect_equal(c(h$n_el_nino, h$n_neutral, h$n_la_nina, h$n_mixed), c(3L, 3L, 2L, 2L))
+  expect_equal(c(h$mean_el_nino, h$mean_neutral), c(9, 10))
+  expect_equal(h$diff_el_nino, -1)
+  expect_true(is.na(h$diff_la_nina)) # two La Nina years: below the minimum of three
+  # Forecast-window series are never compared
+  d2 <- rbind(d, transform(d, scenario = "Historical (Nov-Jan)"))
+  expect_equal(nrow(enso_series_table(d2, lab)), 2L)
+  expect_null(enso_series_table(d[0, ], lab))
+})
+
+test_that("the adverse sentence counts El Nino among the worst years", {
+  lab <- enso_labels_fixture()
+  # Worst 3 of 10 are the three El Nino years when low is adverse
+  v <- data.frame(sim_year = 2001:2010, value = c(1, 2, 3, 10, 11, 12, 13, 14, 15, 16))
+  expect_equal(
+    enso_adverse_sentence(lab, v, "low"),
+    "3 of the 3 most adverse years have El Niño exposure; 3 of 10 years do."
+  )
+  expect_match(enso_adverse_sentence(lab, v, "high"), "^0 of the 3 ")
+  expect_null(enso_adverse_sentence(lab[1:4, ], v[1:4, ])) # fewer than five labelled years
+  none <- transform(lab, label = "neutral")
+  expect_null(enso_adverse_sentence(none, v))
+})
+
+test_that("the count sentence names the window and suggests a wider one when events are few", {
+  s <- enso_count_sentence(enso_labels_fixture())
+  expect_match(s, "^This window has 3 El Niño and 2 La Niña exposure years out of 10\\.")
+  expect_match(s, "longer historical window")
+  big <- tibble::tibble(sim_year = 1:12, label = rep("el_nino", 12))
+  expect_no_match(enso_count_sentence(big), "longer")
+})
+
+test_that("baseline months come from int_month or timestamp and the weight column", {
+  svy <- data.frame(int_month = c(2L, 2L, 6L), weight = c(1, 1, 2))
+  w <- enso_baseline_months(svy)
+  expect_equal(w[c(2, 6)], c(0.5, 0.5))
+  expect_equal(sum(w), 1)
+  svy2 <- data.frame(timestamp = as.Date(c("2020-03-10", "2020-03-20")))
+  expect_equal(enso_baseline_months(svy2)[3], 1)
+  expect_true(all(is.na(enso_baseline_months(data.frame(x = 1)))))
+  expect_true(all(is.na(enso_baseline_months(NULL))))
+})
+
+# Chart marks (D1: draws, counts and series ids do not change) ----
+
+enso_chart_tbl <- function() {
+  d <- data.frame(
+    scenario = rep(c("Historical", "SSP3-7.0 / 2025-2035"), each = 10), sim_year = rep(2001:2010, 2),
+    value = c(seq(5, 6, length.out = 10), seq(4, 5, length.out = 10))
+  )
+  enso_attach_labels(d, enso_labels_fixture())
+}
+
+enso_dot_series <- function(chart) {
+  s <- chart$x$opts$series
+  s[vapply(s, function(x) startsWith(as.character(x$id %||% ""), "draws|"), logical(1L))]
+}
+
+test_that("marking ENSO years keeps the draws, their order and the series ids", {
+  tbl <- enso_chart_tbl()
+  plain <- echart_step3_annual_distribution(tbl)
+  marked <- echart_step3_annual_distribution(tbl, enso_marks = TRUE)
+  p <- enso_dot_series(plain)
+  m <- enso_dot_series(marked)
+  expect_equal(vapply(m, `[[`, "", "id"), vapply(p, `[[`, "", "id"))
+  expect_true(all(grepl("^draws\\|[^|]+\\|All$", vapply(m, `[[`, "", "id"))))
+  expect_equal(vapply(m, function(x) length(x$data), 1L), vapply(p, function(x) nrow(x$data), 1L))
+  # The coordinates are the same
+  xy <- function(s) t(vapply(s$data, function(d) as.numeric(if (is.list(d)) d$value else d), numeric(2)))
+  expect_equal(xy(m[[1]]), unname(p[[1]]$data))
+  # Only the El Nino and La Nina draws carry a style; the tooltip text names the year and exposure
+  hist <- m[[which(vapply(m, `[[`, "", "name") == "Historical")]]$data
+  styled <- vapply(hist, function(d) is.list(d) && !is.null(d$itemStyle), logical(1L))
+  expect_equal(which(styled), c(1:3, 7:8))
+  expect_match(
+    hist[[1]]$enso_text,
+    "^Weather year 2001: El Niño exposure \\(El Niño 100%, Neutral 0%, La Niña 0%; RONI 1.20\\)$"
+  )
+  expect_equal(hist[[1]]$symbol, "triangle")
+  expect_equal(hist[[7]]$symbol, "diamond")
+  expect_true(is.null(hist[[4]]$symbol)) # Neutral keeps the default look
+  expect_false(is.null(hist[[9]]$enso_text)) # Mixed carries the tooltip text only
+  expect_true(is.null(hist[[9]]$itemStyle))
+  # Without the label columns the toggle changes nothing
+  bare <- echart_step3_annual_distribution(tbl[c("scenario", "sim_year", "value")], enso_marks = TRUE)
+  expect_equal(enso_dot_series(bare), enso_dot_series(plain))
+})
+
+test_that("forecast-window rows stay unlabelled when marked", {
+  tbl <- rbind(enso_chart_tbl(), enso_attach_labels(
+    data.frame(scenario = "Historical (Nov-Jan)", sim_year = 2001:2003, value = 5), enso_labels_fixture()
+  )[names(enso_chart_tbl())])
+  m <- enso_dot_series(echart_step3_annual_distribution(tbl, enso_marks = TRUE))
+  win <- m[[which(grepl("Nov-Jan", vapply(m, `[[`, "", "name"), fixed = TRUE))]]
+  expect_true(all(vapply(win$data, function(d) !is.list(d), logical(1L))))
+})
+
+test_that("trajectory bands shade runs of El Nino and La Nina years only", {
+  ts <- data.frame(
+    scenario = "Historical", model_id = "m1", sim_year = 2001:2010, is_historical = TRUE,
+    value = seq(1, 2, length.out = 10)
+  )
+  ch <- echart_timeseries_spaghetti(ts, x_label = "Welfare", enso_labels = enso_labels_fixture())
+  lines <- Filter(function(s) identical(s$type, "line") && !is.null(s$markArea), ch$x$opts$series)
+  expect_length(lines, 1L)
+  areas <- lines[[1]]$markArea$data
+  expect_length(areas, 2L)
+  expect_equal(c(areas[[1]][[1]]$xAxis, areas[[1]][[2]]$xAxis), c(2000.5, 2003.5))
+  expect_equal(c(areas[[2]][[1]]$xAxis, areas[[2]][[2]]$xAxis), c(2006.5, 2008.5))
+  expect_match(as.character(ch$x$opts$tooltip$formatter), "ENSO exposure", fixed = TRUE)
+  # No labels, no bands, same series
+  plain <- echart_timeseries_spaghetti(ts, x_label = "Welfare")
+  expect_length(Filter(function(s) !is.null(s$markArea), plain$x$opts$series), 0L)
 })

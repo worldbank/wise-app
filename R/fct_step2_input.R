@@ -352,12 +352,17 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
 #' @param residuals_requested The rule the user asked for, or `NULL`.
 #' @param residuals_effective The rule the run used (`input$residuals` of
 #'   `wise_step2_input()`, which forces "none" for RIF), or `NULL`.
-#' @return `result`, with the two fields set on `hist_sim_result`.
+#' @param baseline_months Share of the baseline weight in each interview month
+#'   (`enso_baseline_months()`), or `NULL`. Kept beside `sim_summary`, not in it: only the ENSO
+#'   labels of the Results read it, and Step 3 does not copy it (D1 of `roadmap/enso.md`).
+#' @return `result`, with the fields set on `hist_sim_result`.
 #' @noRd
 wise_step2_annotate <- function(result, sw, hist_years, baseline_label,
                                 baseline_dropped = NULL, residual_match = NULL,
-                                residuals_requested = NULL, residuals_effective = NULL) {
+                                residuals_requested = NULL, residuals_effective = NULL,
+                                baseline_months = NULL) {
   result$hist_sim_result$hist_label <- step2_hist_label(hist_years)
+  result$hist_sim_result$baseline_months <- baseline_months
   result$hist_sim_result$sim_summary <- list(
     weather = sw,
     historical_years = unlist(hist_years, use.names = FALSE),

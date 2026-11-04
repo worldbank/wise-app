@@ -445,11 +445,13 @@ mod_0_overview_server <- function(id) {
     variable_list <- reactiveVal(NULL)
     cpi_ppp <- reactiveVal(NULL)
     pov_lines <- reactiveVal(NULL)
+    enso <- reactiveVal(NULL)
     publish_metadata <- function(metadata) {
       survey_list(metadata$survey_list)
       variable_list(metadata$variable_list)
       cpi_ppp(metadata$cpi_ppp)
       pov_lines(metadata$pov_lines)
+      enso(metadata$enso)
     }
 
     # With WISEAPP_DATA_SOURCE set: auto-connect once on startup, no button
@@ -566,6 +568,7 @@ mod_0_overview_server <- function(id) {
         variable_list(NULL)
         cpi_ppp(NULL)
         pov_lines(NULL)
+        enso(NULL)
 
         # Load metadata ----
 
@@ -637,7 +640,8 @@ mod_0_overview_server <- function(id) {
       survey_list = reactive(survey_list()),
       variable_list = reactive(variable_list()),
       cpi_ppp = reactive(cpi_ppp()),
-      pov_lines = reactive(pov_lines())
+      pov_lines = reactive(pov_lines()),
+      enso = reactive(enso())
     )
   })
 }
