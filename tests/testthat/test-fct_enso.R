@@ -534,3 +534,117 @@ test_that("trajectory bands shade runs of El Nino and La Nina years only", {
   plain <- echart_timeseries_spaghetti(ts, x_label = "Welfare")
   expect_length(Filter(function(s) !is.null(s$markArea), plain$x$opts$series), 0L)
 })
+
+# Policy comparison by label (item 4) ----
+
+enso_paired_fixture <- function() {
+  d <- expand.grid(model_id = c("a", "b"), sim_year = 2001:2010, scenario = c("Historical / 2001-2010", "SSP3-7.0 / 2025-2035"),
+    stringsAsFactors = FALSE)
+  d$baseline <- 10 + ifelse(d$model_id == "a", 1, -1) # offsets cancel in the year mean
+  d$effect <- ifelse(d$sim_year <= 2003, 3, 1) # a larger effect in El Nino years
+  d$policy <- d$baseline + d$effect
+  d
+}
+
+test_that("the policy table gives baseline, policy and effect by label, one year counted once", {
+  out <- enso_policy_table(enso_paired_fixture(), enso_labels_fixture())
+  expect_equal(unique(out$series), c("Historical / 2001-2010", "SSP3-7.0 / 2025-2035")) # order of the input
+  h <- out[out$series == "Historical / 2001-2010", ]
+  expect_equal(h$label, c("el_nino", "neutral", "la_nina", "mixed"))
+  expect_equal(h$n, c(3L, 3L, 2L, 2L))
+  expect_equal(h$baseline, rep(10, 4))
+  expect_equal(h$effect, c(3, 1, 1, 1))
+  expect_equal(h$policy, h$baseline + h$effect)
+  expect_equal(h$effect_vs_neutral, c(2, NA, NA, NA)) # La Nina has two years: not compared
+})
+
+test_that("the policy table leaves out forecast series, unlabelled years and empty phases", {
+  d <- enso_paired_fixture()
+  d2 <- rbind(d, transform(d, scenario = "Historical (Nov-Jan)"))
+  expect_equal(unique(enso_policy_table(d2, enso_labels_fixture())$series), unique(d$scenario))
+  # Only El Nino years in the labels: the other phases have no row
+  lab <- enso_labels_fixture()
+  lab$label[lab$label != "el_nino"] <- NA
+  out <- enso_policy_table(d, lab)
+  expect_equal(unique(out$label), "el_nino")
+  expect_true(all(is.na(out$effect_vs_neutral)))
+  expect_null(enso_policy_table(d[0, ], enso_labels_fixture()))
+  lab$label <- NA_character_
+  expect_null(enso_policy_table(d, lab))
+})
+
+test_that("the policy sentence needs three El Nino and three Neutral years", {
+  tbl <- enso_policy_table(enso_paired_fixture(), enso_labels_fixture())
+  expect_equal(
+    enso_policy_sentence(tbl, "Historical / 2001-2010"),
+    "In 3 El Niño exposure years the policy changes the outcome by 3.000 on average, against 1.000 in 3 Neutral years."
+  )
+  expect_match(enso_policy_sentence(tbl, "Historical / 2001-2010", scale = 100, digits = 1), "by 300.0 on average")
+  expect_null(enso_policy_sentence(tbl[tbl$label != "neutral", ], "Historical / 2001-2010"))
+})
+
+# Weather support by label (item 6) ----
+
+test_that("support by label counts the values outside the fitted interval in each phase", {
+  ref <- data.frame(t = 0:100) # 1% to 99% interval: 1 to 99
+  # 2 values per year: one inside, plus one outside (above 99) only in El Nino years 2001 and 2002
+  d <- data.frame(
+    sim_year = rep(2001:2010, each = 2),
+    t = unlist(lapply(2001:2010, function(y) c(50, if (y <= 2002) 150 else 60)))
+  )
+  out <- weather_support_by_phase(ref, list(Historical = d), "t", enso_labels_fixture())
+  en <- out[out$phase == "el_nino", ]
+  expect_equal(c(en$n_years, en$n_values, en$outside_share), c(3, 6, 2 / 6))
+  expect_false("la_nina" %in% out$phase) # two years: below the minimum of three
+  all <- out[out$phase == "all", ]
+  expect_equal(c(all$n_years, all$n_values, all$outside_share), c(10, 20, 2 / 20))
+  # Lower minimum reports La Nina, with no value outside
+  out2 <- weather_support_by_phase(ref, list(Historical = d), "t", enso_labels_fixture(), min_years = 2L)
+  expect_equal(out2$outside_share[out2$phase == "la_nina"], 0)
+})
+
+test_that("a binned variable is checked on its bins, as the support table does", {
+  lv <- c("[0, 10]", "(10, 20]")
+  ref <- data.frame(t = factor(c("[0, 10]", "(10, 20]"), levels = lv))
+  d <- data.frame(sim_year = 2001:2010, t = factor(rep("[0, 10]", 10), levels = lv))
+  d$t <- as.character(d$t)
+  d$t[1:3] <- "(20, 30]" # a bin the fitted sample does not contain, in the three El Nino years
+  spec <- data.frame(name = "t", cont_binned = "Binned")
+  out <- weather_support_by_phase(ref, list(H = d), "t", enso_labels_fixture(), weather_specs = spec)
+  expect_equal(out$outside_share[out$phase == "el_nino"], 1)
+  expect_true(all(out$is_binned))
+  expect_match(enso_support_sentences(out, "Temperature"), "in bins the fitted sample lacks")
+})
+
+test_that("support by label tolerates unusable input", {
+  lab <- enso_labels_fixture()
+  expect_equal(nrow(weather_support_by_phase(NULL, list(H = data.frame()), "t", lab)), 0L)
+  expect_equal(nrow(weather_support_by_phase(data.frame(t = 1:10), list(H = data.frame(x = 1)), "t", lab)), 0L)
+  expect_equal(nrow(weather_support_by_phase(data.frame(t = 1:10), NULL, "t", lab)), 0L)
+})
+
+test_that("support sentences name the series, phases, counts and the all-years share", {
+  tbl <- tibble::tibble(
+    scenario = c("Historical", "Historical", "Historical"), phase = c("el_nino", "la_nina", "all"),
+    n_years = c(4L, 7L, 30L), n_values = c(8L, 14L, 60L), outside_share = c(0.0125, 0.02, 0.0167)
+  )
+  expect_equal(
+    enso_support_sentences(tbl, "Temperature"),
+    paste0(
+      "Historical, temperature outside the fitted range: 1.2% in El Niño exposure years (4), ",
+      "2.0% in La Niña exposure years (7); 1.7% in all years."
+    )
+  )
+  only_all <- tbl[tbl$phase == "all", ]
+  expect_identical(enso_support_sentences(only_all, "Temperature"), character(0))
+})
+
+test_that("table cells show a sign only on non-zero differences", {
+  expect_equal(.enso_fmt(NA_real_), "-")
+  expect_equal(.enso_fmt(0.0004, digits = 3, sign = TRUE), "0.000")
+  expect_equal(.enso_fmt(-0.0004, digits = 3, sign = TRUE), "0.000")
+  expect_equal(.enso_fmt(0.0123, digits = 3, sign = TRUE), "+0.012")
+  expect_equal(.enso_fmt(-0.0123, digits = 3, sign = TRUE), "-0.012")
+  expect_equal(.enso_fmt(1234.5, digits = 1), "1,234.5")
+  expect_equal(.enso_fmt(0.5, scale = 100, digits = 1, sign = TRUE), "+50.0")
+})

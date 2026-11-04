@@ -2084,6 +2084,36 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       )
     ),
 
+    # Section 1b: policy effect by ENSO exposure (item 4 of roadmap/enso.md) ----
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("has_enso"), "'] && !output['", ns("forecast_only"), "']"),
+      shiny::h4(
+        "Does the policy help more in El Ni\u00f1o or La Ni\u00f1a years?",
+        info_popover(
+          title = "Policy effect by ENSO exposure",
+          shiny::p(.ENSO_NOTE_LABELS),
+          shiny::p(.ENSO_NOTE_MODEL),
+          shiny::p(.ENSO_NOTE_FEW)
+        ),
+        style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+      ),
+      shiny::div(
+        class = "results-section-card",
+        shiny::div(
+          style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+          wise_reactable_csv_button(ns("enso_policy_table"), "policy_enso_exposure_years")
+        ),
+        reactable::reactableOutput(ns("enso_policy_table")),
+        shiny::uiOutput(ns("enso_policy_sentence")),
+        shiny::tags$p(
+          class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
+          "Baseline and policy are the mean outcome of the years with that exposure, averaged over climate models; ",
+          "the effect is policy minus baseline. ", .ENSO_NOTE_LABELS, " ", .ENSO_NOTE_MODEL, " ", .ENSO_NOTE_FEW, " ",
+          .ENSO_NOTE_SCENARIO
+        )
+      )
+    ),
+
     # Section 2: Adverse weather years (tail protection) ----
     shiny::h4(
       "Does the policy protect against adverse weather years?",
@@ -3259,6 +3289,26 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
   enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels()))
   output$enso_legend <- shiny::renderUI(if (enso_marking()) enso_legend_ui())
+  enso_policy_rv <- reactive({
+    lab <- enso_labels()
+    req(lab)
+    enso_policy_table(dplyr::bind_rows(paired_effect_data()), lab)
+  })
+  enso_scale <- reactive({
+    x_label <- metric_axis_label(aggregation_method(), baseline_hist_sim()$so, "none")
+    if (nzchar(.wise_result_rate_unit(x_label))) 100 else 1
+  })
+  output$enso_policy_table <- reactable::renderReactable({
+    tbl <- enso_policy_rv()
+    req(tbl)
+    enso_policy_reactable(tbl, scale = enso_scale())
+  })
+  output$enso_policy_sentence <- shiny::renderUI({
+    tbl <- enso_policy_rv()
+    req(tbl)
+    s <- enso_policy_sentence(tbl, tbl$series[[1L]], scale = enso_scale())
+    shiny::tags$p(style = "margin: 12px 0 0;", paste(c(s, enso_count_sentence(enso_labels())), collapse = " "))
+  })
   annual_distribution_chart <- function() {
     curves <- timeseries_curves_rv()
     if (enso_marking() && "sim_year" %in% names(curves)) curves <- enso_attach_labels(curves, enso_labels())
@@ -3507,6 +3557,25 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     step = 3L,
     fun = paired_effect_summary_export,
     description = "Expected policy-minus-baseline effects with paired uncertainty and model counts."
+  )
+  wise_export_table(
+    key = "policy_enso_exposure_years",
+    label = "Policy effect by ENSO exposure",
+    step = 3L,
+    fun = function() {
+      tbl <- enso_policy_rv()
+      req(tbl)
+      annotate_visualization_export(
+        as.data.frame(tbl), aggregation_method(), baseline_hist_sim()$so,
+        observation_unit = "annual aggregate for fixed survey population, averaged over climate models by year",
+        aggregation_order = "policy and baseline aggregates on matched model-weather-year draws; years labelled by ENSO exposure",
+        uncertainty = "none: counts and means of the simulated years", context = metric_context()
+      )
+    },
+    description = paste(
+      "Years, mean baseline, mean policy and policy effect by El Ni\u00f1o, Neutral, La Ni\u00f1a and Mixed exposure.",
+      "Labels describe the ENSO state of the months that enter the model; they are not inputs."
+    )
   )
   wise_export_table(
     key = "policy_annual_effect_data",

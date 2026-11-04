@@ -176,8 +176,12 @@ cat("Run with ENSO tables ...\n")
 b <- run_once(enso_tables)
 
 cat(sprintf("\nregistered tables: %d (without) / %d (with)\n", length(a$tables), length(b$tables)))
-stopifnot(identical(sort(names(a$tables)), sort(names(b$tables))), length(a$tables) > 10L)
-ok <- vapply(names(a$tables), function(k) {
+# The ENSO tables themselves exist only with the ENSO tables loaded: any other table must be in both runs.
+extra <- setdiff(union(names(a$tables), names(b$tables)), intersect(names(a$tables), names(b$tables)))
+cat("tables in one run only:", if (length(extra)) paste(extra, collapse = ", ") else "none", "\n")
+stopifnot(all(grepl("enso", extra)), length(a$tables) > 10L)
+common <- intersect(names(a$tables), names(b$tables))
+ok <- vapply(common, function(k) {
   isTRUE(all.equal(a$tables[[k]], b$tables[[k]], tolerance = 0)) && identical(a$tables[[k]], b$tables[[k]])
 }, NA)
 cat(sprintf("tables identical, all.equal(tolerance = 0): %d of %d\n", sum(ok), length(ok)))

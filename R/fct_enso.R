@@ -439,6 +439,13 @@ enso_series_table <- function(curves, labels, min_n = 3L) {
   out[order(match(out$series, .step2_scenario_order(out$series))), , drop = FALSE]
 }
 
+# A number for a table cell: "-" for NA; a plus sign on positive values only when they do not round to 0.
+.enso_fmt <- function(v, scale = 1, digits = 3L, sign = FALSE) {
+  if (is.na(v)) return("-")
+  txt <- formatC(v * scale, digits = digits, format = "f", big.mark = ",")
+  if (sign && v > 0 && as.numeric(gsub(",", "", txt)) != 0) paste0("+", txt) else sub("^-(0\\.0*)$", "\\1", txt)
+}
+
 #' Reactable of the phase comparison (item 3)
 #'
 #' @param tbl Tibble from `enso_series_table()`.
@@ -456,9 +463,7 @@ enso_phase_reactable <- function(tbl, scale = 1, digits = 3L) {
   diff <- function(header) {
     reactable::colDef(
       name = header, align = "right", minWidth = 90,
-      cell = function(v) {
-        if (is.na(v)) "-" else paste0(if (v > 0) "+" else "", formatC(v * scale, digits = digits, format = "f"))
-      }
+      cell = function(v) .enso_fmt(v, scale, digits, sign = TRUE)
     )
   }
   reactable::reactable(
@@ -546,4 +551,180 @@ enso_legend_ui <- function() {
     class = "text-muted small", style = "text-align: right; margin-bottom: 4px;",
     "Marked draws:", item("el_nino", "El Ni\u00f1o exposure"), item("la_nina", "La Ni\u00f1a exposure")
   )
+}
+
+
+# Policy comparison by ENSO label (item 4) ----
+
+#' Baseline, policy and policy effect by ENSO label
+#'
+#' One row per series and label. Each series is averaged over its climate models by simulation
+#' year first, so a year counts once, then over the years of the label. The effect is policy minus
+#' baseline; `effect_vs_neutral` is the difference of the effect from its Neutral mean, shown only
+#' for El Nino and La Nina and only when both sides have `min_n` years (D5). Counts and means only.
+#'
+#' @param paired Data frame with `scenario`, `sim_year`, `baseline`, `policy`, `effect` (the
+#'   model-year pairs of `paired_model_year_effects()`, one `scenario` column added);
+#'   forecast-like series are left out.
+#' @param labels Tibble from `enso_year_labels()`.
+#' @param min_n Smallest number of years in a phase to compare it.
+#' @return Tibble: `series`, `label`, `n`, `baseline`, `policy`, `effect`, `effect_vs_neutral`;
+#'   `NULL` when nothing is left.
+#' @noRd
+enso_policy_table <- function(paired, labels, min_n = 3L) {
+  if (is.null(paired) || !nrow(paired)) return(NULL)
+  order_of <- unique(as.character(paired$scenario))
+  paired <- paired[!.step2_is_forecast_like(paired$scenario), , drop = FALSE]
+  paired <- paired[is.finite(paired$baseline) & is.finite(paired$policy) & is.finite(paired$effect), ,
+    drop = FALSE]
+  if (!nrow(paired)) return(NULL)
+  yearly <- stats::aggregate(
+    cbind(baseline, policy, effect) ~ scenario + sim_year, data = paired, FUN = mean
+  )
+  yearly$scenario <- as.character(yearly$scenario)
+  yearly$label <- labels$label[match(as.integer(yearly$sim_year), labels$sim_year)]
+  yearly <- yearly[!is.na(yearly$label), , drop = FALSE]
+  if (!nrow(yearly)) return(NULL)
+  rows <- lapply(intersect(order_of, unique(yearly$scenario)), function(s) {
+    d <- yearly[yearly$scenario == s, , drop = FALSE]
+    n <- vapply(ENSO_LABEL_LEVELS, function(k) sum(d$label == k), numeric(1))
+    m <- function(col) {
+      vapply(ENSO_LABEL_LEVELS, function(k) if (any(d$label == k)) mean(d[[col]][d$label == k]) else NA_real_,
+        numeric(1), USE.NAMES = FALSE)
+    }
+    eff <- m("effect")
+    names(eff) <- ENSO_LABEL_LEVELS
+    comparable <- n >= min_n & n[["neutral"]] >= min_n & ENSO_LABEL_LEVELS %in% c("el_nino", "la_nina")
+    tibble::tibble(
+      series = s, label = ENSO_LABEL_LEVELS, n = as.integer(n), baseline = m("baseline"),
+      policy = m("policy"), effect = unname(eff),
+      effect_vs_neutral = unname(ifelse(comparable, eff - eff[["neutral"]], NA_real_))
+    )[n > 0, ]
+  })
+  do.call(rbind, rows)
+}
+
+#' Reactable of the policy comparison by ENSO label (item 4)
+#'
+#' @param tbl Tibble from `enso_policy_table()`.
+#' @param scale 100 for rates shown as percent, else 1.
+#' @param digits Decimals shown.
+#' @noRd
+enso_policy_reactable <- function(tbl, scale = 1, digits = 3L) {
+  tbl$exposure <- enso_label_text(tbl$label)
+  tbl <- tbl[c("series", "exposure", "n", "baseline", "policy", "effect", "effect_vs_neutral")]
+  fmt <- function(v, sign = FALSE) .enso_fmt(v, scale, digits, sign)
+  reactable::reactable(
+    tbl,
+    columns = list(
+      series = reactable::colDef(name = "Series", minWidth = 170, class = "wise-dt-wrap"),
+      exposure = reactable::colDef(name = "Exposure", minWidth = 90),
+      n = reactable::colDef(name = "Years", align = "right", minWidth = 50),
+      baseline = reactable::colDef(name = "Baseline mean", align = "right", minWidth = 90,
+        cell = function(v) fmt(v)),
+      policy = reactable::colDef(name = "Policy mean", align = "right", minWidth = 90,
+        cell = function(v) fmt(v)),
+      effect = reactable::colDef(name = "Policy effect", align = "right", minWidth = 90,
+        cell = function(v) fmt(v, TRUE)),
+      effect_vs_neutral = reactable::colDef(name = "Effect vs Neutral", align = "right", minWidth = 100,
+        cell = function(v) fmt(v, TRUE))
+    ),
+    compact = TRUE, highlight = TRUE, pagination = FALSE
+  )
+}
+
+#' Sentence on the policy effect in El Nino and Neutral years of one series (item 4)
+#'
+#' `NULL` unless the series has at least `min_n` El Nino and Neutral years. Counts and means only.
+#'
+#' @param tbl Tibble from `enso_policy_table()`.
+#' @param series Series to describe.
+#' @param scale,digits As for `enso_policy_reactable()`.
+#' @noRd
+enso_policy_sentence <- function(tbl, series, scale = 1, digits = 3L, min_n = 3L) {
+  d <- tbl[tbl$series == series, , drop = FALSE]
+  en <- d[d$label == "el_nino", , drop = FALSE]
+  ne <- d[d$label == "neutral", , drop = FALSE]
+  if (!nrow(en) || !nrow(ne) || en$n < min_n || ne$n < min_n) return(NULL)
+  f <- function(v) formatC(v * scale, digits = digits, format = "f", big.mark = ",")
+  sprintf(
+    "In %d El Ni\u00f1o exposure years the policy changes the outcome by %s on average, against %s in %d Neutral years.",
+    en$n, f(en$effect), f(ne$effect), ne$n
+  )
+}
+
+
+# Weather support by ENSO label (item 6) ----
+
+#' Share of weather outside the fitted support in El Nino and La Nina years
+#'
+#' Uses the support of `weather_support_reference()` (the robust 1st to 99th percentile of the
+#' fitted sample's weather) and `weather_support_scenario()` on the rows of each series whose
+#' simulation year carries the label. A phase with fewer than `min_years` years in a series is left
+#' out (D5); `"all"` gives the share over every labelled-or-not year, for comparison.
+#'
+#' @param reference Data frame of the fitted sample's weather (column `variable`).
+#' @param series Named list of data frames with `variable` and `sim_year` columns.
+#' @param variable Weather variable name.
+#' @param labels Tibble from `enso_year_labels()`.
+#' @param min_years Smallest number of years of a phase to report it.
+#' @param weather_specs Selected weather (`name`, `cont_binned`), so a binned variable is checked on
+#'   its bins as the Diagnostics support check does; `NULL` treats every variable as continuous.
+#' @return Tibble: `scenario`, `phase` (`"el_nino"`, `"la_nina"`, `"all"`), `n_years`, `n_values`,
+#'   `outside_share`, `is_binned`; zero rows when the reference or the variable is unusable.
+#' @noRd
+weather_support_by_phase <- function(reference, series, variable, labels, min_years = 3L,
+                                     weather_specs = NULL) {
+  out <- tibble::tibble(
+    scenario = character(), phase = character(), n_years = integer(), n_values = integer(),
+    outside_share = numeric(), is_binned = logical()
+  )
+  ref <- weather_support_reference(reference, variable, weather_specs = weather_specs)
+  if (!length(ref) || !is.list(series)) return(out)
+  ref <- ref[[1L]]
+  rows <- list()
+  for (nm in names(series)) {
+    d <- series[[nm]]
+    if (!is.data.frame(d) || !all(c(variable, "sim_year") %in% names(d))) next
+    lab <- labels$label[match(as.integer(d$sim_year), labels$sim_year)]
+    for (k in c("el_nino", "la_nina", "all")) {
+      keep <- if (identical(k, "all")) rep(TRUE, nrow(d)) else !is.na(lab) & lab == k
+      n_years <- length(unique(d$sim_year[keep]))
+      if (!identical(k, "all") && n_years < min_years) next
+      s <- weather_support_scenario(ref, d[[variable]][keep], nm)
+      if (is.null(s)) next
+      rows[[length(rows) + 1L]] <- tibble::tibble(
+        scenario = nm, phase = k, n_years = as.integer(n_years), n_values = as.integer(s$n_scenario),
+        outside_share = s$outside_share, is_binned = s$is_binned
+      )
+    }
+  }
+  if (length(rows)) do.call(rbind, rows) else out
+}
+
+#' One sentence per series on weather outside the fitted support by ENSO label (item 6)
+#'
+#' @param tbl Tibble from `weather_support_by_phase()`.
+#' @param label Display name of the weather variable.
+#' @return Character vector, one sentence per series with an El Nino or La Nina row.
+#' @noRd
+enso_support_sentences <- function(tbl, label) {
+  pct <- function(x) paste0(format(round(100 * x, 1), nsmall = 1, trim = TRUE), "%")
+  out <- character(0)
+  for (s in unique(tbl$scenario)) {
+    d <- tbl[tbl$scenario == s, , drop = FALSE]
+    parts <- character(0)
+    for (k in c("el_nino", "la_nina")) {
+      r <- d[d$phase == k, , drop = FALSE]
+      if (nrow(r)) parts <- c(parts, sprintf("%s in %s exposure years (%d)", pct(r$outside_share), enso_label_text(k), r$n_years))
+    }
+    if (!length(parts)) next
+    all_row <- d[d$phase == "all", , drop = FALSE]
+    where <- if ("is_binned" %in% names(d) && isTRUE(d$is_binned[[1L]])) "in bins the fitted sample lacks" else "outside the fitted range"
+    out <- c(out, sprintf(
+      "%s, %s %s: %s%s.", s, tolower(label), where, paste(parts, collapse = ", "),
+      if (nrow(all_row)) paste0("; ", pct(all_row$outside_share), " in all years") else ""
+    ))
+  }
+  out
 }

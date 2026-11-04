@@ -45,6 +45,7 @@ mod_2_03_diagnostics_ui <- function(id) {
         height = "340px"
       ),
       shiny::uiOutput(ns("weather_support_warning_ui")),
+      shiny::uiOutput(ns("enso_support_ui")),
       shiny::tags$p(
         class = "diagnostic-note",
         paste0(
@@ -450,6 +451,43 @@ mod_2_03_diagnostics_server <- function(id,
         shiny::tags$strong("Weather support warning: "),
         paste(bad, collapse = ", "),
         " has more than 5% of scenario values outside the support of the fitted sample. Extrapolation may be required."
+      )
+    })
+
+    # Weather outside the fitted support in El Nino and La Nina exposure years (item 6 of
+    # roadmap/enso.md). Weather support, not interview phase, is the check that matters: it
+    # says whether the weather of those years lies where the model was fitted. Absent without
+    # ENSO labels, or when a phase has fewer than three years in a series.
+    output$enso_support_ui <- renderUI({
+      lab <- enso_labels()
+      if (is.null(lab)) return(NULL)
+      v <- input$diag_weather_vars
+      req(length(v) == 1L, hist_sim(), survey_weather(), !is.null(hist_sim()$weather_raw))
+      sv_year <- as.integer(format(as.Date(survey_weather()$timestamp), "%Y"))
+      hist_filt <- hist_weather_filtered()
+      with_year <- function(d) {
+        d$sim_year <- as.integer(format(as.Date(d$timestamp), "%Y"))
+        d
+      }
+      series <- c(
+        list(Historical = with_year(hist_filt)),
+        lapply(Filter(is.data.frame, scenario_weather_data() %||% list()), with_year)
+      )
+      series <- series[!.step2_is_forecast_like(names(series))]
+      sw <- if (!is.null(selected_weather)) selected_weather() else NULL
+      label <- if (!is.null(sw) && all(c("name", "label") %in% names(sw)) && v %in% sw$name) {
+        as.character(sw$label[sw$name == v][[1L]])
+      } else {
+        v
+      }
+      tbl <- weather_support_by_phase(hist_filt[hist_filt$cal_year %in% unique(sv_year), , drop = FALSE],
+        series, v, lab, weather_specs = sw)
+      lines <- enso_support_sentences(tbl, label)
+      if (!length(lines)) return(NULL)
+      shiny::tags$p(
+        class = "diagnostic-note",
+        paste(lines, collapse = " "),
+        " Years are labelled by the ENSO state of the months that enter the model."
       )
     })
 
