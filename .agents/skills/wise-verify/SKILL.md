@@ -52,7 +52,7 @@ Tests that start real mirai workers or Chrome (`step2-async*`,
 `fct-overview-metadata`, `export-bundle`, `mod-0-overview`) are slow: run them
 only when the change touches async, metadata or export code.
 
-Run the whole suite (`devtools::test()`, 4 to 6 minutes, using the tool's
+Run the whole suite (`devtools::test()`, 5 to 10 minutes, using the tool's
 background-process support if available) once at the end of a multi-file code
 change, with the tree quiet.
 
@@ -78,6 +78,7 @@ Do the rows that apply.
 | Batch table columns or meaning | `batch/docs/tables.md`; batch tests |
 | `AGENTS.md`, `ARCHITECTURE.md`, `DEPLOYMENT.md`, a skill | `Rscript dev/agents_check.R` |
 | UI (module, CSS, chart, map, tab) | Skill `wise-ui-check`; larger UI changes also `Rscript tests/e2e/smoke.R` (about 5 minutes, needs Chrome) |
+| A change that must not move any number (a label or annotation on results) | `Rscript dev/parity_enso.R --fixture` while iterating, without `--fixture` (BFA) once at the end: every registered table identical with and without the feature |
 | A speed or memory claim | Skill `wise-benchmark` |
 | Model or simulation numbers move | Skill `wise-numeric-change` |
 | A review finding | Close it per Working rules in `review/TRACKING.md` |
@@ -106,3 +107,10 @@ which follow-ups were done, and what was not run and why. Do not write
 - Tests pin their environment (`setup-env.R`): `WISEAPP_DATA_*` and cloud
   credentials are unset there. Do not rely on `.Renviron`.
 - `tests/testthat/testthat-problems.rds` is a local artifact and is git-ignored.
+- `test-deploy-contract.R` fails while `manifest.json` lacks new `R/` files. On a
+  branch that defers the manifest to the PR (see the branch notes in
+  `roadmap/`), report it as expected instead of regenerating the manifest.
+- Some files mix CRLF and LF line endings (`R/mod_2_simulation.R`). A scripted
+  rewrite in text mode normalises them and fills the diff. Edit with the Edit
+  tool, or in binary mode, and check `git diff --stat` for a line count far
+  above your change.
