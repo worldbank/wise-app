@@ -180,10 +180,10 @@ app_server <- function(input, output, session) {
         error = function(e) NULL
       ),
       connection_params = cp,
-      extra = list(stale = tryCatch(
+      extra = c(list(stale = tryCatch(
         isTRUE(step2_api$stale()),
         error = function(e) NA
-      ))
+      )), enso_provenance(overview_api$enso()))
       ),
       step3 = wise_provenance(3L, tryCatch(step3_api$policy_hist_sim(),
         error = function(e) NULL

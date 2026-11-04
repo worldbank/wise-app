@@ -6,7 +6,7 @@ depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
 code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_window.R, R/fct_forecast_skill.R, R/fct_run_simulation.R]
-verified_against: edaaa1d
+verified_against: ce7a573
 ---
 
 # Seasonal forecast scenario (experimental pilot)
@@ -73,7 +73,7 @@ The band across members shows how much the forecast weather moves the model's ou
 - **A2.** The fitted relationship between weather and the outcome holds for forecast weather as it does for observed weather.
 - **A3.** Member order carries no meaning; members are equally weighted.
 - **A4.** One weather coefficient applies in every season. The target months may be rare among the training interviews, which the cards flag, and the response there is then an extrapolation across seasons.
-- **A5.** The same-window reference years are exchangeable draws of target-window weather, and about 30 of them resolve return periods only up to about 1-in-15.
+- **A5.** The same-window reference years are exchangeable draws of target-window weather, and about 30 of them resolve return periods only up to about 1-in-15. When ENSO is strongly forecast they are not exchangeable with the coming window, so the placement card also compares the median member with the reference years of the outlook's phase ([35_enso](35_enso.md), Section 4).
 
 ## Limitations and what is not modelled
 

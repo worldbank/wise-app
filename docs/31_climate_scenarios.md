@@ -6,7 +6,7 @@ depends_on: [notation, data, weather-measures]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation
 code: [R/fct_get_weather.R, R/fct_simulations.R, R/fct_step2_input.R, R/fct_run_simulation.R]
-verified_against: b4f2807
+verified_against: ce7a573
 ---
 
 # Climate scenarios (monthly delta method)
@@ -92,6 +92,7 @@ The simulation years of a future series are the years of the historical window. 
 - Known data limitation, climate-model variables. Some climate models do not provide some variables in the supplied files, and the same models lack the same variables in every economy. Of the 22 to 27 members of a pathway, 2 lack `r`, `rx5day` and `r20`, 4 to 5 lack `tn` and `tr`, 5 to 8 lack `tx` and `tx35`, and about half lack `mrsos`. A member without a selected variable is excluded as incomplete, so the number of members depends on the variables chosen.
 - Known data limitation, soil moisture. `mrsos` is also undefined at the cells of some coastal and island locations. In Colombia (two surveys), Fiji, Myanmar and Mauritania (2014) at least one location has no `mrsos` value in any cell, so every member is excluded when `mrsos` is selected. In Guinea-Bissau a few members remain. The other variables have no such location-level gaps.
 - Only the weather variables that the model uses are perturbed.
+- Changes in ENSO. A future series keeps the observed sequence of its template years, so a scenario year carries the ENSO label of its template year ([35_enso](35_enso.md)). It reads as a past event in a warmer climate; changes in ENSO frequency, strength or teleconnections are not represented.
 
 ## In the app
 

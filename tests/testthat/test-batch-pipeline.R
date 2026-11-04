@@ -964,6 +964,75 @@ test_that("a forecast simulation writes the forecast table and the placement, sk
   expect_match(summ$text[summ$section == "skill"], "not assessed")
 })
 
+test_that("ENSO tables add labels apart from the simulation, and a refresh does not rerun it", {
+  skip_if_not_installed("qs2")
+  skip_if_not_installed("digest")
+  data <- withr::local_tempdir()
+  batch_fixture_tree(data, forecast = TRUE)
+  proj <- withr::local_tempdir()
+  withr::local_envvar(WISEAPP_DATA_PATH = data)
+  write_project(proj, c(
+    "seed: 7",
+    "model: {}",
+    "sim:",
+    "  hist_years: [2018, 2019]",
+    "  future_periods: []",
+    "  ssps: []",
+    "  coef_uncertainty: false",
+    "  forecast: {product: seasonal, run: '2021-01', start: '2021-02', len: 3}",
+    "profiles:",
+    "  weather:",
+    "    t_1m: {t: {ref_period: [1, 1], form: continuous}}",
+    "axes:",
+    "  country: [TST]",
+    "  weather: [t_1m]"
+  ))
+  out <- file.path(proj, "results")
+  make_it(proj)
+  # Without the tables: no ENSO output, and the run is unaffected.
+  expect_false(dir.exists(file.path(out, "tables", "enso_years")))
+  expect_null(jsonlite::fromJSON(file.path(out, "manifest.json"))$enso)
+  before <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
+
+  months <- seq(as.Date("2010-01-01"), as.Date("2021-12-01"), by = "month")
+  write_enso <- function(roni) {
+    utils::write.csv(data.frame(
+      timestamp = months, source = "cpc", roni = roni,
+      phase = ifelse(roni >= 0.5, "el_nino", ifelse(roni <= -0.5, "la_nina", "neutral"))
+    ), file.path(data, "metadata", "enso.csv"), row.names = FALSE)
+  }
+  write_enso(rep(1, length(months)))
+  make_it(proj)
+  # Each branch's time stamp: a branch that reruns gets a new one.
+  sim_runs <- function() {
+    meta <- withr::with_dir(proj, targets::tar_meta(fields = c("name", "time")))
+    meta <- meta[startsWith(meta$name, "sim_tables_"), ]
+    stats::setNames(as.numeric(meta$time), meta$name)
+  }
+  ran <- sim_runs()
+  expect_gt(length(ran), 0L)
+  expect_false(anyNA(ran))
+  years <- arrow::open_dataset(file.path(out, "tables", "enso_years")) |> dplyr::collect()
+  expect_setequal(years$sample, c("annual", "target_months"))
+  expect_true(all(years$label == "el_nino"))
+  expect_setequal(years$sim_year[years$sample == "target_months"], 2018:2019)
+  summ <- arrow::open_dataset(file.path(out, "tables", "summary")) |> dplyr::collect()
+  expect_true(any(summ$section == "enso" & summ$measure == "card_line"))
+  manifest <- jsonlite::fromJSON(file.path(out, "manifest.json"))
+  expect_match(manifest$enso$enso_observed_sha256, "^[0-9a-f]{64}$")
+  expect_identical(manifest$enso$enso_last_cpc_month, "2021-12")
+  after <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
+  sorted <- function(d) as.data.frame(d[do.call(order, d[c("scenario", "metric", "member", "sim_year")]), ])
+  expect_equal(sorted(after), sorted(before), tolerance = 0)
+
+  write_enso(rep(-1, length(months)))
+  make_it(proj)
+  expect_identical(sim_runs(), ran)
+  refreshed <- arrow::open_dataset(file.path(out, "tables", "enso_years")) |> dplyr::collect()
+  expect_true(all(refreshed$label == "la_nina"))
+  expect_false(identical(jsonlite::fromJSON(file.path(out, "manifest.json"))$enso, manifest$enso))
+})
+
 test_that("a policy on a forecast window writes the policy arm of the forecast table and the policy effect", {
   skip_if_not_installed("qs2")
   skip_if_not_installed("digest")

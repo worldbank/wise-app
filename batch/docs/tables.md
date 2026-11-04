@@ -1,6 +1,6 @@
 # Batch output tables - column reference
 
-All tables of a batch run: 11 result tables and the run-level files. The user
+All tables of a batch run: the result tables and the run-level files. The user
 guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md`.
 
 ## Conventions
@@ -61,7 +61,7 @@ members, data version), so replacing files under an existing run id changes
 | `wxvar_id` | `data_id`, one weather variable's reference period, temporal aggregation, transformation, and the historical years (not the binning) | `weather_stats` |
 | `weather_id` | `data_id`, the whole weather section (the seed only for K-means bins) | the survey-weather frame (not published) |
 | `fit_id` | `data_id`, weather section, model section, seed | `model_terms`, `model_fit`, `model_vcov` |
-| `sim_id` | `fit_id`, the simulation settings that change results, the poverty line of a non-`poor` outcome | `annual`, `summary`, `sim_weather` (baseline arm) |
+| `sim_id` | `fit_id`, the simulation settings that change results, the poverty line of a non-`poor` outcome | `annual`, `summary`, `sim_weather` (baseline arm), `forecast`, `enso_years` |
 | `policy_id` | `sim_id`, the policy section; `NA` is the baseline arm | policy arm of `annual` and `summary`; `decomposition`, `policy_measures` |
 | `run_id` | the whole spec, seed included | `runs` |
 
@@ -243,6 +243,9 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `skill` | forecast scenarios only; `skill_flag` / `group` = target month (`YYYY-MM`, prefixed by the variable when the model has several) | Hindcast skill flag of each target month in `text` (`none`, `weak`, `useful`), `estimate` = anomaly correlation, `n` = lead. One row of text ("not assessed") when the run has no skill table. `metric` is `NA`. |
 | `season` | forecast scenarios only; `training_month_share`, `training_month_expected` | Share of the model's training observations interviewed in the target months, and the share an even spread over the year would give. `metric` is `NA`. |
 | `policy_effect` | policy arm of forecast scenarios only; `effect_member_median`, `effect_reference_median`, `share_worse_baseline`, `share_worse_policy`, `reference_adverse_1in10` | Policy effect under the forecast; see the `forecast` table. `n` = members. |
+| `enso` | baseline arm, written with the ENSO tables; `mean` / `el_nino`, `neutral`, `la_nina`, `mixed`; `diff_neutral` / `el_nino`, `la_nina` | Annual series by the ENSO label of `enso_years`: mean of the year means over members, `n` = years, and the difference from Neutral (`NA` below three years on either side). The policy arm joins `annual` to `enso_years` on `sim_id` and `sim_year`. |
+| `enso` | forecast scenarios; `card_line` (`text`); `reference_adverse` / the outlook's phase, `reference_adverse_all` / `all` | The placement card's line, and the reference years at least as adverse as the median member (`estimate`) out of `n`, per metric. No `reference_adverse` rows below three years of the phase or for a mixed outlook. |
+| `enso` | forecast scenarios; `outlook_roni` (`text` = phase), `outlook_prob_el_nino`, `outlook_prob_la_nina`, `outlook_prob_neutral`, `outlook_basis` (`text` = the source, or `observed` for a later outlook) / `group` = target month (`YYYY-MM`) | The outlook of the target months. Shares of members are not calibrated. `metric` is `NA`. |
 | `shock_window` | policy arm of forecast scenarios with a shock-responsive transfer; `member_share`, `reference_share`, `exposed_member`, `exposed_reference`, `cost_median`, `cost_min`, `cost_max`, `cost_reference` | Share of members and of reference years with payments, mean population share in triggered locations, and the cost of the window (median, range across members, median reference year). `metric` is `NA`; `n` = members. |
 
 **Policy arm** sections start with `policy_`; stored for every metric:
@@ -279,6 +282,27 @@ the metric with the policy, over members and over reference years),
 `share_worse_baseline` and `share_worse_policy` (the share of members at or
 beyond the baseline 1-in-10 reference level without and with the policy, at that
 one fixed level) and `reference_adverse_1in10` (that level), with `n` = members.
+
+### enso_years
+
+Key `sim_id`, `sample` and `sim_year`; written only when the ENSO tables are in the
+data folder (`metadata/enso.csv`, optional `metadata/enso_forecast.csv`). The labels
+are annotation: they are built by the `enso_tables` target from the simulation
+tables, so a refreshed ENSO file rebuilds this table, the `enso` rows of `summary`
+and the manifest, and reruns no simulation. Neither file is part of
+`metadata_digest`; `manifest.json` records the version in `enso`
+(`enso_observed_sha256`, `enso_forecast_sha256`, hashes of the validated tables;
+`enso_last_cpc_month`; `enso_forecast_init_date`). A simulation run before this
+table existed has no rows until it reruns.
+
+| Column | Meaning |
+|---|---|
+| `sample` | `annual`: the weather years, weighted by the interview months; a climate scenario year carries the label of its template year. `target_months`: the reference years of a forecast, with equal weight on the target months. Members have no label. |
+| `sim_year` | The weather year; for `target_months` the year the window starts. |
+| `el_nino`, `neutral`, `la_nina` | Share of the exposure in each phase, unrounded. |
+| `roni_exp` | Exposure RONI. |
+| `label` | `el_nino`, `neutral`, `la_nina` (a share of at least 0.5) or `mixed`; `NA` when a lag leaves the table. |
+| `period` | The months of a `target_months` year (`Nov 1997 - Jan 1998`); `NA` for `annual`. |
 
 ### sim_weather
 

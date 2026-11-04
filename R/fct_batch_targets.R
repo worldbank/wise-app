@@ -84,9 +84,13 @@ wise_targets <- function(spec_file, out_dir = "results", keep_step2 = TRUE) {
     t("policy_tables", quote(wiseapp::wise_batch_policy(policy_specs)),
       pattern = quote(map(policy_specs)), iteration = "list", resources = .batch_sim_resources()
     ),
+    # ENSO labels: always re-read, and apart from the simulations, so a refreshed table rebuilds
+    # only these labels and the results store (D1 of roadmap/enso.md).
+    t("enso_source", quote(wiseapp::wise_batch_enso_source(grid)), cue = targets::tar_cue(mode = "always")),
+    t("enso_tables", quote(wiseapp::wise_batch_enso(enso_source, sim_tables))),
     t("results", bquote(wiseapp::wise_batch_write(
       .(out_dir), grid, data_tables, weather_tables, fit_tables, sim_tables, policy_tables,
-      keep_step2 = .(keep_step2)
+      keep_step2 = .(keep_step2), enso_tables = enso_tables
     )),
       format = "file"
     )
@@ -756,13 +760,14 @@ wise_batch_sim <- function(item, connection_params = NULL) {
           sim_file
         )
       }
+      enso_inputs <- .batch_enso_inputs(baseline$svy, sw, result$new_scenarios, forecast, tables$forecast, so)
       gc_max <- gc()
       failures <- vapply(result$failures %||% list(), function(f) {
         sprintf("%s: %s", f$key, wise_user_error(f$error %||% "failed", "batch simulation member"))
       }, character(1))
       list(
         ok = TRUE, id = item$id, partial = failures, sim_file = sim_file,
-        tables = lapply(tables, add_id),
+        tables = lapply(tables, add_id), enso_inputs = enso_inputs,
         provenance = data.frame(
           stage = "sim", id = item$id,
           n_rows = length(result$hist_sim_result$pipeline$y_point),
@@ -890,6 +895,113 @@ wise_batch_policy <- function(item) {
       )
     },
     error = function(e) .batch_failure("policy", item$id, e)
+  )
+}
+
+
+# ENSO labels ----
+
+# What the labels of one simulation need besides the ENSO tables. No ENSO table is read here, so a
+# refreshed table cannot touch the simulation branch.
+#' @noRd
+.batch_enso_inputs <- function(svy, sw, scenarios, forecast, forecast_table, so) {
+  has_ref <- vapply(scenarios %||% list(), function(s) length(s$reference_pipelines) > 0L, logical(1L))
+  out <- list(baseline_months = enso_baseline_months(svy), lags = enso_window(sw))
+  if (any(has_ref) && !is.null(forecast_table)) {
+    s <- scenarios[has_ref][[1L]]
+    metrics <- unique(forecast_table$metric)
+    out$forecast <- list(
+      entry = s$forecast[c("forecast_months", "reference_years")],
+      run = forecast$run[c("init", "model_id")],
+      months_label = sub("^Historical \\((.*)\\)$", "\\1", .step2_window_reference_label(s)),
+      adverse_tail = stats::setNames(
+        vapply(metrics, function(m) metric_metadata(m, so)$adverse_tail %||% "low", ""), metrics
+      )
+    )
+  }
+  out
+}
+
+#' Read the ENSO tables of a batch run
+#'
+#' Optional, as in the app: `NULL` without usable tables, and the run goes on.
+#'
+#' @param grid Result of `wise_batch_grid()`.
+#' @param connection_params Connection (default: the environment's).
+#' @return `NULL`, or the list from `enso_load()` with `provenance` (`enso_provenance()`).
+#' @keywords internal
+#' @export
+wise_batch_enso_source <- function(grid, connection_params = NULL) {
+  cp <- connection_params %||% wise_batch_connection(grid$runs$spec[[1L]]$source)
+  enso <- enso_load(cp)
+  if (is.null(enso)) return(NULL)
+  c(enso, list(provenance = enso_provenance(enso)))
+}
+
+# ENSO rows of one simulation branch.
+#' @noRd
+.batch_enso_branch <- function(enso, branch) {
+  inputs <- branch$enso_inputs
+  annual <- branch$tables$annual
+  add_id <- function(x) cbind(sim_id = annual$sim_id[[1L]], code = annual$code[[1L]], as.data.frame(x))
+  annual <- annual[!.step2_is_forecast_like(annual$scenario), , drop = FALSE]
+  labels <- enso_year_labels(enso$observed, sort(unique(annual$sim_year)), inputs$baseline_months, inputs$lags)
+  fc <- inputs$forecast
+  window <- if (!is.null(fc)) enso_window_labels(enso$observed, fc$entry, inputs$lags)
+  rows <- list()
+  if (any(!is.na(labels$label))) {
+    for (m in unique(annual$metric)) {
+      tbl <- enso_series_table(annual[annual$metric == m, , drop = FALSE], labels)
+      if (!is.null(tbl)) rows[[length(rows) + 1L]] <- enso_annual_summary(tbl, m)
+    }
+  }
+  if (!is.null(fc)) {
+    table <- branch$tables$forecast
+    for (label in unique(table$scenario)) {
+      for (m in names(fc$adverse_tail)) {
+        d <- table[table$scenario == label & table$metric == m, , drop = FALSE]
+        ref <- d$kind == "reference"
+        placement <- list(
+          reference = data.frame(year = d$year[ref], value = d$value[ref]),
+          summary = list(member_median = stats::median(d$value[!ref], na.rm = TRUE)),
+          adverse_tail = fc$adverse_tail[[m]]
+        )
+        text <- enso_placement_text(enso, fc$entry, fc$run, placement, window, fc$months_label)
+        if (!is.null(text)) {
+          rows[[length(rows) + 1L]] <- enso_forecast_summary(text, label, m, outlook = m == names(fc$adverse_tail)[[1L]])
+        }
+      }
+    }
+  }
+  list(
+    enso_years = add_id(enso_year_table(labels, window)),
+    summary = if (length(rows)) add_id(do.call(rbind, rows))
+  )
+}
+
+#' ENSO labels of the simulations of a batch run
+#'
+#' Labels are annotation (D1): this runs after the simulations, on their tables. A branch that
+#' fails is logged and left out; it never fails the run (D6).
+#'
+#' @param enso_source Result of `wise_batch_enso_source()`.
+#' @param sim_tables Branch results of `wise_batch_sim()`.
+#' @return `NULL` without ENSO tables, else a list: `enso_years`, `summary` and `provenance`.
+#' @keywords internal
+#' @export
+wise_batch_enso <- function(enso_source, sim_tables) {
+  if (is.null(enso_source)) return(NULL)
+  branches <- Filter(function(b) isTRUE(b$ok) && !is.null(b$enso_inputs), sim_tables)
+  out <- lapply(branches, function(b) {
+    tryCatch(.batch_enso_branch(enso_source, b), error = function(e) {
+      wise_user_error(e, "batch ENSO labels")
+      NULL
+    })
+  })
+  list(
+    enso_years = dplyr::bind_rows(lapply(out, `[[`, "enso_years")),
+    summary = dplyr::bind_rows(lapply(out, `[[`, "summary")),
+    provenance = enso_source$provenance
   )
 }
 
@@ -1036,11 +1148,13 @@ wise_batch_policy <- function(item) {
 #' @param keep_step2 Keep the stored Step 2 runs of the simulations that have a
 #'   policy (see `wise_targets()`); runs of simulations that left the grid are
 #'   removed either way.
+#' @param enso_tables Result of `wise_batch_enso()`, or `NULL`.
 #' @return `out_dir` (a `targets` file target).
 #' @keywords internal
 #' @export
 wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tables = list(),
-                             sim_tables = list(), policy_tables = list(), keep_step2 = TRUE) {
+                             sim_tables = list(), policy_tables = list(), keep_step2 = TRUE,
+                             enso_tables = NULL) {
   .need_pkg("arrow", "write result tables")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   runs <- grid$runs
@@ -1067,9 +1181,13 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
   # from the policy runs.
   for (name in c("annual", "summary", "forecast")) {
     .write_table(
-      dplyr::bind_rows(pick(sim_tables, name), pick(policy_tables, name)), out_dir, name
+      dplyr::bind_rows(
+        pick(sim_tables, name), pick(policy_tables, name), if (identical(name, "summary")) enso_tables$summary
+      ),
+      out_dir, name
     )
   }
+  .write_table(enso_tables$enso_years, out_dir, "enso_years")
   .write_table(pick(sim_tables, "sim_weather"), out_dir, "sim_weather")
   for (name in c("decomposition", "policy_measures")) {
     .write_table(pick(policy_tables, name), out_dir, name)
@@ -1161,6 +1279,7 @@ wise_batch_write <- function(out_dir, grid, data_tables, weather_tables, fit_tab
     renv_lock_sha256 = if (file.exists(renv_lock)) digest::digest(file = renv_lock, algo = "sha256") else NA_character_,
     data_source = grid$source,
     data_files = grid$data_files,
+    enso = enso_tables$provenance,
     started_at = format(grid$started, "%Y-%m-%dT%H:%M:%S%z"),
     finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
     n_runs = nrow(runs), n_data_sets = length(data_tables), n_weather_variables = length(weather_tables),

@@ -6,7 +6,7 @@ depends_on: [notation, framework]
 symbols: [i, l, t, mu, Y, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
 code: [R/fct_surveystats.R, R/fct_step1_data.R, R/fct_loc_panel.R, R/fct_get_weather.R, R/fct_sample.R, R/fct_incidence.R, R/fct_weatherstats.R]
-verified_against: 72a2fdb
+verified_against: ce7a573
 ---
 
 # Data and spatial linking
@@ -99,6 +99,7 @@ The survey must carry a column named `weight`. The harmonised surveys always hav
 - Variables are harmonised but not always strictly comparable across surveys.
 - Households that moved, or interviews held away from the location, are not detected.
 - Missing deflators and missing weather months reduce the sample without any imputation.
+- The monthly ENSO index and its forecast are optional tables, read only to label results ([35_enso](35_enso.md)). Without them the results are the same and the labels are absent.
 - Known data limitations of the location link. Some survey location identifiers cannot be mapped to H3 cells, because the survey has no coordinates or shapefile for them. Some H3 cells have no weather, because they lie outside the coverage of ERA5-Land. Records in either case have no weather, are dropped at the merge and are counted in the reported number of dropped records. They are not imputed and not weighted up, so the sample no longer represents those locations. In the files of 72 surveys checked on 2026-10-26, about 3 % of the location identifiers in the survey microdata (3,766 of 137,144) had no row in the H3 files, and every location in the H3 files had at least one ERA5-Land cell.
 
 ## In the app

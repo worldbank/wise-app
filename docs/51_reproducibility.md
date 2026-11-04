@@ -6,7 +6,7 @@ depends_on: [notation, framework, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
 code: [R/utils_math.R, R/fct_provenance.R, R/fct_export.R, R/fct_aggregation.R, R/fct_policy_sim.R, R/fct_step2_compute.R]
-verified_against: 3db0c63
+verified_against: ce7a573
 ---
 
 # Seeds, run provenance and exports
@@ -60,7 +60,8 @@ For every step that has results, the app builds one record of what produced them
 - the random seed that the run used and the version of the app. The seed is stored with the result when the run starts (on the Step 1 fit, the Step 2 simulation and the Step 3 run), so the record names the seed of the run and not the seed in force when the record is read. A result that carries no seed takes the seed in force;
 - the data source, as a type (for example local or a named cloud service) and whether it came from the server configuration or the user interface. Hosts, buckets, paths and credentials are never included;
 - the survey version, the outcome, the weather pipeline, the model specification (type, engine, interactions, fixed effects, covariates, selection method, clustering) and the number of observations;
-- any **fallback**: a place where the fitted specification differs from the requested one, with the reason.
+- any **fallback**: a place where the fitted specification differs from the requested one, with the reason;
+- for Step 2, the version of the ENSO tables when they are loaded ([35_enso](35_enso.md), Section 7). It is not part of the run signature, because labels do not change results.
 
 ### 4. Exports and restore
 

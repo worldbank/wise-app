@@ -90,7 +90,7 @@ pages:
       - "Step 1 > Sample: economy, survey rounds and level of analysis; Survey stats shows interview timing and the location map."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/data.qmd"
     code: ["R/fct_surveystats.R", "R/fct_step1_data.R", "R/fct_loc_panel.R", "R/fct_get_weather.R", "R/fct_sample.R", "R/fct_incidence.R", "R/fct_weatherstats.R"]
-    verified_against: "72a2fdb"
+    verified_against: "ce7a573"
   - id: "outcomes"
     file: "11_outcomes.md"
     title: "Outcomes and poverty lines"
@@ -276,7 +276,7 @@ pages:
       - "Step 2 > Results: annual series, scenario bands, threshold tables. Step 2 > Diagnostics: weather distributions and the sources of uncertainty."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare"
     code: ["R/fct_step2_input.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_simulations.R", "R/fct_predict_outcomes.R", "R/fct_aggregation.R", "R/fct_sim_diag.R", "R/fct_sim_compare.R", "R/fct_spec_defaults.R"]
-    verified_against: "9881d96"
+    verified_against: "ce7a573"
   - id: "climate-scenarios"
     file: "31_climate_scenarios.md"
     title: "Climate scenarios (monthly delta method)"
@@ -296,7 +296,7 @@ pages:
       - "Step 2 > Simulation settings: historical window, projection periods (up to three) and pathways. The Diagnostics tab compares the weather distribution of each scenario with the weather used in estimation."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation"
     code: ["R/fct_get_weather.R", "R/fct_simulations.R", "R/fct_step2_input.R", "R/fct_run_simulation.R"]
-    verified_against: "b4f2807"
+    verified_against: "ce7a573"
   - id: "metrics"
     file: "32_metrics.md"
     title: "Welfare metrics and how annual results are summarised"
@@ -376,7 +376,34 @@ pages:
       - "Step 2 > Results: with a forecast, each chart and the return-period table carry both sets of series: \"Historical (annual)\" and the climate scenarios, and \"Historical (Nov - Jan)\" and the forecast. A forecast-only run shows the same charts without scenario rows. The headline cards stay in two groups, annual and target months. The cards of the target months show the placement, the shift against the historical spread of the same months and the member range."
     guide: "https://github.com/worldbank/wise-app-docs"
     code: ["R/utils_forecast_ui.R", "R/mod_2_01_weathersim.R", "R/fct_forecast_catalogue.R", "R/fct_forecast_weather.R", "R/fct_forecast_placement.R", "R/fct_forecast_window.R", "R/fct_forecast_skill.R", "R/fct_run_simulation.R"]
-    verified_against: "edaaa1d"
+    verified_against: "ce7a573"
+  - id: "enso"
+    file: "35_enso.md"
+    title: "ENSO labels on results"
+    app_step: "2"
+    depends_on: ["notation", "data", "simulation", "climate-scenarios", "seasonal-forecast"]
+    methods:
+      - "1. Label of a simulation year"
+      - "2. Climate scenarios"
+      - "3. Forecast target months"
+      - "4. Outlook of a forecast run"
+      - "5. Comparing outcomes by label"
+      - "6. Weather support by label"
+      - "7. Table versions"
+    equations:
+      - {tag: "(1.1)", section: "1. Label of a simulation year"}
+      - {tag: "(1.2)", section: "1. Label of a simulation year"}
+    symbols: ["mu", "r", "m"]
+    ui:
+      - "Step 1 > Survey stats: a sentence under the timing of interviews gives the share of households interviewed in each phase and the highest RONI at an interview."
+      - "Step 2 and Step 3 > Results: the toggle Mark ENSO years marks draws on the distribution chart, for the annual series and for Historical of the target months."
+      - "Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label. Step 3 adds the policy effect."
+      - "Step 2 > Results: with a forecast, the placement card of the target months gives the outlook and the comparison, in the level view."
+      - "Step 2 > Diagnostics: bands on the weather-year trajectories, and a line on weather support by label."
+      - "Export: the labels, the comparison tables and the outlook; the run record gives the table versions."
+    guide: "https://github.com/worldbank/wise-app-docs"
+    code: ["R/fct_enso.R", "R/fct_forecast_window.R", "R/fct_forecast_placement.R", "R/fct_overview_metadata.R", "R/fct_batch_targets.R", "R/mod_2_02_results.R", "R/fct_policy_sim_compare.R"]
+    verified_against: "ce7a573"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"
@@ -554,7 +581,7 @@ pages:
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
     code: []
-    verified_against: "523a585"
+    verified_against: "ce7a573"
   - id: "reproducibility"
     file: "51_reproducibility.md"
     title: "Seeds, run provenance and exports"
@@ -573,7 +600,7 @@ pages:
       - "The summary cards at the top of each results tab record the settings behind its result."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/export.qmd"
     code: ["R/utils_math.R", "R/fct_provenance.R", "R/fct_export.R", "R/fct_aggregation.R", "R/fct_policy_sim.R", "R/fct_step2_compute.R"]
-    verified_against: "3db0c63"
+    verified_against: "ce7a573"
   - id: "batch"
     file: "52_batch_runs.md"
     title: "Batch runs"
@@ -589,7 +616,7 @@ pages:
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/export.qmd"
     code: ["R/fct_batch_spec.R", "R/fct_batch_targets.R", "R/fct_spec_defaults.R", "R/fct_step1_tables.R", "R/fct_step2_tables.R", "R/fct_step3_tables.R"]
-    verified_against: "b4f2807"
+    verified_against: "ce7a573"
   - id: "references"
     file: "references.md"
     title: "References"

@@ -425,7 +425,8 @@ enso_reference_comparison <- function(placement, labels, phase, min_n = 3L) {
 #' @param placement Result of `step2_window_placement()`.
 #' @param labels Tibble from `enso_window_labels()`, or `NULL`.
 #' @param months_label Target months as text ("Nov - Jan").
-#' @return `NULL` when nothing covers the target months, else a list: `line` and `info`.
+#' @return `NULL` when nothing covers the target months, else a list: `line`, `info`, `outlook`
+#'   (`enso_forecast_outlook()`), `phase` and `compare` (`enso_reference_comparison()`, or `NULL`).
 #' @noRd
 enso_placement_text <- function(enso, forecast, run, placement, labels, months_label) {
   model <- run$model_id
@@ -461,7 +462,7 @@ enso_placement_text <- function(enso, forecast, run, placement, labels, months_l
       compare$n_adverse, compare$n, name, compare$n_adverse_all, compare$n_all
     )
   )
-  list(line = line, info = paste(c(
+  list(outlook = outlook, phase = phase, compare = compare, line = line, info = paste(c(
     if (!is.null(compare)) sprintf("Few events fall in a window: %d of %d years here.", compare$n, compare$n_all),
     "Past events differ from each other and are not a forecast. Shares of members are not calibrated. The index",
     "is relative Ni\u00f1o 3.4 (RONI), which may differ from figures in the press."
@@ -881,4 +882,130 @@ enso_support_sentences <- function(tbl, label) {
     ))
   }
   out
+}
+
+
+# Exports and batch (item 8) ----
+
+#' Version of the ENSO tables behind a result
+#'
+#' `enso.csv` history is not frozen, so a number needs its table version. The hash is of the
+#' validated tables, which read the same from every data source. Not part of any run signature
+#' or of the batch `metadata_digest` (D1).
+#'
+#' @param enso List from `enso_load()`, or `NULL`.
+#' @return `NULL`, or a list: `enso_observed_sha256`, `enso_forecast_sha256`, `enso_last_cpc_month`
+#'   (`YYYY-MM`) and `enso_forecast_init_date`; `NA` where a table or month is missing.
+#' @noRd
+enso_provenance <- function(enso) {
+  if (is.null(enso)) return(NULL)
+  cpc <- enso$observed$month[enso$observed$source %in% "cpc"]
+  list(
+    enso_observed_sha256 = digest::digest(enso$observed, algo = "sha256"),
+    enso_forecast_sha256 = if (is.null(enso$forecast)) NA_character_ else digest::digest(enso$forecast, algo = "sha256"),
+    enso_last_cpc_month = if (length(cpc)) format(max(cpc), "%Y-%m") else NA_character_,
+    enso_forecast_init_date = if (is.null(enso$forecast)) NA_character_ else format(max(enso$forecast$init_date))
+  )
+}
+
+#' The labels of one run as one table
+#'
+#' A climate scenario carries the label of its template year, so `annual` covers it. Forecast
+#' members have no label (D3).
+#'
+#' @param labels Tibble from `enso_year_labels()`.
+#' @param window_labels Tibble from `enso_window_labels()`, or `NULL`.
+#' @return Tibble: `sample` (`annual`, `target_months`), `sim_year`, `el_nino`, `neutral`,
+#'   `la_nina`, `roni_exp`, `label`, `period` (`NA` for `annual`).
+#' @noRd
+enso_year_table <- function(labels, window_labels = NULL) {
+  annual <- tibble::add_column(labels, sample = "annual", .before = 1L)
+  annual$period <- NA_character_
+  if (is.null(window_labels)) return(annual)
+  rbind(annual, tibble::add_column(window_labels, sample = "target_months", .before = 1L))
+}
+
+#' The outlook of a forecast run as one table, with the card's comparison
+#'
+#' @param text Result of `enso_placement_text()`, or `NULL`.
+#' @return `NULL`, or the `outlook` tibble with `outlook_phase`, `n_phase_years`, `n_phase_adverse`,
+#'   `n_years`, `n_adverse` (`NA` when the comparison is hidden) and `card_line`.
+#' @noRd
+enso_outlook_table <- function(text) {
+  if (is.null(text)) return(NULL)
+  out <- text$outlook
+  count <- function(x) x %||% NA_integer_
+  out$outlook_phase <- text$phase
+  out$n_phase_years <- count(text$compare$n)
+  out$n_phase_adverse <- count(text$compare$n_adverse)
+  out$n_years <- count(text$compare$n_all)
+  out$n_adverse <- count(text$compare$n_adverse_all)
+  out$card_line <- text$line
+  out
+}
+
+# Rows of the batch `summary` table, in its long form.
+.enso_summary_rows <- function(scenario, metric, measure, group = NA_character_, estimate = NA_real_,
+                               n = NA_real_, text = NA_character_) {
+  k <- max(lengths(list(measure, group, estimate, n, text)))
+  data.frame(
+    scenario = scenario, metric = as.character(metric), section = "enso", measure = rep_len(measure, k),
+    group = rep_len(as.character(group), k), return_period = NA_character_,
+    estimate = rep_len(as.numeric(estimate), k), lo = NA_real_, hi = NA_real_, n = rep_len(as.numeric(n), k),
+    text = rep_len(as.character(text), k), stringsAsFactors = FALSE
+  )
+}
+
+#' The `enso` rows of `summary` for one metric of the annual series
+#'
+#' @param tbl Tibble from `enso_series_table()`.
+#' @param metric Metric of the rows.
+#' @noRd
+enso_annual_summary <- function(tbl, metric) {
+  rows <- lapply(seq_len(nrow(tbl)), function(i) {
+    r <- tbl[i, , drop = FALSE]
+    n <- unlist(r[paste0("n_", ENSO_LABEL_LEVELS)], use.names = FALSE)
+    rbind(
+      .enso_summary_rows(
+        r$series, metric, "mean", ENSO_LABEL_LEVELS, unlist(r[paste0("mean_", ENSO_LABEL_LEVELS)], use.names = FALSE), n
+      ),
+      .enso_summary_rows(
+        r$series, metric, "diff_neutral", c("el_nino", "la_nina"), c(r$diff_el_nino, r$diff_la_nina),
+        c(r$n_el_nino, r$n_la_nina)
+      )
+    )
+  })
+  do.call(rbind, rows)
+}
+
+#' The `enso` rows of `summary` for a forecast scenario
+#'
+#' @param text Result of `enso_placement_text()`.
+#' @param scenario Forecast scenario label.
+#' @param metric Metric of the comparison.
+#' @param outlook Also write the rows of the outlook, which do not depend on the metric.
+#' @noRd
+enso_forecast_summary <- function(text, scenario, metric, outlook = FALSE) {
+  cmp <- text$compare
+  rows <- list(
+    .enso_summary_rows(scenario, metric, "card_line", text = text$line),
+    if (!is.null(cmp)) {
+      .enso_summary_rows(
+        scenario, metric, c("reference_adverse", "reference_adverse_all"), c(text$phase, "all"),
+        c(cmp$n_adverse, cmp$n_adverse_all), c(cmp$n, cmp$n_all)
+      )
+    }
+  )
+  if (isTRUE(outlook)) {
+    o <- text$outlook
+    month <- format(o$month, "%Y-%m")
+    rows <- c(rows, list(
+      .enso_summary_rows(scenario, NA_character_, "outlook_roni", month, o$roni, text = o$phase),
+      .enso_summary_rows(scenario, NA_character_, "outlook_prob_el_nino", month, o$prob_el_nino),
+      .enso_summary_rows(scenario, NA_character_, "outlook_prob_la_nina", month, o$prob_la_nina),
+      .enso_summary_rows(scenario, NA_character_, "outlook_prob_neutral", month, o$prob_neutral),
+      .enso_summary_rows(scenario, NA_character_, "outlook_basis", month, text = ifelse(is.na(o$source), o$basis, o$source))
+    ))
+  }
+  do.call(rbind, rows)
 }

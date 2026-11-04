@@ -974,6 +974,18 @@ mod_2_02_results_server <- function(id,
         bandwidth_p0 = bandwidth_p0(), seed = .step2_run_seed(hs)
       )
     })
+    window_placement_rv <- reactive({
+      w <- window_series_rv()
+      req(w)
+      pl <- step2_window_placement(w, .selected_method(), hist_sim()$so)
+      pl$enso <- if (!is.null(enso())) {
+        enso_placement_text(
+          enso(), saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, pl,
+          enso_window_labels_rv(), w$months_label
+        )
+      }
+      pl
+    })
     window_views_rv <- reactive({
       w <- window_series_rv()
       req(w)
@@ -981,18 +993,7 @@ mod_2_02_results_server <- function(id,
       step2_window_views(
         w, .selected_method(), hist_sim()$so, deviation = deviation,
         scenario = saved_scenarios()[[w$scenario_label]],
-        placement = if (identical(deviation, "none")) {
-          tryCatch({
-            pl <- step2_window_placement(w, .selected_method(), hist_sim()$so)
-            pl$enso <- if (!is.null(enso())) {
-              enso_placement_text(
-                enso(), saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, pl,
-                enso_window_labels_rv(), w$months_label
-              )
-            }
-            pl
-          }, error = function(e) NULL)
-        },
+        placement = if (identical(deviation, "none")) tryCatch(window_placement_rv(), error = function(e) NULL),
         hist_sim = hist_sim(),
         metadata = step2_card_metadata(hist_sim(), .selected_method(), pov_line_val(), weight_key()),
         # One spread control per section: the climate-model spread of the scenarios, the member spread here.
@@ -1837,6 +1838,36 @@ mod_2_02_results_server <- function(id,
       description = paste(
         "Years and mean outcome by El Ni\u00f1o, Neutral, La Ni\u00f1a and Mixed exposure, with the difference from",
         "Neutral. Labels describe the ENSO state of the months that enter the model; they are not inputs."
+      )
+    )
+    wise_export_table(
+      key = "enso_year_labels",
+      label = "ENSO label of each weather year",
+      step = 2L,
+      fun = .committed_only(function() {
+        lab <- enso_labels_rv()
+        req(lab)
+        as.data.frame(enso_year_table(lab, enso_window_labels_rv()))
+      }),
+      description = paste(
+        "Exposure shares, exposure RONI and label of each simulated weather year, and of each reference year of",
+        "the forecast target months. Climate scenarios carry the label of their template year; forecast members",
+        "have none. Labels are not inputs."
+      )
+    )
+    wise_export_table(
+      key = "enso_forecast_outlook",
+      label = "ENSO outlook of the forecast target months",
+      step = 2L,
+      fun = .committed_only(function() {
+        req(.has_window())
+        tbl <- enso_outlook_table(window_placement_rv()$enso)
+        req(tbl)
+        cbind(metric = .selected_method(), as.data.frame(tbl))
+      }),
+      description = paste(
+        "RONI, phase and shares of members of each target month, with the median member against the reference",
+        "years of the outlook's phase, for the selected metric. Shares of members are not calibrated."
       )
     )
     output$enso_sentence <- shiny::renderUI({

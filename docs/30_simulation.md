@@ -6,7 +6,7 @@ depends_on: [notation, framework, weather-measures, linear-model, rif-model, cli
 symbols: [i, r, s, m, mu, W, y, Y, omega, T, epsilon]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare
 code: [R/fct_step2_input.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_simulations.R, R/fct_predict_outcomes.R, R/fct_aggregation.R, R/fct_sim_diag.R, R/fct_sim_compare.R, R/fct_spec_defaults.R]
-verified_against: 9881d96
+verified_against: ce7a573
 ---
 
 # Simulation of welfare under historical and future weather
@@ -120,6 +120,7 @@ The simulated historical statistic, averaged over the years, is compared with th
 - Weights are not rescaled when households are dropped.
 - A household appears in the interview months of its own survey only. Weather in other months is not used.
 - The historical window may end before the survey year, so the observed weather of the survey year itself need not be among the simulation years.
+- A simulation year places the interview months of one survey in one calendar year, so an ENSO event can fall in two simulation years. The labels of [35_enso](35_enso.md) follow the months the model reads, not the calendar year.
 
 ## In the app
 

@@ -843,3 +843,120 @@ test_that("table cells show a sign only on non-zero differences", {
   expect_equal(.enso_fmt(1234.5, digits = 1), "1,234.5")
   expect_equal(.enso_fmt(0.5, scale = 100, digits = 1, sign = TRUE), "+50.0")
 })
+
+
+# Exports and batch (item 8) ----
+
+test_that("provenance names the table version and moves when a table does", {
+  e <- enso_fixture()
+  p <- enso_provenance(e)
+  expect_named(p, c("enso_observed_sha256", "enso_forecast_sha256", "enso_last_cpc_month", "enso_forecast_init_date"))
+  expect_match(p$enso_observed_sha256, "^[0-9a-f]{64}$")
+  expect_equal(p$enso_forecast_init_date, "1953-10-01")
+  changed <- e
+  changed$observed$roni[[1L]] <- 9
+  expect_false(identical(enso_provenance(changed)$enso_observed_sha256, p$enso_observed_sha256))
+  expect_identical(enso_provenance(changed)$enso_forecast_sha256, p$enso_forecast_sha256)
+  e$forecast <- NULL
+  expect_true(is.na(enso_provenance(e)$enso_forecast_sha256))
+  expect_true(is.na(enso_provenance(e)$enso_forecast_init_date))
+  e$observed$source <- "era5"
+  expect_true(is.na(enso_provenance(e)$enso_last_cpc_month))
+  expect_null(enso_provenance(NULL))
+})
+
+test_that("the year table stacks the annual and target-month labels", {
+  e <- enso_fixture()
+  annual <- enso_year_labels(e$observed, 1951:1952, enso_month_weights(1:12), 1L)
+  window <- enso_window_labels(e$observed, enso_window_fixture(1951:1952), 1L)
+  both <- enso_year_table(annual, window)
+  expect_equal(both$sample, rep(c("annual", "target_months"), each = 2L))
+  expect_true(all(is.na(both$period[both$sample == "annual"])))
+  expect_equal(both$period[both$sample == "target_months"], window$period)
+  expect_equal(unique(enso_year_table(annual)$sample), "annual")
+})
+
+enso_text_fixture <- function(labels = enso_reference_labels(rep(c("el_nino", "neutral"), 3L))) {
+  enso_placement_text(
+    enso_fixture(), list(forecast_months = as.Date(c("1953-11-01", "1953-12-01", "1954-01-01"))),
+    list(init = as.Date("1953-10-01"), model_id = "ecmwf_seas51"), enso_placement_fixture(), labels, "Nov - Jan"
+  )
+}
+
+test_that("the outlook table carries the months, the comparison and the card line", {
+  text <- enso_text_fixture()
+  out <- enso_outlook_table(text)
+  expect_equal(nrow(out), 3L)
+  expect_equal(unique(out$n_phase_years), 3L)
+  expect_equal(unique(out$n_phase_adverse), 2L)
+  expect_equal(unique(out$card_line), text$line)
+  hidden <- enso_outlook_table(enso_text_fixture(enso_reference_labels(rep("neutral", 6L))))
+  expect_true(all(is.na(hidden$n_phase_years)))
+  expect_null(enso_outlook_table(NULL))
+})
+
+test_that("summary rows give means, differences and the forecast comparison in long form", {
+  tbl <- enso_series_table(
+    data.frame(scenario = "Historical", sim_year = 2001:2010, value = 1:10), enso_labels_fixture()
+  )
+  rows <- enso_annual_summary(tbl, "mean")
+  expect_true(all(rows$section == "enso"))
+  expect_equal(rows$estimate[rows$measure == "mean" & rows$group == "el_nino"], 2)
+  expect_equal(rows$n[rows$measure == "mean" & rows$group == "neutral"], 3)
+  expect_equal(rows$estimate[rows$measure == "diff_neutral" & rows$group == "el_nino"], -3)
+  expect_setequal(rows$group[rows$measure == "diff_neutral"], c("el_nino", "la_nina"))
+
+  text <- enso_text_fixture()
+  fc <- enso_forecast_summary(text, "Forecast", "mean", outlook = TRUE)
+  expect_equal(fc$text[fc$measure == "card_line"], text$line)
+  adverse <- fc[fc$measure == "reference_adverse", ]
+  expect_equal(c(adverse$group, adverse$estimate, adverse$n), c("el_nino", "2", "3"))
+  expect_equal(fc$estimate[fc$measure == "reference_adverse_all"], 3)
+  expect_equal(sum(fc$measure == "outlook_roni"), 3L)
+  expect_true(all(is.na(fc$metric[startsWith(fc$measure, "outlook_")])))
+  expect_false(any(startsWith(enso_forecast_summary(text, "Forecast", "gini")$measure, "outlook_")))
+})
+
+test_that("a batch branch labels the annual and target-month years and skips member rows", {
+  e <- enso_fixture()
+  years <- 1951:1952
+  annual <- rbind(
+    data.frame(sim_id = "s", code = "TST", scenario = "Historical", metric = "mean", member = "Historical",
+      sim_year = years, value = c(1, 2)),
+    data.frame(sim_id = "s", code = "TST", scenario = "Seasonal forecast / x (y run)", metric = "mean",
+      member = "m", sim_year = 1953L, value = 3)
+  )
+  forecast <- data.frame(
+    sim_id = "s", code = "TST", scenario = "Seasonal forecast / x (y run)", metric = "mean",
+    kind = c("member", "member", "reference", "reference"), id = c("a", "b", "refyear_1951", "refyear_1952"),
+    year = c(NA, NA, years), value = c(1, 3, 1, 3)
+  )
+  branch <- list(ok = TRUE, tables = list(annual = annual, forecast = forecast), enso_inputs = list(
+    baseline_months = enso_month_weights(1:12), lags = 1L,
+    forecast = list(
+      entry = enso_window_fixture(years), run = list(init = as.Date("1953-10-01"), model_id = "ecmwf_seas51"),
+      months_label = "Nov - Jan", adverse_tail = c(mean = "low")
+    )
+  ))
+  src <- c(e, list(provenance = enso_provenance(e)))
+  out <- wise_batch_enso(src, list(branch, list(ok = FALSE)))
+  expect_identical(out$provenance, src$provenance)
+  expect_equal(nrow(out$enso_years), 4L)
+  expect_equal(unique(out$enso_years$sim_id), "s")
+  expect_setequal(out$enso_years$sim_year, years) # 1953 is the forecast anchor, not a label
+  expect_true(all(out$summary$section == "enso"))
+  expect_true("Historical" %in% out$summary$scenario)
+  expect_equal(sum(out$summary$measure == "card_line"), 1L)
+
+  # No tables, and a branch from before this stage
+  expect_null(wise_batch_enso(NULL, list(branch)))
+  branch$enso_inputs <- NULL
+  expect_equal(nrow(wise_batch_enso(src, list(branch))$enso_years), 0L)
+})
+
+test_that("a batch branch that fails is left out without failing the run", {
+  e <- enso_fixture()
+  bad <- list(ok = TRUE, tables = list(annual = "not a table"), enso_inputs = list(lags = 1L))
+  expect_no_error(out <- suppressMessages(wise_batch_enso(c(e, list(provenance = list())), list(bad))))
+  expect_equal(nrow(out$enso_years), 0L)
+})

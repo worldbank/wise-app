@@ -6,7 +6,7 @@ depends_on: [notation, reproducibility, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
 code: [R/fct_batch_spec.R, R/fct_batch_targets.R, R/fct_spec_defaults.R, R/fct_step1_tables.R, R/fct_step2_tables.R, R/fct_step3_tables.R]
-verified_against: b4f2807
+verified_against: ce7a573
 ---
 
 # Batch runs
@@ -34,16 +34,18 @@ Each stage of a run (the survey sample, a weather variable, a model fit, a simul
 
 ### 3. Tables
 
-A run produces 11 tables, partitioned by country code, and the run-level files.
+A run produces tables partitioned by country code, and the run-level files.
 
 | Step | Tables |
 |---|---|
 | Statistics | variable statistics, interview dates, weather statistics |
 | Step 1 | model terms, model fit, model covariance |
-| Step 2 | annual, summary, simulated weather |
+| Step 2 | annual, summary, simulated weather, forecast (with a forecast), ENSO years (with the ENSO tables) |
 | Step 3 | the policy arm of annual and summary, decomposition, policy measures |
 
 The baseline arm of the annual and summary tables is stored once for each simulation. The effect of a policy is the policy row minus the baseline row of the same scenario, metric, member and year, or the expected policy rows of the summary. The methods behind the columns are on the pages for each step: [32_metrics](32_metrics.md) and [33_uncertainty](33_uncertainty.md) for the statistics and bands, [44_decomposition](44_decomposition.md) for the decomposition. A few statistics exist only in batch (statistics by location sample, deciles for every variable, indicators).
+
+The ENSO labels ([35_enso](35_enso.md)) are built after the simulations, from their tables. A refreshed ENSO table rebuilds the labels and the results store, not a simulation, and the file is not part of the metadata digest. The manifest records the version of the ENSO tables.
 
 ### 4. Failures
 
