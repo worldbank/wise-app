@@ -949,7 +949,9 @@ mod_2_02_results_server <- function(id,
       step2_window_views(
         w, .selected_method(), hist_sim()$so, deviation = deviation,
         scenario = saved_scenarios()[[w$scenario_label]],
-        placement = if (identical(deviation, "none")) tryCatch(forecast_placement_rv(), error = function(e) NULL),
+        placement = if (identical(deviation, "none")) {
+          tryCatch(step2_window_placement(w, .selected_method(), hist_sim()$so), error = function(e) NULL)
+        },
         hist_sim = hist_sim(),
         metadata = step2_card_metadata(hist_sim(), .selected_method(), pov_line_val(), weight_key()),
         # One spread control per section: the climate-model spread of the scenarios, the member spread here.
@@ -980,16 +982,6 @@ mod_2_02_results_server <- function(id,
         x, .STEP2_ANNUAL_LABEL, text = if (level) c("Historical mean" = "Historical (annual) mean") else character(0)
       )
     }
-
-    # Forecast members placed in the same-window reference (committed results with a forecast only).
-    forecast_placement_rv <- reactive({
-      req(headline_bands_rv())
-      if (.is_provisional()) return(NULL)
-      step2_forecast_placement_view(
-        .display_saved_scenarios(), .selected_method(), .display_hist_sim(),
-        pov_line_val(), bandwidth_p0()
-      )
-    })
 
     headline_cards_data_rv <- reactive({
       req(headline_bands_rv())

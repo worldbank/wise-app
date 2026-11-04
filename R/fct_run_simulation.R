@@ -858,11 +858,13 @@ fct_run_simulation <- function(sw,
 
   # Phase 3: compute the displayed table with the module's helper and hand it
   # to partial_fn. Never fails the run, except for cancellation.
+  # `pipes = NULL` reports the group as landed without tables: the Results charts never read a forecast group's
+  # annual tables (its members are aggregated in the window views after the run).
   emit_partial <- function(kind, label, ordinal, pipes, n_models,
                            n_models_requested, historical = FALSE) {
     if (!is.function(partial_fn) || is.null(shared_ctx)) return(invisible(NULL))
     tryCatch({
-      agg <- step2_display_aggregation_suite(
+      agg <- if (is.null(pipes)) list(tables = list()) else step2_display_aggregation_suite(
         pipelines = pipes,
         method = partial_display$method,
         so = so,
@@ -875,7 +877,7 @@ fct_run_simulation <- function(sw,
         seed = seed
       )
       shown <- agg$tables[[partial_display$method]]
-      if (is.null(shown)) return(invisible(NULL))
+      if (is.null(shown) && !is.null(pipes)) return(invisible(NULL))
       partial_fn(list(
         schema = 1L,
         kind = kind,
@@ -919,7 +921,7 @@ fct_run_simulation <- function(sw,
     if (n_ok >= 1L && !is.null(group_agg[[gk]])) {
       emit_partial(
         "scenario", label, groups_done,
-        lapply(group_agg[[gk]], .compact_pipeline), n_ok, n_req
+        if (!isTRUE(meta$forecast)) lapply(group_agg[[gk]], .compact_pipeline), n_ok, n_req
       )
     }
     invisible(NULL)

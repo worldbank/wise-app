@@ -148,6 +148,22 @@ step2_window_series <- function(scenario, label, method, so, residuals, skip_coe
   )
 }
 
+#' Placement of the members in the reference years, from the window series
+#'
+#' The result of `step2_forecast_placement()` without a second aggregation of the same pipelines.
+#' @param w Result of `step2_window_series()`.
+#' @inheritParams step2_forecast_placement
+#' @noRd
+step2_window_placement <- function(w, method, so) {
+  tail <- metric_metadata(method, so)$adverse_tail %||% "low"
+  out <- .forecast_placement_stats(w$members$value, w$historical$value, tail)
+  out$members$member <- w$member_ids
+  out$reference <- data.frame(year = w$historical$sim_year, value = w$historical$value)
+  out$method <- method
+  out$adverse_tail <- tail
+  out
+}
+
 #' Name the Historical row by its target months in a chart or table of the window scope
 #'
 #' Replaces the exact string `"Historical"` with `reference_label` (for example "Historical (Nov - Jan)") and the
@@ -361,7 +377,7 @@ step2_window_series <- function(scenario, label, method, so, residuals, skip_coe
 #' across-member component), the Historical exceedance curve with the forecast position, and the cards.
 #' @param w Result of `step2_window_series()`.
 #' @param scenario The forecast scenario entry (skill, training months, weather support for the cards).
-#' @param placement Result of `step2_forecast_placement()` (level view cards), or `NULL`.
+#' @param placement Result of `step2_window_placement()` (level view cards), or `NULL`.
 #' @param hist_sim,metadata As for `step2_headline_cards()`.
 #' @param band_adverse,band_exceedance Member band of the adverse-level and exceedance views (quantile pairs, `NULL`
 #'   for none): the Results ensemble-spread controls, shared with the climate-model spread of the scenarios.

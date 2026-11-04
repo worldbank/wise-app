@@ -193,6 +193,18 @@ test_that("reference-year frames run through the forecast pipeline apart from th
   # The reference does not change the member results or the run counts.
   expect_equal(sort(scenario$pipelines$member_0$y_point), c(11, 11, 21, 21), tolerance = 1e-8)
   expect_identical(result$n_keys, 3L)
+  # The streamed partial marks the forecast as landed without tables, and leaves the run as it was.
+  got <- list()
+  args$partial_fn <- function(p) got[[length(got) + 1L]] <<- p
+  streamed <- suppressMessages(do.call(fct_run_simulation, args))
+  landed <- Filter(function(p) identical(p$kind, "scenario"), got)
+  expect_length(landed, 1L)
+  expect_identical(landed[[1L]]$label, names(result$new_scenarios)[[1L]])
+  expect_identical(landed[[1L]]$n_models, 2L)
+  expect_null(landed[[1L]]$table)
+  expect_length(landed[[1L]]$tables, 0L)
+  y_points <- function(x) lapply(x$new_scenarios[[1L]]$pipelines, `[[`, "y_point")
+  expect_identical(y_points(streamed), y_points(result))
 })
 
 test_that("one forecast identity drives the group key, the run signature and the cache key", {

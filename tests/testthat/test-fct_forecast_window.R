@@ -45,6 +45,20 @@ test_that("window series lay out reference years and members as one sample each,
   expect_null(step2_window_series(list(pipelines = sc$pipelines), window_fixture_label, "mean", so, "none", TRUE, 3))
 })
 
+test_that("placement read from the window series matches the placement of the pipelines", {
+  sc <- window_fixture_scenario()
+  so <- step2_fixture_outcome()
+  pl <- step2_forecast_placement(sc, "mean", so, "none", TRUE, 3, seed = 123L)
+  for (skip_coef in c(TRUE, FALSE)) {
+    w <- step2_window_series(sc, window_fixture_label, "mean", so, "none", skip_coef, 3, seed = 123L)
+    out <- step2_window_placement(w, "mean", so)
+    expect_identical(out$summary, pl$summary)
+    expect_identical(out$members, pl$members)
+    expect_identical(out$n_reference, pl$n_reference)
+    expect_equal(out$reference, pl$reference[order(pl$reference$year), ], ignore_attr = TRUE)
+  }
+})
+
 test_that("headline cards in the window scope read the shift against the reference-year spread", {
   sc <- window_fixture_scenario()
   so <- step2_fixture_outcome()
