@@ -477,7 +477,7 @@
   "not shown."
 )
 
-#' Note of one Step 2 Results section: `annual` alone, or `forecast` when the charts carry the target-month series
+#' Note of one Results section: `annual` alone, or `forecast` when the charts carry the target-month series
 #' @noRd
 .step2_section_note <- function(ns, annual, forecast, style) {
   note <- function(text) shiny::tags$p(class = "text-muted small", style = style, text)
@@ -486,42 +486,6 @@
     .step2_window_panel(ns, note(forecast))
   )
 }
-
-#' One Results section in two groups: all months (Historical and the climate scenarios) and the forecast target
-#' months (Historical for the same months and the forecast members)
-#'
-#' Without a forecast only the all-months chart and note show, without group headers. `section` names the
-#' header outputs (`group_window_<section>`), which carry the target months.
-#' @noRd
-.step2_groups <- function(ns, section, annual, window, style, annual_chart = NULL, window_chart = NULL) {
-  note <- function(text) shiny::tags$p(class = "text-muted small", style = style, text)
-  head <- function(...) {
-    shiny::div(
-      style = paste0(
-        "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
-        "letter-spacing: 0.03em; margin: 4px 0 6px;"
-      ),
-      ...
-    )
-  }
-  if (is.null(annual_chart)) {
-    return(shiny::tagList(.step2_annual_panel(ns, note(annual)), .step2_window_panel(ns, note(window))))
-  }
-  shiny::tagList(
-    .step2_annual_group_header(ns, "All months: Historical and climate scenarios"),
-    .step2_annual_panel(ns, annual_chart, note(annual)),
-    .step2_window_panel(
-      ns,
-      shiny::div(
-        style = "margin-top: 22px; padding-top: 14px; border-top: 1px solid #e3e8ec;",
-        head(shiny::textOutput(ns(paste0("group_window_", section)), inline = TRUE)),
-        window_chart,
-        note(window)
-      )
-    )
-  )
-}
-
 
 #' Placeholder rows for scenarios still computing (provisional mode only)
 #'
@@ -973,14 +937,10 @@ mod_2_02_results_server <- function(id,
       if (is.null(wv)) return(annual)
       .step2_window_merge(annual, wv[[part]], window_series_rv()$reference_label)
     }
-    # Names the annual Historical series once the target-month one sits next to it. In a difference view the zero
-    # line is the baseline of both Historical series, so its label stays general.
+    # Names the annual Historical series once the target-month one sits next to it.
     .annual_relabel <- function(x) {
       if (is.null(.window_views_or_null())) return(x)
-      level <- identical(input$cmp_deviation %||% "none", "none")
-      .step2_window_relabel(
-        x, .STEP2_ANNUAL_LABEL, text = if (level) c("Historical mean" = "Historical (annual) mean") else character(0)
-      )
+      .step2_annual_relabel(x, level = identical(input$cmp_deviation %||% "none", "none"))
     }
 
     headline_cards_data_rv <- reactive({
@@ -1961,7 +1921,7 @@ mod_2_02_results_server <- function(id,
         height = "400px",
         p_max = p_max
       )
-      if (!is.null(wv)) e <- .step2_window_exceedance_overlay(e, wv$position, x_max = p_max, marker = TRUE)
+      if (!is.null(wv)) e <- .step2_window_exceedance_overlay(e, wv$position, x_max = p_max)
       .annual_relabel(e)
     }
     wise_export_figure(

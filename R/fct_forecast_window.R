@@ -253,14 +253,11 @@ step2_window_placement <- function(w, method, so) {
 #' @param pos Result of `.step2_window_exceedance_position()`.
 #' @param label,colour,line_type,name Label prefix, colour and line type of the line; series name (with `__`, so the
 #'   tooltip leaves it out).
-#' @param label_position Side of the line the label sits on (`"insideEndTop"` or `"insideEndBottom"`).
-#' @param marker Mark the median member on the curve: with other curves on the chart, this shows which curve the
-#'   line was read from. The label then sits level above the line, and the labels of the curves ending left of it
-#'   stay readable where the line passes.
+#' @param label_offset Pixel offset of the label, to stack the labels of two lines.
 #' @noRd
 .step2_window_exceedance_overlay <- function(e, pos, x_max = 0.55, label = "Forecast median",
                                              colour = .wise_forecast, line_type = "solid", name = "forecast__position",
-                                             label_position = "insideEndTop", marker = FALSE) {
+                                             label_offset = c(0, 0)) {
   if (is.null(pos) || !inherits(e, "htmlwidget")) return(e)
   clip <- function(p) min(max(p, 1e-6), x_max)
   rp <- function(p) {
@@ -277,7 +274,8 @@ step2_window_placement <- function(w, method, so) {
       itemStyle = list(color = colour, opacity = 0.12),
       data = list(list(list(xAxis = band[[1L]]), list(xAxis = band[[2L]])))
     ),
-    markPoint = if (isTRUE(marker)) list(
+    # With other curves on the chart, the dot shows which curve the line was read from.
+    markPoint = list(
       symbol = "circle", symbolSize = 10, silent = TRUE, animation = FALSE,
       itemStyle = list(color = colour, borderColor = "#FFFFFF", borderWidth = 1.5),
       label = list(show = FALSE),
@@ -289,19 +287,18 @@ step2_window_placement <- function(w, method, so) {
         xAxis = mid,
         lineStyle = list(color = colour, type = line_type, width = 2),
         label = list(
-          show = TRUE, position = if (isTRUE(marker)) "end" else label_position, align = if (isTRUE(marker)) "right",
+          show = TRUE, position = "end", align = "right", offset = label_offset,
           color = colour, fontSize = 11, fontWeight = "bold",
           formatter = paste0(label, ": ", rp(pos$p[["mid"]]))
         )
       ))
     )
   )
-  if (isTRUE(marker)) {
-    e$x$opts$series <- lapply(e$x$opts$series, function(s) {
-      if (!is.null(s$endLabel)) s$endLabel$backgroundColor <- "#FFFFFF"
-      s
-    })
-  }
+  # The labels of the curves ending left of the line stay readable where it passes.
+  e$x$opts$series <- lapply(e$x$opts$series, function(s) {
+    if (!is.null(s$endLabel)) s$endLabel$backgroundColor <- "#FFFFFF"
+    s
+  })
   e$x$opts$series <- c(e$x$opts$series, list(overlay))
   e
 }
@@ -341,6 +338,21 @@ step2_window_placement <- function(w, method, so) {
   out$intermod_lo[out$is_historical] <- NA_real_
   out$intermod_hi[out$is_historical] <- NA_real_
   out
+}
+
+#' Name the annual Historical series once the target-month one sits next to it
+#'
+#' @param x An htmlwidget, a data frame or a list.
+#' @param level Level view. In a difference view the zero line is the baseline of both Historical series, so its
+#'   label stays general.
+#' @noRd
+.step2_annual_relabel <- function(x, level = TRUE) {
+  text <- c(
+    "Historical | Baseline" = paste(.STEP2_ANNUAL_LABEL, "| Baseline"),
+    "Historical\nBaseline" = paste0(.STEP2_ANNUAL_LABEL, "\nBaseline")
+  )
+  if (isTRUE(level)) text <- c(text, "Historical mean" = paste(.STEP2_ANNUAL_LABEL, "mean"))
+  .step2_window_relabel(x, .STEP2_ANNUAL_LABEL, text = text)
 }
 
 #' Exceedance curve rows of the Historical target-month outcome
@@ -448,49 +460,6 @@ step2_window_views <- function(w, method, so, deviation = "none", scenario = NUL
   out[order(match(out$scenario, .step2_scenario_order(out$scenario))), , drop = FALSE]
 }
 
-#' Set one axis range on an echarts widget (a shared outcome axis across the two groups of a section)
-#' @param e An echarts widget.
-#' @param axis `"xAxis"` or `"yAxis"`.
-#' @param lim Numeric `c(min, max)`, or `NULL` to leave the chart as built.
-#' @noRd
-.step2_set_axis_range <- function(e, axis, lim) {
-  if (is.null(lim) || !all(is.finite(lim)) || !inherits(e, "htmlwidget") || is.null(e$x$opts[[axis]])) return(e)
-  ax <- e$x$opts[[axis]]
-  if (is.null(names(ax)) && length(ax)) {
-    ax[[1L]]$min <- lim[[1L]]
-    ax[[1L]]$max <- lim[[2L]]
-    ax[[1L]]$scale <- NULL
-  } else {
-    ax$min <- lim[[1L]]
-    ax$max <- lim[[2L]]
-    ax$scale <- NULL
-  }
-  e$x$opts[[axis]] <- ax
-  e
-}
-
-#' Padded range of finite values, or `NULL`
-#' @noRd
-.step2_padded_range <- function(x, pad = 0.04) {
-  x <- x[is.finite(x)]
-  if (!length(x)) return(NULL)
-  r <- range(x)
-  span <- diff(r)
-  if (!is.finite(span) || span <= 0) span <- max(abs(r), 1) * 0.02
-  c(r[[1L]] - pad * span, r[[2L]] + pad * span)
-}
-
-#' Fixed left margin of a chart, so two stacked charts with different category labels share their plot area
-#' @param e An echarts widget.
-#' @param left Left margin in pixels, or `NULL` to leave the chart as built.
-#' @noRd
-.step2_set_grid_left <- function(e, left) {
-  if (is.null(left) || !inherits(e, "htmlwidget") || is.null(e$x$opts$grid)) return(e)
-  e$x$opts$grid$containLabel <- FALSE
-  e$x$opts$grid$left <- left
-  e
-}
-
 #' The forecast-window views of the Step 3 Results: baseline and policy for the target months
 #'
 #' The Step 2 window samples (`step2_window_series()`) of the baseline and of the policy arm of one forecast
@@ -558,7 +527,8 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
   list(
     ref = ref, curves = dplyr::bind_rows(b$curves, p$curves),
     threshold = dplyr::bind_rows(b$threshold, p$threshold), dots = dots,
-    exceedance = .step2_window_exceedance_curves(wb$historical, ref, tail), position = pos, effect = effect,
+    exceedance = dplyr::mutate(.step2_window_exceedance_curves(wb$historical, ref, tail), source = "Baseline"),
+    position = pos, effect = effect,
     n_reference = nrow(wb$historical), label = wb$label, reference_label = wb$reference_label,
     months_label = wb$months_label
   )

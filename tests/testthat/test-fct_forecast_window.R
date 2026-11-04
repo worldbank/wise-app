@@ -162,15 +162,6 @@ test_that("the window views run the annual builders on the target-month samples 
   expect_null(step2_window_views(NULL, "mean", so))
 })
 
-test_that("a shared axis range is set on the chart's value axis", {
-  e <- .step2_set_axis_range(echart_annual_distribution(tibble::tibble(
-    scenario = "Historical", model_id = "Historical", sim_year = 1:3, value = c(1, 2, 3), is_historical = TRUE
-  )), "xAxis", c(0, 10))
-  expect_identical(c(e$x$opts$xAxis$min, e$x$opts$xAxis$max), c(0, 10))
-  expect_equal(.step2_padded_range(c(0, 10, NA)), c(-0.4, 10.4))
-  expect_null(.step2_padded_range(NA_real_))
-})
-
 test_that("the member band follows the ensemble-spread control and is off with no band", {
   ref <- c(1, 2, 3, 4, 5)
   pos <- .step2_window_exceedance_position(ref, 1:11, "low", band_q = NULL)
@@ -306,13 +297,13 @@ test_that("the merged exceedance chart draws both Historical curves and anchors 
   expect_identical(line$lineStyle$type, "dashed")
   expect_identical(line$lineStyle$color, .wise_forecast_reference)
   pos <- .step2_window_exceedance_position(2:7, c(3, 4, 5), "low", band_q = NULL)
-  over <- .step2_window_exceedance_overlay(e, pos, x_max = 0.99, marker = TRUE)$x$opts$series
+  over <- .step2_window_exceedance_overlay(e, pos, x_max = 0.99)$x$opts$series
   point <- over[[length(over)]]$markPoint$data[[1L]]$coord
   expect_equal(c(point[[1L]], point[[2L]]), c(pos$p[["mid"]], pos$value[["mid"]]))
   expect_identical(over[[length(over)]]$markLine$data[[1L]]$label$position, "end")
-  # Step 3 keeps its lines without a marker.
-  plain <- .step2_window_exceedance_overlay(e, pos, x_max = 0.99)$x$opts$series
-  expect_null(plain[[length(plain)]]$markPoint)
+  # Two lines on one chart (Step 3) stack their labels.
+  stacked <- .step2_window_exceedance_overlay(e, pos, x_max = 0.99, label_offset = c(0, -13))$x$opts$series
+  expect_identical(stacked[[length(stacked)]]$markLine$data[[1L]]$label$offset, c(0, -13))
 })
 
 test_that("the merged uncertainty chart lists the rows top-down in the merged order", {
@@ -327,9 +318,52 @@ test_that("the merged uncertainty chart lists the rows top-down in the merged or
   expect_identical(e$x$opts$series[[1L]]$name, "Inter-model / member spread")
 })
 
+test_that("the merged Step 3 charts keep baseline and policy of each series", {
+  ref <- "Historical (Nov - Jan)"
+  fc <- "Forecast (Nov 2026 - Jan 2027)"
+  lv <- c("Adverse 1-in-10", "Expected")
+  annual <- tibble::tibble(
+    scenario = rep(c("Historical", "SSP2-4.5 / 2030-2050"), each = 2L), is_historical = rep(c(TRUE, FALSE), each = 2L),
+    rp_label = factor(rep(lv, 2L), levels = lv), baseline_val = c(3, 4, 2.8, 3.8), policy_val = c(3.1, 4.1, 2.9, 3.9),
+    base_lo = NA_real_, base_hi = NA_real_, policy_lo = NA_real_, policy_hi = NA_real_
+  )
+  window <- tibble::tibble(
+    scenario = c("Historical", "Historical", fc), is_historical = c(TRUE, TRUE, FALSE),
+    rp_label = factor(c(lv, "Forecast"), levels = c("Forecast", lv)), baseline_val = c(3.2, 4.2, 4.3),
+    policy_val = c(3.3, 4.3, 4.4), base_lo = NA_real_, base_hi = NA_real_, policy_lo = NA_real_, policy_hi = NA_real_
+  )
+  out <- .step2_window_merge(annual, window, ref)
+  e <- echart_step3_adverse_dot(out, "Mean")
+  expect_s3_class(e, "htmlwidget")
+  expect_identical(levels(out$rp_label), c("Forecast", lv))
+  expect_identical(sum(out$is_historical), 2L)
+
+  sc <- window_fixture_scenario()
+  so <- step2_fixture_outcome()
+  w <- step2_window_series(sc, window_fixture_label, "mean", so, "none", TRUE, 3, seed = 123L)
+  v <- step3_window_views(w, w, "mean", so)
+  expect_identical(unique(v$exceedance$source), "Baseline")
+  merged <- .step2_window_merge(
+    tibble::tibble(
+      scenario = "Historical", source = c("Baseline", "Policy"), model_id = "Historical", rank = 1L, welfare_val = 1:2,
+      coef_sd = 0.1, exceed_prob = 0.1, is_historical = TRUE
+    ), v$exceedance, v$reference_label
+  )
+  chart <- echart_exceedance(merged, "Mean", n_sim_years = 6, band_q = NULL, p_max = 0.99)
+  names_out <- vapply(chart$x$opts$series, `[[`, character(1L), "name")
+  expect_true(paste(v$reference_label, "| Baseline") %in% names_out)
+  labelled <- .step2_annual_relabel(chart)
+  names_out <- vapply(labelled$x$opts$series, `[[`, character(1L), "name")
+  expect_true("Historical (annual) | Baseline" %in% names_out)
+  expect_false("Historical | Baseline" %in% names_out)
+})
+
 test_that("the annual relabel changes only the Historical label", {
   df <- data.frame(`Scenario / Period` = c("Historical", "SSP"), Estimate = "Single historical estimate", check.names = FALSE)
-  out <- .step2_window_relabel(df, .STEP2_ANNUAL_LABEL, text = character(0))
+  out <- .step2_annual_relabel(df)
   expect_identical(out[["Scenario / Period"]], c("Historical (annual)", "SSP"))
   expect_identical(out$Estimate, rep("Single historical estimate", 2L))
+  x <- list(mean = "Historical mean")
+  expect_identical(.step2_annual_relabel(x)$mean, "Historical (annual) mean")
+  expect_identical(.step2_annual_relabel(x, level = FALSE)$mean, "Historical mean")
 })
