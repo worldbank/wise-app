@@ -39,4 +39,6 @@ Additional for shock-responsive transfers (option B): replace the annual histori
 | B | A plus shock-responsive transfers triggered by the same-window reference. | Large | New trigger semantics and cost accounting; more to explain to users. |
 | C | Keep Step 3 blocked; document it; revisit after the PR into `dev`. | None | Users must rerun Step 2 without the forecast to use Step 3 (current behaviour). |
 
-Recommendation: C until the real-data acceptance in the plan (item A) passes, then A as a separate PR. B only if a user need appears for forecast-triggered social protection, which is the use case the shock-responsive program was built for, so ask the product owner before building it.
+Status: options A and B are built (`roadmap/seasonal_forecast.md`, items C and C4).
+
+Recommendation at the time: C until the real-data acceptance in the plan (item A) passes, then A as a separate PR. B only if a user need appears for forecast-triggered social protection, which is the use case the shock-responsive program was built for, so ask the product owner before building it.

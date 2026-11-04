@@ -281,6 +281,12 @@
           "chosen under Payments are made; then a forecast with the set",
           "detection and false-alarm rates decides. Quantile-based welfare",
           "effects (RIF) do not respond to the payment."
+        ),
+        tags$p(
+          "With a seasonal forecast the climate scenarios follow these rules. The forecast and Historical for the",
+          "same months read the mean weather of the target months against the same months of the historical",
+          "years, and pay once per window. They need a weather trigger with local, ex-post, fixed payments and no",
+          "dynamic targeting."
         )
       )
     ),

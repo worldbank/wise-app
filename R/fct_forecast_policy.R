@@ -79,5 +79,19 @@ step3_forecast_batch_tables <- function(base_hs, base_ss, pol_hs, pol_ss, method
       )
     }
   }
+  for (label in names(base_ss)[has]) {
+    if (is.null(pol_ss[[label]]$shock_forecast)) next
+    s <- sp_shock_window_summary(pol_ss[[label]]$shock_forecast)
+    stats <- c(
+      member_share = s$member_share, reference_share = s$reference_share, exposed_member = s$exposed_member,
+      exposed_reference = s$exposed_reference, cost_median = s$cost_median, cost_min = s$cost_range[[1L]],
+      cost_max = s$cost_range[[2L]], cost_reference = s$cost_reference
+    )
+    rows[[length(rows) + 1L]] <- data.frame(
+      scenario = label, metric = NA_character_, section = "shock_window", measure = names(stats),
+      group = NA_character_, return_period = NA_character_, estimate = unname(stats),
+      lo = NA_real_, hi = NA_real_, n = s$n_members, text = NA_character_, stringsAsFactors = FALSE
+    )
+  }
   list(forecast = pol$forecast, summary = dplyr::bind_rows(summary, rows))
 }

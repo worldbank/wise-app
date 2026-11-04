@@ -2017,8 +2017,9 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           "Each dot is one outcome, without (upper) and with (lower) the policy. Historical (annual) and the climate",
           "scenarios have one dot per weather year, with each household in its interview month. The target-month",
           "Historical has one dot per historical year, with observed weather for those months, and the Forecast one",
-          "per member. The policy acts identically in every month of the window. Compare the Forecast with Historical",
-          "for the same months. The gap between the two Historical series is the effect of weather in the target",
+          "per member. A regular policy acts identically in every month of the window; a shock-responsive transfer",
+          "pays once where the weather of the window passes the trigger, set on the same months of the historical",
+          "years. Compare the Forecast with Historical for the same months. The gap between the two Historical series is the effect of weather in the target",
           "months rather than the interview months; the seasonal welfare level of households stays fixed.",
           .STEP2_DIFFERENCE_NOTE
         ),
@@ -3310,7 +3311,10 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   window_cards_rv <- reactive({
     wv <- window_views_rv()
     req(wv)
-    .step3_window_cards(wv, metric_metadata(aggregation_method(), baseline_hist_sim()$so))
+    .step3_window_cards(
+      wv, metric_metadata(aggregation_method(), baseline_hist_sim()$so),
+      shock = policy_saved_all()[[.window_label()]]$shock_forecast
+    )
   })
   output$headline_cards_window_ui <- shiny::renderUI({
     req(.has_window())

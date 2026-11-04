@@ -774,8 +774,8 @@ wise_spec_validate <- function(spec) {
     if (is.null(spec$sim)) add("policy: a policy run needs a sim section (use `sim: {}` for the app defaults).")
     bad <- c(bad, .policy_problems(spec$policy))
   }
-  if (!is.null(spec$sim$forecast) && identical(spec$policy$sp$sp_type, "shock")) {
-    bad <- c(bad, "policy: a shock-responsive transfer is not supported with sim.forecast.")
+  if (!is.null(spec$sim$forecast) && !is.null(.sp_forecast_shock_problem(spec$policy$sp))) {
+    bad <- c(bad, paste("policy:", .sp_forecast_shock_problem(spec$policy$sp)))
   }
   if (length(bad)) {
     stop(

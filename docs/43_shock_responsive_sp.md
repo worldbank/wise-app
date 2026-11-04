@@ -132,6 +132,24 @@ $$m^{*} = \max\Big(\frac{V^{\text{ex post}} - V^{\text{false}}}{V^{\text{hit}}},
 where $V^{\text{hit}}$ and $V^{\text{false}}$ are the weighted values of payments made before an event and with none, and $V^{\text{ex post}}$ is the weighted value that the ex-post design pays after its delay. The app also reports the multiplier at which the effect per unit of spending matches.
 - **Climate-adjusted cost.** The change in activation and in mean cost of each climate scenario against the historical record.
 
+### 7. Seasonal forecast window
+
+With a seasonal forecast ([34_seasonal_forecast](34_seasonal_forecast.md)), the historical run and the climate scenarios keep the rules above. Each forecast member and each same-window historical year follows the same rules, adjusted only where the target window requires it.
+
+- **Cell.** A survey round and a survey location. Under a forecast the weather follows the target month, not the interview month, so the interview month no longer separates cells.
+- **Trigger.** The mean of the trigger variable over the $L$ target months, so that a location fires for the whole window:
+
+$$\bar x_{c,r} = \frac{1}{L}\sum_{h \in \text{window}} x_{c,h} \qquad \text{(7.1)}$$
+
+- **Threshold.** Eq. (1.1) with $\bar x_{c,r}$ over the same-window historical years, so a 1-in-$N$ trigger compares like months with like months. A threshold entered by the user applies to $\bar x_{c,r}$.
+- **Payment.** Once per window. A paid household receives the same daily equivalent as in a simulated year, in each target month. Each of its target months has a weight of $w_i/L$, so the amount is counted once. An annual cap limits the cost of the window.
+
+A member's payment is what the programme would pay if that member's weather happened. It is not a payment made on the forecast, so the forecast skill and false-alarm settings of Section 5 do not apply.
+
+The window takes a weather trigger with local, ex-post, fixed payments and no dynamic targeting. A delay can be set. Impact triggers, the national gate, a budget linked to loss, the layers of Section 3 and anticipatory payments are not available with a forecast, and the run says which setting to change.
+
+The outputs are the mean population share in triggered locations, the shares of members and of same-window historical years with payments, and the median and range of the window's cost across members. The population share leads, because with many locations almost every member has a payment somewhere. They are indicators, not an expected or annual cost: the member spread is not calibrated. They stay out of the annual cost, reach and basis-risk tables. Basis risk is not computed for a window, because a household's annual level is not a reference for the target months.
+
 ## Interpretation
 
 - Because the thresholds are fixed on the historical record, a scenario shows how the programme would respond to a changed climate. A rise in activation or in cost is a rise in the bill for a rule that was set today.
@@ -190,5 +208,6 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 | Summary across scenarios | Section 6 | `R/fct_sp_shock.R` `sp_shock_summary()`, `sp_shock_climate_cost()` |
 | Break-even multiplier | (6.3) | `R/fct_sp_shock.R` `sp_shock_summary()` |
 | Coverage and adequacy of the affected | Section 6 | `R/fct_sp_shock.R` `sp_shock_reach()` |
+| Forecast window: trigger, thresholds, payment once, payout figures | (7.1) | `R/fct_sp_shock.R` `.sp_forecast_shock_problem()`, `.sp_window_trigger_table()`, `sp_shock_window_plan()`, `.sp_window_channels()`, `sp_shock_window_summary()` |
 | Preview before the run | Setup | `R/fct_sp_shock.R` `sp_shock_preview()` |
 | Eligibility written for the programme | Setup | `R/fct_policy_sim.R` `apply_policy_to_svy()` |

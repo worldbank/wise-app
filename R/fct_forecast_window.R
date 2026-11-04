@@ -537,8 +537,9 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
 #' Headline cards of the Step 3 forecast window
 #' @param views Result of `step3_window_views()`.
 #' @param metadata Metric metadata (`metric_metadata()`), for the value format.
+#' @param shock `shock_forecast` of the policy scenario, or `NULL` for a regular policy.
 #' @noRd
-.step3_window_cards <- function(views, metadata) {
+.step3_window_cards <- function(views, metadata, shock = NULL) {
   e <- views$effect
   fmt <- function(x) format_metric_value(x, metadata, change = TRUE, digits = 3L)
   pct <- function(x) paste0(formatC(100 * x, format = "f", digits = 0), "%")
@@ -550,11 +551,16 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
     )
   }
   info <- paste(
-    "Each member and each historical year is evaluated with and without the policy over the target months only;",
-    "the policy acts identically in every month of the window. Shares of members are indicators, not",
-    "probabilities: the member spread is not calibrated and skill is not established."
+    "Each member and each historical year is evaluated with and without the policy over the target months only.",
+    if (is.null(shock)) {
+      "The policy acts identically in every month of the window."
+    } else {
+      "The transfer pays where the weather of the window passes the trigger, once per window."
+    },
+    "Shares of members are indicators, not probabilities: the member spread is not calibrated and skill is not",
+    "established."
   )
-  list(
+  cards <- list(
     card("Policy effect, forecast", fmt(e$member_median), "Median member: policy minus baseline",
       views$label, info),
     card("Policy effect, same months", fmt(e$reference_median), "Median historical year: policy minus baseline",
@@ -563,4 +569,20 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
       pct(e$share_worse_policy)), "Without and with the policy, at the baseline level",
       paste0(e$n_members, " members, ", e$n_reference, " historical years"), info)
   )
+  if (is.null(shock)) return(cards)
+  s <- sp_shock_window_summary(shock)
+  money <- function(x) fmt_num(x, digits = 0, prefix = .sp_currency_prefix(shock$currency), na = "Not available")
+  c(cards, list(card(
+    "Population in triggered locations", pct(s$exposed_member),
+    paste0("Mean member, against ", pct(s$exposed_reference), " in a historical year; ", pct(s$member_share),
+      " of members and ", pct(s$reference_share), " of years have payments"),
+    paste0("Cost of the window: ", money(s$cost_median), " (", money(s$cost_range[[1L]]), " to ",
+      money(s$cost_range[[2L]]), ")"),
+    paste(
+      "The share of the population in locations that pass the trigger, set on the same months of the historical",
+      "years. A member or year has payments when any location passes it, which is common with many locations.",
+      "The cost is the median member and the range across members: what the window would cost if that member's",
+      "weather happened, not an expected or annual cost. Shares of members are indicators, not probabilities."
+    )
+  )))
 }

@@ -29,11 +29,13 @@ An optional `sim.forecast` descriptor selects local pilot data, for example
 `{product: seasonal, run: '2026-10', start: '2026-11', len: 3}`. The run is a
 country catalogue ID. Forecast data is currently local-only; preparation starts
 with `t`. The worker resolves and validates the run manifest and immutable file
-identities. A policy section is allowed with a forecast, except a shock-responsive
-transfer (`sp_type: shock`), which is rejected: its triggers come from annual
-weather. The policy applies identically in every target month and to every
-reference year. The annual tables of the policy arm carry the annual scenarios
-only.
+identities. A policy section is allowed with a forecast. A shock-responsive
+transfer (`sp_type: shock`) then needs a weather trigger with local, ex-post, fixed
+payments and no dynamic targeting; other designs are rejected. It reads the mean
+weather of the window against the same months of the reference years and pays once
+per window. Any other policy applies identically in every target month. Each policy
+applies to every reference year. The annual tables of the policy arm carry the
+annual scenarios only.
 
 A forecast scenario is named `Seasonal forecast / <target window> (<run> run)`.
 Its `member` identifies a forecast ensemble member, not a climate model.
@@ -241,6 +243,7 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `skill` | forecast scenarios only; `skill_flag` / `group` = target month (`YYYY-MM`, prefixed by the variable when the model has several) | Hindcast skill flag of each target month in `text` (`none`, `weak`, `useful`), `estimate` = anomaly correlation, `n` = lead. One row of text ("not assessed") when the run has no skill table. `metric` is `NA`. |
 | `season` | forecast scenarios only; `training_month_share`, `training_month_expected` | Share of the model's training observations interviewed in the target months, and the share an even spread over the year would give. `metric` is `NA`. |
 | `policy_effect` | policy arm of forecast scenarios only; `effect_member_median`, `effect_reference_median`, `share_worse_baseline`, `share_worse_policy`, `reference_adverse_1in10` | Policy effect under the forecast; see the `forecast` table. `n` = members. |
+| `shock_window` | policy arm of forecast scenarios with a shock-responsive transfer; `member_share`, `reference_share`, `exposed_member`, `exposed_reference`, `cost_median`, `cost_min`, `cost_max`, `cost_reference` | Share of members and of reference years with payments, mean population share in triggered locations, and the cost of the window (median, range across members, median reference year). `metric` is `NA`; `n` = members. |
 
 **Policy arm** sections start with `policy_`; stored for every metric:
 

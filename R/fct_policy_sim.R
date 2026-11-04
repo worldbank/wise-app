@@ -1669,11 +1669,9 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     is.null(hist_sim_baseline)) {
     return(NULL)
   }
-  if (identical(sp$sp_type, "shock") && any(.step2_is_forecast_scenario(names(saved_scenarios_baseline)))) {
-    stop(paste0(
-      "A shock-responsive transfer is not supported for a seasonal forecast window: its triggers come from ",
-      "annual weather. Use a regular transfer or another lever, or rerun Step 2 without the forecast."
-    ), call. = FALSE)
+  if (any(.step2_is_forecast_scenario(names(saved_scenarios_baseline)))) {
+    problem <- .sp_forecast_shock_problem(sp)
+    if (!is.null(problem)) stop(problem, call. = FALSE)
   }
   if (!is.null(decomp_context) && is.null(run_identity)) {
     stop("Current run identity is required.", call. = FALSE)
@@ -1741,21 +1739,36 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     if (is.null(s) || is.null(s$pipelines)) {
       stop("Missing saved scenario prediction pipelines.", call. = FALSE)
     }
+    # A forecast window has its own shock plan; its rows stay out of the annual tables.
+    is_forecast <- .step2_is_forecast_scenario(names(saved_scenarios_baseline)[i])
+    channels <- annual_channels
+    if (is_forecast && !is.null(annual_channels$shock)) {
+      channels <- .sp_window_channels(annual_channels, sp_shock_window_plan(
+        s, sp, svy_policy[[SP_ELIGIBLE_COL]], svy_policy, analysis_unit,
+        is_log = identical(so$transform %||% "", "log"),
+        level_factor = outcome_level_scale(rep(1, nrow(svy_policy)), so, .outcome_ppp(svy_policy)),
+        seed = seed
+      ))
+    }
+    window_rows <- list()
     # Members of one scenario share timestamps: rebuild exposure tables with
     # one cached timestamp decomposition per scenario.
     exposure_cache <- new.env(parent = emptyenv())
     pipes_new <- lapply(seq_along(s$pipelines), function(j) {
       result <- .apply_policy_annual_pipeline(
-        s$pipelines[[j]], annual_channels, run_identity,
+        s$pipelines[[j]], channels, run_identity,
         # A forecast window is not an annual sample: no annual decomposition rows for it.
-        scenario = if (.step2_is_forecast_scenario(names(saved_scenarios_baseline)[i])) NULL else
-          names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
+        scenario = if (is_forecast) NULL else names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
         member = names(s$pipelines)[j] %||% paste0("Member ", j),
         year_range = s$year_range %||% c(NA_integer_, NA_integer_),
         chunk_size = chunk_size, owner = s, exposure_cache = exposure_cache
       )
       parts[[length(parts) + 1L]] <<- result$compact
-      shock_parts[[length(shock_parts) + 1L]] <<- result$shock
+      if (is_forecast) {
+        window_rows[[length(window_rows) + 1L]] <<- result$shock
+      } else {
+        shock_parts[[length(shock_parts) + 1L]] <<- result$shock
+      }
       shock_cell_parts[[length(shock_cell_parts) + 1L]] <<- result$shock_cells
       shock_reach <<- .sp_shock_reach_add(
         shock_reach, names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
@@ -1768,13 +1781,21 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     # The same-window reference years get the same policy, so the policy effect is comparable with the
     # forecast's. They enter no decomposition table.
     if (length(s$reference_pipelines)) {
-      s$reference_pipelines <- Map(function(p, nm) {
+      reference <- Map(function(p, nm) {
         .apply_policy_annual_pipeline(
-          p, annual_channels, run_identity, scenario = NULL, member = nm,
+          p, channels, run_identity, scenario = NULL, member = nm,
           year_range = s$year_range %||% c(NA_integer_, NA_integer_),
           chunk_size = chunk_size, owner = s, exposure_cache = exposure_cache
-        )$pipeline
+        )
       }, s$reference_pipelines, names(s$reference_pipelines))
+      s$reference_pipelines <- lapply(reference, `[[`, "pipeline")
+      if (length(window_rows)) {
+        s$shock_forecast <- list(
+          members = do.call(rbind, window_rows),
+          reference = do.call(rbind, lapply(reference, `[[`, "shock")),
+          currency = sp$currency %||% "PPP"
+        )
+      }
     }
     s$policy_correction_version <- annual_channels$correction_version
     s

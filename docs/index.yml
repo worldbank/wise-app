@@ -372,7 +372,7 @@ pages:
     symbols: ["l", "mu", "m", "v", "s", "W", "x"]
     ui:
       - "Step 2 > Seasonal forecast: include the forecast, choose the run, the length of the window (1, 3 or 6 months) and the start month on the strip. The forecast is unavailable, with a reason, when the country has no forecast or the fitted model uses a variable the forecast does not provide."
-      - "Step 3: a policy run with a forecast shows the same series in each Results chart as Step 2, each with baseline and policy, and the same two card groups. The target-month cards give the median policy effect of the members and of the historical years and the share of members worse than the historical 1-in-10 without and with the policy. The exceedance chart shows the no-policy historical curve of the same months and places the median member of each arm on it. The ensemble-spread controls set the member band as they set the climate-model band."
+      - "Step 3: a policy run with a forecast shows the same series in each Results chart as Step 2, each with baseline and policy, and the same two card groups. The target-month cards give the median policy effect of the members and of the historical years and the share of members worse than the historical 1-in-10 without and with the policy. The exceedance chart shows the no-policy historical curve of the same months and places the median member of each arm on it. The ensemble-spread controls set the member band as they set the climate-model band. A shock-responsive transfer adds a card: the population share in triggered locations against historical years of the same months, the shares of members and years with payments, and the cost of the window."
       - "Step 2 > Results: with a forecast, each chart and the return-period table carry both sets of series: \"Historical (annual)\" and the climate scenarios, and \"Historical (Nov - Jan)\" and the forecast. A forecast-only run shows the same charts without scenario rows. The headline cards stay in two groups, annual and target months. The cards of the target months show the placement, the shift against the historical spread of the same months and the member range."
     guide: "https://github.com/worldbank/wise-app-docs"
     code: ["R/utils_forecast_ui.R", "R/mod_2_01_weathersim.R", "R/fct_forecast_catalogue.R", "R/fct_forecast_weather.R", "R/fct_forecast_placement.R", "R/fct_forecast_window.R", "R/fct_forecast_skill.R", "R/fct_run_simulation.R"]
@@ -470,6 +470,7 @@ pages:
       - "4. Amount and budget"
       - "5. Timing"
       - "6. Outputs"
+      - "7. Seasonal forecast window"
     equations:
       - {tag: "(1.1)", section: "1. Trigger"}
       - {tag: "(1.2)", section: "1. Trigger"}
@@ -482,6 +483,7 @@ pages:
       - {tag: "(6.1)", section: "6. Outputs"}
       - {tag: "(6.2)", section: "6. Outputs"}
       - {tag: "(6.3)", section: "6. Outputs"}
+      - {tag: "(7.1)", section: "7. Seasonal forecast window"}
     symbols: ["omega", "T", "r", "m", "s"]
     ui:
       - "Step 3 > Social protection > Programme type: choose a shock-responsive programme. Trigger settings set the weather variable or impact metric, the threshold or return period, the scope, layers, budget rule, cap, and timing."

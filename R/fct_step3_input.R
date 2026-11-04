@@ -466,11 +466,6 @@ wise_labor_config <- function(x, defaults) {
   if (is.null(svy)) {
     return("Survey data not available.")
   }
-  if (identical(sp$sp_type, "shock") && any(.step2_is_forecast_scenario(names(ss)))) {
-    return(paste(
-      "A shock-responsive transfer cannot be combined with a seasonal forecast window: its triggers come from",
-      "annual weather. Use a regular transfer, or rerun Step 2 without the forecast."
-    ))
-  }
+  if (any(.step2_is_forecast_scenario(names(ss)))) return(.sp_forecast_shock_problem(sp))
   NULL
 }

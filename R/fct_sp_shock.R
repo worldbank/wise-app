@@ -670,6 +670,99 @@ sp_shock_plan <- function(spec, hist_exposure, eligibility, svy, analysis_unit =
   }
 }
 
+# Seasonal forecast window ----
+
+#' Why a shock-responsive design cannot run on a seasonal forecast, or `NULL`
+#'
+#' The forecast takes a weather trigger with local, ex-post, fixed payments and no dynamic targeting.
+#' @param sp Scenario list.
+#' @noRd
+.sp_forecast_shock_problem <- function(sp) {
+  if (!identical(sp$sp_type, "shock")) return(NULL)
+  timing <- sp[["transfer_timing"]] %||% "expost"
+  needs <- c(
+    if (!identical(sp[["trigger_metric"]] %||% "weather", "weather")) "a weather trigger",
+    if (!identical(sp$payout_scope %||% "local", "local")) "local payouts",
+    if (!is.na(timing) && !identical(timing, "expost")) "ex-post payments",
+    if (!identical(sp$budget_rule %||% "fixed", "fixed")) "a fixed amount",
+    if (!identical(sp[["dyn_geo"]] %||% "all", "all") || isTRUE(sp[["dyn_welfare"]])) "no dynamic targeting"
+  )
+  if (!length(needs)) return(NULL)
+  paste0("With a seasonal forecast, a shock-responsive transfer needs ", paste(needs, collapse = ", "), ".")
+}
+
+#' The trigger variable of each survey round and location as its mean over the target window
+#'
+#' Every target month of a location then fires together, so a household is paid once for the window. Under a forecast
+#' the weather follows the target month, not the interview month, so the cell is the survey round and location: a
+#' constant `int_month` leaves the annual key columns working on it.
+#' @param tbl Exposure table of one pipeline (one member or one reference year).
+#' @param spec Scenario list with the trigger fields.
+#' @noRd
+.sp_window_trigger_table <- function(tbl, spec) {
+  var <- .sp_spec_trigger(spec)$variable
+  keys <- intersect(setdiff(.sp_trigger_key_cols, "int_month"), names(tbl))
+  cell <- do.call(paste, c(unname(as.list(tbl[keys])), sep = "\r"))
+  tbl[[var]] <- stats::ave(as.numeric(tbl[[var]]), cell, FUN = mean)
+  tbl$int_month <- 0L
+  tbl
+}
+
+#' Shock plan of a forecast window: the annual plan with thresholds from the same months of the historical years
+#'
+#' One row per cell and reference year stands in for the historical exposure, so `sp_shock_plan()` and the record
+#' rule of a return-period trigger apply as they are. Without the historical pipeline the plan has no household loss
+#' reference: an annual level is not a target-window one, so the basis-risk figures are not computed.
+#' @param scenario Forecast scenario with `reference_pipelines`.
+#' @param spec,eligibility,svy,analysis_unit,is_log,level_factor,seed As for `sp_shock_plan()`.
+#' @noRd
+sp_shock_window_plan <- function(scenario, spec, eligibility, svy, analysis_unit, is_log, level_factor, seed) {
+  if (!length(scenario$reference_pipelines)) {
+    stop("A shock-responsive transfer on a forecast needs the same-window historical years.", call. = FALSE)
+  }
+  record <- dplyr::bind_rows(lapply(scenario$reference_pipelines, function(p) {
+    tbl <- .sp_window_trigger_table(as.data.frame(step2_exposure_resolve(p, scenario)$table), spec)
+    tbl[!duplicated(tbl[intersect(.sp_trigger_key_cols, names(tbl))]), , drop = FALSE]
+  }))
+  plan <- sp_shock_plan(
+    spec, record, eligibility, svy, analysis_unit, is_log = is_log, level_factor = level_factor, seed = seed
+  )
+  plan$window_len <- as.integer(scenario$forecast$len)
+  plan
+}
+
+#' The annual channels with the shock plan of a forecast window
+#'
+#' A copy: the annual scenarios keep their plan, and every consumer of the channels runs unchanged.
+#' @param channels Result of `.prepare_policy_annual_channels()`.
+#' @param plan Result of `sp_shock_window_plan()`.
+#' @noRd
+.sp_window_channels <- function(channels, plan) {
+  out <- list2env(as.list(channels, all.names = TRUE), parent = emptyenv())
+  out$shock <- plan
+  lockEnvironment(out, bindings = TRUE)
+  out
+}
+
+#' Payout figures of a forecast window: members against the same months of the historical years
+#'
+#' @param shock `shock_forecast` of a policy scenario: `members` and `reference`, one row each from
+#'   `sp_shock_pipeline_rows()`.
+#' @return A list: `member_share`, `reference_share` (share with any payment), `exposed_member`, `exposed_reference`
+#'   (mean population share in triggered locations), `cost_median`, `cost_range`, `cost_reference` (median),
+#'   `n_members`, `n_reference`.
+#' @noRd
+sp_shock_window_summary <- function(shock) {
+  m <- shock$members
+  r <- shock$reference
+  list(
+    member_share = mean(m$activated), reference_share = mean(r$activated),
+    exposed_member = mean(m$exposed_share), exposed_reference = mean(r$exposed_share),
+    cost_median = stats::median(m$total_cost), cost_range = range(m$total_cost),
+    cost_reference = stats::median(r$total_cost), n_members = nrow(m), n_reference = nrow(r)
+  )
+}
+
 # Plan part of an impact trigger (P2-5); NULL for a weather trigger. Everything
 # the metric needs besides the pipeline: the household reference (rule 7), the
 # trigger's own poverty line (rule 15: fixed per run, in the spec) and
@@ -1163,7 +1256,8 @@ sp_shock_plan <- function(spec, hist_exposure, eligibility, svy, analysis_unit =
     return(transfer)
   }
   ids <- as.integer(pipeline$svy_row_id)
-  cost <- ifelse(is.finite(transfer), transfer, 0) * plan$cost_weight[ids]
+  # A household has one row per target month of a forecast window and is paid once.
+  cost <- ifelse(is.finite(transfer), transfer, 0) * plan$cost_weight[ids] / (plan$window_len %||% 1L)
   total <- rowsum(cost, pipeline$sim_year)
   factor <- ifelse(total[, 1L] > plan$cap_transfer, plan$cap_transfer / total[, 1L], 1)
   out <- transfer * factor[match(as.character(pipeline$sim_year), rownames(total))]
@@ -1234,6 +1328,7 @@ sp_shock_pipeline_state <- function(plan, pipeline, exposure) {
   if (!is.null(plan$impact)) {
     tbl[[SP_IMPACT_COL]] <- .sp_impact_column(plan$impact, pipeline, exposure, plan$reference)
   }
+  if (!is.null(plan$window_len)) tbl <- .sp_window_trigger_table(tbl, plan$spec)
   exceeds_t <- .sp_trigger_exceeds(tbl, plan$thresholds)
   g <- exposure$row_index
   real <- .sp_trigger_scope(
@@ -1314,7 +1409,7 @@ sp_shock_pipeline_state <- function(plan, pipeline, exposure) {
 sp_shock_pipeline_rows <- function(plan, pipeline, exposure, state, transfer,
                                    transfer_model = NULL) {
   annual <- sp_shock_annual(
-    transfer, pipeline, plan$cost_frame, state, plan$analysis_unit,
+    transfer / (plan$window_len %||% 1L), pipeline, plan$cost_frame, state, plan$analysis_unit,
     plan$currency, plan$admin_share
   )
   cols <- c("pop_tp", "pop_fp", "pop_fn", "pop_tn", "spend_total", "spend_no_event")
