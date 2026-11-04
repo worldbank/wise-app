@@ -24,11 +24,14 @@ Update this table in the same change as the work, with the commit and what was v
 | Design and prototype | Done | | Figures below; prototype scripts were not kept |
 | Phase 0: `R/fct_enso.R`, tests, fixtures | Done | `enso`, "Add ENSO label helpers for Phase 0" (not pushed) | `devtools::test(filter = "fct.enso")`: 126 pass, 0 fail, 0 skip. Real data, BFA 2021 (survey `weight` by `timestamp` month, one-month lag): 1997 0.69/0.31/0.00 El Niño, 1998 0.31/0.23/0.46 Mixed, 2015 1.00/0/0 El Niño, 2016 0.31/0.23/0.46 Mixed, as in the table above. Window 1 to 6: 6 El Niño / 4 La Niña / 14 Neutral / 6 Mixed; 7 of 30 years change class against the one-month lag |
 | Phase 0: requests to `wise-app-data` | Partly done (CMIP6 note) | | |
-| Phase 1: load, items 1, 2, 3, 5 | Blocked by the forecast work | | |
-| Phase 1: items 4, 6 | Blocked by the forecast work | | |
+| Merge `enso` into `seasonal-forecast` | Waits for the forecast work to be committed | | |
+| Phase 1: load, items 1, 2, 3, 5 | Not started | | |
+| Phase 1: items 4, 6 | Not started | | |
 | Phase 2: items 7, 8, docs | Not started | | |
 
-Working rules: Phase 0 touches no existing `R/` file. Work in a separate worktree on branch `enso` off `seasonal-forecast`, because another session shares the main checkout. Do not commit, push or regenerate `manifest.json` unless asked. Phase 0 is done when `devtools::test(filter = "fct.enso")` passes and the D2 hand-worked cases under Checks are covered, and the labels reproduce the BFA 2021 table in this file.
+Branch plan: Phase 0 is on `enso` (worktree `../wise-app-enso`). When the forecast work is committed, merge `enso` into `seasonal-forecast` and do all later work there, in the main checkout. ENSO and the forecast go to `dev` in one PR. Keep ENSO in its own commits for review.
+
+Rules for every stage after Phase 0: read this whole file and follow `AGENTS.md`. Keep to D1, and prove it with `all.equal(tolerance = 0)` on the Step 2 and Step 3 tables with and without the ENSO file. Check UI changes in the running app with skill `wise-ui-check` on MWI (signal), on BFA (flat) and with the file removed. Stop at the end of the stage and report. Do not push, and regenerate `manifest.json` only as the last step before the PR. Commit only when asked.
 
 ## What the data and code show
 
@@ -251,7 +254,7 @@ These go in the section note, the info popover and `docs/`.
 
 ### Phase 1: after the forecast finishes
 
-The other work is editing `R/mod_2_01_weathersim.R` and `R/mod_3_scenario.R`, and it owns `R/fct_forecast_window.R`. `R/mod_2_02_results.R` and `R/fct_policy_sim_compare.R` will take most of the ENSO changes, so branch off `seasonal-forecast` after its last commit, or off `dev` after the PR.
+Merge `enso` into `seasonal-forecast` first (branch plan under Progress). `R/mod_2_02_results.R` and `R/fct_policy_sim_compare.R` will take most of the ENSO changes.
 
 1. Load ENSO once per session and expose it from the Overview API.
 2. Items 1, 2, 3 and 5 for Historical and SSP rows.
@@ -277,14 +280,14 @@ The other work is editing `R/mod_2_01_weathersim.R` and `R/mod_3_scenario.R`, an
 
 Done: `dev/cmip6_enso_plan.md` now records that no CMIP6 ENSO table is needed (uncommitted). Still open:
 
-1. Promote observed ENSO into `all`, or at least to the production data root, and add `validate` checks. Once the app reads the files, the schema is a contract. The app's flags do not depend on the forecast pilot, so they can reach Posit Connect sooner if the file is there.
+1. Promote observed ENSO into `all`, or at least to the production data root, and add `validate` checks. Once the app reads the files, the schema is a contract. The app's flags do not depend on the forecast pilot, so they work on Posit Connect once the PR is deployed, if the file is on that data root.
 2. Correct `dev/enso_plan.md`: it says ONI is published next to RONI, but `enso.csv` has no `oni` column. The app does not need it, though a comparison with press figures would.
 3. Fill the probabilities at the first and last lead if possible (already an open item upstream).
 
 ## Open decisions
 
-1. **Toggle default.** Off (recommended) keeps the current chart unchanged. On gives more visibility while the event is news.
-2. **Headline card.** The plan adds none to the annual group. One card "El Niño exposure against Neutral" would add visibility at the price of a busier row. A sensible test is whether users miss the section.
-3. **Year rule.** Majority share with a Mixed class (recommended) or $\text{RONI}^{\text{exp}}$ at plus or minus 0.5. The second has no Mixed class but labels a year El Niño on a few strong months.
-4. **Release order.** Ship the annual flags ahead of the forecast pilot, or together. Annual flags work on Connect; the forecast is local only.
-5. **Forecast outlook source.** The system of the run (recommended) or the multi-model mean, which is the more robust ENSO estimate but not what is simulated.
+1. **Toggle default.** Decided for now (2026-11-04): off, so the current chart stays unchanged. On would give more visibility while the event is news.
+2. **Headline card.** Decided for now (2026-11-04): none in the annual group. One card "El Niño exposure against Neutral" would add visibility at the price of a busier row. Revisit if users miss the section.
+3. **Year rule.** Decided for now (2026-11-04): majority share with a Mixed class. The alternative, $\text{RONI}^{\text{exp}}$ at plus or minus 0.5, has no Mixed class but labels a year El Niño on a few strong months.
+4. **Release order.** Decided (2026-11-04): together, in one PR with the forecast. Annual flags work on Connect; the forecast stays local only.
+5. **Forecast outlook source.** Decided (2026-11-04): the system of the run, as in D4, because it describes what is simulated. The multi-model mean is the fallback. Keep the two published tables: `enso_load()` reads both and they have different shapes (one row per month, and one row per model and month), so merging them upstream would gain nothing.
