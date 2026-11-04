@@ -147,7 +147,7 @@ enso_window <- function(selected_weather) {
 #' @noRd
 enso_month_weights <- function(months, weights = NULL) {
   if (inherits(months, c("Date", "POSIXt"))) months <- as.integer(format(months, "%m"))
-  months <- as.integer(months)
+  months <- as.integer(as.character(months)) # through text: a factor's codes are not months
   weights <- if (is.null(weights)) rep(1, length(months)) else as.numeric(weights)
   keep <- !is.na(months) & months >= 1L & months <= 12L & !is.na(weights) & weights > 0
   out <- vapply(1:12, function(m) sum(weights[keep & months == m]), numeric(1))
@@ -569,12 +569,10 @@ enso_attach_window_labels <- function(tbl, labels, reference_label) {
 #'   columns `n_<phase>` and `mean_<phase>`, plus `diff_el_nino` and `diff_la_nina`.
 #' @noRd
 enso_series_table <- function(curves, labels, min_n = 3L) {
-  curves <- curves[!.step2_is_forecast_like(curves$scenario), , drop = FALSE]
-  if (is.null(curves) || !nrow(curves)) return(NULL)
-  yearly <- stats::aggregate(
-    value ~ scenario + sim_year, data = curves[is.finite(curves$value), , drop = FALSE], FUN = mean
-  )
-  if (!nrow(yearly)) return(NULL)
+  if (is.null(curves)) return(NULL)
+  curves <- curves[!.step2_is_forecast_like(curves$scenario) & is.finite(curves$value), , drop = FALSE]
+  if (!nrow(curves)) return(NULL) # aggregate() fails on no rows
+  yearly <- stats::aggregate(value ~ scenario + sim_year, data = curves, FUN = mean)
   yearly$scenario <- as.character(yearly$scenario)
   values <- data.frame(series = yearly$scenario, sim_year = yearly$sim_year, value = yearly$value)
   s <- enso_phase_summary(labels, values, min_n = min_n)
@@ -598,7 +596,7 @@ enso_series_table <- function(curves, labels, min_n = 3L) {
 .enso_fmt <- function(v, scale = 1, digits = 3L, sign = FALSE) {
   if (is.na(v)) return("-")
   txt <- formatC(v * scale, digits = digits, format = "f", big.mark = ",")
-  if (sign && v > 0 && as.numeric(gsub(",", "", txt)) != 0) paste0("+", txt) else sub("^-(0\\.0*)$", "\\1", txt)
+  if (sign && v > 0 && as.numeric(gsub(",", "", txt)) != 0) paste0("+", txt) else sub("^-(0(\\.0*)?)$", "\\1", txt)
 }
 
 #' Reactable of the phase comparison (item 3)
@@ -611,7 +609,7 @@ enso_phase_reactable <- function(tbl, scale = 1, digits = 3L) {
   num <- function(header) {
     reactable::colDef(
       name = header, align = "right", minWidth = 80, class = "wise-dt-wrap",
-      cell = function(v) if (is.na(v)) "-" else formatC(v * scale, digits = digits, format = "f", big.mark = ",")
+      cell = function(v) .enso_fmt(v, scale, digits)
     )
   }
   cnt <- function(header) reactable::colDef(name = header, align = "right", minWidth = 50)

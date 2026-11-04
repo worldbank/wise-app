@@ -760,7 +760,11 @@ wise_batch_sim <- function(item, connection_params = NULL) {
           sim_file
         )
       }
-      enso_inputs <- .batch_enso_inputs(baseline$svy, sw, result$new_scenarios, forecast, tables$forecast, so)
+      # Annotation only (D1): a failure here loses the labels of this branch, not its simulation.
+      enso_inputs <- tryCatch(
+        .batch_enso_inputs(baseline$svy, sw, result$new_scenarios, forecast, tables$forecast, so),
+        error = function(e) NULL
+      )
       gc_max <- gc()
       failures <- vapply(result$failures %||% list(), function(f) {
         sprintf("%s: %s", f$key, wise_user_error(f$error %||% "failed", "batch simulation member"))

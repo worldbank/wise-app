@@ -960,3 +960,13 @@ test_that("a batch branch that fails is left out without failing the run", {
   expect_no_error(out <- suppressMessages(wise_batch_enso(c(e, list(provenance = list())), list(bad))))
   expect_equal(nrow(out$enso_years), 0L)
 })
+
+test_that("review edge cases: factor months, no finite values, negative zero", {
+  expect_equal(which(enso_month_weights(factor(c(1, 3, 10))) > 0), c(1L, 3L, 10L))
+  labels <- tibble::tibble(sim_year = 2000:2005, label = rep(c("el_nino", "neutral"), 3))
+  curves <- data.frame(scenario = "Historical", sim_year = 2000:2005, value = NaN)
+  expect_null(enso_series_table(curves, labels))
+  expect_null(enso_series_table(NULL, labels))
+  expect_identical(.enso_fmt(-0.0001, 1, 0L), "0")
+  expect_identical(.enso_fmt(-0.0001, 1, 3L), "0.000")
+})

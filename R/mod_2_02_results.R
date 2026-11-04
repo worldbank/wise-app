@@ -260,9 +260,8 @@
         info_popover(
           title = "ENSO exposure years",
           shiny::p(.ENSO_NOTE_LABELS),
-          shiny::p(.ENSO_NOTE_MODEL),
           shiny::p(.ENSO_NOTE_FEW),
-          docs = FALSE
+          shiny::p(.ENSO_NOTE_SCENARIO)
         ),
         style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
       ),
@@ -276,7 +275,7 @@
         shiny::uiOutput(ns("enso_sentence")),
         shiny::tags$p(
           class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
-          .ENSO_NOTE_LABELS, " ", .ENSO_NOTE_MODEL, " ", .ENSO_NOTE_FEW, " ", .ENSO_NOTE_SCENARIO
+          .ENSO_NOTE_MODEL
         )
       )
     ),
@@ -978,12 +977,16 @@ mod_2_02_results_server <- function(id,
       w <- window_series_rv()
       req(w)
       pl <- step2_window_placement(w, .selected_method(), hist_sim()$so)
-      pl$enso <- if (!is.null(enso())) {
-        enso_placement_text(
-          enso(), saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, pl,
-          enso_window_labels_rv(), w$months_label
-        )
-      }
+      # The ENSO line is optional (D6): a failure here must not cost the placement card.
+      pl$enso <- tryCatch(
+        if (!is.null(enso())) {
+          enso_placement_text(
+            enso(), saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, pl,
+            enso_window_labels_rv(), w$months_label
+          )
+        },
+        error = function(e) NULL
+      )
       pl
     })
     window_views_rv <- reactive({

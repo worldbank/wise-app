@@ -77,7 +77,7 @@ Do the rows that apply.
 | A method, equation, default or assumption | Update the page in `docs/`, set its `verified_against` to the commit checked, `Rscript dev/docs_index.R`, then `Rscript dev/docs_check.R` |
 | Batch table columns or meaning | `batch/docs/tables.md`; batch tests |
 | `AGENTS.md`, `ARCHITECTURE.md`, `DEPLOYMENT.md`, a skill | `Rscript dev/agents_check.R` |
-| UI (module, CSS, chart, map, tab) | Skill `wise-ui-check`; larger UI changes also `Rscript tests/e2e/smoke.R` (about 5 minutes, needs Chrome) |
+| UI (module, CSS, chart, map, tab) | Skill `wise-ui-check`; larger UI changes also `Rscript tests/e2e/smoke.R` (about 2 minutes, needs Chrome) |
 | A change that must not move any number (a label or annotation on results) | `Rscript dev/parity_enso.R --fixture` while iterating, without `--fixture` (BFA) once at the end: every registered table identical with and without the feature |
 | A speed or memory claim | Skill `wise-benchmark` |
 | Model or simulation numbers move | Skill `wise-numeric-change` |

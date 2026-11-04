@@ -35,7 +35,7 @@ Run with the tree quiet and committed (the manifest is built from `HEAD`):
    what you meant.
 3. `devtools::test()` (4 to 6 minutes, run in the background) and
    `devtools::check()`.
-4. `Rscript tests/e2e/smoke.R` (about 5 minutes; Chrome, `arrow` and the
+4. `Rscript tests/e2e/smoke.R` (about 2 minutes; Chrome, `arrow` and the
    DuckDB `h3` extension). `main` requires the `e2e-smoke` status check.
 5. Real-data parity per release, not run in CI: `dev/batch_parity_bfa.R`,
    `dev/batch_parity_bfa_models.R`, `dev/batch_parity_bfa_sim.R`,

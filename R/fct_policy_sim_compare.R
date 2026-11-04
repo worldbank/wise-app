@@ -2094,8 +2094,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         info_popover(
           title = "Policy effect by ENSO exposure",
           shiny::p(.ENSO_NOTE_LABELS),
-          shiny::p(.ENSO_NOTE_MODEL),
-          shiny::p(.ENSO_NOTE_FEW)
+          shiny::p(.ENSO_NOTE_FEW),
+          shiny::p(.ENSO_NOTE_SCENARIO)
         ),
         style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
       ),
@@ -2110,8 +2110,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         shiny::tags$p(
           class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
           "Baseline and policy are the mean outcome of the years with that exposure, averaged over climate models; ",
-          "the effect is policy minus baseline. ", .ENSO_NOTE_LABELS, " ", .ENSO_NOTE_MODEL, " ", .ENSO_NOTE_FEW, " ",
-          .ENSO_NOTE_SCENARIO
+          "the effect is policy minus baseline. ", .ENSO_NOTE_MODEL
         )
       )
     ),

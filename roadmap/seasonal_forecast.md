@@ -36,12 +36,9 @@ Checked in the running app on BFA (shock card and annual cost table included, 20
 
 ## Before the PR into `dev`, in order
 
-1. **`tests/e2e/smoke.R`, deferred.** Add a forecast run on fixture data. `batch_fixture_tree(forecast = TRUE)` works and the default weather stays `tx`. What is known from driving the fixture app by hand:
-   - Select `t` in Step 1 (weather selector, then `step1-weather-t_toggle`, Continuous) and refit. The fixture projections carry no `t`, so untick the SSP in the Step 2 projections flyout for a forecast-only run (`fc_start` defaults to Feb 2021, 3 months).
-   - A smoke attempt failed at "Weather variable(s) not found in data: t" when switching from `tx` to `t` after a full `tx` pipeline and model fit. Setting `t` on a fresh page works. Cause not found (suspect the selector or weather data not reloading after a fit); check by hand before editing the script.
-   - With the projections flyout open, axe reports `target-size` (serious) on the period checkboxes (`input[value="2025-2035"]` and others). Not looked at further.
-   - The unchanged smoke passes (`smoke ok`, 2026-11-04, with the Run-click fix below).
-   - ENSO has no element in the smoke yet: add the toggle and the colour and axe check of `roadmap/enso.md`.
+1. **Two defects found while extending the smoke, to check by hand.** The smoke itself stays on the annual path: it runs in about 2 minutes, outside `devtools::test()`, and now covers ENSO. A forecast run is not added to it, because forecast screens need real data and are checked with `dev/ui_drive.R`.
+   - Switching from `tx` to `t` after a full `tx` pipeline and model fit failed at "Weather variable(s) not found in data: t". Setting `t` on a fresh page works. Cause not found (suspect the selector or weather data not reloading after a fit).
+   - With the projections flyout open, axe reports `target-size` (serious) on the period checkboxes (`input[value="2025-2035"]` and others).
 2. **Config export and import replay** with real forecast data. The restore order of the start radio, which the server re-renders, is untested.
 3. **Real-data coverage not yet checked.**
    - Other countries: 29 are published, and only BFA has been reviewed. MWI has run, unreviewed.
