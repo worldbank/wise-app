@@ -77,6 +77,7 @@ app_server <- function(input, output, session) {
     survey_version = step1_api$survey_version,
     sim_stale = step2_api$stale,
     enso_labels = step2_api$enso_labels,
+    enso_window_labels = step2_api$enso_window_labels,
      run_trigger = run_step3_trigger,
      shared_aggregation_cache = aggregation_cache
   )

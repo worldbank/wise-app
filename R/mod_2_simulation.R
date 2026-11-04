@@ -133,6 +133,7 @@ mod_2_simulation_server <- function(id,
       propagate_all_covariate_uncertainty = s1$propagate_all_covariate_uncertainty,
       stale           = s1$stale,
       enso_labels     = s2$enso_labels,
+      enso_window_labels = s2$enso_window_labels,
       run_generation  = s1$run_generation,
       run_status      = s1$run_status
     )

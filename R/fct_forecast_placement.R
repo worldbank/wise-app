@@ -125,7 +125,8 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
 #' Cards text for a placement
 #' @param placement Result of `step2_forecast_placement()`.
 #' @return A list: `value` (share of members worse than the reference 1-in-10 level), `median_text`
-#'   (where the median member falls), `note` (indicator wording) and `info`.
+#'   (where the median member falls), `note` (indicator wording), `info` and `enso` (the ENSO line of
+#'   `placement$enso`, or `NULL`).
 #' @noRd
 .forecast_placement_text <- function(placement) {
   s <- placement$summary
@@ -150,8 +151,10 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
       "for the same calendar months in each historical year. ",
       "The share of members is an indicator, not a probability: the member spread is not calibrated and ",
       "skill is not established. Outcomes rarer than about 1-in-", floor(n_ref / 2),
-      " are reported as beyond the observed range, not extrapolated."
-    )
+      " are reported as beyond the observed range, not extrapolated.",
+      if (!is.null(placement$enso)) paste0(" ", placement$enso$info)
+    ),
+    enso = placement$enso$line
   )
 }
 

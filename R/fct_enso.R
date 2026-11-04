@@ -16,6 +16,9 @@ ENSO_LABEL_TEXT <- c(
   el_nino = "El Ni\u00f1o", neutral = "Neutral", la_nina = "La Ni\u00f1a", mixed = "Mixed"
 )
 
+# Model id of a forecast run (its manifest) to the matching source in `enso_forecast.csv` (D4).
+ENSO_FORECAST_SOURCES <- c(ecmwf_seas51 = "ecmwf_51")
+
 # A share within this distance of the threshold counts as reaching it. It absorbs
 # floating-point sums such as 0.1 + 0.2 + 0.2 and is far below any real share step.
 .ENSO_SHARE_TOL <- 1e-9
@@ -91,6 +94,9 @@ enso_load <- function(connection_params = list(type = "local", path = .default_d
     "prob_neutral", "phase"
   )
   if (!is.data.frame(df) || !nrow(df) || !all(need %in% names(df))) return(NULL)
+  # Upstream writes an empty value as the text "NA", which also makes these columns character.
+  optional <- setdiff(need, c("source", "init_date", "timestamp"))
+  df[optional] <- lapply(df[optional], function(x) replace(x, as.character(x) %in% c("", "NA"), NA))
   month <- .enso_as_month(df$timestamp)
   init <- .enso_as_month(df$init_date)
   num <- function(x) suppressWarnings(as.numeric(x))
@@ -202,6 +208,36 @@ enso_year_labels <- function(enso, years, month_weights, lags, start_month = NUL
     empty$label[i] <- if (sum(top) == 1L) ENSO_PHASES[top] else "mixed"
   }
   empty
+}
+
+
+#' ENSO label of each reference year of a forecast window (D3)
+#'
+#' The D2 label with equal weight on the target months as interview months, so the fitted lags
+#' are treated as for a household. The reference year is the year the window starts, as in
+#' `refyear_<year>` of `.get_forecast_weather()`: November 1997 to January 1998 is 1997.
+#'
+#' @param enso Observed table from `enso_load()$observed`.
+#' @param forecast The `forecast` entry of a scenario (`forecast_months`, `reference_years`).
+#' @param lags Integer lags from `enso_window()`.
+#' @return Tibble from `enso_year_labels()` with `period`, the months of each reference year as
+#'   text ("Nov 1997 - Jan 1998").
+#' @noRd
+enso_window_labels <- function(enso, forecast, lags) {
+  months <- as.Date(forecast$forecast_months)
+  mu <- as.integer(format(months, "%m"))
+  labels <- enso_year_labels(
+    enso, forecast$reference_years, enso_month_weights(mu), lags, start_month = mu[[1L]]
+  )
+  first <- months[[1L]]
+  last <- months[[length(months)]]
+  crossing <- as.integer(format(last, "%Y")) - as.integer(format(first, "%Y"))
+  labels$period <- if (length(months) > 1L) {
+    paste(format(first, "%b"), labels$sim_year, "-", format(last, "%b"), labels$sim_year + crossing)
+  } else {
+    paste(format(first, "%b"), labels$sim_year)
+  }
+  labels
 }
 
 
@@ -341,6 +377,98 @@ enso_forecast_outlook <- function(enso, target_months, init, system = NULL) {
 }
 
 
+#' Phase of an outlook: the phase of at least half of its months, else `"mixed"`
+#'
+#' @param outlook Tibble from `enso_forecast_outlook()`.
+#' @return A label id from `ENSO_LABEL_LEVELS`, or `NA` without a phase.
+#' @noRd
+enso_outlook_phase <- function(outlook) {
+  phase <- outlook$phase[!is.na(outlook$phase)]
+  if (!length(phase)) return(NA_character_)
+  top <- vapply(ENSO_PHASES, function(k) mean(phase == k), numeric(1)) >= 0.5 - .ENSO_SHARE_TOL
+  if (sum(top) == 1L) ENSO_PHASES[top] else "mixed"
+}
+
+#' Reference years at least as adverse as the median member, in one phase and in all (item 7)
+#'
+#' "At least as adverse" as in `.forecast_placement_stats()`. Counts only; `NULL` below `min_n`
+#' years of the phase (D5).
+#'
+#' @param placement Result of `step2_window_placement()`.
+#' @param labels Tibble from `enso_window_labels()`.
+#' @param phase Label id of the years to compare with.
+#' @param min_n Smallest number of years in the phase to compare it.
+#' @return `NULL`, or a list: `n`, `n_adverse` (the phase) and `n_all`, `n_adverse_all` (all years).
+#' @noRd
+enso_reference_comparison <- function(placement, labels, phase, min_n = 3L) {
+  median_member <- placement$summary$member_median
+  if (is.null(labels) || !length(median_member) || !is.finite(median_member)) return(NULL)
+  ref <- placement$reference[is.finite(placement$reference$value), , drop = FALSE]
+  label <- labels$label[match(as.integer(ref$year), labels$sim_year)]
+  in_phase <- !is.na(label) & label == phase
+  if (sum(in_phase) < min_n) return(NULL)
+  adverse <- if (identical(placement$adverse_tail, "high")) ref$value >= median_member else ref$value <= median_member
+  list(
+    n = sum(in_phase), n_adverse = sum(adverse[in_phase]), n_all = nrow(ref), n_adverse_all = sum(adverse)
+  )
+}
+
+#' ENSO text of the forecast placement card (item 7)
+#'
+#' The outlook of the target months (D4) and, when the outlook has one phase, the median member
+#' against the reference years of that phase. The RONI of the current event crosses a data seam
+#' upstream, so a value above the record is named as such, without a margin.
+#'
+#' @param enso List from `enso_load()`.
+#' @param forecast The `forecast` entry of the scenario (`forecast_months`).
+#' @param run The run's `init` and `model_id` (`hist_sim$forecast_run`), or `NULL`.
+#' @param placement Result of `step2_window_placement()`.
+#' @param labels Tibble from `enso_window_labels()`, or `NULL`.
+#' @param months_label Target months as text ("Nov - Jan").
+#' @return `NULL` when nothing covers the target months, else a list: `line` and `info`.
+#' @noRd
+enso_placement_text <- function(enso, forecast, run, placement, labels, months_label) {
+  model <- run$model_id
+  system <- if (length(model) == 1L && model %in% names(ENSO_FORECAST_SOURCES)) ENSO_FORECAST_SOURCES[[model]]
+  outlook <- enso_forecast_outlook(enso, forecast$forecast_months, run$init, system)
+  phase <- enso_outlook_phase(outlook)
+  if (is.na(phase)) return(NULL)
+
+  origin <- if (!all(outlook$basis == "forecast")) {
+    " (later outlook, not from this run)"
+  } else if (all(outlook$source == "multimodel") && !identical(system, "multimodel")) {
+    " (multi-model)"
+  } else {
+    ""
+  }
+  roni <- unique(formatC(range(outlook$roni, na.rm = TRUE), digits = 2L, format = "f"))
+  members <- if (phase %in% ENSO_PHASES) outlook[[paste0("prob_", phase)]]
+  state <- paste0(
+    "RONI ", paste(roni, collapse = " to "),
+    if (length(members) && !anyNA(members)) {
+      if (min(members) >= 1) ", all members" else paste0(", at least ", round(100 * min(members)), "% of members")
+    }
+  )
+  record <- enso$observed$roni[!enso$observed$source %in% "forecast"]
+  stronger <- identical(phase, "el_nino") && length(record) && max(outlook$roni, na.rm = TRUE) > max(record)
+  name <- if (identical(phase, "mixed")) "Mixed phases" else enso_label_text(phase)
+  compare <- if (phase %in% ENSO_PHASES) enso_reference_comparison(placement, labels, phase)
+  line <- paste0(
+    "ENSO outlook, ", months_label, origin, ": ", name, " (", state, ")",
+    if (stronger) ", stronger than any event in the record, on this forecast", ".",
+    if (!is.null(compare)) sprintf(
+      " At least as adverse as the median member: %d of %d %s exposure years, %d of %d in all years.",
+      compare$n_adverse, compare$n, name, compare$n_adverse_all, compare$n_all
+    )
+  )
+  list(line = line, info = paste(c(
+    if (!is.null(compare)) sprintf("Few events fall in a window: %d of %d years here.", compare$n, compare$n_all),
+    "Past events differ from each other and are not a forecast. Shares of members are not calibrated. The index",
+    "is relative Ni\u00f1o 3.4 (RONI), which may differ from figures in the press."
+  ), collapse = " "))
+}
+
+
 # Results helpers (items 1, 2, 3 and 5) ----
 
 # Marks on the distribution chart: colour plus symbol, so the phase never rests on colour alone.
@@ -398,6 +526,32 @@ enso_attach_labels <- function(tbl, labels) {
   tbl$enso_neutral <- labels$neutral[idx]
   tbl$enso_la_nina <- labels$la_nina[idx]
   tbl$enso_roni <- labels$roni_exp[idx]
+  tbl
+}
+
+#' Attach the window labels to the Historical rows of the forecast target months (item 7)
+#'
+#' Only rows of `reference_label` are touched: a member's `sim_year` is its index, so forecast
+#' rows stay unlabelled (D3), and annual rows keep their own label.
+#'
+#' @param tbl Merged rows (`.step2_window_merge()`) with `scenario` and `sim_year`.
+#' @param labels Tibble from `enso_window_labels()`, or `NULL`.
+#' @param reference_label Display label of the Historical series of the target months.
+#' @return `tbl` with the columns of `enso_attach_labels()` and `enso_period`.
+#' @noRd
+enso_attach_window_labels <- function(tbl, labels, reference_label) {
+  if (is.null(labels) || is.null(reference_label)) return(tbl)
+  rows <- which(tbl$scenario == reference_label)
+  idx <- match(as.integer(tbl$sim_year[rows]), labels$sim_year)
+  cols <- c(
+    enso_label = "label", enso_el_nino = "el_nino", enso_neutral = "neutral", enso_la_nina = "la_nina",
+    enso_roni = "roni_exp", enso_period = "period"
+  )
+  for (nm in names(cols)) {
+    v <- tbl[[nm]] %||% rep(labels[[cols[[nm]]]][NA_integer_], nrow(tbl))
+    v[rows] <- labels[[cols[[nm]]]][idx]
+    tbl[[nm]] <- v
+  }
   tbl
 }
 

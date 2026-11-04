@@ -1001,9 +1001,11 @@ step2_headline_cards <- function(bands,
     card2$label <- "Placement in climatology"
     card2$value <- txt$value
     card2$note <- paste(c(txt$median_text, txt$note), collapse = " \u00b7 ")
+    # The ENSO line stays out of `note`, which the headline export reads (D1).
     card2$note_html <- shiny::tagList(
       shiny::tags$div(txt$median_text),
-      shiny::tags$div(style = "font-weight: 600;", txt$note)
+      shiny::tags$div(style = "font-weight: 600;", txt$note),
+      if (!is.null(txt$enso)) shiny::tags$div(txt$enso)
     )
     card2$info <- txt$info
     card2$value_native <- as.numeric(fp$summary$share_worse_than_1in10)

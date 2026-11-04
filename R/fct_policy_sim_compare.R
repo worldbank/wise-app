@@ -213,10 +213,12 @@ echart_before_after_hist <- function(baseline_vals, policy_vals,
   lapply(seq_len(nrow(dots)), function(i) {
     lab <- rows$enso_label[[i]]
     if (is.na(lab)) return(unname(dots[i, ]))
+    period <- if ("enso_period" %in% names(rows)) rows$enso_period[[i]] else NA_character_
     pt <- list(
       value = unname(dots[i, ]), outcome = dots[i, 1L], scenario = scenario, source = source,
       enso_text = paste0(
-        "Weather year ", rows$sim_year[[i]], ": ", enso_label_text(lab), " exposure (El Ni\u00f1o ",
+        "Weather year ", if (is.na(period)) rows$sim_year[[i]] else period, ": ", enso_label_text(lab),
+        " exposure (El Ni\u00f1o ",
         pct(rows$enso_el_nino[[i]]), ", Neutral ", pct(rows$enso_neutral[[i]]), ", La Ni\u00f1a ",
         pct(rows$enso_la_nina[[i]]), "; RONI ", format(round(rows$enso_roni[[i]], 2), nsmall = 2), ")"
       )
@@ -2299,7 +2301,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                                  aggregation_cache = NULL,
                                  analysis_unit = reactive(NULL),
                                  annual_channels = reactive(NULL),
-                                 enso_labels = reactive(NULL)) {
+                                 enso_labels = reactive(NULL),
+                                 enso_window_labels = reactive(NULL)) {
   # A forecast window is not an annual weather sample. Every annual view here (cards, violin, adverse years,
   # exceedance, tables, decomposition) reads the annual scenarios only; the charts add the forecast as further series
   # (Historical for the target months and the members, without and with the policy).
@@ -3312,8 +3315,10 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   annual_distribution_chart <- function() {
     curves <- timeseries_curves_rv()
     if (enso_marking() && "sim_year" %in% names(curves)) curves <- enso_attach_labels(curves, enso_labels())
+    curves <- .with_window(curves, "curves")
+    if (enso_marking()) curves <- enso_attach_window_labels(curves, enso_window_labels(), .wv()$reference_label)
     e <- echart_step3_annual_distribution(
-      .with_window(curves, "curves"),
+      curves,
       x_label = metric_axis_label(
         aggregation_method(),
         baseline_hist_sim()$so,

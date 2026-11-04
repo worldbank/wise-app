@@ -3,12 +3,17 @@
 # identical under identical() and all.equal(tolerance = 0), and so must hist_sim. To reuse it for
 # another label-only feature, change what `run_once()` passes in.
 #
-# Usage (repo root): Rscript dev/parity_enso.R [--fixture]
+# Usage (repo root): Rscript dev/parity_enso.R [--fixture] [--forecast] [--economy=MWI]
 #   --fixture  the small data folder of the tests (country TST, about 2 minutes); without it BFA on
 #              WISEAPP_DATA_PATH (about 8 minutes). Iterate on the fixture, run BFA once at the end.
+#   --forecast  adds the seasonal forecast to the run, so the target-month tables are compared too, and
+#               prints the labels of the reference years (D3) and the ENSO line of the placement card.
+#               On real data it uses the specification of the roadmap's prototype, with --economy BFA or MWI.
 # Exit status 1 when any table differs. Not part of the test suite.
 args <- commandArgs(trailingOnly = TRUE)
 use_fixture <- "--fixture" %in% args
+use_forecast <- "--forecast" %in% args
+economy <- sub("^--economy=", "", c(grep("^--economy=", args, value = TRUE), "--economy=BFA")[[1L]])
 suppressMessages({
   pkgload::load_all(".", quiet = TRUE)
   library(shiny)
@@ -20,15 +25,34 @@ cfg <- if (use_fixture) {
   source("tests/testthat/helper-batch-fixture.R", local = TRUE)
   data_dir <- file.path(tempdir(), "parity-data")
   dir.create(data_dir, showWarnings = FALSE)
-  batch_fixture_tree(data_dir, projections = TRUE)
+  batch_fixture_tree(data_dir, projections = TRUE, forecast = use_forecast)
   Sys.setenv(WISEAPP_DATA_PATH = data_dir)
+  fx_var <- if (use_forecast) "t" else "tx"
   list(
     economy = "TST", years = c(2018, 2019), covs = c("hhsize", "urban", "electricity"),
     fe = "year", sim_hist = c(2018, 2019), future = c(2025, 2030),
+    forecast = list(run = "2021-01", start = "2021-02", len = "3"),
+    # The fixture projections carry `tx` only, so its forecast run has no climate scenario.
+    climate = if (use_forecast) character(0) else "ssp3_7_0",
+    weather_inputs = stats::setNames(
+      list(fx_var, c(1, 3), "Continuous", c(2017, 2019)),
+      c(
+        "step1-weather-weather_variable_selector", paste0("step1-weather-", fx_var, "_relativePeriod"),
+        paste0("step1-weather-", fx_var, "_contOrBinned"), "step1-weather-hist_years"
+      )
+    )
+  )
+} else if (use_forecast) {
+  # The prototype of roadmap/enso.md: one wave, t over months 1 to 3 and r over months 1 to 6, both continuous.
+  list(
+    economy = economy, years = c(BFA = 2021, MWI = 2019)[[economy]], covs = c("hhsize", "electricity", "cellphone"),
+    fe = "gaul1_code", sim_hist = c(1991, 2020), future = c(2025, 2035),
+    forecast = list(run = "2026-10", start = "2026-11", len = "3"),
     weather_inputs = list(
-      `step1-weather-weather_variable_selector` = "tx",
-      `step1-weather-tx_relativePeriod` = c(1, 3), `step1-weather-tx_contOrBinned` = "Continuous",
-      `step1-weather-hist_years` = c(2017, 2019)
+      `step1-weather-weather_variable_selector` = c("t", "r"),
+      `step1-weather-t_relativePeriod` = c(1, 3), `step1-weather-t_contOrBinned` = "Continuous",
+      `step1-weather-r_relativePeriod` = c(1, 6), `step1-weather-r_contOrBinned` = "Continuous",
+      `step1-weather-hist_years` = c(1991, 2020)
     )
   )
 } else {
@@ -52,6 +76,15 @@ enso_tables <- if (use_fixture) {
   md$enso
 }
 stopifnot(!is.null(enso_tables))
+if (use_fixture && use_forecast) {
+  # The fixture table ends in 1954; the same RONI cycle, moved to cover the fixture's run and years.
+  months <- seq(as.Date("2000-01-01"), as.Date("2022-12-01"), by = "month")
+  pos <- (seq_along(months) - 1L) %% nrow(enso_tables$observed) + 1L
+  enso_tables$observed <- tibble::tibble(
+    month = months, source = "cpc", roni = enso_tables$observed$roni[pos], phase = enso_tables$observed$phase[pos]
+  )
+  enso_tables$forecast <- NULL
+}
 cash <- list(transfer_amount_usd = 60, targeting = "exante_poor", targeting_threshold_pct = 30, admin_cost_pct = 5)
 
 run_once <- function(enso_value) {
@@ -109,13 +142,19 @@ run_once <- function(enso_value) {
     session$elapse(1000)
     session$flushReact()
     session$setInputs(
-      `step2-weathersim-hist_years` = cfg$sim_hist, `step2-weathersim-climate` = "ssp3_7_0",
+      `step2-weathersim-hist_years` = cfg$sim_hist, `step2-weathersim-climate` = cfg$climate %||% "ssp3_7_0",
       `step2-weathersim-fut_period_1` = cfg$future, `step2-weathersim-fut_period_2` = c(2015, 2015),
       `step2-weathersim-fut_period_3` = c(2015, 2015), `step2-weathersim-residuals` = "original",
       `step2-weathersim-include_coef_uncertainty` = TRUE,
       `step2-weathersim-propagate_all_covariate_uncertainty` = FALSE
     )
     session$flushReact()
+    if (use_forecast) {
+      session$setInputs(`step2-weathersim-fc_include` = TRUE, `step2-weathersim-fc_run` = cfg$forecast$run)
+      session$flushReact()
+      session$setInputs(`step2-weathersim-fc_len` = cfg$forecast$len, `step2-weathersim-fc_start` = cfg$forecast$start)
+      session$flushReact()
+    }
     session$setInputs(`step2-weathersim-run_sim` = 1L)
     session$flushReact()
     session$elapse(1000)
@@ -166,6 +205,23 @@ run_once <- function(enso_value) {
       tables = tables, hist = s2$hist_sim()[setdiff(names(s2$hist_sim()), c(".artifact"))],
       baseline_months = labs
     )
+    if (use_forecast) {
+      hs <- s2$hist_sim()
+      sc <- s2$saved_scenarios()
+      label <- names(sc)[vapply(sc, function(x) length(x$reference_pipelines) > 0L, logical(1L))][[1L]]
+      w <- step2_window_series(
+        sc[[label]], label, "mean", hs$so, hs$residuals %||% "original", skip_coef = TRUE,
+        pov_line = step2_default_pov_line(hs$so), seed = .step2_run_seed(hs)
+      )
+      pl <- step2_window_placement(w, "mean", hs$so)
+      lab <- s2$enso_window_labels()
+      out$window <<- list(
+        labels = lab, placement = pl, forecast = sc[[label]]$forecast, run = hs$forecast_run,
+        text = if (!is.null(enso_value)) {
+          enso_placement_text(enso_value, sc[[label]]$forecast, hs$forecast_run, pl, lab, w$months_label)
+        }
+      )
+    }
   })
   out
 }
@@ -189,4 +245,23 @@ if (!all(ok)) print(names(ok)[!ok])
 cat("baseline_months identical:", identical(a$baseline_months, b$baseline_months), "\n")
 cat("baseline_months (non-zero):", paste(sprintf("%d=%.3f", which(a$baseline_months > 0), a$baseline_months[a$baseline_months > 0]), collapse = " "), "\n")
 cat("hist_sim identical apart from the artifact:", isTRUE(all.equal(a$hist, b$hist, tolerance = 0)), "\n")
+if (use_forecast) {
+  win <- b$window
+  stopifnot(is.null(a$window$labels), !is.null(win$labels))
+  cat("window tables compared:", paste(grep("forecast_window", common, value = TRUE), collapse = ", "), "\n")
+  cat("reference years:", length(win$forecast$reference_years), "\n")
+  print(table(win$labels$label, useNA = "ifany"))
+  # What the prototype did: the mean RONI of the target months alone, without the fitted lags.
+  target <- as.integer(format(as.Date(win$forecast$forecast_months), "%m"))
+  simple <- enso_year_labels(
+    enso_tables$observed, win$forecast$reference_years, enso_month_weights(target), 0L, start_month = target[[1L]]
+  )
+  cat("target months alone, by the same share rule:\n")
+  print(table(simple$label, useNA = "ifany"))
+  print(as.data.frame(win$labels), digits = 3)
+  cat("run:", format(win$run$init), win$run$model_id, "\n")
+  cat("median member:", win$placement$summary$member_median, "\n")
+  cat("ENSO line:", win$text$line, "\n")
+  cat("ENSO info:", win$text$info, "\n")
+}
 quit(status = if (all(ok)) 0L else 1L)

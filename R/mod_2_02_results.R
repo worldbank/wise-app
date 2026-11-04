@@ -982,7 +982,16 @@ mod_2_02_results_server <- function(id,
         w, .selected_method(), hist_sim()$so, deviation = deviation,
         scenario = saved_scenarios()[[w$scenario_label]],
         placement = if (identical(deviation, "none")) {
-          tryCatch(step2_window_placement(w, .selected_method(), hist_sim()$so), error = function(e) NULL)
+          tryCatch({
+            pl <- step2_window_placement(w, .selected_method(), hist_sim()$so)
+            pl$enso <- if (!is.null(enso())) {
+              enso_placement_text(
+                enso(), saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, pl,
+                enso_window_labels_rv(), w$months_label
+              )
+            }
+            pl
+          }, error = function(e) NULL)
         },
         hist_sim = hist_sim(),
         metadata = step2_card_metadata(hist_sim(), .selected_method(), pov_line_val(), weight_key()),
@@ -1566,6 +1575,16 @@ mod_2_02_results_server <- function(id,
       )
       if (all(is.na(lab$label))) NULL else lab
     })
+    # Labels of the reference years of the forecast target months (D3); members have none.
+    enso_window_labels_rv <- reactive({
+      en <- enso()
+      hs <- hist_sim()
+      if (is.null(en) || is.null(hs) || !isTRUE(.has_window())) return(NULL)
+      sc <- saved_scenarios()
+      has_ref <- vapply(sc, function(s) length(s$reference_pipelines) > 0L, logical(1L))
+      lab <- enso_window_labels(en$observed, sc[has_ref][[1L]]$forecast, enso_window(hs$sim_summary$weather))
+      if (all(is.na(lab$label))) NULL else lab
+    })
     output$has_enso <- shiny::reactive(!is.null(enso_labels_rv()))
     outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
     .enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels_rv()))
@@ -1743,8 +1762,12 @@ mod_2_02_results_server <- function(id,
       req(annual_distribution_curves_rv())
       curves <- annual_distribution_curves_rv()
       if (.enso_marking()) curves <- enso_attach_labels(curves, enso_labels_rv())
+      curves <- .with_window(curves, "curves")
+      if (.enso_marking() && !is.null(.window_views_or_null())) {
+        curves <- enso_attach_window_labels(curves, enso_window_labels_rv(), window_series_rv()$reference_label)
+      }
       e <- echart_annual_distribution(
-        .with_window(curves, "curves"),
+        curves,
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -2405,6 +2428,7 @@ mod_2_02_results_server <- function(id,
       aggregation_cache = aggregation_cache,
       derived_results_frame = derived_results_frame_rv,
       enso_labels = enso_labels_rv,
+      enso_window_labels = enso_window_labels_rv,
       timeseries_curves = reactive({
         # Diagnostics is never driven by provisional data: while a run
         # streams, return the last committed value (no dependency on the

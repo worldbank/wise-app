@@ -355,14 +355,17 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
 #' @param baseline_months Share of the baseline weight in each interview month
 #'   (`enso_baseline_months()`), or `NULL`. Kept beside `sim_summary`, not in it: only the ENSO
 #'   labels of the Results read it, and Step 3 does not copy it (D1 of `roadmap/enso.md`).
+#' @param forecast_run `init` and `model_id` of the forecast run, or `NULL`. Beside `sim_summary`
+#'   for the same reason: only the ENSO outlook of the Results reads it.
 #' @return `result`, with the fields set on `hist_sim_result`.
 #' @noRd
 wise_step2_annotate <- function(result, sw, hist_years, baseline_label,
                                 baseline_dropped = NULL, residual_match = NULL,
                                 residuals_requested = NULL, residuals_effective = NULL,
-                                baseline_months = NULL) {
+                                baseline_months = NULL, forecast_run = NULL) {
   result$hist_sim_result$hist_label <- step2_hist_label(hist_years)
   result$hist_sim_result$baseline_months <- baseline_months
+  result$hist_sim_result$forecast_run <- forecast_run
   result$hist_sim_result$sim_summary <- list(
     weather = sw,
     historical_years = unlist(hist_years, use.names = FALSE),

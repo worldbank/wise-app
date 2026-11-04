@@ -517,6 +517,201 @@ test_that("forecast-window rows stay unlabelled when marked", {
   expect_true(all(vapply(win$data, function(d) !is.list(d), logical(1L))))
 })
 
+# Forecast window (item 7) ----
+
+enso_window_fixture <- function(years = 1950:1952) {
+  list(forecast_months = as.Date(c("1953-11-01", "1953-12-01", "1954-01-01")), reference_years = years)
+}
+
+test_that("a forecast table with the text NA for empty values loads, as upstream writes it", {
+  d <- withr::local_tempdir()
+  enso_fixture_tree(d)
+  path <- file.path(d, "metadata", "enso_forecast.csv")
+  lines <- readLines(path)
+  lines[-1L] <- gsub(",(?=,|$)", ",NA", lines[-1L], perl = TRUE)
+  writeLines(lines, path)
+  e <- enso_load(enso_fixture_params(d))
+  expect_equal(nrow(e$forecast), 12L)
+  expect_true(is.numeric(e$forecast$roni) && is.numeric(e$forecast$prob_el_nino))
+  mm <- e$forecast[e$forecast$source == "multimodel", ]
+  mm <- mm[order(mm$month), ]
+  expect_true(is.na(mm$roni[[1L]]))
+  expect_true(is.na(mm$prob_el_nino[[1L]]))
+  expect_equal(mm$roni[[2L]], 1)
+})
+
+test_that("window labels weight the target months equally and date a year by the window's start", {
+  lab <- enso_window_labels(enso_fixture()$observed, enso_window_fixture(), 1L)
+  # 1950: Oct, Nov, Dec 1950 feed Nov 1950 to Jan 1951 (0.6, 0.8, 1.0)
+  expect_equal(lab$el_nino[lab$sim_year == 1950L], 1)
+  expect_equal(lab$roni_exp[lab$sim_year == 1950L], 0.8)
+  expect_equal(lab$label[lab$sim_year == 1950L], "el_nino")
+  # 1951: Oct, Nov, Dec 1951 (-0.2, -0.4, -0.6): the January lag sits in the year the window starts
+  expect_equal(lab$neutral[lab$sim_year == 1951L], 2 / 3)
+  expect_equal(lab$la_nina[lab$sim_year == 1951L], 1 / 3)
+  expect_equal(lab$label[lab$sim_year == 1951L], "neutral")
+  expect_equal(lab$period[[1L]], "Nov 1950 - Jan 1951")
+  # The fitted lags count: with months 1 to 3, 1951 reads Aug 1951 to Dec 1951
+  wide <- enso_window_labels(enso_fixture()$observed, enso_window_fixture(), 1:3)
+  expect_equal(wide$roni_exp[wide$sim_year == 1951L], mean(c(0.2, 0, -0.2, 0, -0.2, -0.4, -0.2, -0.4, -0.6)))
+  # A window inside one calendar year
+  one <- list(forecast_months = as.Date(c("1953-02-01", "1953-03-01")), reference_years = 1951L)
+  lab_one <- enso_window_labels(enso_fixture()$observed, one, 1L)
+  expect_equal(lab_one$roni_exp, mean(c(1.2, 1.4)))
+  expect_equal(lab_one$period, "Feb 1951 - Mar 1951")
+  # One month, and a year whose months leave the table
+  single <- list(forecast_months = as.Date("1953-02-01"), reference_years = c(1951L, 1960L))
+  lab_single <- enso_window_labels(enso_fixture()$observed, single, 1L)
+  expect_equal(lab_single$period, c("Feb 1951", "Feb 1960"))
+  expect_true(is.na(lab_single$label[[2L]]))
+})
+
+test_that("window labels go on the target-month Historical rows only, never on members", {
+  lab <- enso_window_labels(enso_fixture()$observed, enso_window_fixture(1:3 + 1949L), 1L)
+  member_lab <- lab
+  member_lab$sim_year <- 1:3 # a member index that equals a labelled year must not match
+  tbl <- rbind(
+    data.frame(scenario = "Historical", sim_year = 1950:1952, value = 1),
+    data.frame(scenario = "Historical (Nov - Jan)", sim_year = 1950:1952, value = 2),
+    data.frame(scenario = "Forecast (Nov - Jan)", sim_year = 1:3, value = 3)
+  )
+  annual <- enso_attach_labels(tbl, enso_labels_fixture())
+  out <- enso_attach_window_labels(annual, lab, "Historical (Nov - Jan)")
+  hist <- out$scenario == "Historical (Nov - Jan)"
+  expect_equal(out$enso_label[hist], lab$label)
+  expect_equal(out$enso_period[hist], lab$period)
+  expect_true(all(is.na(out$enso_label[startsWith(out$scenario, "Forecast")])))
+  expect_identical(out$enso_label[out$scenario == "Historical"], annual$enso_label[annual$scenario == "Historical"])
+  expect_true(all(is.na(out$enso_period[!hist])))
+  expect_true(all(is.na(
+    enso_attach_window_labels(annual, member_lab, "Historical (Nov - Jan)")$enso_label[startsWith(out$scenario, "Forecast")]
+  )))
+  # Without annual columns, and without labels or a window
+  bare <- enso_attach_window_labels(tbl, lab, "Historical (Nov - Jan)")
+  expect_equal(bare$enso_label[bare$scenario == "Historical (Nov - Jan)"], lab$label)
+  expect_identical(enso_attach_window_labels(tbl, NULL, "x"), tbl)
+  expect_identical(enso_attach_window_labels(tbl, lab, NULL), tbl)
+})
+
+test_that("the tooltip of a target-month draw names its months", {
+  rows <- data.frame(
+    sim_year = c(1997L, 1998L), enso_label = "el_nino", enso_el_nino = 1, enso_neutral = 0, enso_la_nina = 0,
+    enso_roni = 2, enso_period = c("Nov 1997 - Jan 1998", NA)
+  )
+  pts <- .enso_dot_data(cbind(c(1, 2), c(1, 1)), rows, "Historical (Nov - Jan)", "All")
+  expect_match(pts[[1L]]$enso_text, "Weather year Nov 1997 - Jan 1998: El Ni", fixed = TRUE)
+  expect_match(pts[[2L]]$enso_text, "Weather year 1998: El Ni", fixed = TRUE)
+})
+
+test_that("the outlook phase needs at least half of the months", {
+  ph <- function(...) enso_outlook_phase(list(phase = c(...)))
+  expect_equal(ph("el_nino", "el_nino", "neutral"), "el_nino")
+  expect_equal(ph("el_nino", "neutral", "la_nina"), "mixed")
+  expect_equal(ph("el_nino", "neutral"), "mixed")
+  expect_equal(ph(NA, "la_nina"), "la_nina")
+  expect_true(is.na(ph(NA_character_)))
+})
+
+enso_placement_fixture <- function(tail = "low") {
+  list(
+    reference = data.frame(year = 1950:1955, value = c(1, 2, 3, 4, 5, 6)),
+    summary = list(member_median = 3), adverse_tail = tail
+  )
+}
+enso_reference_labels <- function(labels) tibble::tibble(sim_year = 1950:1955, label = labels)
+
+test_that("the reference comparison counts as the placement does, and hides below three years", {
+  lab <- enso_reference_labels(c("el_nino", "el_nino", "neutral", "el_nino", "la_nina", "mixed"))
+  low <- enso_reference_comparison(enso_placement_fixture(), lab, "el_nino")
+  expect_equal(unlist(low), c(n = 3, n_adverse = 2, n_all = 6, n_adverse_all = 3)) # ties count as adverse
+  high <- enso_reference_comparison(enso_placement_fixture("high"), lab, "el_nino")
+  expect_equal(high$n_adverse, 1L)
+  expect_equal(high$n_adverse_all, 4L)
+  expect_null(enso_reference_comparison(enso_placement_fixture(), lab, "la_nina"))
+  expect_null(enso_reference_comparison(enso_placement_fixture(), NULL, "el_nino"))
+  p <- enso_placement_fixture()
+  p$summary$member_median <- NA_real_
+  expect_null(enso_reference_comparison(p, lab, "el_nino"))
+})
+
+test_that("the placement text reads the run's system, falls back, and says when it is a later outlook", {
+  e <- enso_fixture()
+  months <- list(forecast_months = as.Date(c("1953-11-01", "1953-12-01", "1954-01-01")))
+  lab <- enso_reference_labels(rep(c("el_nino", "neutral"), 3L))
+  run <- list(init = as.Date("1953-10-01"), model_id = "ecmwf_seas51")
+  txt <- function(run, labels = lab, enso = e, f = months) {
+    enso_placement_text(enso, f, run, enso_placement_fixture(), labels, "Nov - Jan")
+  }
+  own <- txt(run)
+  expect_match(own$line, "^ENSO outlook, Nov - Jan: ")
+  expect_match(own$line, "At least as adverse as the median member: 2 of 3 El Ni\u00f1o exposure years, 3 of 6 in all years.",
+    fixed = TRUE)
+  expect_match(own$info, "Few events fall in a window: 3 of 6 years here.", fixed = TRUE)
+  # An unknown model falls back on the multi-model mean
+  expect_match(txt(list(init = run$init, model_id = "other"))$line, "(multi-model)", fixed = TRUE)
+  # Another initialisation: months from enso.csv, without member shares
+  later <- txt(list(init = as.Date("1953-09-01"), model_id = "ecmwf_seas51"))
+  expect_match(later$line, "(later outlook, not from this run)", fixed = TRUE)
+  expect_no_match(later$line, "members")
+  expect_match(txt(NULL)$line, "later outlook", fixed = TRUE)
+  # Below three years of the phase: the outlook stays, the comparison goes
+  few <- txt(run, enso_reference_labels(rep("neutral", 6L)))
+  expect_no_match(few$line, "At least as adverse")
+  expect_match(few$info, "^Past events")
+  # Nothing covers the target months
+  expect_null(txt(run, f = list(forecast_months = as.Date("1990-01-01"))))
+})
+
+test_that("the outlook drops member shares at an empty lead and names a value above the record", {
+  e <- enso_fixture()
+  run <- list(init = e$forecast$init_date[[1L]], model_id = "ecmwf_seas51")
+  f <- function(months) list(forecast_months = as.Date(months))
+  lab <- enso_reference_labels(rep("el_nino", 6L))
+  e$forecast$phase <- "el_nino"
+  e$forecast$roni[is.na(e$forecast$roni)] <- 1
+  e$observed$roni[[1L]] <- 5 # the record
+  full <- e$forecast$month[!is.na(e$forecast$prob_el_nino) & e$forecast$source == "ecmwf_51"]
+  shares <- enso_placement_text(e, f(full), run, enso_placement_fixture(), lab, "x")
+  expect_match(shares$line, "all members", fixed = TRUE)
+  e_some <- e
+  e_some$forecast$prob_el_nino[e_some$forecast$prob_el_nino == 1] <- 0.925
+  expect_match(
+    enso_placement_text(e_some, f(full), run, enso_placement_fixture(), lab, "x")$line, "at least 92% of members",
+    fixed = TRUE
+  )
+  first <- min(e$forecast$month)
+  edge <- enso_placement_text(e, f(c(first, full)), run, enso_placement_fixture(), lab, "x")
+  expect_no_match(edge$line, "members")
+  expect_no_match(shares$line, "stronger than any event")
+  e$forecast$roni <- 9
+  strong <- enso_placement_text(e, f(full), run, enso_placement_fixture(), lab, "x")
+  expect_match(strong$line, "stronger than any event in the record, on this forecast", fixed = TRUE)
+  # A forecast month of the observed table is not part of the record
+  e$observed$source[nrow(e$observed)] <- "forecast"
+  e$observed$roni[nrow(e$observed)] <- 20
+  expect_match(enso_placement_text(e, f(full), run, enso_placement_fixture(), lab, "x")$line, "stronger than")
+})
+
+test_that("the ENSO line reaches the card and its popover, and not the exported note", {
+  reference <- 1:20
+  placement <- c(.forecast_placement_stats(c(4, 5, 6, 7, 8), reference, "low"),
+    list(reference = data.frame(year = 2001:2020, value = reference), method = "mean", adverse_tail = "low"))
+  bands <- data.frame(
+    scenario = c("Historical", "Forecast (Nov - Jan)"), value = c(10, 6), is_historical = c(TRUE, FALSE),
+    lo = c(9, 5), hi = c(11, 7)
+  )
+  plain <- step2_headline_cards(bands, forecast_placement = placement)
+  placement$enso <- list(line = "ENSO outlook line.", info = "ENSO info.")
+  cards <- step2_headline_cards(bands, forecast_placement = placement)
+  card <- Filter(function(x) identical(x$label, "Placement in climatology"), cards)[[1L]]
+  card0 <- Filter(function(x) identical(x$label, "Placement in climatology"), plain)[[1L]]
+  expect_match(as.character(card$note_html), "ENSO outlook line.", fixed = TRUE)
+  expect_match(card$info, "ENSO info.", fixed = TRUE)
+  expect_identical(card$note, card0$note)
+  expect_no_match(as.character(card0$note_html), "ENSO")
+  expect_identical(step2_headline_df(cards), step2_headline_df(plain))
+})
+
 test_that("trajectory bands shade runs of El Nino and La Nina years only", {
   ts <- data.frame(
     scenario = "Historical", model_id = "m1", sim_year = 2001:2010, is_historical = TRUE,

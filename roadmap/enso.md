@@ -27,7 +27,8 @@ Update this table in the same change as the work, with the commit and what was v
 | Merge `enso` into `seasonal-forecast` | Done | Merge commit on `seasonal-forecast` (not pushed) | `devtools::test(filter = "fct.enso")` on the merged branch: 126 pass, 0 fail, 0 skip |
 | Phase 1: load, items 1, 2, 3, 5 | Done | `seasonal-forecast`, "Show ENSO exposure years in Steps 1 to 3 (Phase 1, items 1, 2, 3, 5)" (not pushed) | `devtools::test()`: only `test-deploy-contract.R` fails (manifest lacks `R/fct_enso.R` and the forecast files; settled by the manifest step before the PR). Focused run (`fct.enso`, overview metadata, export wiring, sim and policy compare, diagnostics, step 2 input, batch pipeline): 1201 pass, 0 fail. D1 parity (scratch script, Steps 1 to 3 in `shiny::testServer`, `enso` NULL against loaded, `identical()` and `all.equal(tolerance = 0)` on every registered export table): fixture TST 128 of 128, BFA 128 of 128 identical, `baseline_months` and `hist_sim` equal. UI (`dev/ui_drive.R`): BFA with the file (Step 1 sentence, toggle in Steps 2 and 3, section, Diagnostics bands, no errors), BFA with the file removed (no sentence, toggle or section, no errors), MWI 2019 (all elements, no errors). Loader: `load_overview_metadata()` carries an optional `enso` element; on Databricks the two files join the existing request batch (+2 requests per load, no DuckDB session) |
 | Phase 1: items 4, 6 | Done | `seasonal-forecast`, "Add ENSO policy comparison and weather support by exposure (Phase 1, items 4, 6)" (not pushed) | Focused run (`fct.enso`, export wiring, diagnostics, sim and policy compare): 2400 pass, 0 fail. D1 parity (`dev/parity_enso.R`): fixture 128 of 128, BFA 128 of 128 tables identical with and without the ENSO tables; the only extra tables with the file are the six ENSO ones (`enso_exposure_years` and `policy_enso_exposure_years`, by method). UI on BFA (default weather `t` binned, 1991-2020, SSP3-7.0, cash transfer of 1): Step 3 section and sentence render, Diagnostics line renders, `errors` clean. Real-data check of the continuous branch on the saved BFA run (`t` binned and `r` continuous, window months 1 to 12 for `r`): `r` outside the fitted range in 5.2% of Historical values in 7 El Ni\u00f1o years, 3.6% in 9 La Ni\u00f1a years, 4.9% in all years. Not run this stage: the file-removed and MWI browser checks (the new elements use the same `has_enso` and `enso_labels` gates as items 2 and 3, which were checked). Item 6 uses the weather of the survey years at the survey cells as the fitted-sample reference, as the density panel's Model support does; a binned variable is checked on its bins, which the binning leaves almost always inside the sample, so its line reads 0.0% |
-| Phase 2: items 7, 8, docs | Not started | | |
+| Phase 2: item 7 | Done | `seasonal-forecast`, "Add ENSO outlook and reference-year labels to the forecast window (Phase 2, item 7)" (not pushed) | `devtools::test()`: only `test-deploy-contract.R:76` fails (manifest, settled before the PR). D1 parity with a forecast (`dev/parity_enso.R --forecast`, new mode; Nov to Jan, `t` months 1 to 3, `r` months 1 to 6): BFA 124 of 124, MWI 124 of 124, fixture 128 of 128 tables identical, including `forecast_window_headline_summary`; `hist_sim` equal. BFA and MWI ran before a last wording change to the line ("all members"); the fixture ran after it. The ENSO line stays out of the card's `note`, so the headline export does not change; item 8 owes it to the export. Phase 0 bug fixed: the real `enso_forecast.csv` writes empty values as the text `NA`, so the validator rejected the whole table and the outlook would have read as a later outlook. The run's `init` and `model_id` sit beside `baseline_months` on `hist_sim` (`forecast_run`), outside `fct_run_simulation()`. UI (`dev/ui_drive.R`, app defaults, async path): BFA Steps 2 and 3 and MWI Step 2, line renders, members unlabelled (51 of 51), target-month Historical 30 of 30 labelled, `errors` clean. BFA with both files removed and a forecast: placement card present, no line, toggle or section, no errors. Not run: MWI Step 3 and Step 3 with the files removed in the browser. The line shows only in the level view of Step 2: Step 3 cards have no placement text, and a difference view has no placement card |
+| Phase 2: item 8, docs | Not started | | |
 
 Branch plan: Phase 0 is on `enso` (worktree `../wise-app-enso`). When the forecast work is committed, merge `enso` into `seasonal-forecast` and do all later work there, in the main checkout. ENSO and the forecast go to `dev` in one PR. Keep ENSO in its own commits for review.
 
@@ -136,6 +137,16 @@ Forecast window, labelling reference years by mean RONI of the target months (10
 
 MWI shows why the comparison is worth having: the forecast looks ordinary against all years but poor against past El Niño years, and the three strong events disagree with each other. In BFA the forecast sits below every reference year while El Niño years look like the rest, so ENSO phase does not account for that gap in the reference record. That gap may come from this default level specification, warming or the window. It is worth a look in the forecast checks, independent of this plan.
 
+Recheck under D3 (2026-11-04, `dev/parity_enso.R --forecast`). The labels depend only on the target months and the fitted window, so BFA and MWI share them: 6 El Niño, 8 La Niña, 12 Neutral and 4 Mixed, against 10, 12, 8 and 0 for the target months alone (that count reproduces with the share rule and no lags). El Niño years: 1991, 1994, 1997, 2002, 2004 and 2015. The three strong years keep their label. The lags pull the window back before onset, so 2006 and 2009 tie at 0.50 and become Mixed, and 2000 and 2017 tie on the La Niña side.
+
+| Median member, mean welfare | BFA 2021 | MWI 2019 |
+|---|---|---|
+| Value | 4.841 | 2.502 |
+| Reference years at least as adverse, all | 1 of 30 | 15 of 30 |
+| Same, El Niño exposure years | 1 of 6 | 1 of 6 |
+
+These runs use `hhsize`, `electricity` and `cellphone` with a `gaul1_code` fixed effect. That is not the prototype's model, whose covariates were not kept, so the levels differ from the table above. The MWI reading holds. The BFA result moves with the specification: with the app defaults (BFA 2018 and 2021, `t` binned) the card reads 10 of 10 and 28 of 30, with the median member better than the median year.
+
 ## Design decisions
 
 ### D1. Annotation only
@@ -162,14 +173,16 @@ A strength tier (RONI of 1.5 or more) can be derived in the app. Episode rules a
 |---|---|
 | Historical (annual) | D2 |
 | Climate scenarios | The template year's D2 label |
-| Historical (same months as forecast) | D2 with equal weight on the target months as $\mu$, so the fitted window is treated the same way. The reference year is the year the window starts, so November 1997 to January 1998 is 1997 and the event is not split. The prototype above used the target months alone; recheck with this rule. |
+| Historical (same months as forecast) | D2 with equal weight on the target months as $\mu$, so the fitted window is treated the same way. The reference year is the year the window starts, so November 1997 to January 1998 is 1997 and the event is not split, as in `refyear_<year>` of `.get_forecast_weather()`. Rechecked: see the figures after the forecast window prototype. |
 | Forecast members | No per-member label. One outlook for the run, below |
 
 Guard: in window tables `sim_year` is the member index for members, so the join must skip `.step2_is_window_forecast()` rows.
 
 ### D4. ENSO outlook for a forecast run
 
-Read `enso_forecast.csv` for the target months. Prefer the row of the same system as the weather run (`ecmwf_51` for SEAS5), so the state describes what is simulated, and fall back on `multimodel`. Show it only when `init_date` equals the run's `init`, because the file keeps only the latest initialisation. Otherwise show the months from `enso.csv` and say it is a later outlook. Probabilities are empty at the first and last lead, so a window reaching those months shows RONI only. Probabilities are shares of members, not calibrated, as for the weather members.
+Read `enso_forecast.csv` for the target months. Prefer the row of the same system as the weather run (`ecmwf_51` for SEAS5), so the state describes what is simulated, and fall back on `multimodel`. Show it only when `init_date` equals the run's `init`, because the file keeps only the latest initialisation. Otherwise show the months from `enso.csv` and say it is a later outlook. Probabilities are empty at the first and last lead, so a window reaching those months shows RONI only. Probabilities are shares of members, not calibrated, as for the weather members. The run's model id maps to the source in `ENSO_FORECAST_SOURCES` (`ecmwf_seas51` to `ecmwf_51`); an unmapped model uses `multimodel`.
+
+Item 7 compares the median member with the reference years of the outlook's phase, the phase of at least half of the target months, so a La Niña or Neutral outlook is not set against El Niño years. A Mixed outlook has no comparison.
 
 ### D5. Keep the statistics modest
 
@@ -240,7 +253,7 @@ These go in the section note, the info popover and `docs/`.
 - Labels describe the ENSO state of the months that enter the model for each household. A simulation year is a composite, not a real year.
 - Differences reflect only the selected weather variables and months, through the fitted response. Prices, markets, fisheries, health, floods and other ENSO channels are not modelled. A small difference does not mean ENSO has a small welfare effect.
 - The model learns from weather, so it can simulate El Niño years it did not observe, as long as their weather lies in the fitted range. Its response comes mostly from local differences, so it may understate a widespread shock.
-- Few events fall in a window: 10 El Niño periods in 30 years and 3 strong ones, for November to January. They differ from each other. Past events are not a forecast.
+- Few events fall in a window: 6 El Niño exposure years in 30 and 3 strong ones, for November to January with months 1 to 6. They differ from each other. Past events are not a forecast.
 - Climate scenarios keep the observed ENSO sequence. Changes in ENSO under warming are not represented.
 - The index is relative Niño 3.4 (RONI). It flags fewer El Niño months than the traditional ONI in recent decades and may differ from figures in the press.
 
