@@ -149,7 +149,7 @@ Open:
 
 - Real draft-2 files from `wise-app-data` (CDS requests need approval there), then a first review of placement and skill on real BFA data.
 - Step 6 not done: a `kind` field on scenarios and tables, and shared weather helpers with `get_weather()` (protected numerics; needs parity runs on all engines). Decision 3.
-- Step 3 still rejects policy runs with a forecast: the exposure validator needs the interview month, the weight scale and the target month separated. Design and options: `roadmap/seasonal_forecast_step3_design.md`. Decision 1.
+- Done since: Step 3 runs static levers and regular transfers on a forecast (`roadmap/seasonal_forecast.md` item C). Design and options: `roadmap/seasonal_forecast_step3_design.md`.
 - Batch: a `sim.forecast` run works end to end, its `sim_id` carries the run's publication identity, and the `forecast` table plus the `placement`, `skill` and `season` summary rows are written; a CI test builds a tiny forecast fixture (`batch_fixture_tree(forecast = TRUE)`).
 - `manifest.json` is regenerated only when the branch is ready for the PR into `dev` (`deploy-contract` fails until then).
 

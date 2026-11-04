@@ -42,7 +42,7 @@ $$\Delta^{m}_{c\mu} = \begin{cases} \bar x^{\ m}_{c\mu}(P_s) - \bar x^{\ m}_{c\m
 
 with $\varepsilon = 0.001$ to avoid division by zero in dry months. The form is set by variable name: rainfall (`r`, `rx5day`) and the counts of days (`r20`, `tx35`, `tr`) use the multiplicative form; temperatures (`t`, `tn`, `tx`), soil moisture (`mrsos`) and standardised indices (`spei6`) use the additive form. A variable that is not listed falls back to its unit: millimetres (`mm`, `mm/day`) and `days` are multiplicative and every other unit is additive. Defining the form by name keeps a unit written differently (for example `mm/day`) from silently switching rainfall to an additive change, which could make rainfall negative.
 
-A multiplicative count of days (`r20`, `tx35`, `tr`) is also limited to the days of its calendar month after the change factor is applied, because a count cannot exceed the month (`multiplicative_days` in `build_perturbation_method()`).
+A multiplicative count of days, such as days of heavy rain or hot days, is also limited to the days of its calendar month after the change factor is applied, because a count cannot exceed the month.
 
 The change at the location is the population-weighted mean of the cell changes, with the weights and the missing-value rule of Eq. (3.1) in [10_data](10_data.md). If the climate grid is coarser than the survey cells, the survey cells are mapped to their parent climate cell.
 

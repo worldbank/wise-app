@@ -2212,8 +2212,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                                  analysis_unit = reactive(NULL),
                                  annual_channels = reactive(NULL)) {
   # A forecast window is not an annual weather sample. Every annual view here (cards, violin, adverse years,
-  # exceedance, tables, decomposition) reads the annual scenarios only; the forecast has the second group of each
-  # section (Historical for the target months and the members, without and with the policy).
+  # exceedance, tables, decomposition) reads the annual scenarios only; the charts add the forecast as further series
+  # (Historical for the target months and the members, without and with the policy).
   baseline_saved_all <- baseline_saved_scenarios
   policy_saved_all <- policy_saved_scenarios
   baseline_saved_scenarios <- reactive(.step3_annual_scenarios(baseline_saved_all()))

@@ -6,7 +6,7 @@ depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
 code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_window.R, R/fct_forecast_skill.R, R/fct_run_simulation.R]
-verified_against: 523a585
+verified_against: b37358e
 ---
 
 # Seasonal forecast scenario (experimental pilot)
@@ -114,7 +114,7 @@ None yet. Entries will be added with the backtest. Full entries are in [referenc
 | Hindcast skill of the target months | 4 | `R/fct_forecast_skill.R` `.forecast_skill_table()`, `.forecast_skill_summary()` |
 | Policy under the forecast: exposure contract for the window, reference pipelines | 5 | `R/fct_policy_metric_decompose.R` `.policy_forecast_window()`, `.validate_policy_annual_exposure()`; `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()` |
 | Policy effect: window views, cards, batch rows | 5 | `R/fct_forecast_window.R` `step3_window_views()`, `.step3_window_cards()`; `R/fct_forecast_policy.R` `step3_forecast_policy()`, `step3_forecast_batch_tables()` |
-| Member placement in the reference | 4 | `R/fct_forecast_placement.R` `.forecast_placement_stats()`, `step2_forecast_placement()` |
+| Member placement in the reference | 4 | `R/fct_forecast_placement.R` `.forecast_placement_stats()`, `step2_forecast_placement()`; `R/fct_forecast_window.R` `step2_window_placement()` |
 | Cards comparator and training-month warning | 4 | `R/fct_sim_compare.R` `step2_headline_cards()` |
-| Forecast window views: the target-month samples through the annual view builders, the Forecast row, the exceedance position, the merged Step 2 charts | 4 | `R/fct_forecast_window.R` `step2_window_series()`, `step2_window_views()`, `.step2_window_adverse_dots()`, `.step2_window_exceedance_position()`, `.step2_window_merge()`; `R/mod_2_02_results.R` and `R/fct_policy_sim_compare.R` (one chart per section) |
+| Forecast window views: the target-month samples through the annual view builders, the Forecast row, the exceedance position, the merged charts | 4 | `R/fct_forecast_window.R` `step2_window_series()`, `step2_window_views()`, `.step2_window_adverse_dots()`, `.step2_window_exceedance_position()`, `.step2_window_merge()`; `R/mod_2_02_results.R` and `R/fct_policy_sim_compare.R` (one chart per section) |
 | Adjusted monthly weather and fitted predictor windows | 2 | `R/fct_forecast_weather.R` `.get_forecast_weather()` |

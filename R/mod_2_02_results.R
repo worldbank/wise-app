@@ -449,14 +449,14 @@
   shiny::conditionalPanel(condition = paste0("output['", ns("has_window"), "']"), ...)
 }
 
-#' Show `tag` unless the run is forecast-only (no climate scenario, so the all-months outputs would only
+#' Show `tag` unless the run is forecast-only (no climate scenario, so the annual cards would only
 #' repeat Historical)
 #' @noRd
 .step2_annual_panel <- function(ns, ...) {
   shiny::conditionalPanel(condition = paste0("!output['", ns("forecast_only"), "']"), ...)
 }
 
-#' Group header of the all-months outputs: shown only with a forecast window next to climate scenarios
+#' Group header of the annual cards: shown only with a forecast window next to climate scenarios
 #' @noRd
 .step2_annual_group_header <- function(ns, text) {
   shiny::conditionalPanel(
