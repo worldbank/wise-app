@@ -376,7 +376,7 @@ pages:
       - "Step 2 > Results: with a forecast, each chart and the return-period table carry both sets of series: \"Historical (annual)\" and the climate scenarios, and \"Historical (Nov - Jan)\" and the forecast. A forecast-only run shows the same charts without scenario rows. The headline cards stay in two groups, annual and target months. The cards of the target months show the placement, the shift against the historical spread of the same months and the member range."
     guide: "https://github.com/worldbank/wise-app-docs"
     code: ["R/utils_forecast_ui.R", "R/mod_2_01_weathersim.R", "R/fct_forecast_catalogue.R", "R/fct_forecast_weather.R", "R/fct_forecast_placement.R", "R/fct_forecast_window.R", "R/fct_forecast_skill.R", "R/fct_run_simulation.R"]
-    verified_against: "b37358e"
+    verified_against: "edaaa1d"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"
@@ -491,7 +491,7 @@ pages:
       - "Step 3 > Diagnostics and Cost-effectiveness: the run outputs of Section 6."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release"
     code: ["R/fct_sp_shock.R", "R/fct_policy_sim.R", "R/fct_policy_metric_decompose.R", "R/fct_step3_input.R", "R/mod_3_01_sp.R"]
-    verified_against: "3f4fc5f"
+    verified_against: "edaaa1d"
   - id: "decomposition"
     file: "44_decomposition.md"
     title: "Decomposition of the policy effect into direct and resilience channels"
