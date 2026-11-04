@@ -8,13 +8,13 @@
 
 # Months of context shown either side of the forecast months on the strip.
 .STEP2_FORECAST_BEFORE <- 2L
-.STEP2_FORECAST_AFTER <- 3L
+.STEP2_FORECAST_AFTER <- 0L
 
 # Most observed months the strip shows before the first forecast month, however
 # far the fitted lagged predictors reach back.
 .STEP2_FORECAST_BEFORE_MAX <- 6L
 
-.STEP2_FORECAST_LEN_CHOICES <- c("1 month" = "1", "3 months" = "3", "6 months" = "6")
+.STEP2_FORECAST_LEN_CHOICES <- c("1" = "1", "3" = "3", "6" = "6")
 
 .STEP2_FORECAST_PRODUCT_LABELS <- c(
   "seasonal" = "Seasonal forecast",

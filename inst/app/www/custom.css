@@ -2162,6 +2162,20 @@ tr.t2-wx-row td {
   margin-bottom: 0;
 }
 
+/* The forecast toggle is tinted in the forecast colour (.wise_forecast) so it stands apart from the SSP toggle. */
+.step2-forecast-toggle .config-flyout-toggle {
+  background-color: #f6e4ee;
+  border-color: #CC79A7;
+  color: #7a2e57;
+}
+
+.step2-forecast-toggle .config-flyout-toggle:hover,
+.step2-forecast-toggle .config-flyout-toggle:focus-visible {
+  background-color: #CC79A7;
+  border-color: #CC79A7;
+  color: #fff;
+}
+
 /* Month strip: one tile per month, drawn from the pill_toggle radios. */
 .toggle-slider.forecast-strip {
   display: block;
@@ -2173,7 +2187,7 @@ tr.t2-wx-row td {
   border: 0;
   border-radius: 0;
   display: grid !important;
-  gap: 3px;
+  gap: 4px;
   grid-template-columns: repeat(var(--fc-cols, 11), minmax(0, 1fr));
   overflow: visible;
   padding: 0;
@@ -2267,7 +2281,7 @@ tr.t2-wx-row td {
   flex-wrap: wrap;
   font-size: 0.7rem;
   gap: 0.1rem 0.75rem;
-  margin-bottom: 0.3rem;
+  margin: 0.45rem 0 0.3rem;
 }
 
 .forecast-key {
@@ -2285,7 +2299,90 @@ tr.t2-wx-row td {
 .forecast-key.fc-fc { border-color: #9cc7e6; }
 .forecast-key.fc-tg { background: var(--bs-primary, #0071bc); border-color: var(--bs-primary, #0071bc); }
 
+.step2-forecast-window-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0.4rem 0 0.5rem;
+}
+
+.step2-forecast-len {
+  align-items: center;
+  display: flex;
+  font-size: 0.8rem;
+  gap: 0.35rem;
+}
+
+.step2-forecast-len .shiny-input-container {
+  margin-bottom: 0 !important;
+}
+
+.step2-forecast-run {
+  font-size: 0.8rem;
+  margin-bottom: 0.3rem;
+}
+
+.step2-forecast-run-section {
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+}
+
+.step2-sidebar .config-flyout-anchor.config-flyout-inline {
+  margin-bottom: 0.55rem;
+}
+
+.step2-sidebar > .step2-section-label + .config-flyout-anchor {
+  margin-top: 0.4rem;
+}
+
+.step2-sidebar > .step2-section-label {
+  margin-top: 0.5rem;
+}
+
+/* The baseline selector's label is visually hidden; it should not take a line. The sidebar gap between
+   children would otherwise leave a space above and below the box, so pull it in. */
+.step2-sidebar > .shiny-html-output .control-label {
+  line-height: 0;
+  margin: 0;
+}
+
+.step2-sidebar > .shiny-html-output > .shiny-input-container {
+  margin-bottom: -0.6rem !important;
+  margin-top: -0.92rem;
+}
+
+/* Uncertainty block: the heading matches Scenario; the controls below are smaller. */
+.step2-sidebar > .step2-section-label + .step2-uncert-row {
+  margin-top: 0.4rem;
+}
+
+.step2-uncert-row {
+  align-items: center;
+  display: flex;
+  font-size: 0.8rem;
+  gap: 0.5rem;
+}
+
+.step2-uncert-row .shiny-input-container {
+  margin-bottom: 0 !important;
+  width: auto !important;
+}
+
+.step2-uncert-row .checkbox label,
+.step2-uncert-row .form-check-label {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.step2-uncert-row .toggle-slider,
+.step2-uncert-row .toggle-slider label,
+.step2-uncert-row .toggle-slider span {
+  font-size: 0.76rem;
+}
+
 .forecast-readout {
+  margin-top: 0.6rem;
   display: flex;
   flex-wrap: wrap;
   font-size: 0.8rem;

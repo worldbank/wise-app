@@ -9,6 +9,10 @@
 # detector does not match: the member-as-model special cases of the annual views do not apply to it.
 
 .STEP2_WINDOW_FORECAST_PREFIX <- "Forecast ("
+.STEP2_WINDOW_REFERENCE_PREFIX <- "Historical ("
+
+# Display label of the annual Historical series next to the target-month series.
+.STEP2_ANNUAL_LABEL <- "Historical (annual)"
 
 #' Label of the member series of a forecast scenario in the window scope
 #' @param scenario_label Forecast scenario label, for example
@@ -32,10 +36,18 @@
   startsWith(as.character(nm), .STEP2_WINDOW_FORECAST_PREFIX)
 }
 
-#' Forecast colour and order for a forecast scenario or its window-scope member series
+#' Is `nm` the Historical series of the forecast target months, as a row of a merged chart?
+#'
+#' A series of its own next to `"Historical"` (annual), so `is_historical` stays `FALSE` for it.
+#' @noRd
+.step2_is_window_reference <- function(nm) {
+  startsWith(as.character(nm), .STEP2_WINDOW_REFERENCE_PREFIX)
+}
+
+#' Series of the forecast target months: not parsed as an SSP or a period
 #' @noRd
 .step2_is_forecast_like <- function(nm) {
-  .step2_is_forecast_scenario(nm) | .step2_is_window_forecast(nm)
+  .step2_is_forecast_scenario(nm) | .step2_is_window_forecast(nm) | .step2_is_window_reference(nm)
 }
 
 #' Display label of the same-window reference years: Historical, with the target months
@@ -145,11 +157,12 @@ step2_window_series <- function(scenario, label, method, so, residuals, skip_coe
 #' Historical row is the same-window outcome of the historical years.
 #' @param x An htmlwidget, a data frame or a list.
 #' @param reference_label Display label of the Historical row.
+#' @param text Named wording replacements; empty to change the Historical label only.
 #' @noRd
-.step2_window_relabel <- function(x, reference_label) {
+.step2_window_relabel <- function(x, reference_label, text = .STEP2_WINDOW_TEXT) {
   swap <- function(v) {
-    fixed <- !is.na(v) & v %in% names(.STEP2_WINDOW_TEXT)
-    v[fixed] <- unname(.STEP2_WINDOW_TEXT[v[fixed]])
+    fixed <- !is.na(v) & v %in% names(text)
+    v[fixed] <- unname(text[v[fixed]])
     v[!is.na(v) & v == "Historical"] <- reference_label
     v
   }
@@ -225,10 +238,13 @@ step2_window_series <- function(scenario, label, method, so, residuals, skip_coe
 #' @param label,colour,line_type,name Label prefix, colour and line type of the line; series name (with `__`, so the
 #'   tooltip leaves it out).
 #' @param label_position Side of the line the label sits on (`"insideEndTop"` or `"insideEndBottom"`).
+#' @param marker Mark the median member on the curve: with other curves on the chart, this shows which curve the
+#'   line was read from. The label then sits level above the line, and the labels of the curves ending left of it
+#'   stay readable where the line passes.
 #' @noRd
 .step2_window_exceedance_overlay <- function(e, pos, x_max = 0.55, label = "Forecast median",
                                              colour = .wise_forecast, line_type = "solid", name = "forecast__position",
-                                             label_position = "insideEndTop") {
+                                             label_position = "insideEndTop", marker = FALSE) {
   if (is.null(pos) || !inherits(e, "htmlwidget")) return(e)
   clip <- function(p) min(max(p, 1e-6), x_max)
   rp <- function(p) {
@@ -245,18 +261,31 @@ step2_window_series <- function(scenario, label, method, so, residuals, skip_coe
       itemStyle = list(color = colour, opacity = 0.12),
       data = list(list(list(xAxis = band[[1L]]), list(xAxis = band[[2L]])))
     ),
+    markPoint = if (isTRUE(marker)) list(
+      symbol = "circle", symbolSize = 10, silent = TRUE, animation = FALSE,
+      itemStyle = list(color = colour, borderColor = "#FFFFFF", borderWidth = 1.5),
+      label = list(show = FALSE),
+      data = list(list(coord = list(mid, unname(pos$value[["mid"]]))))
+    ),
     markLine = list(
       symbol = "none", silent = TRUE, animation = FALSE,
       data = list(list(
         xAxis = mid,
         lineStyle = list(color = colour, type = line_type, width = 2),
         label = list(
-          show = TRUE, position = label_position, color = colour, fontSize = 11, fontWeight = "bold",
+          show = TRUE, position = if (isTRUE(marker)) "end" else label_position, align = if (isTRUE(marker)) "right",
+          color = colour, fontSize = 11, fontWeight = "bold",
           formatter = paste0(label, ": ", rp(pos$p[["mid"]]))
         )
       ))
     )
   )
+  if (isTRUE(marker)) {
+    e$x$opts$series <- lapply(e$x$opts$series, function(s) {
+      if (!is.null(s$endLabel)) s$endLabel$backgroundColor <- "#FFFFFF"
+      s
+    })
+  }
   e$x$opts$series <- c(e$x$opts$series, list(overlay))
   e
 }
@@ -296,25 +325,6 @@ step2_window_series <- function(scenario, label, method, so, residuals, skip_coe
   out$intermod_lo[out$is_historical] <- NA_real_
   out$intermod_hi[out$is_historical] <- NA_real_
   out
-}
-
-#' Dashed guides at the Historical levels of the window-scope adverse-level chart
-#' @param e Adverse-level chart (`echart_step2_adverse_dot()`).
-#' @param values Historical level values.
-#' @noRd
-.step2_window_adverse_guides <- function(e, values) {
-  values <- unname(as.numeric(values[is.finite(values)]))
-  if (!length(values) || !inherits(e, "htmlwidget")) return(e)
-  guides <- list(
-    name = "historical__guides", type = "line", data = list(), silent = TRUE, z = 0,
-    markLine = list(
-      symbol = "none", silent = TRUE, animation = FALSE, label = list(show = FALSE),
-      lineStyle = list(color = .wise_support, type = "dashed", width = 1, opacity = 0.45),
-      data = lapply(values, function(v) list(xAxis = v))
-    )
-  )
-  e$x$opts$series <- c(e$x$opts$series, list(guides))
-  e
 }
 
 #' Exceedance curve rows of the Historical target-month outcome
@@ -397,6 +407,29 @@ step2_window_views <- function(w, method, so, deviation = "none", scenario = NUL
     cards = .step2_window_relabel(cards, w$reference_label),
     n_reference = nrow(w$historical)
   )
+}
+
+#' Rows of one merged chart: the annual rows and the rows of the forecast target months
+#'
+#' The Historical rows of `window` become the series `reference_label`, next to the annual `"Historical"`. Each
+#' group keeps its own deviation reference, so in a difference view both Historical series sit at zero. Rows follow
+#' `.step2_scenario_order()`; a return-period row exists once, with `"Forecast"` at the bottom.
+#' @param annual,window Rows with a `scenario` column; `window` from `step2_window_views()`.
+#' @param reference_label Display label of the Historical series of the target months.
+#' @noRd
+.step2_window_merge <- function(annual, window, reference_label) {
+  if (is.null(window) || !nrow(window)) return(annual)
+  window$scenario <- as.character(window$scenario)
+  hist <- window$scenario == "Historical"
+  window$scenario[hist] <- reference_label
+  if ("is_historical" %in% names(window)) window$is_historical[hist] <- FALSE
+  if (!is.null(annual)) annual$scenario <- as.character(annual$scenario)
+  rp_levels <- if ("rp_label" %in% names(window)) {
+    union(intersect("Forecast", levels(window$rp_label)), union(levels(annual$rp_label), levels(window$rp_label)))
+  }
+  out <- dplyr::bind_rows(annual, window)
+  if (!is.null(rp_levels)) out$rp_label <- droplevels(factor(as.character(out$rp_label), levels = rp_levels))
+  out[order(match(out$scenario, .step2_scenario_order(out$scenario))), , drop = FALSE]
 }
 
 #' Set one axis range on an echarts widget (a shared outcome axis across the two groups of a section)

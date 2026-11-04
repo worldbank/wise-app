@@ -214,9 +214,9 @@ test_that("future periods cannot start before the SSP projections (R2-BUG-23)", 
   })
 })
 
-test_that("the sidebar has Simulation settings, Climate projections and Seasonal forecast flyouts", {
+test_that("the sidebar has Historical weather, Seasonal forecast and Climate projections flyouts", {
   ui <- as.character(mod_2_01_weathersim_ui("sim"))
-  for (id in c("settings_toggle", "projections_toggle", "forecast_toggle")) {
+  for (id in c("historical_toggle", "projections_toggle", "forecast_toggle")) {
     expect_match(ui, paste0('id="sim-', id, '"'), fixed = TRUE)
   }
   # The projection controls moved flyouts without changing their ids.
@@ -330,9 +330,26 @@ test_that("a local catalogue drives real forecast selection and versioned signat
     expect_identical(forecast_window()$start, "2026-11")
     expect_identical(live_sim_sig()$forecast$data_version, "test-1")
     expect_identical(live_sim_sig()$forecast$members, 0:50)
-    expect_match(as.character(output$forecast_status_ui$html), "scientific usefulness", fixed = TRUE)
+    expect_match(as.character(output$forecast_info_ui$html), "scientific usefulness", fixed = TRUE)
+    expect_match(as.character(output$forecast_run_ui$html), "October 2026 \u00b7 ECMWF SEAS5, 51 members", fixed = TRUE)
     expect_false(any(forecast_months()$kind == "obs"))
     session$setInputs(fc_include = FALSE)
     expect_null(live_sim_sig()$forecast)
   })
+})
+
+test_that("projection period pills and sliders map both ways", {
+  expect_identical(
+    .step2_period_slots(c("2030-2050", "custom"), c(2060, 2080)),
+    list(c(2030L, 2050L), c(2060L, 2080L), c(2015L, 2015L))
+  )
+  expect_identical(.step2_period_slots(character(0), c(2060, 2080))[[1L]], c(2015L, 2015L))
+  expect_identical(
+    .step2_period_selection(list(c(2025, 2035), c(2015, 2015), c(2015, 2015))),
+    list(selected = "2025-2035", custom = NULL)
+  )
+  expect_identical(
+    .step2_period_selection(list(c(2040, 2060), c(2061, 2090), c(2015, 2015))),
+    list(selected = c("2040-2060", "custom"), custom = c(2061L, 2090L))
+  )
 })

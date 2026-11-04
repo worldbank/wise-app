@@ -230,9 +230,6 @@ scan("step1-model-fit")
 
 # Step 2: conditionalPanel, run, results and diagnostics ----
 open_step("step2")
-# The settings block is itself behind a toggle (a conditionalPanel on its click count).
-click_js("[id$='weathersim-settings_toggle']")
-Sys.sleep(1)
 sel_parent <- "input[id$='include_coef_uncertainty']"
 check(isTRUE(app$get_js(sprintf("!!document.querySelector(\"%s\")", sel_parent))), "Step 2 coefficient-uncertainty checkbox renders")
 scan("step2-settings")

@@ -154,14 +154,8 @@
     ),
 
     # 2. Headline cards ----
-    .step2_window_panel(ns, shiny::div(
-      style = paste0(
-        "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
-        "letter-spacing: 0.03em; margin: 4px 0 6px;"
-      ),
-      "All months: climate scenarios against Historical"
-    )),
-    shiny::uiOutput(ns("headline_cards_ui")),
+    .step2_annual_group_header(ns, "Annual: climate scenarios against Historical"),
+    .step2_annual_panel(ns, shiny::uiOutput(ns("headline_cards_ui"))),
     .step2_window_panel(ns, shiny::uiOutput(ns("headline_cards_window_ui"))),
     # Section 1: Central outcomes & weather-year variation ----
     shiny::h4(
@@ -195,28 +189,26 @@
           layout   = "horizontal"
         )
       ),
-      .step2_groups(
-        ns, section = "dist",
-        annual_chart = wise_chart_output(
-          ns("annual_distribution_plot"),
-          "Distribution of annual aggregates across simulated weather years by climate scenario",
-          height = "470px"
-        ),
-        window_chart = wise_chart_output(
-          ns("window_distribution_plot"),
-          "Distribution of target-month outcomes across historical years and forecast members",
-          height = "400px"
-        ),
+      wise_chart_output(
+        ns("annual_distribution_plot"),
+        "Distribution of annual aggregates across simulated weather years by climate scenario and forecast",
+        height = "470px"
+      ),
+      .step2_section_note(
+        ns,
         annual = paste0(
           "Each dot is one simulated weather-year annual aggregate for the fixed baseline population. ",
           "The selected violin or boxplot summarizes the distribution; open circles mark scenario means. ",
           "This captures weather-year variability, not household inequality."
         ),
-        window = paste0(
-          "Each dot is one outcome for the target months for the fixed baseline population: one per historical ",
-          "year (observed weather for the same months) and one per forecast member. The selected violin or ",
-          "boxplot summarizes each set; open circles mark the means. The climate scenarios are in the all-months ",
-          "chart above, on the same axis: a gap between the two groups is seasonality."
+        forecast = paste0(
+          "Each dot is one outcome for the fixed baseline population. Historical (annual) and the climate scenarios ",
+          "have one dot per weather year, with each household in its interview month. The target-month Historical ",
+          "has one dot per historical year, with observed weather for those months, and the Forecast one per member. ",
+          "Compare the Forecast with Historical for the same months. The gap between the two Historical series is ",
+          "the effect of weather in the target months rather than the interview months; the seasonal welfare level ",
+          "of households stays fixed. The dashed line is the annual Historical mean; open circles mark means. ",
+          .STEP2_DIFFERENCE_NOTE
         ),
         style = "margin-top: 18px; margin-bottom: 0;"
       )
@@ -259,28 +251,24 @@
           layout = "horizontal"
         )
       ),
-      .step2_groups(
-        ns, section = "adverse",
-        annual_chart = wise_chart_output(
-          ns("adverse_dot_plot"),
-          "Expected and adverse-year outcomes with climate-model ensemble spread",
-          height = "380px"
-        ),
-        window_chart = wise_chart_output(
-          ns("window_adverse_plot"),
-          "Historical target-month adverse levels and the forecast member band",
-          height = "340px"
-        ),
+      wise_chart_output(
+        ns("adverse_dot_plot"),
+        "Expected and adverse-year outcomes with climate-model and forecast-member spread",
+        height = "380px"
+      ),
+      .step2_section_note(
+        ns,
         annual = paste0(
           "Points are equal-weight means across climate models of each model's expected and adverse-year values. ",
           "Adverse tail direction is mapped automatically according to the selected outcome metric. ",
           "Horizontal bars show inter-model ensemble spread across climate projections."
         ),
-        window = paste0(
-          "Historical points are the outcomes of the target months reached or exceeded in the adverse direction in ",
-          "about one historical year in five, ten or twenty; dashed lines mark them. The Forecast row shows the ",
-          "median member; the Ensemble spread control above adds the band across members (for the scenarios, ",
-          "across climate models). The member spread is not a calibrated probability."
+        forecast = paste0(
+          "Scenario points are equal-weight means across climate models. Historical points for the target months are ",
+          "the outcomes reached or exceeded in the adverse direction in about one historical year in five, ten or ",
+          "twenty. The Forecast row shows the median member; compare it with Historical for the same months. The ",
+          "Ensemble spread control adds the band across climate models and across members. The member spread is not ",
+          "a calibrated probability. ", .STEP2_DIFFERENCE_NOTE
         ),
         style = "margin-top: 8px; margin-bottom: 0;"
       )
@@ -322,18 +310,13 @@
           layout = "horizontal"
         )
       ),
-      .step2_groups(
-        ns, section = "exceed",
-        annual_chart = wise_chart_output(
-          ns("exceedance_plot"),
-          "Exceedance probability curves across simulated climate scenarios",
-          height = "400px"
-        ),
-        window_chart = wise_chart_output(
-          ns("window_exceedance_plot"),
-          "Historical target-month exceedance curve with the forecast position",
-          height = "400px"
-        ),
+      wise_chart_output(
+        ns("exceedance_plot"),
+        "Exceedance probability curves across simulated climate scenarios, with the forecast position",
+        height = "400px"
+      ),
+      .step2_section_note(
+        ns,
         annual = paste0(
           "Read each curve as the annual probability of reaching an outcome level in the adverse direction: ",
           "lower outcomes for higher-is-better measures and higher outcomes for lower-is-better measures. ",
@@ -341,11 +324,12 @@
           "future baseline and policy series. Return-period guides and ticks are limited to the available simulated ",
           "years per climate model; unsupported periods are not extrapolated."
         ),
-        window = paste0(
-          "The curve is the share of historical years whose target months reached an outcome level in the adverse ",
-          "direction. The vertical line marks where the median forecast member falls on it: the historical return ",
-          "period it lines up with. The Ensemble spread control above shades where the members of that band ",
-          "fall. The member spread is not a calibrated probability and skill is not established."
+        forecast = paste0(
+          "Read each curve as the probability of reaching an outcome level in the adverse direction. The dashed curve ",
+          "is Historical for the target months. The vertical line and dot mark where the median forecast member falls ",
+          "on that curve only: the historical return period it lines up with. The Ensemble spread control shades ",
+          "where the members of that band fall, and the climate-model ribbons. The member spread is not a calibrated ",
+          "probability and skill is not established. ", .STEP2_DIFFERENCE_NOTE
         ),
         style = "margin-top: 8px; margin-bottom: 0;"
       )
@@ -380,17 +364,18 @@
         )
       ),
       reactable::reactableOutput(ns("summary_threshold_table")),
-      .step2_groups(
-        ns, section = "table",
+      .step2_section_note(
+        ns,
         annual = paste0(
           "Adverse point estimates use the selected metric's baseline annual quantile within each model and an ",
           "equal-model mean across SSP models; this differs from distribution-curve medians. Bounds are existing ",
           "diagnostics, not uncertainty estimates for the equal-model mean."
         ),
-        window = paste0(
-          "Historical rows are quantiles of the target-month outcome across historical years. Forecast rows are ",
-          "the same quantiles across members: shares of members, not calibrated probabilities. Bounds are ",
-          "coefficient uncertainty only."
+        forecast = paste0(
+          "Annual rows use each model's baseline annual quantile; bounds are diagnostics, not uncertainty estimates ",
+          "for the equal-model mean. Target-month Historical rows are quantiles across historical years. Forecast ",
+          "rows are the same quantiles across members: shares of members, not calibrated probabilities. Bounds of ",
+          "both are coefficient uncertainty only."
         ),
         style = "margin-top: 8px; margin-bottom: 0;"
       )
@@ -431,18 +416,13 @@
     ),
     shiny::div(
       class = "results-section-card",
-      .step2_groups(
-        ns, section = "uncert",
-        annual_chart = wise_chart_output(
-          ns("uncertainty_sources_plot"),
-          "Standard deviation of outcome by uncertainty source",
-          height = "300px"
-        ),
-        window_chart = wise_chart_output(
-          ns("window_uncertainty_plot"),
-          "Standard deviation of the target-month outcome by uncertainty source",
-          height = "260px"
-        ),
+      wise_chart_output(
+        ns("uncertainty_sources_plot"),
+        "Standard deviation of outcome by uncertainty source",
+        height = "300px"
+      ),
+      .step2_section_note(
+        ns,
         annual = paste0(
           "Bars are standard deviations in outcome units, not confidence intervals. ",
           "Inter-annual variability is the within-model standard deviation across simulated weather years; ",
@@ -451,11 +431,11 @@
           "for the selected view (level or difference from the historical mean or median); ",
           "residual draws, when the \"resample\" rule is on, are shown separately."
         ),
-        window = paste0(
-          "Bars are standard deviations in outcome units, not confidence intervals. For Historical the ",
-          "inter-annual bar is the spread of the target-month outcome across historical years. For the forecast, ",
-          "the member spread takes the place of the inter-model spread; one target window has no year-to-year ",
-          "spread. Coefficient uncertainty is the analytic delta-method SE from the fitted model covariance."
+        forecast = paste0(
+          "Bars are standard deviations in outcome units, not confidence intervals. For the target-month Historical ",
+          "the inter-annual bar is the spread across historical years. For the forecast, the member spread takes the ",
+          "place of the inter-model spread; one target window has no year-to-year spread. Coefficient uncertainty is ",
+          "the analytic delta-method SE from the fitted model covariance."
         ),
         style = "margin-top: 8px; margin-bottom: 0;"
       )
@@ -467,6 +447,44 @@
 #' @noRd
 .step2_window_panel <- function(ns, ...) {
   shiny::conditionalPanel(condition = paste0("output['", ns("has_window"), "']"), ...)
+}
+
+#' Show `tag` unless the run is forecast-only (no climate scenario, so the all-months outputs would only
+#' repeat Historical)
+#' @noRd
+.step2_annual_panel <- function(ns, ...) {
+  shiny::conditionalPanel(condition = paste0("!output['", ns("forecast_only"), "']"), ...)
+}
+
+#' Group header of the all-months outputs: shown only with a forecast window next to climate scenarios
+#' @noRd
+.step2_annual_group_header <- function(ns, text) {
+  shiny::conditionalPanel(
+    condition = paste0("output['", ns("has_window"), "'] && !output['", ns("forecast_only"), "']"),
+    shiny::div(
+      style = paste0(
+        "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
+        "letter-spacing: 0.03em; margin: 4px 0 6px;"
+      ),
+      text
+    )
+  )
+}
+
+# Target-month series have their own baseline, so the difference views show no gap between the Historical series.
+.STEP2_DIFFERENCE_NOTE <- paste(
+  "In a difference view each Historical series is its own baseline: both sit at zero and the gap between them is",
+  "not shown."
+)
+
+#' Note of one Step 2 Results section: `annual` alone, or `forecast` when the charts carry the target-month series
+#' @noRd
+.step2_section_note <- function(ns, annual, forecast, style) {
+  note <- function(text) shiny::tags$p(class = "text-muted small", style = style, text)
+  shiny::tagList(
+    shiny::conditionalPanel(condition = paste0("!output['", ns("has_window"), "']"), note(annual)),
+    .step2_window_panel(ns, note(forecast))
+  )
 }
 
 #' One Results section in two groups: all months (Historical and the climate scenarios) and the forecast target
@@ -487,12 +505,11 @@
     )
   }
   if (is.null(annual_chart)) {
-    return(shiny::tagList(note(annual), .step2_window_panel(ns, note(window))))
+    return(shiny::tagList(.step2_annual_panel(ns, note(annual)), .step2_window_panel(ns, note(window))))
   }
   shiny::tagList(
-    .step2_window_panel(ns, head("All months: Historical and climate scenarios")),
-    annual_chart,
-    note(annual),
+    .step2_annual_group_header(ns, "All months: Historical and climate scenarios"),
+    .step2_annual_panel(ns, annual_chart, note(annual)),
     .step2_window_panel(
       ns,
       shiny::div(
@@ -892,8 +909,8 @@ mod_2_02_results_server <- function(id,
     })
 
 
-    # Forecast window: the forecast members against Historical for the same target months, shown as a second group
-    # in each section (committed results with a forecast that carries its same-window historical years).
+    # Forecast window: the forecast members against Historical for the same target months, shown as further series
+    # of each chart (committed results with a forecast that carries its same-window historical years).
     .has_window <- reactive({
       if (.is_provisional()) return(FALSE)
       sc <- if (!is.null(saved_scenarios)) saved_scenarios() else list()
@@ -901,6 +918,15 @@ mod_2_02_results_server <- function(id,
     })
     output$has_window <- shiny::reactive(.has_window())
     outputOptions(output, "has_window", suspendWhenHidden = FALSE)
+
+    # Forecast only (no climate scenario): the annual cards would only repeat Historical, so they are hidden.
+    .forecast_only <- reactive({
+      if (!isTRUE(.has_window())) return(FALSE)
+      sc <- saved_scenarios()
+      all(vapply(sc %||% list(), function(s) length(s$reference_pipelines) > 0L, logical(1L)))
+    })
+    output$forecast_only <- shiny::reactive(.forecast_only())
+    outputOptions(output, "forecast_only", suspendWhenHidden = FALSE)
 
     # Historical target-month and member tables of the first forecast scenario, for the selected metric.
     window_series_rv <- reactive({
@@ -934,19 +960,26 @@ mod_2_02_results_server <- function(id,
     .band_q_or_null <- function(key) {
       if (identical(key %||% "none", "none")) NULL else resolve_band_q(key)
     }
-    # Group headers of the window charts: the target months.
-    for (sec in c("dist", "adverse", "exceed", "uncert")) local({
-      id <- paste0("group_window_", sec)
-      output[[id]] <- shiny::renderText({
-        paste0(window_series_rv()$months_label, ": Historical and the seasonal forecast")
-      })
-    })
-    # A range shared by the all-months and the target-month chart of a section (`NULL` without a forecast).
-    .shared_range <- function(annual, window) {
-      if (!isTRUE(.has_window())) return(NULL)
-      .step2_padded_range(c(annual, window))
-    }
     .window_relabel <- function(x) .step2_window_relabel(x, window_series_rv()$reference_label)
+    # The views of the target months, `NULL` without a forecast: the charts then stay annual only.
+    .window_views_or_null <- function() {
+      if (isTRUE(.has_window())) tryCatch(window_views_rv(), error = function(e) NULL)
+    }
+    # Annual rows of a chart with its target-month rows `part` of the window views.
+    .with_window <- function(annual, part) {
+      wv <- .window_views_or_null()
+      if (is.null(wv)) return(annual)
+      .step2_window_merge(annual, wv[[part]], window_series_rv()$reference_label)
+    }
+    # Names the annual Historical series once the target-month one sits next to it. In a difference view the zero
+    # line is the baseline of both Historical series, so its label stays general.
+    .annual_relabel <- function(x) {
+      if (is.null(.window_views_or_null())) return(x)
+      level <- identical(input$cmp_deviation %||% "none", "none")
+      .step2_window_relabel(
+        x, .STEP2_ANNUAL_LABEL, text = if (level) c("Historical mean" = "Historical (annual) mean") else character(0)
+      )
+    }
 
     # Forecast members placed in the same-window reference (committed results with a forecast only).
     forecast_placement_rv <- reactive({
@@ -1668,7 +1701,7 @@ mod_2_02_results_server <- function(id,
     annual_distribution_chart <- function() {
       req(annual_distribution_curves_rv())
       e <- echart_annual_distribution(
-        annual_distribution_curves_rv(),
+        .with_window(annual_distribution_curves_rv(), "curves"),
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -1678,7 +1711,7 @@ mod_2_02_results_server <- function(id,
         height = "470px",
         pending = results_source()$pending_names
       )
-      .step2_set_grid_left(.step2_set_axis_range(e, "xAxis", .distribution_range()), .distribution_left())
+      .annual_relabel(e)
     }
     # Streaming renders: while provisional, keep the existing ECharts instance
     # (dispose = FALSE) when only new scenario data arrived, so ECharts animates
@@ -1745,9 +1778,10 @@ mod_2_02_results_server <- function(id,
       curves <- annual_distribution_curves_rv()
       req(curves)
       # With a forecast, the target-month rows follow (Historical for the same months and the members).
-      wv <- if (isTRUE(.has_window())) tryCatch(window_views_rv(), error = function(e) NULL)
+      wv <- .window_views_or_null()
       if (!is.null(wv$curves) && nrow(wv$curves)) {
-        curves$group <- "All months"
+        curves$group <- "Annual"
+        curves <- .annual_relabel(curves)
         win <- .window_relabel(wv$curves)
         win$group <- paste("Target months:", window_series_rv()$months_label)
         curves <- dplyr::bind_rows(curves, win)
@@ -1790,10 +1824,11 @@ mod_2_02_results_server <- function(id,
         tryCatch(results_source()$so, error = function(e) NULL),
         tryCatch(results_source()$sim_summary, error = function(e) NULL)
       )
-      if (!isTRUE(.has_window())) return(df)
       # The target-month rows follow: each series is one sample, so its pooled and ensemble rows repeat the
       # coefficient and central rows.
-      wv <- tryCatch(window_views_rv(), error = function(e) NULL)
+      wv <- .window_views_or_null()
+      if (is.null(wv)) return(df)
+      df <- .annual_relabel(df)
       wdf <- if (!is.null(wv$threshold) && nrow(wv$threshold)) {
         step2_threshold_df(wv$threshold, .selected_method(), tryCatch(results_source()$so, error = function(e) NULL))
       }
@@ -1807,13 +1842,13 @@ mod_2_02_results_server <- function(id,
     uncertainty_chart <- function() {
       req(variance_breakdown_rv())
       e <- echart_variance_contribution(
-        variance_breakdown_rv(), height = "300px",
+        .with_window(variance_breakdown_rv(), "variance"), height = "300px",
         percent = identical(metric_metadata(
           .selected_method(), results_source()$so
         )$format, "percent"),
         reference = input$cmp_deviation %||% "none"
       )
-      .step2_set_grid_left(.step2_set_axis_range(e, "xAxis", .uncertainty_range()), .distribution_left())
+      .annual_relabel(e)
     }
     output$uncertainty_sources_plot <- echarts4r::renderEcharts4r({
       ch <- uncertainty_chart()
@@ -1846,7 +1881,7 @@ mod_2_02_results_server <- function(id,
     adverse_dot_chart <- function() {
       req(adverse_dot_data_rv())
       e <- echart_step2_adverse_dot(
-        adverse_dot_data_rv(),
+        .with_window(adverse_dot_data_rv(), "dots"),
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -1855,7 +1890,7 @@ mod_2_02_results_server <- function(id,
         height = "380px",
         pending = results_source()$pending_names
       )
-      .step2_set_axis_range(e, "xAxis", .adverse_range())
+      .annual_relabel(e)
     }
     output$adverse_dot_plot <- echarts4r::renderEcharts4r({
       ch <- adverse_dot_chart()
@@ -1917,8 +1952,11 @@ mod_2_02_results_server <- function(id,
       } else {
         resolve_band_q(sel_spread)
       }
+      wv <- .window_views_or_null()
+      # The target-month curve spans the whole probability range: a forecast better than the median year stays on it.
+      p_max <- if (is.null(wv)) 0.55 else 0.99
       e <- echart_exceedance(
-        curves_tbl = curves,
+        curves_tbl = .with_window(curves, "exceedance"),
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -1928,9 +1966,11 @@ mod_2_02_results_server <- function(id,
         logit_x = TRUE,
         band_q = NULL,
         ensemble_band_q = ens_q,
-        height = "400px"
+        height = "400px",
+        p_max = p_max
       )
-      .step2_set_axis_range(e, "yAxis", .exceedance_range())
+      if (!is.null(wv)) e <- .step2_window_exceedance_overlay(e, wv$position, x_max = p_max, marker = TRUE)
+      .annual_relabel(e)
     }
     wise_export_figure(
       key = "climate_exceedance_curve",
@@ -1951,113 +1991,6 @@ mod_2_02_results_server <- function(id,
     })
 
 
-    # Forecast window charts: Historical for the target months and the forecast members ----
-    # Each sits under the all-months chart of its section, on the same outcome axis.
-    .distribution_range <- function() {
-      wv <- tryCatch(window_views_rv(), error = function(e) NULL)
-      .shared_range(annual_distribution_curves_rv()$value, wv$curves$value)
-    }
-    # The distribution charts label their rows on the left: one margin for both, from the longest row label.
-    .distribution_left <- function() {
-      if (!isTRUE(.has_window())) return(NULL)
-      w <- window_series_rv()
-      labels <- c(w$reference_label, w$label, unlist(strsplit(selected_scenario_names(), " / ", fixed = TRUE)))
-      24 + 7 * max(nchar(labels))
-    }
-    .adverse_range <- function() {
-      wv <- tryCatch(window_views_rv(), error = function(e) NULL)
-      dot <- adverse_dot_data_rv()
-      .shared_range(
-        c(dot$value, dot$intermod_lo, dot$intermod_hi),
-        c(wv$dots$value, wv$dots$intermod_lo, wv$dots$intermod_hi)
-      )
-    }
-    .exceedance_range <- function() {
-      wv <- tryCatch(window_views_rv(), error = function(e) NULL)
-      .shared_range(exceedance_curves_rv()$welfare_val, c(wv$exceedance$welfare_val, wv$position$value))
-    }
-    # Standard deviations on one scale, from zero (the bars as built, both groups).
-    .uncertainty_range <- function() {
-      if (!isTRUE(.has_window())) return(NULL)
-      sd_max <- function(v) {
-        if (is.null(v) || !nrow(v)) return(numeric(0))
-        sqrt(pmax(unlist(v[intersect(c("var_coef", "var_resid", "var_within", "var_across"), names(v))]), 0))
-      }
-      wv <- tryCatch(window_views_rv(), error = function(e) NULL)
-      top <- max(c(sd_max(variance_breakdown_rv()), sd_max(wv$variance)), na.rm = TRUE)
-      if (!is.finite(top) || top <= 0) return(NULL)
-      c(0, 1.08 * top)
-    }
-    .axis_label <- function() {
-      metric_axis_label(.selected_method(), results_source()$so, input$cmp_deviation %||% "none")
-    }
-    window_distribution_chart <- function() {
-      wv <- window_views_rv()
-      req(wv$curves)
-      e <- echart_annual_distribution(
-        wv$curves, x_label = .axis_label(), plot_type = input$annual_distribution_type %||% "violin",
-        height = "400px"
-      )
-      e <- .step2_set_grid_left(.step2_set_axis_range(e, "xAxis", .distribution_range()), .distribution_left())
-      .window_relabel(e)
-    }
-    window_adverse_chart <- function() {
-      wv <- window_views_rv()
-      req(wv$dots, nrow(wv$dots))
-      e <- echart_step2_adverse_dot(wv$dots, x_label = .axis_label(), height = "340px")
-      e <- .step2_window_adverse_guides(e, wv$dots$value[wv$dots$is_historical])
-      .window_relabel(.step2_set_axis_range(e, "xAxis", .adverse_range()))
-    }
-    window_exceedance_chart <- function() {
-      wv <- window_views_rv()
-      req(wv$exceedance)
-      p_max <- 0.99
-      e <- echart_exceedance(
-        curves_tbl = wv$exceedance, x_label = .axis_label(), n_sim_years = wv$n_reference, logit_x = TRUE,
-        band_q = NULL, ensemble_band_q = c(lo = 0.5, hi = 0.5), height = "400px", p_max = p_max
-      )
-      e <- .step2_window_exceedance_overlay(e, wv$position, x_max = p_max)
-      .window_relabel(.step2_set_axis_range(e, "yAxis", .exceedance_range()))
-    }
-    window_uncertainty_chart <- function() {
-      wv <- window_views_rv()
-      req(wv$variance, nrow(wv$variance))
-      e <- echart_variance_contribution(
-        wv$variance, height = "260px",
-        percent = identical(metric_metadata(.selected_method(), results_source()$so)$format, "percent"),
-        reference = input$cmp_deviation %||% "none"
-      )
-      e <- .step2_set_grid_left(.step2_set_axis_range(e, "xAxis", .uncertainty_range()), .distribution_left())
-      .window_relabel(e)
-    }
-    window_charts <- list(
-      window_distribution_plot = list(fun = window_distribution_chart, key = "forecast_window_distribution",
-        label = "Target-month outcome distribution: Historical and the seasonal forecast"),
-      window_adverse_plot = list(fun = window_adverse_chart, key = "forecast_window_adverse_levels",
-        label = "Target-month adverse levels and the forecast member band"),
-      window_exceedance_plot = list(fun = window_exceedance_chart, key = "forecast_window_exceedance",
-        label = "Target-month exceedance curve with the forecast position"),
-      window_uncertainty_plot = list(fun = window_uncertainty_chart, key = "forecast_window_uncertainty",
-        label = "Target-month uncertainty sources")
-    )
-    for (id in names(window_charts)) local({
-      chart_id <- id
-      spec <- window_charts[[id]]
-      output[[chart_id]] <- echarts4r::renderEcharts4r({
-        req(.has_window())
-        spec$fun()
-      })
-      outputOptions(output, chart_id, suspendWhenHidden = TRUE)
-      wise_export_figure(
-        key = spec$key, label = spec$label, step = 2L,
-        fun = .committed_only(function() if (isTRUE(.has_window())) spec$fun()),
-        description = paste0(
-          spec$label, ": Historical for the forecast target months (observed weather in each historical year) ",
-          "and the forecast members."
-        ),
-        width = 10, height = 5.5
-      )
-    })
     output$headline_cards_window_ui <- renderUI({
       req(.has_window())
       wv <- window_views_rv()

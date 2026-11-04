@@ -89,13 +89,17 @@ resolve_band_q <- function(band_key) {
 # .normalise_ssp() and .parse_year() live in fct_simulations.R (single robust
 # implementation - do not re-define them here).
 
-# Forecast labels are separate from SSP/year labels and follow Historical.
+# Forecast labels are separate from SSP/year labels and follow Historical. With the Historical series of the
+# forecast target months, neighbouring rows are the valid comparisons: forecast, its Historical, annual Historical,
+# then the climate scenarios.
 # @noRd
 .step2_scenario_order <- function(scenarios) {
   scenarios <- unique(as.character(scenarios))
   historical <- scenarios[scenarios == "Historical"]
-  forecast <- scenarios[.step2_is_forecast_like(scenarios)]
-  future <- sort(setdiff(scenarios, c(historical, forecast)))
+  reference <- scenarios[.step2_is_window_reference(scenarios)]
+  forecast <- setdiff(scenarios[.step2_is_forecast_like(scenarios)], reference)
+  future <- sort(setdiff(scenarios, c(historical, reference, forecast)))
+  if (length(reference)) return(c(forecast, reference, historical, future))
   c(historical, forecast, future)
 }
 
@@ -1803,14 +1807,14 @@ model_robustness_data <- function(ts_tbl, band_q = c(lo = 0.10, hi = 0.90)) {
 # Scatter marker series (type "scatter") with per-point value pairs.
 # Returns a one-element list so callers can append with c().
 .e_dot_series <- function(name, x, y, colour, fill = "white", size = 9,
-                          border_width = 1.2, labels = NULL) {
+                          border_width = 1.2, labels = NULL, label_position = "right") {
   n <- length(x)
   data <- lapply(seq_len(n), function(i) {
     pt <- list(value = list(x[[i]], y[[i]]))
     if (!is.null(labels) && !is.na(labels[[i]]) && nzchar(labels[[i]])) {
       pt$label <- list(
         show = TRUE,
-        position = "right",
+        position = label_position,
         distance = 6,
         fontWeight = "bold",
         color = colour,
@@ -2159,10 +2163,13 @@ echart_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
   }
   present <- sort(unique(as.character(tbl$scenario[!tbl$is_historical])))
   pending <- setdiff(as.character(pending), c(present, "Historical"))
-  scenario_levels <- c("Historical", .step2_scenario_order(c(present, pending)))
+  scenario_levels <- .step2_scenario_order(c("Historical", present, pending))
   scenario_colours <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) {
       return(.wise_support)
+    }
+    if (.step2_is_window_reference(s)) {
+      return(.wise_forecast_reference)
     }
     if (.step2_is_forecast_like(s)) {
       return(.wise_forecast)
@@ -2228,14 +2235,19 @@ echart_step2_adverse_dot <- function(tbl, x_label = "Outcome level",
     }
     labs <- rep(NA_character_, nrow(rows))
     lab_rows <- rows$rp_y == top_y & rows$scenario_key %in% top_keys
-    # One label per scenario, on its first Expected-row marker.
+    # One label per scenario, on its first Expected-row marker. A scenario with none (the forecast of the
+    # target-window chart, one row) is labelled above its first marker.
+    label_position <- "right"
     if (any(lab_rows)) {
       labs[[which(lab_rows)[[1L]]]] <- scn
+    } else {
+      labs[[1L]] <- scn
+      label_position <- "top"
     }
     dots <- .e_dot_series(
       scn, rows$value, y_pos,
       colour = col, fill = col, size = 8, border_width = 1.1,
-      labels = labs
+      labels = labs, label_position = label_position
     )[[1L]]
     dots$data <- lapply(seq_len(nrow(rows)), function(i) {
       modifyList(dots$data[[i]], list(
@@ -2763,13 +2775,13 @@ echart_exceedance <- function(curves_tbl,
     agg_df$line_id <- as.character(agg_df$scenario)
   }
 
-  scenario_levels <- c(
-    "Historical",
-    .step2_scenario_order(as.character(agg_df$scenario[!agg_df$is_historical]))
-  )
+  scenario_levels <- .step2_scenario_order(c("Historical", as.character(agg_df$scenario[!agg_df$is_historical])))
   scenario_colour_map <- stats::setNames(vapply(scenario_levels, function(s) {
     if (identical(s, "Historical")) {
       return(.wise_support)
+    }
+    if (.step2_is_window_reference(s)) {
+      return(.wise_forecast_reference)
     }
     if (.step2_is_forecast_like(s)) {
       return(.wise_forecast)
@@ -2789,6 +2801,7 @@ echart_exceedance <- function(curves_tbl,
   yr_styles <- .resolve_year_styles(fut_yr_labels)
   line_type_map <- c("Historical" = "solid", yr_styles$linetype_map)
   e_type_of <- function(scn) {
+    if (.step2_is_window_reference(scn)) return("dashed")
     if (.step2_is_forecast_like(scn)) return("solid")
     yr <- .parse_year(scn)
     t <- if (!is.null(yr) && !is.na(yr) && yr %in% names(line_type_map)) {
@@ -2838,7 +2851,7 @@ echart_exceedance <- function(curves_tbl,
     }
     p <- rows$exceed_prob
 
-    if (show_ens && !rows$is_historical[[1L]]) {
+    if (show_ens && !rows$is_historical[[1L]] && !.step2_is_window_reference(scn)) {
       series <- c(series, .e_line_band(
         paste0(lid, "__ensemble"), p, rows$intermod_lo, rows$intermod_hi,
         col, opacity = 0.2, z = 1

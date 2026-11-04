@@ -22,6 +22,36 @@
   }
 }
 
+# Projection period presets of the Climate projections flyout. The three slider inputs
+# `fut_period_1..3` stay the settings (config import, run signature); the preset pills and the custom slider
+# are a view on them.
+.STEP2_PERIOD_PRESETS <- list(
+  "2025-2035" = c(2025L, 2035L), "2030-2050" = c(2030L, 2050L), "2040-2060" = c(2040L, 2060L)
+)
+
+# Slider values (up to 3) of a pill selection: the selected presets in order, then the custom period.
+# Unused slots are the empty period c(2015, 2015).
+.step2_period_slots <- function(selected, custom) {
+  per <- unname(.STEP2_PERIOD_PRESETS[intersect(names(.STEP2_PERIOD_PRESETS), selected)])
+  if ("custom" %in% selected) per <- c(per, list(as.integer(custom[1:2])))
+  per <- utils::head(per, 3L)
+  c(per, rep(list(c(2015L, 2015L)), 3L - length(per)))
+}
+
+# Pill selection implied by slider values: preset pills for periods that match a preset, "custom" (with its
+# period) for the first one that does not.
+.step2_period_selection <- function(slots) {
+  per <- Filter(Negate(is.null), lapply(slots, .step2_valid_future_period))
+  hit <- vapply(per, function(p) {
+    any(vapply(.STEP2_PERIOD_PRESETS, function(q) identical(p, q), logical(1)))
+  }, logical(1))
+  presets <- names(.STEP2_PERIOD_PRESETS)[vapply(
+    .STEP2_PERIOD_PRESETS, function(q) any(vapply(per, identical, logical(1), q)), logical(1)
+  )]
+  custom <- if (any(!hit)) per[!hit][[1L]]
+  list(selected = c(presets, if (!is.null(custom)) "custom"), custom = custom)
+}
+
 # Baseline survey ----
 
 .step2_filter_baseline_surveys <- function(selected_surveys,

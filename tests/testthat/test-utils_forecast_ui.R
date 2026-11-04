@@ -8,11 +8,11 @@ run <- list(
   product = "seasonal", lead_unit = "month"
 )
 
-test_that("the month strip has observed context, forecast leads and months beyond", {
+test_that("the month strip has observed context and the forecast leads, and stops at the last lead", {
   m <- .step2_forecast_months(run)
-  expect_identical(nrow(m), 11L)
-  expect_identical(m$value[c(1L, 3L, 8L, 11L)], c("2026-08", "2026-10", "2027-03", "2027-06"))
-  expect_identical(m$kind, c("obs", "obs", rep("fc", 6L), rep("na", 3L)))
+  expect_identical(nrow(m), 8L)
+  expect_identical(m$value[c(1L, 3L, 8L)], c("2026-08", "2026-10", "2027-03"))
+  expect_identical(m$kind, c("obs", "obs", rep("fc", 6L)))
 })
 
 test_that("a target window is kept inside the forecast horizon", {
@@ -68,11 +68,11 @@ test_that("the strip disables months that are not forecast months", {
   m <- .step2_forecast_months(run)
   html <- as.character(forecast_strip_input("fc_start", "fc_len", m, "2026-11"))
   expect_match(html, 'data-len-input="fc_len"', fixed = TRUE)
-  expect_match(html, "--fc-cols:11", fixed = TRUE)
-  expect_equal(lengths(regmatches(html, gregexpr('disabled="disabled"', html))), 5L)
+  expect_match(html, "--fc-cols:8", fixed = TRUE)
+  expect_equal(lengths(regmatches(html, gregexpr('disabled="disabled"', html))), 2L)
   expect_match(html, 'value="2026-11" checked', fixed = TRUE)
   all_off <- as.character(forecast_strip_input("fc_start", "fc_len", m, "2026-11", disabled = TRUE))
-  expect_equal(lengths(regmatches(all_off, gregexpr('disabled="disabled"', all_off))), 10L)
+  expect_equal(lengths(regmatches(all_off, gregexpr('disabled="disabled"', all_off))), 7L)
 })
 
 test_that("the lag is the longest reach-back of the fitted weather predictors", {

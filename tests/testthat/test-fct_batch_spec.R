@@ -409,9 +409,8 @@ test_that("the configuration input ids still exist in the module controls", {
   )) {
     expect_match(s21, paste0('ns("', id, '")'), fixed = TRUE)
   }
-  expect_match(s21, 'ns("fut_period_1")', fixed = TRUE)
-  expect_match(s21, 'ns("fut_period_2")', fixed = TRUE)
-  expect_match(s21, 'ns("fut_period_3")', fixed = TRUE)
+  # The three period sliders are built in one loop over `1:3`.
+  expect_match(s21, 'ns(paste0("fut_period_", i))', fixed = TRUE)
   prefixes <- c(
     "step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-", "step2-weathersim-",
     "step3-sp-", "step3-infra-", "step3-digital-", "step3-labor-", "step3-education-",

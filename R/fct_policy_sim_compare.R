@@ -248,6 +248,8 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
   scenario_palette <- c(Historical = .wise_history)
   forecast_scenarios <- scenario_levels[vapply(scenario_levels, .step2_is_forecast_like, logical(1L))]
   if (length(forecast_scenarios)) scenario_palette[forecast_scenarios] <- .wise_forecast
+  reference_scenarios <- scenario_levels[.step2_is_window_reference(scenario_levels)]
+  if (length(reference_scenarios)) scenario_palette[reference_scenarios] <- .wise_forecast_reference
   pending_ssps <- vapply(pending, function(x) {
     if (.step2_is_forecast_like(x)) "Forecast" else .normalise_ssp(x)
   }, character(1L))
@@ -707,6 +709,9 @@ echart_step3_adverse_dot <- function(tbl, x_label = "Outcome level",
   top_y <- max(tbl$rp_y)
   top_rows <- tbl[tbl$rp_y == top_y, , drop = FALSE]
   top_rows <- top_rows[!duplicated(top_rows$scenario_key), , drop = FALSE]
+  # A scenario with no Expected-row marker (the forecast of the target-window chart) is labelled on its first row.
+  rest <- tbl[!tbl$scenario_key %in% top_rows$scenario_key, , drop = FALSE]
+  top_rows <- rbind(top_rows, rest[!duplicated(rest$scenario_key), , drop = FALSE])
   x_vals <- c(
     tbl$baseline_val, tbl$policy_val, tbl$policy_lo, tbl$policy_hi,
     tbl$base_lo, tbl$base_hi
@@ -1960,14 +1965,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     ),
 
     # 2. Headline cards ----
-    .step2_window_panel(ns, shiny::div(
-      style = paste0(
-        "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
-        "letter-spacing: 0.03em; margin: 4px 0 6px;"
-      ),
-      "All months: climate scenarios against Historical"
-    )),
-    shiny::uiOutput(ns("headline_cards_ui")),
+    .step2_annual_group_header(ns, "All months: climate scenarios against Historical"),
+    .step2_annual_panel(ns, shiny::uiOutput(ns("headline_cards_ui"))),
     .step2_window_panel(ns, shiny::uiOutput(ns("headline_cards_window_ui"))),
 
     # Section 1: Annual weather variation & policy shift ----
@@ -2172,11 +2171,11 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         wise_reactable_csv_button(ns("summary_threshold_table"), "policy_outcome_thresholds")
       ),
       reactable::reactableOutput(ns("summary_threshold_table")),
-      shiny::tags$p(
+      .step2_annual_panel(ns, shiny::tags$p(
         class = "text-muted small",
         style = "margin-top: 8px; margin-bottom: 0;",
         "Central estimates summarize each model's weather years at the selected return period, then take the equal-weight mean across climate models for baseline and policy. Bounds capture CMIP6 climate model disagreement (Ensemble), econometric sampling precision (Coef), and combined uncertainty (Pooled). Policy bands include the estimation uncertainty of the policy variables' own coefficients. A cash transfer uses no estimated policy coefficient, so the Coef band of its effect is close to zero and its spread comes from climate models and weather years; this is not evidence that the effect is precisely estimated."
-      ),
+      )),
       .step2_window_panel(ns, shiny::tags$p(
         class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
         paste(
@@ -3275,6 +3274,13 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   .has_window <- reactive(!is.null(.window_label()))
   output$has_window <- shiny::reactive(.has_window())
   outputOptions(output, "has_window", suspendWhenHidden = FALSE)
+  # Forecast only (no climate scenario): the all-months outputs would only repeat Historical, so they are hidden.
+  .forecast_only <- reactive({
+    if (!isTRUE(.has_window())) return(FALSE)
+    all(vapply(names(baseline_saved_all()), .step2_is_forecast_scenario, logical(1L)))
+  })
+  output$forecast_only <- shiny::reactive(.forecast_only())
+  outputOptions(output, "forecast_only", suspendWhenHidden = FALSE)
   .window_arm <- function(scenarios) {
     label <- .window_label()
     hs <- baseline_hist_sim()
@@ -3340,7 +3346,6 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     wv <- window_views_rv()
     req(wv$dots, nrow(wv$dots))
     e <- echart_step3_adverse_dot(wv$dots, x_label = .window_axis_label(), height = "360px")
-    e <- .step2_window_adverse_guides(e, wv$dots$baseline_val[wv$dots$is_historical])
     .window_relabel(.step2_set_axis_range(e, "xAxis", .adverse_range()))
   }
   window_exceedance_chart <- function() {
@@ -3452,7 +3457,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       n_hist_years  = n_h_yrs
     )
     wdf <- if (isTRUE(.has_window()) && !is.null(df)) .window_threshold_df(names(df))
-    if (is.null(wdf)) df else dplyr::bind_rows(df, wdf)
+    if (is.null(wdf)) return(df)
+    if (isTRUE(.forecast_only())) wdf else dplyr::bind_rows(df, wdf)
   }
 
   # The threshold table's Download CSV is a client-side
