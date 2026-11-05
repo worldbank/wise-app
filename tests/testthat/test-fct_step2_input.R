@@ -363,7 +363,9 @@ test_that("the module controls start at the spec defaults", {
   html <- as.character(mod_2_01_weathersim_ui("sim"))
   expect_match(html, 'id="sim-hist_years"[^>]*data-from="1991"[^>]*data-to="2020"')
   expect_match(html, 'id="sim-fut_period_1"[^>]*data-from="2025"[^>]*data-to="2035"')
-  expect_match(html, 'value="ssp3_7_0" checked')
+  # No SSP is pre-selected in the sidebar (the spec default stays ssp3_7_0 for batch runs).
+  expect_match(html, 'value="ssp3_7_0"')
+  expect_no_match(html, 'value="ssp3_7_0" checked')
   expect_match(html, 'name="sim-residuals"|id="sim-residuals"')
   expect_match(html, 'id="sim-include_coef_uncertainty"[^>]*checked')
 })

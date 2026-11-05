@@ -2218,6 +2218,16 @@ tr.t2-wx-row td {
   width: 100%;
 }
 
+/* The tile text sits in a span inside the radio's span: draw the box on the outer one only. */
+.toggle-slider.forecast-strip span span {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  color: inherit !important;
+  padding: 0;
+}
+
 .toggle-slider.forecast-strip small {
   font-size: 0.6rem;
   font-variant-numeric: tabular-nums;

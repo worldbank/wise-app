@@ -280,7 +280,7 @@ test_that("with a catalogue run the window clamps and joins the summary", {
     expect_true(forecast_available())
     expect_true(forecast_on())
     expect_identical(forecast_window()$start, "2027-01")
-    expect_identical(output$forecast_summary, "Jan\u2013Mar \u00b7 on")
+    expect_identical(output$forecast_summary, "Jan\u2013Mar")
     expect_match(as.character(output$settings_summary$html), "Jan 2027 \u2013 Mar 2027", fixed = TRUE)
     expect_identical(forecast_lag(), 3L)
     expect_identical(
@@ -297,7 +297,7 @@ test_that("with a catalogue run the window clamps and joins the summary", {
     expect_identical(forecast_window()$start, "2027-01")
     expect_true(forecast_on())
     session$setInputs(fc_include = FALSE)
-    expect_identical(output$forecast_summary, "Off")
+    expect_identical(output$forecast_summary, "None selected")
     expect_null(live_sim_sig()$forecast)
   })
 })

@@ -118,11 +118,12 @@ mod_2_01_weathersim_ui <- function(id) {
 
       shiny::checkboxInput(
         inputId = ns("fc_include"),
-        label   = "Include seasonal forecast",
-        value   = TRUE
+        label   = "Seasonal forecast (ECMWF SEAS5)",
+        value   = FALSE
       ),
       shiny::uiOutput(ns("forecast_status_ui")),
       shiny::uiOutput(ns("forecast_body_ui")),
+      shiny::uiOutput(ns("forecast_strip_ui")),
       shiny::uiOutput(ns("forecast_readout_ui")),
       shiny::uiOutput(ns("forecast_run_ui"))
     ))
@@ -161,7 +162,7 @@ mod_2_01_weathersim_ui <- function(id) {
           "SSP3" = "ssp3_7_0",
           "SSP5" = "ssp5_8_5"
         ),
-        selected = d$ssps,
+        selected = character(0), # off by default; the batch spec default (d$ssps) is separate
         inline = TRUE
       ),
       shiny::tags$hr(style = "margin: 6px 0;"),
@@ -606,34 +607,43 @@ mod_2_01_weathersim_server <- function(id,
       }
     })
 
+    # The header (length pills) does not depend on the length, so a click on a pill is not replaced under the
+    # user; only the month strip below it is redrawn.
+    forecast_off <- reactive(!isTRUE(input$fc_include) || !is.null(forecast_block()))
+
     output$forecast_body_ui <- shiny::renderUI({
-      run <- forecast_run()
-      if (is.null(run)) return(NULL)
-      off <- !isTRUE(input$fc_include) || !is.null(forecast_block())
+      if (is.null(forecast_run())) return(NULL)
+      len <- shiny::isolate(input$fc_len)
+      if (!isTRUE(len %in% .STEP2_FORECAST_LEN_CHOICES)) len <- "3"
+      shiny::tags$div(
+        class = "step2-forecast-window-head",
+        shiny::tags$div(class = "step2-section-label", "Target window"),
+        shiny::tags$div(
+          class = "step2-forecast-len",
+          pill_toggle(
+            ns("fc_len"),
+            choices = .STEP2_FORECAST_LEN_CHOICES, selected = len,
+            disabled = forecast_off(), aria_label = "Window length in months"
+          ),
+          shiny::tags$span("months")
+        )
+      )
+    })
+
+    output$forecast_strip_ui <- shiny::renderUI({
+      if (is.null(forecast_run())) return(NULL)
       months <- forecast_months()
       len <- input$fc_len
       if (!isTRUE(len %in% .STEP2_FORECAST_LEN_CHOICES)) len <- "3"
       start <- .step2_forecast_clamp_start(months, shiny::isolate(input$fc_start), len)
       shiny::tagList(
-        shiny::tags$div(
-          class = "step2-forecast-window-head",
-          shiny::tags$div(class = "step2-section-label", "Target window"),
-          shiny::tags$div(
-            class = "step2-forecast-len",
-            pill_toggle(
-              ns("fc_len"),
-              choices = .STEP2_FORECAST_LEN_CHOICES, selected = len,
-              disabled = off, aria_label = "Window length in months"
-            ),
-            shiny::tags$span("months")
-          )
-        ),
         forecast_strip_input(
-          ns("fc_start"), ns("fc_len"), months, start, lag = forecast_lag(), disabled = off, len = len
+          ns("fc_start"), ns("fc_len"), months, start, lag = forecast_lag(), disabled = forecast_off(), len = len
         ),
         forecast_strip_legend()
       )
     })
+    shiny::outputOptions(output, "forecast_strip_ui", suspendWhenHidden = FALSE)
     shiny::outputOptions(output, "forecast_body_ui", suspendWhenHidden = FALSE)
 
     # One line: the target months and their lead, then the skill note when skill is missing or weak.
@@ -780,8 +790,8 @@ mod_2_01_weathersim_server <- function(id,
       w <- forecast_window()
       if (!is.null(forecast_block())) "Not available"
       else if (isTRUE(input$fc_include) && is.null(w)) "Window unavailable"
-      else if (forecast_on() && !is.null(w)) paste0(w$short, " \u00b7 on")
-      else "Off"
+      else if (forecast_on() && !is.null(w)) w$short
+      else "None selected"
     })
 
     output$settings_summary <- shiny::renderUI({
