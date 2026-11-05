@@ -367,3 +367,32 @@ test_that("the annual relabel changes only the Historical label", {
   expect_identical(.step2_annual_relabel(x)$mean, "Historical (annual) mean")
   expect_identical(.step2_annual_relabel(x, level = FALSE)$mean, "Historical mean")
 })
+
+test_that("window robustness data has one point per member and per reference year, on the deviation scale", {
+  sc <- window_fixture_scenario()
+  w <- step2_window_series(sc, window_fixture_label, "mean", step2_fixture_outcome(), "none", TRUE, 3, seed = 123L)
+  out <- step2_window_robustness_data(w)
+  expect_identical(sort(unique(out$scenario)), sort(c("Historical (Nov - Jan)", "Forecast (Nov 2026 - Jan 2027)")))
+  expect_identical(sum(out$unit == "Forecast member"), 5L)
+  expect_identical(sum(out$unit == "Reference year"), 6L)
+  expect_true(all(is.na(out$n_weather_years)))
+  expect_equal(sort(out$model_mean[out$unit == "Forecast member"]), sort(w$members$value))
+  expect_equal(out$center[out$unit == "Reference year"][[1L]], mean(w$historical$value))
+
+  dev <- step2_window_robustness_data(w, "mean")
+  expect_equal(unique(dev$center[dev$unit == "Reference year"]), 0)
+  expect_null(step2_window_robustness_data(NULL))
+})
+
+test_that("the robustness chart draws window rows in the forecast and history colours with a unit tooltip", {
+  sc <- window_fixture_scenario()
+  w <- step2_window_series(sc, window_fixture_label, "mean", step2_fixture_outcome(), "none", TRUE, 3, seed = 123L)
+  ch <- echart_model_robustness(step2_window_robustness_data(w), "Mean welfare")
+  pts <- ch$x$opts$series[[1L]]$data
+  cols <- vapply(pts, function(p) p$itemStyle$color, character(1L))
+  scen <- vapply(pts, `[[`, character(1L), "scenario")
+  expect_identical(unique(cols[scen == "Forecast (Nov 2026 - Jan 2027)"]), .wise_forecast)
+  expect_identical(unique(cols[scen == "Historical (Nov - Jan)"]), .wise_history)
+  expect_null(pts[[1L]]$n_years)
+  expect_match(paste(ch$x$opts$tooltip$formatter, collapse = " "), "d.unit", fixed = TRUE)
+})

@@ -78,6 +78,7 @@ app_server <- function(input, output, session) {
     sim_stale = step2_api$stale,
     enso_labels = step2_api$enso_labels,
     enso_window_labels = step2_api$enso_window_labels,
+    enso_forecast_marks = step2_api$enso_forecast_marks,
      run_trigger = run_step3_trigger,
      shared_aggregation_cache = aggregation_cache
   )

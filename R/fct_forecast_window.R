@@ -148,6 +148,37 @@ step2_window_series <- function(scenario, label, method, so, residuals, skip_coe
   )
 }
 
+#' Points of the Diagnostics robustness chart for the forecast target window
+#'
+#' One row per forecast member and one per same-window reference year, in the shape of `model_robustness_data()`
+#' (a point is that unit's outcome; `n_weather_years` is `NA`). Values carry the window group's own deviation
+#' reference, as the Results views do. The `unit` column names what a point is, for the tooltip.
+#' @param w Result of `step2_window_series()`, or `NULL`.
+#' @param deviation Results deviation setting (`"none"`, `"mean"` or `"median"`).
+#' @return `NULL` without a window, else a tibble.
+#' @noRd
+step2_window_robustness_data <- function(w, deviation = "none") {
+  if (is.null(w) || is.null(w$historical) || is.null(w$members)) return(NULL)
+  ref <- step2_hist_ref(w$historical, deviation)
+  pts <- rbind(
+    data.frame(
+      scenario = w$reference_label, model_id = as.character(w$historical$sim_year),
+      value = w$historical$value - ref, unit = "Reference year", stringsAsFactors = FALSE
+    ),
+    data.frame(
+      scenario = w$label, model_id = as.character(w$member_ids[w$members$sim_year]),
+      value = w$members$value - ref, unit = "Forecast member", stringsAsFactors = FALSE
+    )
+  )
+  pts <- pts[is.finite(pts$value), , drop = FALSE]
+  if (!nrow(pts)) return(NULL)
+  # One value per unit: model_robustness_data() takes each unit's mean, so the centre and the spread are its own.
+  out <- model_robustness_data(transform(pts, sim_year = 1L))
+  out$n_weather_years <- NA_integer_
+  out$unit <- ifelse(out$scenario == w$reference_label, "Reference year", "Forecast member")
+  out
+}
+
 #' Placement of the members in the reference years, from the window series
 #'
 #' The result of `step2_forecast_placement()` without a second aggregation of the same pipelines.

@@ -207,14 +207,7 @@
         ),
         shiny::conditionalPanel(
           condition = paste0("output['", ns("has_enso"), "']"),
-          pill_toggle(
-            ns("enso_mark"),
-            label    = "Mark ENSO years",
-            aria_label = "Mark El Ni\u00f1o and La Ni\u00f1a exposure years",
-            choices  = c("Off" = "off", "On" = "on"),
-            selected = "off",
-            layout   = "horizontal"
-          )
+          enso_mark_toggle_ui(ns)
         ),
         pill_toggle(
           ns("annual_distribution_type"),
@@ -248,7 +241,8 @@
           .STEP2_DIFFERENCE_NOTE
         ),
         style = "margin-top: 18px; margin-bottom: 0;"
-      )
+      ),
+      shiny::uiOutput(ns("enso_mark_note"))
     ),
 
 
@@ -1589,11 +1583,24 @@ mod_2_02_results_server <- function(id,
       lab <- enso_window_labels(en$observed, sc[has_ref][[1L]]$forecast, enso_window(hs$sim_summary$weather))
       if (all(is.na(lab$label))) NULL else lab
     })
+    # ENSO outlook of the forecast target months, the mark of the forecast members (D4); NULL without one.
+    enso_forecast_marks_rv <- reactive({
+      en <- enso()
+      if (is.null(en) || !isTRUE(.has_window())) return(NULL)
+      w <- window_series_rv()
+      tryCatch(
+        enso_forecast_marks(en, saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, w$months_label),
+        error = function(e) NULL
+      )
+    })
     output$has_enso <- shiny::reactive(!is.null(enso_labels_rv()))
     outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
     .enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels_rv()))
 
     output$enso_legend <- shiny::renderUI(if (.enso_marking()) enso_legend_ui())
+    output$enso_mark_note <- shiny::renderUI({
+      if (.enso_marking()) enso_mark_note_ui(!is.null(enso_forecast_marks_rv()))
+    })
 
     # variance_breakdown_rv: one row per scenario, three components ----
     # Aggregates the per-(sim_year) var_within / var_across columns to scalars
@@ -1769,6 +1776,7 @@ mod_2_02_results_server <- function(id,
       curves <- .with_window(curves, "curves")
       if (.enso_marking() && !is.null(.window_views_or_null())) {
         curves <- enso_attach_window_labels(curves, enso_window_labels_rv(), window_series_rv()$reference_label)
+        curves <- enso_attach_forecast_labels(curves, enso_forecast_marks_rv(), window_series_rv()$label)
       }
       e <- echart_annual_distribution(
         curves,
@@ -2452,6 +2460,7 @@ mod_2_02_results_server <- function(id,
     # Return API ----
     ts_committed <- new.env(parent = emptyenv())
     ts_committed$value <- NULL
+    ts_committed$window <- NULL
     # timeseries_curves bundles everything the Diagnostics tab needs to render
     # the per-model trajectories plot (the plot lives there now): the
     # per-(scenario, model, sim_year) table, the x-axis label, and the
@@ -2463,6 +2472,22 @@ mod_2_02_results_server <- function(id,
       derived_results_frame = derived_results_frame_rv,
       enso_labels = enso_labels_rv,
       enso_window_labels = enso_window_labels_rv,
+      enso_forecast_marks = enso_forecast_marks_rv,
+      # Forecast-window points of the Diagnostics robustness chart; NULL without a window. Like
+      # timeseries_curves, the last committed value stands while a run streams.
+      window_robustness = reactive({
+        if (.is_provisional()) {
+          return(ts_committed$window)
+        }
+        out <- if (isTRUE(.has_window())) {
+          tryCatch(
+            step2_window_robustness_data(window_series_rv(), input$cmp_deviation %||% "none"),
+            error = function(e) NULL
+          )
+        }
+        ts_committed$window <- out
+        out
+      }),
       timeseries_curves = reactive({
         # Diagnostics is never driven by provisional data: while a run
         # streams, return the last committed value (no dependency on the

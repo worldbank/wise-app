@@ -2645,7 +2645,7 @@ echart_timeseries_spaghetti <- function(ts_tbl, x_label = "",
 #'
 #' Climate-model robustness chart: one point per climate
 #' model's mean across weather-year draws in its scenario colour, plus the
-#' orange ensemble-median marker per scenario. Item tooltip.
+#' orange ensemble-mean marker per scenario. Item tooltip.
 #' @noRd
 echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
                                     height = "420px") {
@@ -2656,8 +2656,8 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
   cats <- .step2_scenario_order(cats)
   cat_idx <- setNames(as.character(seq_along(cats) - 1L), cats)
   colours <- stats::setNames(vapply(cats, function(s) {
-    if (identical(s, "Historical")) return(.wise_history)
-    if (.step2_is_forecast_scenario(s)) {
+    if (identical(s, "Historical") || .step2_is_window_reference(s)) return(.wise_history)
+    if (.step2_is_forecast_scenario(s) || .step2_is_window_forecast(s)) {
       return(.wise_forecast)
     }
     ssp <- .normalise_ssp(s)
@@ -2676,14 +2676,17 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
         value = list(tbl$model_mean[[i]], cat_idx[[as.character(tbl$scenario)[[i]]]]),
         scenario = as.character(tbl$scenario[[i]]),
         model = if ("model_id" %in% names(tbl)) as.character(tbl$model_id[[i]]) else NULL,
-        n_years = if ("n_weather_years" %in% names(tbl)) tbl$n_weather_years[[i]] else NULL,
+        n_years = if ("n_weather_years" %in% names(tbl) && is.finite(tbl$n_weather_years[[i]])) {
+          tbl$n_weather_years[[i]]
+        },
+        unit = if ("unit" %in% names(tbl) && !is.na(tbl$unit[[i]])) as.character(tbl$unit[[i]]),
         itemStyle = list(color = unname(colours[[as.character(tbl$scenario[[i]])]]), opacity = .65)
       )
     })
   )
   centers <- unique(tbl[c("scenario", "center")])
   centers <- list(
-    name = "Ensemble median",
+    name = "Ensemble mean",
     type = "scatter",
     symbolSize = 13,
     z = 3,
@@ -2729,9 +2732,9 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
       function esc(s) { return String(s).replace(/[&<>\"']/g, function(c) {
         return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]; }); }
       var percent = %s, v = p.value[0];
-      var label = d.model ? 'Model mean' : 'Ensemble median';
+      var label = d.unit ? 'Outcome' : (d.model ? 'Model mean' : 'Ensemble mean');
       var text = '<b>' + esc(d.scenario) + '</b>';
-      if (d.model) text += '<br>Model/member: ' + esc(d.model);
+      if (d.model) text += '<br>' + (d.unit ? esc(d.unit) : 'Model/member') + ': ' + esc(d.model);
       text += '<br>' + label + ': <b>' + (Number.isFinite(v) ?
         (percent ? v*100 : v).toLocaleString('en-US', {maximumFractionDigits: percent ? 1 : 3}) + %s : 'Not available') + '</b>';
       if (Number.isFinite(d.n_years)) text += '<br>Weather years: ' + d.n_years;

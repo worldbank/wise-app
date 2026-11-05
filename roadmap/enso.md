@@ -29,6 +29,7 @@ Verified at `8639eb2`, with the fixture parity and the smoke rerun after the rev
 
 ## Before the PR into `dev`
 
+- **Forecast marks on the distribution chart (Steps 2 and 3).** The toggle reads "ENSO phase" in line, the legend names El Niño and La Niña only, and the forecast members carry the outlook phase of the target months (D4, one state for all members). The note below the chart says how years and forecast months are classified. Not checked in the browser.
 - **Browser checks not run.** MWI Step 3 forecast marks; Step 3 with the ENSO files removed; the file-removed and MWI checks of the Step 3 comparison and the weather support line. All use gates already checked in Step 2. Use `dev/ui_drive.R` (skill `wise-ui-check`) on MWI, which has a signal, on BFA, which has none, and with the files removed.
 - **Zip downloads.** The new tables were read through the export registry, not downloaded in the browser.
 - **BFA forecast position.** It depends on the specification: reference years at least as adverse as the median member are 1 of 30 in the parity run and 28 of 30 with the app defaults. Look at this in the forecast checks; it is not an ENSO defect.

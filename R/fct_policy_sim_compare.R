@@ -213,10 +213,11 @@ echart_before_after_hist <- function(baseline_vals, policy_vals,
   lapply(seq_len(nrow(dots)), function(i) {
     lab <- rows$enso_label[[i]]
     if (is.na(lab)) return(unname(dots[i, ]))
+    text <- if ("enso_text" %in% names(rows)) rows$enso_text[[i]] else NA_character_
     period <- if ("enso_period" %in% names(rows)) rows$enso_period[[i]] else NA_character_
     pt <- list(
       value = unname(dots[i, ]), outcome = dots[i, 1L], scenario = scenario, source = source,
-      enso_text = paste0(
+      enso_text = if (!is.na(text)) text else paste0(
         "Weather year ", if (is.na(period)) rows$sim_year[[i]] else period, ": ", enso_label_text(lab),
         " exposure (El Ni\u00f1o ",
         pct(rows$enso_el_nino[[i]]), ", Neutral ", pct(rows$enso_neutral[[i]]), ", La Ni\u00f1a ",
@@ -2041,14 +2042,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         ),
         shiny::conditionalPanel(
           condition = paste0("output['", ns("has_enso"), "']"),
-          pill_toggle(
-            ns("enso_mark"),
-            label    = "Mark ENSO years",
-            aria_label = "Mark El Ni\u00f1o and La Ni\u00f1a exposure years",
-            choices  = c("Off" = "off", "On" = "on"),
-            selected = "off",
-            layout   = "horizontal"
-          )
+          enso_mark_toggle_ui(ns)
         ),
         pill_toggle(
           ns("annual_distribution_type"),
@@ -2083,7 +2077,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           .STEP2_DIFFERENCE_NOTE
         ),
         style = "margin-top: 18px; margin-bottom: 0;"
-      )
+      ),
+      shiny::uiOutput(ns("enso_mark_note"))
     ),
 
     # Section 1b: policy effect by ENSO exposure (item 4 of roadmap/enso.md) ----
@@ -2301,7 +2296,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                                  analysis_unit = reactive(NULL),
                                  annual_channels = reactive(NULL),
                                  enso_labels = reactive(NULL),
-                                 enso_window_labels = reactive(NULL)) {
+                                 enso_window_labels = reactive(NULL),
+                                 enso_forecast_marks = reactive(NULL)) {
   # A forecast window is not an annual weather sample. Every annual view here (cards, violin, adverse years,
   # exceedance, tables, decomposition) reads the annual scenarios only; the charts add the forecast as further series
   # (Historical for the target months and the members, without and with the policy).
@@ -3291,6 +3287,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
   enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels()))
   output$enso_legend <- shiny::renderUI(if (enso_marking()) enso_legend_ui())
+  output$enso_mark_note <- shiny::renderUI(if (enso_marking()) enso_mark_note_ui(!is.null(enso_forecast_marks())))
   enso_policy_rv <- reactive({
     lab <- enso_labels()
     req(lab)
@@ -3316,6 +3313,9 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     if (enso_marking() && "sim_year" %in% names(curves)) curves <- enso_attach_labels(curves, enso_labels())
     curves <- .with_window(curves, "curves")
     if (enso_marking()) curves <- enso_attach_window_labels(curves, enso_window_labels(), .wv()$reference_label)
+    if (enso_marking() && !is.null(.wv())) {
+      curves <- enso_attach_forecast_labels(curves, enso_forecast_marks(), .step2_window_forecast_label(.window_label()))
+    }
     e <- echart_step3_annual_distribution(
       curves,
       x_label = metric_axis_label(

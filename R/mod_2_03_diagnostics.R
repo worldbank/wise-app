@@ -144,6 +144,7 @@ mod_2_03_diagnostics_server <- function(id,
                                         survey_weather,
                                         selected_weather,
                                         timeseries_curves = NULL,
+                                        window_robustness = reactive(NULL),
                                         enso_labels = reactive(NULL),
                                         tabset_id,
                                         tabset_session = NULL,
@@ -178,7 +179,11 @@ mod_2_03_diagnostics_server <- function(id,
             } else {
               paste("Each point is one climate model's mean outcome across simulated",
                 "weather years for a scenario and projection period. Historical is",
-                "shown once as the neutral reference.")
+                "shown once as the neutral reference.",
+                if (!is.null(window_robustness())) {
+                  paste("A seasonal forecast adds a row of forecast members and a row of reference",
+                    "years, both for the forecast target months only.")
+                })
             }
           ),
           docs = TRUE
@@ -191,10 +196,15 @@ mod_2_03_diagnostics_server <- function(id,
         class = "diagnostic-note",
         if (forecast_only()) {
           paste0("Each point is one forecast member's outcome for the target window. ",
-            "The orange point is the median member.")
+            "The orange point is the mean of the members.")
         } else {
           paste0("Each scenario-coloured point is one climate model's mean across simulated weather-year draws. ",
-            "The orange point is the median model mean.")
+            "The orange point is the mean of the model means, the centre of the Results headline.",
+            if (!is.null(window_robustness())) {
+              paste0(" The forecast row shows one point per forecast member for the target months, and ",
+                "the Historical row with the target months shows one point per reference year of the same months; ",
+                "compare those two rows with each other, not with the annual rows.")
+            })
         }
       )
     })
@@ -570,10 +580,22 @@ mod_2_03_diagnostics_server <- function(id,
       stale = stale,
       description = "Sample sizes, robust Step 1 support intervals, outside-support shares, and warnings."
     )
+    # Annual climate-model points, then the forecast target-window points (members and the same-month
+    # reference years) when the run has a forecast. A forecast alone has no annual climate rows to show.
+    robustness_table <- function() {
+      tc <- timeseries_curves()
+      req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+      annual <- model_robustness_data(tc$tbl)
+      win <- window_robustness()
+      if (is.null(win) || !nrow(win)) {
+        return(annual)
+      }
+      if (forecast_only()) win else dplyr::bind_rows(annual, win)
+    }
     robustness_chart <- function() {
       tc <- timeseries_curves()
       req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
-      ch <- echart_model_robustness(model_robustness_data(tc$tbl), tc$x_label,
+      ch <- echart_model_robustness(robustness_table(), tc$x_label,
         height = "420px"
       )
       req(!is.null(ch))
@@ -594,9 +616,12 @@ mod_2_03_diagnostics_server <- function(id,
       fun = function() {
         tc <- timeseries_curves()
         req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
-        annotate_visualization_export(model_robustness_data(tc$tbl),
+        annotate_visualization_export(robustness_table(),
           so_method(hist_sim()$so), hist_sim()$so,
-          observation_unit = "climate-model mean across weather-year draws",
+          observation_unit = paste0(
+            "climate-model mean across weather-year draws; forecast member or reference-year outcome ",
+            "for the target window (rows with a unit)"
+          ),
           aggregation_order = "annual aggregate by model and weather year, then model mean",
           uncertainty = "ensemble spread"
         )

@@ -413,6 +413,39 @@ enso_reference_comparison <- function(placement, labels, phase, min_n = 3L) {
   )
 }
 
+# Source id of the forecast run in `enso_forecast.csv`, or `NULL` when the run has none (D4).
+.enso_run_system <- function(run) {
+  model <- run$model_id
+  if (length(model) == 1L && model %in% names(ENSO_FORECAST_SOURCES)) ENSO_FORECAST_SOURCES[[model]]
+}
+
+#' ENSO outlook of the forecast target months as a mark for the forecast members
+#'
+#' The members share one target window, so they share one state: the outlook phase (D4). The text names
+#' the outlook for the tooltip of a marked member.
+#'
+#' @param enso List from `enso_load()`.
+#' @param forecast The `forecast` entry of the scenario (`forecast_months`).
+#' @param run The run's `init` and `model_id` (`hist_sim$forecast_run`), or `NULL`.
+#' @param months_label Target months as text ("Nov - Jan").
+#' @return `NULL` when nothing covers the target months, else a list: `phase` (label id), `roni` (mean over the
+#'   months) and `text`.
+#' @noRd
+enso_forecast_marks <- function(enso, forecast, run, months_label) {
+  outlook <- enso_forecast_outlook(enso, forecast$forecast_months, run$init, .enso_run_system(run))
+  phase <- enso_outlook_phase(outlook)
+  if (is.na(phase)) return(NULL)
+  roni <- unique(formatC(range(outlook$roni, na.rm = TRUE), digits = 2L, format = "f"))
+  later <- if (!all(outlook$basis == "forecast")) ", later outlook, not from this run" else ""
+  list(
+    phase = phase, roni = mean(outlook$roni, na.rm = TRUE),
+    text = paste0(
+      "ENSO outlook, ", months_label, ": ", enso_label_text(phase), " (RONI ", paste(roni, collapse = " to "),
+      later, ")"
+    )
+  )
+}
+
 #' ENSO text of the forecast placement card (item 7)
 #'
 #' The outlook of the target months (D4) and, when the outlook has one phase, the median member
@@ -429,8 +462,7 @@ enso_reference_comparison <- function(placement, labels, phase, min_n = 3L) {
 #'   (`enso_forecast_outlook()`), `phase` and `compare` (`enso_reference_comparison()`, or `NULL`).
 #' @noRd
 enso_placement_text <- function(enso, forecast, run, placement, labels, months_label) {
-  model <- run$model_id
-  system <- if (length(model) == 1L && model %in% names(ENSO_FORECAST_SOURCES)) ENSO_FORECAST_SOURCES[[model]]
+  system <- .enso_run_system(run)
   outlook <- enso_forecast_outlook(enso, forecast$forecast_months, run$init, system)
   phase <- enso_outlook_phase(outlook)
   if (is.na(phase)) return(NULL)
@@ -553,6 +585,28 @@ enso_attach_window_labels <- function(tbl, labels, reference_label) {
     v[rows] <- labels[[cols[[nm]]]][idx]
     tbl[[nm]] <- v
   }
+  tbl
+}
+
+#' Attach the ENSO outlook to the forecast member rows
+#'
+#' Every member of the forecast window gets the outlook phase of the target months
+#' (`enso_forecast_marks()`) and its tooltip text in `enso_text`; other rows are left as they are.
+#'
+#' @param tbl Merged rows with `scenario`, as after `enso_attach_labels()`.
+#' @param marks Result of `enso_forecast_marks()`, or `NULL`.
+#' @param member_label Display label of the forecast member series.
+#' @return `tbl`, with `enso_text` added.
+#' @noRd
+enso_attach_forecast_labels <- function(tbl, marks, member_label) {
+  if (is.null(marks) || is.null(member_label)) return(tbl)
+  rows <- which(tbl$scenario == member_label)
+  if (is.null(tbl$enso_text)) tbl$enso_text <- NA_character_
+  if (is.null(tbl$enso_label)) tbl$enso_label <- NA_character_
+  if (is.null(tbl$enso_roni)) tbl$enso_roni <- NA_real_
+  tbl$enso_label[rows] <- marks$phase
+  tbl$enso_roni[rows] <- marks$roni
+  tbl$enso_text[rows] <- marks$text
   tbl
 }
 
@@ -687,6 +741,47 @@ enso_baseline_months <- function(svy) {
   enso_month_weights(svy[[col[[1L]]]], if (!is.null(w)) svy[[w]])
 }
 
+# Wording of the marked draws (the note below the distribution charts).
+.ENSO_NOTE_MARKS <- paste(
+  "ENSO phase marks a draw as El Ni\u00f1o or La Ni\u00f1a; unmarked draws are Neutral or Mixed. A simulated weather year is a",
+  "composite of the months that enter the model for each household, so it is marked when at least half of that",
+  "exposure falls in the phase. Climate scenarios take the phase of their template year, and the Historical draws of the",
+  "target months are classified the same way from the target months and the fitted lags. The phase of each month is",
+  "from the relative Ni\u00f1o 3.4 index (RONI)."
+)
+.ENSO_NOTE_MARKS_FORECAST <- paste(
+  "Forecast members share one state: the phase of at least half of the target months in the ENSO forecast (RONI",
+  "outlook), or in the observed record when the forecast does not cover them."
+)
+
+#' Note on how the marked draws are classified
+#' @param forecast Add the sentence on the forecast members.
+#' @noRd
+enso_mark_note_ui <- function(forecast = FALSE) {
+  shiny::tags$p(
+    class = "text-muted small", style = "margin-top: 6px; margin-bottom: 0;",
+    .ENSO_NOTE_MARKS, if (isTRUE(forecast)) .ENSO_NOTE_MARKS_FORECAST
+  )
+}
+
+#' Toggle that marks the El Nino and La Nina draws, with its label in line
+#' @param ns Namespace function of the module.
+#' @noRd
+enso_mark_toggle_ui <- function(ns) {
+  shiny::div(
+    style = "display: flex; align-items: center; gap: 8px;",
+    shiny::tags$span(class = "control-label", style = "margin: 0; font-weight: 600;", "ENSO phase"),
+    pill_toggle(
+      ns("enso_mark"),
+      label = NULL,
+      aria_label = "Mark draws by ENSO phase",
+      choices = c("Off" = "off", "On" = "on"),
+      selected = "off",
+      layout = "horizontal"
+    )
+  )
+}
+
 #' Legend of the marked draws on the distribution charts
 #' @noRd
 enso_legend_ui <- function() {
@@ -702,7 +797,7 @@ enso_legend_ui <- function() {
   }
   shiny::div(
     class = "text-muted small", style = "text-align: right; margin-bottom: 4px;",
-    "Marked draws:", item("el_nino", "El Ni\u00f1o exposure"), item("la_nina", "La Ni\u00f1a exposure")
+    item("el_nino", "El Ni\u00f1o"), item("la_nina", "La Ni\u00f1a")
   )
 }
 

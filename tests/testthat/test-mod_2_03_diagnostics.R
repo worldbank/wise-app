@@ -197,3 +197,34 @@ test_that("a precomputed historical filter gives the same density panel", {
   )))
   expect_identical(pre$x$opts, plain$x$opts)
 })
+
+test_that("the robustness table adds forecast-window rows, and drops annual Historical for a forecast alone", {
+  annual <- data.frame(
+    scenario = rep(c("Historical", "SSP2-4.5 / 2030-2040"), each = 3L), model_id = rep(c("a", "b", "c"), 2L),
+    sim_year = 1L, value = c(5, 5.1, 5.2, 5.3, 5.4, 5.5)
+  )
+  win <- step2_window_robustness_data(list(
+    historical = tibble::tibble(sim_year = 1991:1992, value = c(4, 4.2)),
+    members = tibble::tibble(sim_year = 1:2, value = c(4.5, 4.6)),
+    member_ids = c("member_0", "member_1"), label = "Forecast (Nov 2026 - Jan 2027)",
+    reference_label = "Historical (Nov - Jan)"
+  ))
+  saved <- shiny::reactiveVal(list(`SSP2-4.5 / 2030-2040` = list()))
+  tc <- shiny::reactive(list(tbl = annual, x_label = "Mean welfare", ens_q = c(lo = 0.5, hi = 0.5)))
+  shiny::testServer(
+    mod_2_03_diagnostics_server,
+    args = list(
+      id = "diagnostics", hist_sim = shiny::reactiveVal(list()), saved_scenarios = saved,
+      survey_weather = shiny::reactiveVal(NULL), selected_weather = shiny::reactiveVal(NULL),
+      timeseries_curves = tc, window_robustness = shiny::reactive(win), tabset_id = "tabs"
+    ),
+    {
+      mixed <- robustness_table()
+      expect_true(all(c("Historical", "SSP2-4.5 / 2030-2040", "Historical (Nov - Jan)",
+        "Forecast (Nov 2026 - Jan 2027)") %in% mixed$scenario))
+      saved(list(`Seasonal forecast / Nov 2026 - Jan 2027 (October 2026 run)` = list()))
+      alone <- robustness_table()
+      expect_identical(sort(unique(alone$scenario)), c("Forecast (Nov 2026 - Jan 2027)", "Historical (Nov - Jan)"))
+    }
+  )
+})

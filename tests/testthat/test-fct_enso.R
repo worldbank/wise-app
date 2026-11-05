@@ -970,3 +970,36 @@ test_that("review edge cases: factor months, no finite values, negative zero", {
   expect_identical(.enso_fmt(-0.0001, 1, 0L), "0")
   expect_identical(.enso_fmt(-0.0001, 1, 3L), "0.000")
 })
+
+# Forecast marks ----
+
+test_that("forecast members take the outlook phase of the target months as a mark", {
+  e <- enso_fixture()
+  fc <- list(forecast_months = as.Date(c("1953-11-01", "1953-12-01")))
+  marks <- enso_forecast_marks(e, fc, list(init = as.Date("1953-10-01"), model_id = "ecmwf_seas51"), "Nov - Dec")
+  expect_identical(marks$phase, "el_nino")
+  expect_match(marks$text, "ENSO outlook, Nov - Dec: El Niño (RONI 1.10 to 1.40)", fixed = TRUE)
+  expect_null(enso_forecast_marks(e, list(forecast_months = as.Date("1900-01-01")), NULL, "Jan"))
+
+  tbl <- data.frame(
+    scenario = c("Historical (Nov - Dec)", "Forecast (Nov - Dec 1953)", "Forecast (Nov - Dec 1953)"),
+    sim_year = c(1990L, 1L, 2L), enso_label = c("neutral", NA, NA)
+  )
+  out <- enso_attach_forecast_labels(tbl, marks, "Forecast (Nov - Dec 1953)")
+  expect_identical(out$enso_label, c("neutral", "el_nino", "el_nino"))
+  expect_true(is.na(out$enso_text[[1L]]))
+  expect_identical(enso_attach_forecast_labels(tbl, NULL, "x"), tbl)
+
+  pts <- .enso_dot_data(cbind(c(1, 2), c(1, 1)), out[2:3, ], "Forecast (Nov - Dec 1953)", "All")
+  expect_identical(pts[[1L]]$enso_text, marks$text)
+  expect_identical(pts[[1L]]$symbol, "triangle")
+})
+
+test_that("the legend names the phases only and the toggle label sits in line", {
+  legend <- as.character(enso_legend_ui())
+  expect_false(grepl("Marked draws|exposure", legend))
+  expect_match(legend, "El Niño")
+  toggle <- as.character(enso_mark_toggle_ui(shiny::NS("x")))
+  expect_match(toggle, "ENSO phase", fixed = TRUE)
+  expect_match(toggle, "display: flex", fixed = TRUE)
+})
