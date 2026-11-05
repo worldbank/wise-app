@@ -262,27 +262,6 @@ test_that("unusable inputs give an NA table of the right shape", {
   expect_true(is.na(enso_year_labels(e$observed, 1951, enso_month_weights(2), integer(0))$label))
 })
 
-# Sample coverage ----
-
-test_that("enso_sample_coverage places each interview in its own month", {
-  e <- enso_fixture()
-  dates <- as.Date(c("1950-01-15", "1950-06-10", "1951-02-01", "1951-02-20", "1949-05-01"))
-  grp <- c("A", "A", "B", "B", "B")
-  out <- enso_sample_coverage(e$observed, dates, group = grp)
-  a <- out[out$group == "A", ]
-  b <- out[out$group == "B", ]
-  expect_equal(c(a$n, a$n_missing), c(2L, 0L))
-  expect_equal(c(a$el_nino, a$neutral, a$la_nina), c(0, 0.5, 0.5))
-  expect_equal(a$max_roni, 0.1)
-  expect_equal(c(b$n, b$n_missing), c(2L, 1L)) # the 1949 interview is outside the table
-  expect_equal(c(b$el_nino, b$la_nina), c(1, 0))
-  expect_equal(b$max_roni, 1.4)
-
-  w <- enso_sample_coverage(e$observed, dates[1:2], weights = c(3, 1))
-  expect_equal(w$group, "all")
-  expect_equal(c(w$neutral, w$la_nina), c(0.25, 0.75))
-})
-
 # Phase summary (D5) ----
 
 test_that("enso_phase_summary gives counts, means and differences from Neutral", {
@@ -383,17 +362,29 @@ enso_labels_fixture <- function() {
   )
 }
 
-test_that("coverage sentences name the wave, the shares and the highest RONI", {
-  cov <- tibble::tibble(
-    group = c("BFA, 2021", "XXX, 1900"), n = c(10L, 0L), n_missing = c(0L, 4L),
-    el_nino = c(0.125, NA), neutral = c(0.5, NA), la_nina = c(0.375, NA), max_roni = c(0.5, NA)
+test_that("interview months carry the phase and RONI of their own month, by wave", {
+  obs <- tibble::tibble(
+    month = as.Date(c("2018-05-01", "2018-06-01", "2021-05-01")),
+    phase = c("el_nino", "neutral", "la_nina"), roni = c(0.82, 0.1, -0.86)
   )
-  s <- enso_coverage_sentences(cov, c("BFA, 2021" = "Burkina Faso, 2021"))
-  expect_length(s, 1L) # the wave outside the record is left out
-  expect_match(s, "^Burkina Faso, 2021: 12% of households were interviewed in El Niño months", perl = TRUE)
-  expect_match(s, "38% in La Niña and 50% in neutral months")
-  expect_match(s, "Highest RONI at an interview: 0.50\\.$")
-  expect_identical(enso_coverage_sentences(NULL), character(0))
+  dates <- as.Date(c("2018-05-10", "2018-05-20", "2018-06-02", "2021-05-03", "1900-01-01", NA))
+  grp <- c("A, 2018", "A, 2018", "A, 2018", "A, 2021", "A, 2021", "A, 2021")
+  out <- enso_interview_months(obs, dates, grp)
+  expect_equal(nrow(out), 3L) # one row per wave and month; dates outside the record or missing are left out
+  expect_identical(out$phase[out$group == "A, 2021"], "la_nina")
+  expect_equal(out$roni[out$group == "A, 2018" & out$month_num == 5L], 0.82)
+})
+
+test_that("the month chip names one month's phase and RONI, or counts the months of a wave", {
+  m <- data.frame(month_num = c(5L, 6L, 11L), phase = c("el_nino", "neutral", "el_nino"), roni = c(0.82, 0.1, 0.9))
+  one <- as.character(enso_month_chip_ui(m, "5"))
+  expect_match(one, "El Ni\u00f1o, RONI 0.82")
+  expect_match(one, "\u25B2")
+  expect_match(as.character(enso_month_chip_ui(m, "6")), "Neutral, RONI 0.10")
+  expect_null(enso_month_chip_ui(m, "7"))
+  all <- as.character(enso_month_chip_ui(m, "all"))
+  expect_match(all, "2 El Ni\u00f1o  .*1 Neutral")
+  expect_null(enso_month_chip_ui(m[0, ], "all"))
 })
 
 test_that("labels attach by simulation year and skip the forecast-window series", {

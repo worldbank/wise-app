@@ -231,6 +231,22 @@ test_that("echart_interview_dates builds one series per wave over 12 months", {
   expect_null(echart_interview_dates(NULL))
 })
 
+test_that("echart_interview_dates marks El Nino and La Nina months and names the RONI", {
+  d <- data.frame(
+    economy = "A", countryyear = "A, 2018", month_num = 1:2, hh = c(10L, 15L)
+  )
+  em <- data.frame(
+    group = "A, 2018", month_num = 1:2, phase = c("el_nino", "neutral"), roni = c(0.82, 0.1)
+  )
+  ch <- echart_interview_dates(d, enso_months = em)
+  pts <- ch$x$opts$series[[1]]$data
+  expect_match(pts[[1]]$enso_text, "El Ni\u00f1o month, RONI 0.82")
+  expect_true(pts[[1]]$label$show)
+  expect_match(pts[[2]]$enso_text, "Neutral month, RONI 0.10")
+  expect_null(pts[[2]]$label)
+  expect_null(pts[[3]]$enso_text)
+})
+
 # ---- Wave-keyed density allocation (PERF-43) ---------------------------------
 
 make_density_fixture <- function() {

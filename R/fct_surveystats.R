@@ -330,6 +330,8 @@ welfare_poverty_lines <- function() {
 #' @param wave_labels Optional named character vector replacing wave labels.
 #' @param palette Fill palette (`"sequential"`, `"okabe_ito"`, `"wise"`, or `"blue"`).
 #' @param height Widget height; a CSS length or a number of pixels.
+#' @param enso_months Optional result of `enso_interview_months()` (`group` = `countryyear`). Adds the
+#'   ENSO phase and RONI of the month to the tooltip, and an El Nino or La Nina mark on the bar.
 #'
 #' @return An `echarts4r` widget, or `NULL` invisibly when `plot_data` is
 #'   `NULL` or has zero rows.
@@ -339,7 +341,8 @@ echart_interview_dates <- function(plot_data,
                                    unit_label = "Households",
                                    wave_labels = NULL,
                                    palette = c("sequential", "okabe_ito", "wise", "blue"),
-                                   height = "300px") {
+                                   height = "300px",
+                                   enso_months = NULL) {
   if (is.null(plot_data) || nrow(plot_data) == 0 ||
     !all(c("countryyear", "month_num", "hh") %in% names(plot_data))) {
     return(invisible(NULL))
@@ -378,10 +381,40 @@ echart_interview_dates <- function(plot_data,
 
   fmt <- .interview_count_fmt()
 
-  grid |>
+  ch <- grid |>
     echarts4r::group_by(wave) |>
     echarts4r::e_charts(month, height = height) |>
-    echarts4r::e_bar(hh) |>
+    echarts4r::e_bar(hh)
+  tooltip <- list(valueFormatter = fmt)
+  if (!is.null(enso_months) && nrow(enso_months)) {
+    ch$x$opts$series <- Map(function(s, wave) {
+      key <- waves[match(wave, info$display)]
+      rows <- grid[grid$wave == wave, , drop = FALSE]
+      s$data <- lapply(seq_along(s$data), function(i) {
+        m <- enso_months[enso_months$group == key & enso_months$month_num == rows$month_num[i], , drop = FALSE]
+        pt <- s$data[[i]]
+        if (!nrow(m) || rows$hh[i] <= 0) return(pt)
+        pt$enso_text <- paste0(enso_label_text(m$phase), " month, RONI ", format(round(m$roni, 2), nsmall = 2))
+        mark <- ENSO_MARKS[[m$phase]]
+        if (!is.null(mark)) {
+          pt$label <- list(
+            show = TRUE, position = "top", fontSize = 11, color = mark$color, textBorderColor = "#243746",
+            textBorderWidth = 1, formatter = if (m$phase == "el_nino") "\u25B2" else "\u25C6"
+          )
+        }
+        pt
+      })
+      s
+    }, ch$x$opts$series, vapply(ch$x$opts$series, function(s) s$name, character(1)))
+    tooltip <- list(formatter = htmlwidgets::JS(paste0(
+      "function(ps) { var f = ", as.character(fmt), "; var s = '<b>' + ps[0].axisValueLabel + '</b>'; ",
+      "ps.forEach(function(p) { var d = p.data || {}; s += '<br>' + p.marker + p.seriesName + ': <b>' + ",
+      "f(p.value[1]) + '</b>'; if (d.enso_text) s += '<br><span style=\"margin-left:14px\">' + d.enso_text + ",
+      "'</span>'; }); return s; }"
+    )))
+  }
+
+  ch |>
     echarts4r::e_color(cols) |>
     echarts4r::e_legend(orient = "horizontal", right = 36, top = 0) |>
     echarts4r::e_x_axis(
@@ -397,7 +430,8 @@ echart_interview_dates <- function(plot_data,
     echarts4r::e_tooltip(
       trigger = "axis",
       axisPointer = list(type = "shadow"),
-      valueFormatter = fmt
+      formatter = tooltip$formatter,
+      valueFormatter = tooltip$valueFormatter
     ) |>
     echarts4r::e_grid(containLabel = TRUE, left = 8, right = 14, top = 42, bottom = 8) |>
     wise_echart_theme()

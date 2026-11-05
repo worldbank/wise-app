@@ -416,6 +416,13 @@ mod_1_02_surveystats_server <- function(
           # comparable; the archived ggplot renderer remains available under
           # dev/archive/static_plots/ for design comparisons.
           interview_date_chart <- function() {
+            en <- enso()
+            df <- survey_data()
+            # From the interview dates, not the month numbers of the chart, so each wave sits in its own year.
+            enso_months <- if (!is.null(en) && is.data.frame(df) && "timestamp" %in% names(df)) {
+              wave <- if ("countryyear" %in% names(df)) df$countryyear else paste0(df$economy, ", ", df$year)
+              enso_interview_months(en$observed, df$timestamp, wave)
+            }
             unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
             unit_label <- switch(unit %||% "hh",
               ind = "Individuals",
@@ -427,7 +434,8 @@ mod_1_02_surveystats_server <- function(
               unit_label = unit_label,
               palette = "sequential",
               wave_labels = survey_wave_meta()$plot_labels,
-              height = "300px"
+              height = "300px",
+              enso_months = enso_months
             )
           }
 
@@ -437,29 +445,10 @@ mod_1_02_surveystats_server <- function(
             ch
           })
 
-          # ENSO phase of the interviews, one sentence per wave (roadmap/enso.md, item 1).
-          # From the interview dates, not the month numbers of the chart, so each wave sits in its own
-          # year. Absent without the ENSO tables.
+          # Legend of the ENSO marks on the interview chart (roadmap/enso.md, item 1). Absent without
+          # the ENSO tables.
           output$enso_interviews <- shiny::renderUI({
-            en <- enso()
-            df <- survey_data()
-            if (is.null(en) || !is.data.frame(df) || !"timestamp" %in% names(df)) return(NULL)
-            wave <- if ("countryyear" %in% names(df)) df$countryyear else paste0(df$economy, ", ", df$year)
-            w <- survey_weight_column(names(df))
-            cov <- enso_sample_coverage(en$observed, df$timestamp, if (!is.null(w)) df[[w]], wave)
-            lines <- enso_coverage_sentences(cov, survey_wave_meta()$plot_labels)
-            if (!length(lines)) return(NULL)
-            shiny::div(
-              class = "text-muted small mt-2",
-              lapply(lines, shiny::tags$p, class = "mb-1"),
-              shiny::tags$p(
-                class = "mb-0",
-                paste(
-                  "The index is relative Ni\u00f1o 3.4 (RONI). El Ni\u00f1o and La Ni\u00f1a months are",
-                  "those it flags."
-                )
-              )
-            )
+            if (is.null(enso())) NULL else enso_legend_ui()
           })
 
           wise_export_figure(
@@ -800,7 +789,12 @@ mod_1_02_surveystats_server <- function(
                         class = "mb-2",
                         info_popover(
                           title = "Timing of interviews",
-                          p("Monthly breakdown of interview waves.")
+                          p("Monthly breakdown of interview waves."),
+                          p(
+                            "Where ENSO data are available, bars in El Ni\u00f1o (\u25B2) or La Ni\u00f1a (\u25C6)",
+                            "months are marked, and the tooltip gives the RONI of the month. The index is relative",
+                            "Ni\u00f1o 3.4 (RONI). El Ni\u00f1o and La Ni\u00f1a months are those it flags."
+                          )
                         )
                       ),
                       wise_chart_output(ns("interview_date"),

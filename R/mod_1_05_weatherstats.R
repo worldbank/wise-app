@@ -30,6 +30,7 @@ mod_1_05_weatherstats_ui <- function(id) {
 #'   `map` (location-to-cell mapping) from `mod_1_02_surveystats_server()`.
 #'   When present, values are merged onto H3 cells so overlapping survey
 #'   locations no longer stack translucent fills on top of each other.
+#' @param enso             Reactive `enso_load()` result; `NULL` without the ENSO tables.
 #' @param tabset_id        Character. `inputId` of the parent tabset panel.
 #' @param tabset_session   Shiny session for the parent tabset. Defaults to
 #'   `session$parent`.
@@ -45,6 +46,7 @@ mod_1_05_weatherstats_server <- function(
   hist_years = NULL,
   survey_data,
   cell_data = NULL,
+  enso = shiny::reactive(NULL),
   survey_version = reactive(0L),
   survey_data_generation = survey_version,
   tabset_id,
@@ -1376,6 +1378,17 @@ mod_1_05_weatherstats_server <- function(
                 selected = wxmap_month(),
                 label    = "Interview month"
               )
+            }
+          },
+          # ENSO phase of the wave and month on the maps. Absent without the ENSO tables.
+          {
+            en <- enso()
+            swd <- survey_weather()
+            key <- wxmap_wave()
+            if (!is.null(en) && !is.null(key) && is.data.frame(swd) && "timestamp" %in% names(swd)) {
+              wave <- paste(swd$code, as.character(swd$year), swd$survname, sep = "|")
+              m <- enso_interview_months(en$observed, swd$timestamp, wave)
+              enso_month_chip_ui(m[m$group == key, , drop = FALSE], wxmap_month() %||% "all")
             }
           }
         ),

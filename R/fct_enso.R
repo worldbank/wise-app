@@ -241,43 +241,6 @@ enso_window_labels <- function(enso, forecast, lags) {
 }
 
 
-# Coverage of the survey sample ----
-
-#' Phase of the interview months of a sample
-#'
-#' Household shares by the ENSO phase of the interview month, and the highest RONI at any
-#' interview. Computed from interview dates, not from month numbers, so each wave is placed
-#' in its own year. Interviews outside the table are counted in `n_missing`.
-#'
-#' @param enso Observed table from `enso_load()$observed`.
-#' @param dates Interview dates (`Date` or `POSIXt`), one per household.
-#' @param weights Optional household weights; unweighted when `NULL`.
-#' @param group Optional vector (for example the survey wave) to summarise by.
-#' @return Tibble: `group`, `n`, `n_missing`, `el_nino`, `neutral`, `la_nina` (shares),
-#'   `max_roni`.
-#' @noRd
-enso_sample_coverage <- function(enso, dates, weights = NULL, group = NULL) {
-  n <- length(dates)
-  weights <- if (is.null(weights)) rep(1, n) else as.numeric(weights)
-  group <- if (is.null(group)) rep("all", n) else as.character(group)
-  ok_date <- !is.na(dates)
-  pos <- rep(NA_integer_, n)
-  pos[ok_date] <- match(.enso_month_key(as.Date(dates[ok_date])), .enso_month_key(enso$month))
-  rows <- lapply(unique(group), function(g) {
-    i <- group == g & !is.na(weights) & weights > 0
-    hit <- i & !is.na(pos)
-    total <- sum(weights[hit])
-    share <- function(k) if (total > 0) sum(weights[hit & enso$phase[pos] %in% k]) / total else NA_real_
-    tibble::tibble(
-      group = g, n = sum(hit), n_missing = sum(i & is.na(pos)),
-      el_nino = share("el_nino"), neutral = share("neutral"), la_nina = share("la_nina"),
-      max_roni = if (any(hit)) max(enso$roni[pos[hit]]) else NA_real_
-    )
-  })
-  do.call(rbind, rows)
-}
-
-
 # Phase comparison (D5) ----
 
 #' Mean outcome by ENSO label, with the difference from Neutral
@@ -517,28 +480,26 @@ ENSO_MARKS <- list(
 #' @noRd
 enso_label_text <- function(x) unname(ENSO_LABEL_TEXT[as.character(x)])
 
-#' One sentence per survey wave on the ENSO phase of its interviews (item 1)
+#' ENSO phase and RONI of each interview month, by survey wave
 #'
-#' Information, not a warning. Waves with no interview inside the ENSO record are left out.
+#' Placed by interview date, so each wave sits in its own year. Where a wave has interviews in the same
+#' calendar month of two years, the first one counts. Months outside the ENSO record are left out.
 #'
-#' @param coverage Tibble from `enso_sample_coverage()`.
-#' @param wave_labels Optional named character vector replacing the `group` text.
-#' @return Character vector, one sentence per wave.
+#' @param enso Observed table from `enso_load()$observed`.
+#' @param dates Interview dates (`Date` or `POSIXt`), one per household.
+#' @param group Vector (the survey wave) matching `dates`.
+#' @return Data frame: `group`, `month_num`, `phase`, `roni`.
 #' @noRd
-enso_coverage_sentences <- function(coverage, wave_labels = NULL) {
-  if (is.null(coverage) || !nrow(coverage)) return(character(0))
-  coverage <- coverage[coverage$n > 0L, , drop = FALSE]
-  vapply(seq_len(nrow(coverage)), function(i) {
-    g <- coverage$group[[i]]
-    wave <- if (!is.null(wave_labels) && g %in% names(wave_labels)) wave_labels[[g]] else g
-    pct <- function(x) paste0(format(round(100 * x), trim = TRUE), "%")
-    paste0(
-      wave, ": ", pct(coverage$el_nino[[i]]), " of households were interviewed in El Ni\u00f1o months, ",
-      pct(coverage$la_nina[[i]]), " in La Ni\u00f1a and ", pct(coverage$neutral[[i]]),
-      " in neutral months. Highest RONI at an interview: ",
-      format(round(coverage$max_roni[[i]], 2), nsmall = 2, trim = TRUE), "."
-    )
-  }, character(1))
+enso_interview_months <- function(enso, dates, group) {
+  ok <- !is.na(dates)
+  d <- as.Date(dates[ok])
+  pos <- match(.enso_month_key(d), .enso_month_key(enso$month))
+  hit <- !is.na(pos)
+  out <- data.frame(
+    group = as.character(group[ok])[hit], month_num = as.integer(format(d[hit], "%m")),
+    phase = enso$phase[pos[hit]], roni = enso$roni[pos[hit]], stringsAsFactors = FALSE
+  )
+  out[!duplicated(out[c("group", "month_num")]), , drop = FALSE]
 }
 
 #' Attach the ENSO label of each simulation year to a table of annual outcomes
@@ -780,6 +741,38 @@ enso_mark_toggle_ui <- function(ns) {
       layout = "horizontal"
     )
   )
+}
+
+#' ENSO phase chip for the interview months of one wave
+#'
+#' One month gives its phase and RONI. `"all"` counts the months of the wave by phase. El Nino and La Nina carry
+#' the same mark as the legend, so the phase never rests on colour alone.
+#'
+#' @param months Rows of `enso_interview_months()` for the wave (`month_num`, `phase`, `roni`).
+#' @param month `"all"`, or the interview month number as text.
+#' @return A `shiny` tag, or `NULL` when the ENSO record does not cover the month.
+#' @noRd
+enso_month_chip_ui <- function(months, month = "all") {
+  if (is.null(months) || !nrow(months)) return(NULL)
+  mark <- function(k) {
+    if (!k %in% names(ENSO_MARKS)) return(NULL)
+    shiny::span(
+      style = paste0("color:", ENSO_MARKS[[k]]$color, "; text-shadow: 0 0 1px #243746, 0 0 1px #243746;"),
+      `aria-hidden` = "true", paste0(if (k == "el_nino") "\u25B2" else "\u25C6", " ")
+    )
+  }
+  if (!identical(month, "all")) {
+    m <- months[months$month_num == as.integer(month), , drop = FALSE]
+    if (!nrow(m)) return(NULL)
+    body <- list(mark(m$phase), paste0(enso_label_text(m$phase), ", RONI ", format(round(m$roni, 2), nsmall = 2)))
+  } else {
+    n <- table(factor(months$phase, levels = c("el_nino", "neutral", "la_nina")))
+    n <- n[n > 0L]
+    body <- list("ENSO: ")
+    for (k in names(n)) body <- c(body, list(mark(k), paste0(n[[k]], " ", enso_label_text(k), "  ")))
+    body <- c(body, list("months"))
+  }
+  shiny::span(class = "text-muted small", title = "ENSO phase of the interview month, from RONI", body)
 }
 
 #' Legend of the marked draws on the distribution charts
