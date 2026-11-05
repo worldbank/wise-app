@@ -85,7 +85,8 @@ mod_2_simulation_server <- function(id,
       stored_breaks     = stored_breaks,
        survey_version    = survey_version,
        run_trigger       = run_trigger,
-      display_settings  = display_settings
+      display_settings  = display_settings,
+      enso              = enso
     )
 
     # 2. Results tab ----
@@ -95,6 +96,7 @@ mod_2_simulation_server <- function(id,
       saved_scenarios = s1$saved_scenarios,
       selected_hist   = s1$selected_hist,
       selected_weather = selected_weather,
+      survey_weather  = survey_weather,
       enso            = enso,
       tabset_id       = "step2_output_tabs",
       tabset_session  = session,
@@ -136,6 +138,7 @@ mod_2_simulation_server <- function(id,
       enso_labels     = s2$enso_labels,
       enso_window_labels = s2$enso_window_labels,
       enso_forecast_marks = s2$enso_forecast_marks,
+      enso_relevance  = s2$enso_relevance,
       run_generation  = s1$run_generation,
       run_status      = s1$run_status
     )

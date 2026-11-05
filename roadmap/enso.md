@@ -30,19 +30,19 @@ Verified at `8639eb2`, with the fixture parity and the smoke rerun after the rev
 ## Before the PR into `dev`
 
 - **Forecast marks on the distribution chart (Steps 2 and 3).** The toggle reads "ENSO phase" in line, the legend names El Niño and La Niña only, and the forecast members carry the outlook phase of the target months (D4, one state for all members). The note below the chart says how years and forecast months are classified. Not checked in the browser.
+- **Second-version items built, not checked in the browser.** The phase mark per month on the forecast flyout strip (`enso_strip_marks()`, symbols as in the chart legend, RONI and source in the tooltip), and the "Weather and ENSO" sentence in the ENSO section of Steps 2 and 3 (`enso_weather_relevance()`: median over locations of the rank correlation of yearly weather with exposure RONI). Check the strip on a narrow flyout, the target tile contrast, and the sentence on BFA (expected: barely) and MWI (expected: stronger).
 - **Browser checks not run.** MWI Step 3 forecast marks; Step 3 with the ENSO files removed; the file-removed and MWI checks of the Step 3 comparison and the weather support line. All use gates already checked in Step 2. Use `dev/ui_drive.R` (skill `wise-ui-check`) on MWI, which has a signal, on BFA, which has none, and with the files removed.
 - **Zip downloads.** The new tables were read through the export registry, not downloaded in the browser.
 - **BFA forecast position.** It depends on the specification: reference years at least as adverse as the median member are 1 of 30 in the parity run and 28 of 30 with the app defaults. Look at this in the forecast checks; it is not an ENSO defect.
 
 ## For the Connect release
 
-- **Request 1 to `wise-app-data`.** Promote observed ENSO into `all`, or at least to the production data root, and add `validate` checks. Without the files on that root the annual flags do not appear on Connect.
+Nothing from the app side. Request 1 to `wise-app-data` is done: `enso` is a production step in `all` and the release stamp (`wise-app-data` 77947bf, 2026-11-05), `validate` checks both tables as the app does, and the files are on the production data root. Check once on the deployed app that the ENSO elements appear.
 
 ## After the PR
 
-Requests to `wise-app-data` that block nothing:
+Request to `wise-app-data` that blocks nothing (the `dev/enso_plan.md` correction is done):
 
-- Correct `dev/enso_plan.md`: it says ONI is published next to RONI, but `enso.csv` has no `oni` column.
 - Fill the probabilities at the first and last lead if possible.
 
 Known limits of the first version, to revisit with feedback:
@@ -53,9 +53,7 @@ Known limits of the first version, to revisit with feedback:
 
 Second version, if feedback asks for it:
 
-- **Forecast flyout outlook.** A phase mark per month on the strip (`forecast_strip_input()`), with the RONI in its tooltip.
-- **Is ENSO relevant here?** The correlation of the run's simulated weather with exposure RONI in the section, so a flat result reads as "ENSO barely reaches this weather in these months". BFA is one of the weakest cases and MWI one of the strongest.
-- **Exceedance tooltip.** Weather year and label on hover.
+- **Exceedance tooltip.** Weather year and label on hover. Left out for now: the curve averages models by rank, so the year at a rank differs between models. Exact for Historical only; scenarios could show the share of models whose year at that rank is El Niño or La Niña.
 - **Shock-responsive transfers.** Payout frequency and cost by phase, from `shock_activated` and `shock_total_cost` per year.
 - **Residuals by phase** in Step 1 Model fit, when a sample has two phases within a wave.
 - **Offline robustness check** of the weather-by-phase interaction, where a wave spans phases (IRN, VNM, IND, COL). Not an app feature (D7).

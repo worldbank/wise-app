@@ -389,15 +389,17 @@ pages:
       - "4. Outlook of a forecast run"
       - "5. Comparing outcomes by label"
       - "6. Weather support by label"
-      - "7. Table versions"
+      - "7. How closely the weather follows ENSO"
+      - "8. Table versions"
     equations:
       - {tag: "(1.1)", section: "1. Label of a simulation year"}
       - {tag: "(1.2)", section: "1. Label of a simulation year"}
     symbols: ["mu", "r", "m"]
     ui:
       - "Step 1 > Survey stats: a sentence under the timing of interviews gives the share of households interviewed in each phase and the highest RONI at an interview."
-      - "Step 2 and Step 3 > Results: the toggle Mark ENSO years marks draws on the distribution chart, for the annual series and for Historical of the target months."
-      - "Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label. Step 3 adds the policy effect."
+      - "Step 2 and Step 3 > Results: the toggle ENSO phase marks draws on the distribution chart, for the annual series, for Historical of the target months and, with a forecast, for the members (the outlook phase of the target months, one state for all members). The note below the chart says how years and forecast months are classified."
+      - "Step 2 > forecast flyout: each month of the strip carries a symbol for El Niño or La Niña, with the phase, RONI and source in its tooltip (the observed record for past months, the outlook of the run for forecast months)."
+      - "Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label, and a closing sentence gives how closely the weather follows ENSO. Step 3 adds the policy effect."
       - "Step 2 > Results: with a forecast, the placement card of the target months gives the outlook and the comparison, in the level view."
       - "Step 2 > Diagnostics: bands on the weather-year trajectories, and a line on weather support by label."
       - "Export: the labels, the comparison tables and the outlook; the run record gives the table versions."

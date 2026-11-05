@@ -406,7 +406,8 @@ mod_2_01_weathersim_server <- function(id,
                                        stored_breaks = reactive(NULL),
                                        survey_version = reactive(0L),
                                        run_trigger = reactive(NULL),
-                                       display_settings = reactive(NULL)) {
+                                       display_settings = reactive(NULL),
+                                       enso = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -630,17 +631,26 @@ mod_2_01_weathersim_server <- function(id,
       )
     })
 
+    # ENSO phase of each month of the strip (observed record, then the run's outlook); NULL without the ENSO tables.
+    forecast_enso_marks <- reactive({
+      run <- forecast_run()
+      if (is.null(run)) return(NULL)
+      enso_strip_marks(enso(), forecast_months(), run)
+    })
+
     output$forecast_strip_ui <- shiny::renderUI({
       if (is.null(forecast_run())) return(NULL)
       months <- forecast_months()
+      marks <- forecast_enso_marks()
       len <- input$fc_len
       if (!isTRUE(len %in% .STEP2_FORECAST_LEN_CHOICES)) len <- "3"
       start <- .step2_forecast_clamp_start(months, shiny::isolate(input$fc_start), len)
       shiny::tagList(
         forecast_strip_input(
-          ns("fc_start"), ns("fc_len"), months, start, lag = forecast_lag(), disabled = forecast_off(), len = len
+          ns("fc_start"), ns("fc_len"), months, start, lag = forecast_lag(), disabled = forecast_off(), len = len,
+          enso_marks = marks
         ),
-        forecast_strip_legend()
+        forecast_strip_legend(enso = !is.null(marks))
       )
     })
     shiny::outputOptions(output, "forecast_strip_ui", suspendWhenHidden = FALSE)

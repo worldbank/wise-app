@@ -2297,7 +2297,8 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
                                  annual_channels = reactive(NULL),
                                  enso_labels = reactive(NULL),
                                  enso_window_labels = reactive(NULL),
-                                 enso_forecast_marks = reactive(NULL)) {
+                                 enso_forecast_marks = reactive(NULL),
+                                 enso_relevance = reactive(NULL)) {
   # A forecast window is not an annual weather sample. Every annual view here (cards, violin, adverse years,
   # exceedance, tables, decomposition) reads the annual scenarios only; the charts add the forecast as further series
   # (Historical for the target months and the members, without and with the policy).
@@ -3306,7 +3307,10 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     tbl <- enso_policy_rv()
     req(tbl)
     s <- enso_policy_sentence(tbl, tbl$series[[1L]], scale = enso_scale())
-    shiny::tags$p(style = "margin: 12px 0 0;", paste(c(s, enso_count_sentence(enso_labels())), collapse = " "))
+    shiny::tags$p(
+      style = "margin: 12px 0 0;",
+      paste(c(s, enso_count_sentence(enso_labels()), enso_relevance()), collapse = " ")
+    )
   })
   annual_distribution_chart <- function() {
     curves <- timeseries_curves_rv()

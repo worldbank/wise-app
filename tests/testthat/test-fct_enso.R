@@ -1003,3 +1003,80 @@ test_that("the legend names the phases only and the toggle label sits in line", 
   expect_match(toggle, "ENSO phase", fixed = TRUE)
   expect_match(toggle, "display: flex", fixed = TRUE)
 })
+
+# Relevance of ENSO to the weather ----
+
+test_that("weather relevance is the median rank correlation over locations", {
+  years <- 1991:2010
+  lab <- tibble::tibble(sim_year = years, roni_exp = seq(-1, 1, length.out = 20))
+  grid <- expand.grid(loc_id = c("a", "b", "c"), cal_year = years, int_month = 1:2, stringsAsFactors = FALSE)
+  rank_of <- match(grid$cal_year, years)
+  grid$follows <- ifelse(grid$loc_id == "c", -rank_of, rank_of) + grid$int_month # a, b rise; c falls
+  grid$flat <- 1
+  set.seed(1)
+  grid$noise <- stats::rnorm(nrow(grid))
+  out <- enso_weather_relevance(grid, lab, c("follows", "flat", "noise", "absent"))
+  expect_identical(out$variable, c("follows", "noise"))
+  expect_equal(out$rho[[1L]], 1) # median of 1, 1, -1
+  expect_equal(out$abs_rho[[1L]], 1)
+  expect_identical(out$n_years[[1L]], 20L)
+  expect_identical(out$n_locations[[1L]], 3L)
+  expect_lt(out$abs_rho[[2L]], 0.5)
+
+  expect_identical(nrow(enso_weather_relevance(grid, lab, "follows", min_years = 25L)), 0L)
+  expect_identical(nrow(enso_weather_relevance(grid, NULL, "follows")), 0L)
+  expect_identical(nrow(enso_weather_relevance(grid[c("loc_id", "follows")], lab, "follows")), 0L)
+})
+
+test_that("the relevance sentence grades the correlation and caveats a flat one", {
+  tbl <- tibble::tibble(
+    variable = c("t", "r"), n_years = 30L, n_locations = c(40L, 38L), rho = c(0.55, -0.1), abs_rho = c(0.55, 0.12)
+  )
+  s <- enso_relevance_sentences(tbl, c(t = "Temperature", r = "Rainfall"))
+  expect_match(s, "Temperature moderately follows ENSO (r = 0.55)", fixed = TRUE)
+  expect_match(s, "Rainfall barely follows ENSO (r = -0.10)", fixed = TRUE)
+  expect_match(s, "across 30 years, the median over 40 locations", fixed = TRUE)
+  expect_false(grepl("whatever the welfare response", s))
+
+  flat <- enso_relevance_sentences(tbl[2L, ], c(r = "Rainfall"))
+  expect_match(flat, "small differences between phases are expected whatever the welfare response", fixed = TRUE)
+  expect_identical(enso_relevance_sentences(tbl[0L, ]), character(0))
+  expect_identical(enso_relevance_sentences(NULL), character(0))
+})
+
+# Flyout strip marks ----
+
+test_that("the strip marks come from the record for past months and the outlook for forecast months", {
+  e <- enso_fixture()
+  run <- list(init = as.Date("1953-10-01"), model_id = "ecmwf_seas51", n_leads = 3L, observed_through = as.Date("1953-09-01"))
+  m <- .step2_forecast_months(run)
+  marks <- enso_strip_marks(e, m, run)
+  expect_true(all(c("value", "phase", "text") %in% names(marks)))
+  expect_identical(marks$phase[marks$value == "1953-09"], "neutral")
+  expect_match(marks$text[marks$value == "1953-09"], "Neutral, RONI 0.40 (observed, ERA5)", fixed = TRUE)
+  expect_identical(marks$phase[marks$value == "1953-11"], "el_nino")
+  expect_match(marks$text[marks$value == "1953-11"], "(forecast)", fixed = TRUE)
+  expect_null(enso_strip_marks(NULL, m, run))
+})
+
+test_that("the strip draws a symbol and tooltip for El Nino and La Nina months, blank for the rest", {
+  run <- list(
+    id = "r", init = as.Date("2026-10-01"), n_leads = 6L, observed_through = as.Date("2026-09-01"),
+    product = "seasonal"
+  )
+  m <- .step2_forecast_months(run)
+  marks <- data.frame(
+    value = c("2026-09", "2026-11", "2026-12"), phase = c("neutral", "el_nino", "la_nina"),
+    text = c("Neutral, RONI 0.10 (observed, CPC)", "El Niño, RONI 1.20 (forecast)", "La Niña, RONI -0.80 (forecast)"),
+    stringsAsFactors = FALSE
+  )
+  html <- as.character(forecast_strip_input("fc_start", "fc_len", m, "2026-11", enso_marks = marks))
+  expect_equal(lengths(regmatches(html, gregexpr('class="fc-enso"', html))), nrow(m))
+  expect_match(html, "▲", fixed = TRUE)
+  expect_match(html, "◆", fixed = TRUE)
+  expect_match(html, "ENSO: El Niño, RONI 1.20 (forecast)", fixed = TRUE)
+  expect_match(html, 'title="El Niño, RONI 1.20 (forecast)"', fixed = TRUE)
+  expect_no_match(as.character(forecast_strip_input("fc_start", "fc_len", m, "2026-11")), "fc-enso")
+  expect_match(as.character(forecast_strip_legend(enso = TRUE)), "La Niña", fixed = TRUE)
+  expect_no_match(as.character(forecast_strip_legend()), "Niñ")
+})

@@ -978,6 +978,112 @@ enso_support_sentences <- function(tbl, label) {
 }
 
 
+# Is ENSO relevant to this weather? (second version) ----
+
+#' Rank correlation of each location's yearly weather with the exposure RONI
+#'
+#' The weather rows are the fitted sample's own (`.filter_hist_weather()`), so a value is the predictor the model
+#' sees for that location, interview month and calendar year, and a year's exposure RONI is the one of
+#' `enso_year_labels()`. Per location, each year's mean over the interview months is ranked against the exposure
+#' RONI (Spearman) across the years; the result is the median over locations, so a national average cannot hide
+#' opposite local signals. A location needs `min_years` years with variation in both series.
+#'
+#' @param weather Data frame with `loc_id`, `cal_year` and the weather variables.
+#' @param labels Tibble from `enso_year_labels()` (`sim_year`, `roni_exp`).
+#' @param variables Weather variable names; non-numeric columns are skipped.
+#' @param min_years Smallest number of years for a location.
+#' @return Tibble: `variable`, `n_years`, `n_locations`, `rho` (median, signed) and `abs_rho` (median of the
+#'   absolute values); zero rows when nothing can be computed.
+#' @noRd
+enso_weather_relevance <- function(weather, labels, variables, min_years = 8L) {
+  out <- tibble::tibble(
+    variable = character(), n_years = integer(), n_locations = integer(), rho = numeric(), abs_rho = numeric()
+  )
+  if (!is.data.frame(weather) || is.null(labels) || !all(c("loc_id", "cal_year") %in% names(weather))) return(out)
+  rows <- list()
+  for (v in intersect(variables, names(weather))) {
+    x <- weather[[v]]
+    if (!is.numeric(x)) next
+    r <- labels$roni_exp[match(as.integer(weather$cal_year), labels$sim_year)]
+    ok <- is.finite(x) & is.finite(r)
+    if (!any(ok)) next
+    d <- data.frame(loc = weather$loc_id[ok], yr = weather$cal_year[ok], x = x[ok])
+    ly <- stats::aggregate(x ~ loc + yr, data = d, FUN = mean)
+    ly$r <- labels$roni_exp[match(as.integer(ly$yr), labels$sim_year)]
+    rho <- vapply(split(ly, ly$loc), function(g) {
+      if (nrow(g) < min_years || stats::sd(g$x) == 0 || stats::sd(g$r) == 0) return(NA_real_)
+      suppressWarnings(stats::cor(g$x, g$r, method = "spearman"))
+    }, numeric(1))
+    rho <- rho[is.finite(rho)]
+    if (!length(rho)) next
+    rows[[length(rows) + 1L]] <- tibble::tibble(
+      variable = v, n_years = length(unique(ly$yr)), n_locations = length(rho),
+      rho = stats::median(rho), abs_rho = stats::median(abs(rho))
+    )
+  }
+  if (length(rows)) do.call(rbind, rows) else out
+}
+
+#' Sentence on how closely the weather follows ENSO
+#'
+#' Words follow the median absolute correlation: below 0.2 "barely", below 0.4 "weakly", below 0.6 "moderately",
+#' else "strongly". When every variable is barely related, the sentence adds that small differences between
+#' phases are expected whatever the welfare response, so a flat result is not read as "ENSO does not matter".
+#'
+#' @param tbl Tibble from `enso_weather_relevance()`.
+#' @param label_map Optional named character vector, variable name to display label.
+#' @return A character vector of length 0 or 1.
+#' @noRd
+enso_relevance_sentences <- function(tbl, label_map = NULL) {
+  if (is.null(tbl) || !nrow(tbl)) return(character(0))
+  word <- function(a) if (a < 0.2) "barely" else if (a < 0.4) "weakly" else if (a < 0.6) "moderately" else "strongly"
+  name <- ifelse(tbl$variable %in% names(label_map), label_map[tbl$variable], tbl$variable)
+  parts <- sprintf("%s %s follows ENSO (r = %.2f)", name, vapply(tbl$abs_rho, word, character(1)), tbl$rho)
+  paste0(
+    "Weather and ENSO: ", paste(parts, collapse = "; "), ". r is the rank correlation of a location's yearly ",
+    "weather with exposure RONI across ", max(tbl$n_years), " years, the median over ", max(tbl$n_locations),
+    " locations.",
+    if (all(tbl$abs_rho < 0.2)) {
+      " With weather this far from ENSO, small differences between phases are expected whatever the welfare response."
+    }
+  )
+}
+
+
+# ENSO phase of the months of the forecast flyout strip ----
+
+#' Phase marks for the month strip of the forecast flyout
+#'
+#' The observed record for past months and the outlook of the run (its own system, else the multi-model mean) for
+#' the forecast months, through `enso_forecast_outlook()`. Months without a phase get no row.
+#'
+#' @param enso List from `enso_load()`, or `NULL`.
+#' @param months Data frame from `.step2_forecast_months()` (`month`).
+#' @param run One forecast run (`init`, `model_id`).
+#' @return `NULL`, or a data frame: `value` ("YYYY-MM"), `phase` and `text` (phase, RONI and where it comes from).
+#' @noRd
+enso_strip_marks <- function(enso, months, run) {
+  if (is.null(enso) || is.null(months) || !nrow(months)) return(NULL)
+  out <- tryCatch(
+    enso_forecast_outlook(enso, months$month, run$init, .enso_run_system(run)),
+    error = function(e) NULL
+  )
+  if (is.null(out) || !nrow(out)) return(NULL)
+  out <- out[!is.na(out$phase) & is.finite(out$roni), , drop = FALSE]
+  if (!nrow(out)) return(NULL)
+  obs <- enso$observed$source[match(.enso_month_key(out$month), .enso_month_key(enso$observed$month))]
+  where <- ifelse(
+    out$basis == "forecast", ifelse(out$source == "multimodel", "multi-model forecast", "forecast"),
+    ifelse(obs %in% "cpc", "observed, CPC", ifelse(obs %in% "era5", "observed, ERA5", "later outlook"))
+  )
+  data.frame(
+    value = format(out$month, "%Y-%m"), phase = out$phase,
+    text = paste0(enso_label_text(out$phase), ", RONI ", formatC(out$roni, digits = 2L, format = "f"), " (", where, ")"),
+    stringsAsFactors = FALSE
+  )
+}
+
+
 # Exports and batch (item 8) ----
 
 #' Version of the ENSO tables behind a result

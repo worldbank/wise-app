@@ -61,7 +61,7 @@ For every step that has results, the app builds one record of what produced them
 - the data source, as a type (for example local or a named cloud service) and whether it came from the server configuration or the user interface. Hosts, buckets, paths and credentials are never included;
 - the survey version, the outcome, the weather pipeline, the model specification (type, engine, interactions, fixed effects, covariates, selection method, clustering) and the number of observations;
 - any **fallback**: a place where the fitted specification differs from the requested one, with the reason;
-- for Step 2, the version of the ENSO tables when they are loaded ([35_enso](35_enso.md), Section 7). It is not part of the run signature, because labels do not change results.
+- for Step 2, the version of the ENSO tables when they are loaded ([35_enso](35_enso.md), Section 8). It is not part of the run signature, because labels do not change results.
 
 ### 4. Exports and restore
 

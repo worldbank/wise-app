@@ -59,7 +59,11 @@ Each series is averaged over its climate models by simulation year, so a year co
 
 The share of simulated weather outside the support of the fitted sample ([30_simulation](30_simulation.md), Section 6) is also given for the years of each phase, for a phase with at least three years. This is the check that matters for ENSO years: the model responds to local weather, so it needs variation in weather and not interviews in El Niño months.
 
-### 7. Table versions
+### 7. How closely the weather follows ENSO
+
+A flat comparison by label has two possible causes: ENSO barely reaches this weather in these months, or the weather reaches welfare weakly. The first is checked directly. For each selected weather variable and each location of the fitted sample, the yearly mean of the predictor over the interview months is ranked against the exposure RONI of (1.2) across the years (Spearman), for locations with at least eight years and variation in both. The page reports the median signed value, $r$, over locations, with the number of years and locations. A median absolute value below 0.2 reads as "barely", below 0.4 "weakly", below 0.6 "moderately", else "strongly". The median over locations stops opposite local signals from cancelling in a national average. When every variable is barely related, the sentence says that small differences between phases are expected whatever the welfare response. These cut-offs are descriptive, not a test of significance.
+
+### 8. Table versions
 
 The history of the monthly table is not frozen, so an exported or batch result records the version of the ENSO tables: a hash of each table, the last month of the observed source and the forecast initialisation. This record is not part of any run signature, and a refreshed table neither invalidates a run nor reruns a batch simulation.
 
@@ -91,8 +95,9 @@ Few events fall in a window, and they differ from each other. Past events are no
 ## In the app
 
 - Step 1 > Survey stats: a sentence under the timing of interviews gives the share of households interviewed in each phase and the highest RONI at an interview.
-- Step 2 and Step 3 > Results: the toggle Mark ENSO years marks draws on the distribution chart, for the annual series and for Historical of the target months.
-- Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label. Step 3 adds the policy effect.
+- Step 2 and Step 3 > Results: the toggle ENSO phase marks draws on the distribution chart, for the annual series, for Historical of the target months and, with a forecast, for the members (the outlook phase of the target months, one state for all members). The note below the chart says how years and forecast months are classified.
+- Step 2 > forecast flyout: each month of the strip carries a symbol for El Niño or La Niña, with the phase, RONI and source in its tooltip (the observed record for past months, the outlook of the run for forecast months).
+- Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label, and a closing sentence gives how closely the weather follows ENSO. Step 3 adds the policy effect.
 - Step 2 > Results: with a forecast, the placement card of the target months gives the outlook and the comparison, in the level view.
 - Step 2 > Diagnostics: bands on the weather-year trajectories, and a line on weather support by label.
 - Export: the labels, the comparison tables and the outlook; the run record gives the table versions.
@@ -114,5 +119,8 @@ None yet.
 | Placement card | | `R/fct_forecast_placement.R` `.forecast_placement_text()` |
 | Comparison by label | | `R/fct_enso.R` `enso_phase_summary()`, `enso_series_table()`, `enso_policy_table()` |
 | Weather support by label | | `R/fct_enso.R` `weather_support_by_phase()` |
+| How closely the weather follows ENSO | 7 | `R/fct_enso.R` `enso_weather_relevance()`, `enso_relevance_sentences()` |
+| Phase marks on the forecast flyout strip | | `R/fct_enso.R` `enso_strip_marks()`; `R/utils_forecast_ui.R` `forecast_strip_input()` |
+| Forecast members on the distribution chart | | `R/fct_enso.R` `enso_forecast_marks()`, `enso_attach_forecast_labels()` |
 | Table versions and exported tables | | `R/fct_enso.R` `enso_provenance()`, `enso_year_table()`, `enso_outlook_table()` |
 | Batch labels, apart from the simulations | | `R/fct_batch_targets.R` `wise_batch_enso_source()`, `wise_batch_enso()`, `.batch_enso_inputs()` |

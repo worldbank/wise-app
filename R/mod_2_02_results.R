@@ -642,6 +642,7 @@ mod_2_02_results_server <- function(id,
                                     saved_scenarios,
                                     selected_hist,
                                     selected_weather = NULL,
+                                    survey_weather = reactive(NULL),
                                     enso = reactive(NULL),
                                     tabset_id,
                                     tabset_session = NULL,
@@ -1583,6 +1584,22 @@ mod_2_02_results_server <- function(id,
       lab <- enso_window_labels(en$observed, sc[has_ref][[1L]]$forecast, enso_window(hs$sim_summary$weather))
       if (all(is.na(lab$label))) NULL else lab
     })
+    # How closely the fitted sample's weather follows ENSO (a sentence; NULL without labels or weather).
+    enso_relevance_rv <- reactive({
+      lab <- enso_labels_rv()
+      hs <- hist_sim()
+      sw <- if (!is.null(selected_weather)) selected_weather() else NULL
+      svy <- survey_weather()
+      if (is.null(lab) || is.null(hs$weather_raw) || is.null(svy) || is.null(sw) || !"name" %in% names(sw)) {
+        return(NULL)
+      }
+      tryCatch({
+        weather <- .filter_hist_weather(hs$weather_raw, svy)
+        tbl <- enso_weather_relevance(weather[weather$cal_year %in% lab$sim_year, , drop = FALSE], lab, sw$name)
+        label_map <- if ("label" %in% names(sw)) stats::setNames(as.character(sw$label), as.character(sw$name))
+        enso_relevance_sentences(tbl, label_map)
+      }, error = function(e) NULL)
+    })
     # ENSO outlook of the forecast target months, the mark of the forecast members (D4); NULL without one.
     enso_forecast_marks_rv <- reactive({
       en <- enso()
@@ -1893,7 +1910,10 @@ mod_2_02_results_server <- function(id,
             error = function(e) "low")
         )
       }
-      shiny::tags$p(style = "margin: 12px 0 0;", paste(c(adverse, enso_count_sentence(lab)), collapse = " "))
+      shiny::tags$p(
+        style = "margin: 12px 0 0;",
+        paste(c(adverse, enso_count_sentence(lab), enso_relevance_rv()), collapse = " ")
+      )
     })
 
     output$annual_distribution_plot <- echarts4r::renderEcharts4r({
@@ -2473,6 +2493,7 @@ mod_2_02_results_server <- function(id,
       enso_labels = enso_labels_rv,
       enso_window_labels = enso_window_labels_rv,
       enso_forecast_marks = enso_forecast_marks_rv,
+      enso_relevance = enso_relevance_rv,
       # Forecast-window points of the Diagnostics robustness chart; NULL without a window. Like
       # timeseries_curves, the last committed value stands while a run streams.
       window_robustness = reactive({

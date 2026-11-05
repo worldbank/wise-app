@@ -2234,6 +2234,15 @@ tr.t2-wx-row td {
   opacity: 0.8;
 }
 
+/* ENSO phase mark of a month: the phase colour, outlined so it reads on the grey and blue tiles. */
+.toggle-slider.forecast-strip .fc-enso,
+.forecast-legend .fc-enso {
+  color: var(--fc-enso-color, inherit) !important;
+  font-size: 0.6rem;
+  line-height: 1;
+  text-shadow: 0 0 1px #243746, 0 0 1px #243746;
+}
+
 .toggle-slider.forecast-strip .fc-fc span {
   border-color: #9cc7e6;
   color: var(--bs-primary, #0071bc);

@@ -11,7 +11,7 @@ verified_against: 8639eb2
 
 # Seasonal forecast scenario (experimental pilot)
 
-> **Status: experimental local pilot.** Twenty-nine countries have one draft run, October 2026, prepared for DEV testing. The app reads adjusted forecast weather from the local data root. Skill and scientific usefulness are not established. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows, and a shock-responsive transfer with a weather trigger and local, ex-post, fixed payments (Section 5).
+> **Status: experimental local pilot.** Thirty-three countries have one draft run, October 2026, prepared for DEV testing. The app reads adjusted forecast weather from the local data root. Skill and scientific usefulness are not established. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows, and a shock-responsive transfer with a weather trigger and local, ex-post, fixed payments (Section 5).
 
 > A seasonal forecast is one more weather state, next to the historical record and the climate scenarios. It describes one dated target window, for example November to January, by the members of a forecast ensemble. The fitted model, the residual treatment and the metrics are the ones used for every other scenario.
 

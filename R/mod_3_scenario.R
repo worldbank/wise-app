@@ -122,6 +122,7 @@ mod_3_scenario_server <- function(id,
                                   enso_labels = reactive(NULL),
                                   enso_window_labels = reactive(NULL),
                                   enso_forecast_marks = reactive(NULL),
+                                  enso_relevance = reactive(NULL),
                                   run_trigger = reactive(NULL),
                                   shared_aggregation_cache = NULL) {
   moduleServer(id, function(input, output, session) {
@@ -298,7 +299,8 @@ mod_3_scenario_server <- function(id,
       analysis_unit = analysis_unit,
       enso_labels = enso_labels,
       enso_window_labels = enso_window_labels,
-      enso_forecast_marks = enso_forecast_marks
+      enso_forecast_marks = enso_forecast_marks,
+      enso_relevance = enso_relevance
     )
 
     # Diagnostics tab: before/after variable analysis ----

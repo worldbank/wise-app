@@ -41,7 +41,7 @@ Checked in the running app on BFA (shock card and annual cost table included, 20
    - With the projections flyout open, axe reports `target-size` (serious) on the period checkboxes (`input[value="2025-2035"]` and others).
 2. **Config export and import replay** with real forecast data. The restore order of the start radio, which the server re-renders, is untested.
 3. **Real-data coverage not yet checked.**
-   - Other countries: 29 are published, and only BFA has been reviewed. MWI has run, unreviewed.
+   - Other countries: 33 are published (COL, DOM, LKA and TJK added 2026-11-05, with `r` at a lowered recent-overlap share of 0.95), and only BFA has been reviewed. MWI has run, unreviewed.
    - 6-month windows. The Continuous form has run in `dev/parity_enso.R --forecast` (BFA, MWI), unreviewed.
    - Levers other than social protection with a forecast.
    - Diagnostics and Decomposition tabs with a shock transfer on a forecast.
@@ -52,9 +52,8 @@ Checked in the running app on BFA (shock card and annual cost table included, 20
 
 ## After the PR
 
-- **ENSO files on Connect.** Annual ENSO flags need the files on the production data root (`roadmap/enso.md`, request 1).
 - **Scientific usefulness (`wise-app-data` gates).** Record results including no-skill cases, then decide to continue, restrict or stop. Skill flags decide what the app shows. Production promotion is a separate approval.
-- **Data pipeline items that touch the app.** The November initialization, and the four countries without a published run (COL, DOM, LKA, TJK).
+- **Data pipeline items that touch the app.** The November initialization.
 - **App hand-off items from `wise-app-data`, to confirm.** Check that the survey's cells are a subset of the run's cells, and warn rather than fail if the historical file changed since the run.
 - **Climate scenarios for the target months.** A new Step 2 output, in protected numerics, needing a Decision log entry.
 - **Shock transfer extensions.** Any of the rejected designs above, if a user need appears.

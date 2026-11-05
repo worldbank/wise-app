@@ -211,16 +211,32 @@
 #' chosen. `inst/app/www/custom.js` paints the target window and the lag
 #' months from the selected start and the length input `len_id`.
 #' @noRd
-forecast_strip_input <- function(inputId, len_id, months, selected, lag = 0L, disabled = FALSE, len = 1L) {
+forecast_strip_input <- function(inputId, len_id, months, selected, lag = 0L, disabled = FALSE, len = 1L,
+                                 enso_marks = NULL) {
   starts <- .step2_forecast_starts(months, len)
   tiles <- lapply(seq_len(nrow(months)), function(i) {
     why <- if (months$kind[i] == "fc" && !months$value[i] %in% starts) {
       .step2_forecast_block_reason(list(TRUE), character(0), months, len, months$value[i])
     }
-    shiny::tags$span(title = why,
+    # ENSO phase of the month: a symbol as well as a colour, with the RONI in the tooltip. Tiles without a mark
+    # keep a blank line so every tile has the same height.
+    enso <- if (!is.null(enso_marks)) enso_marks[match(months$value[[i]], enso_marks$value), , drop = FALSE]
+    has_enso <- !is.null(enso) && !is.na(enso$phase[[1L]])
+    mark <- if (!is.null(enso_marks)) {
+      sym <- if (has_enso) c(el_nino = "\u25B2", la_nina = "\u25C6")[enso$phase[[1L]]] else NA_character_
+      shiny::tags$span(
+        class = "fc-enso", `aria-hidden` = "true",
+        style = if (!is.na(sym)) paste0("--fc-enso-color:", ENSO_MARKS[[enso$phase[[1L]]]]$color, ";"),
+        if (!is.na(sym)) sym else "\u00a0"
+      )
+    }
+    tip <- paste(c(why, if (has_enso) enso$text[[1L]]), collapse = ". ")
+    shiny::tags$span(title = if (nzchar(tip)) tip,
       months$name[[i]],
       shiny::tags$small(`data-kind` = months$kind[[i]], months$year[[i]]),
-      if (!is.null(why)) shiny::tags$span(class = "visually-hidden", why)
+      mark,
+      if (!is.null(why)) shiny::tags$span(class = "visually-hidden", why),
+      if (has_enso) shiny::tags$span(class = "visually-hidden", paste0("ENSO: ", enso$text[[1L]]))
     )
   })
   strip <- pill_toggle(
@@ -240,16 +256,27 @@ forecast_strip_input <- function(inputId, len_id, months, selected, lag = 0L, di
   )
 }
 
-forecast_strip_legend <- function() {
+forecast_strip_legend <- function(enso = FALSE) {
   item <- function(cls, text) {
     shiny::tags$span(shiny::tags$i(class = paste("forecast-key", cls)), text)
+  }
+  mark <- function(k, sym, text) {
+    shiny::tags$span(
+      shiny::tags$span(
+        class = "fc-enso", style = paste0("--fc-enso-color:", ENSO_MARKS[[k]]$color, ";"),
+        `aria-hidden` = "true", sym
+      ),
+      " ", text
+    )
   }
   shiny::tags$div(
     class = "forecast-legend",
     item("fc-obs", "Observed"),
     item("fc-lag", "Used for lags"),
     item("fc-fc", "Forecast"),
-    item("fc-tg", "Target")
+    item("fc-tg", "Target"),
+    if (isTRUE(enso)) mark("el_nino", "\u25B2", "El Ni\u00f1o"),
+    if (isTRUE(enso)) mark("la_nina", "\u25C6", "La Ni\u00f1a")
   )
 }
 
