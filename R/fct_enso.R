@@ -421,8 +421,8 @@ enso_forecast_marks <- function(enso, forecast, run, months_label) {
 #' @param placement Result of `step2_window_placement()`.
 #' @param labels Tibble from `enso_window_labels()`, or `NULL`.
 #' @param months_label Target months as text ("Nov - Jan").
-#' @return `NULL` when nothing covers the target months, else a list: `line`, `info`, `outlook`
-#'   (`enso_forecast_outlook()`), `phase` and `compare` (`enso_reference_comparison()`, or `NULL`).
+#' @return `NULL` when nothing covers the target months, else a list: `line`, `short` (the phase for a card),
+#'   `info`, `outlook` (`enso_forecast_outlook()`), `phase` and `compare` (`enso_reference_comparison()`, or `NULL`).
 #' @noRd
 enso_placement_text <- function(enso, forecast, run, placement, labels, months_label) {
   system <- .enso_run_system(run)
@@ -457,11 +457,14 @@ enso_placement_text <- function(enso, forecast, run, placement, labels, months_l
       compare$n_adverse, compare$n, name, compare$n_adverse_all, compare$n_all
     )
   )
-  list(outlook = outlook, phase = phase, compare = compare, line = line, info = paste(c(
-    if (!is.null(compare)) sprintf("Few events fall in a window: %d of %d years here.", compare$n, compare$n_all),
-    "Past events differ from each other and are not a forecast. Shares of members are not calibrated. The index",
-    "is relative Ni\u00f1o 3.4 (RONI), which may differ from figures in the press."
-  ), collapse = " "))
+  list(
+    outlook = outlook, phase = phase, compare = compare, line = line, short = paste0("ENSO outlook: ", name),
+    info = paste(c(
+      if (!is.null(compare)) sprintf("Few events fall in a window: %d of %d years here.", compare$n, compare$n_all),
+      "Past events differ from each other and are not a forecast. Shares of members are not calibrated. The index",
+      "is relative Ni\u00f1o 3.4 (RONI), which may differ from figures in the press."
+    ), collapse = " ")
+  )
 }
 
 
@@ -573,38 +576,77 @@ enso_attach_forecast_labels <- function(tbl, marks, member_label) {
 
 #' Phase comparison table of the Results section (item 3)
 #'
-#' One row per series. Each series is averaged over its climate models by simulation year
-#' first, so a year counts once, then summarised by `enso_phase_summary()`.
+#' One row per series. Each annual series is averaged over its climate models by simulation
+#' year first, so a year counts once, then summarised by `enso_phase_summary()`. The same-months
+#' Historical series of a forecast window comes after them, with the labels of its reference years.
 #'
-#' @param curves Data frame with `scenario`, `sim_year`, `value` and optionally `model_id`;
+#' @param curves Data frame with `scenario`, `sim_year`, `value` and optionally `model_id`, or `NULL`;
 #'   forecast-like series are left out.
-#' @param labels Tibble from `enso_year_labels()`.
+#' @param labels Tibble from `enso_year_labels()`, or `NULL` without annual series.
 #' @param min_n Smallest number of years in a phase to compare it.
+#' @param window `NULL`, or a list: `values` (data frame with `series`, `sim_year`, `value`, one row per
+#'   reference year) and `labels` (tibble from `enso_window_labels()`).
 #' @return Tibble: `series` and, for each of `el_nino`, `neutral`, `la_nina`, `mixed`, the
-#'   columns `n_<phase>` and `mean_<phase>`, plus `diff_el_nino` and `diff_la_nina`.
+#'   columns `n_<phase>` and `mean_<phase>`, plus `diff_el_nino` and `diff_la_nina`; `NULL` without rows.
 #' @noRd
-enso_series_table <- function(curves, labels, min_n = 3L) {
-  if (is.null(curves)) return(NULL)
-  curves <- curves[!.step2_is_forecast_like(curves$scenario) & is.finite(curves$value), , drop = FALSE]
-  if (!nrow(curves)) return(NULL) # aggregate() fails on no rows
-  yearly <- stats::aggregate(value ~ scenario + sim_year, data = curves, FUN = mean)
-  yearly$scenario <- as.character(yearly$scenario)
-  values <- data.frame(series = yearly$scenario, sim_year = yearly$sim_year, value = yearly$value)
-  s <- enso_phase_summary(labels, values, min_n = min_n)
-  out <- lapply(unique(s$series), function(g) {
-    r <- s[s$series == g, , drop = FALSE]
-    pick <- function(col, k) r[[col]][r$label == k]
-    row <- list(series = g)
-    for (k in ENSO_LABEL_LEVELS) {
-      row[[paste0("n_", k)]] <- pick("n", k)
-      row[[paste0("mean_", k)]] <- pick("mean", k)
+enso_series_table <- function(curves, labels, min_n = 3L, window = NULL) {
+  pivot <- function(s) {
+    rows <- lapply(unique(s$series), function(g) {
+      r <- s[s$series == g, , drop = FALSE]
+      pick <- function(col, k) r[[col]][r$label == k]
+      row <- list(series = g)
+      for (k in ENSO_LABEL_LEVELS) {
+        row[[paste0("n_", k)]] <- pick("n", k)
+        row[[paste0("mean_", k)]] <- pick("mean", k)
+      }
+      row$diff_el_nino <- pick("diff_neutral", "el_nino")
+      row$diff_la_nina <- pick("diff_neutral", "la_nina")
+      tibble::as_tibble(row)
+    })
+    tibble::as_tibble(do.call(rbind, rows))
+  }
+  out <- NULL
+  if (!is.null(curves) && !is.null(labels)) {
+    curves <- curves[!.step2_is_forecast_like(curves$scenario) & is.finite(curves$value), , drop = FALSE]
+    if (nrow(curves)) { # aggregate() fails on no rows
+      yearly <- stats::aggregate(value ~ scenario + sim_year, data = curves, FUN = mean)
+      yearly$scenario <- as.character(yearly$scenario)
+      values <- data.frame(series = yearly$scenario, sim_year = yearly$sim_year, value = yearly$value)
+      out <- pivot(enso_phase_summary(labels, values, min_n = min_n))
+      out <- out[order(match(out$series, .step2_scenario_order(out$series))), , drop = FALSE]
     }
-    row$diff_el_nino <- pick("diff_neutral", "el_nino")
-    row$diff_la_nina <- pick("diff_neutral", "la_nina")
-    tibble::as_tibble(row)
-  })
-  out <- tibble::as_tibble(do.call(rbind, out))
-  out[order(match(out$series, .step2_scenario_order(out$series))), , drop = FALSE]
+  }
+  if (!is.null(window) && !is.null(window$labels) && nrow(window$values)) {
+    out <- rbind(out, pivot(enso_phase_summary(window$labels, window$values, min_n = min_n)))
+  }
+  out
+}
+
+#' Headline sentence of the phase comparison: one series against its Neutral years
+#'
+#' `NULL` unless El Nino or La Nina has at least `min_n` years and so does Neutral. Counts and means only.
+#'
+#' @param tbl Tibble from `enso_series_table()`.
+#' @param series Series to describe.
+#' @param scale,digits As for `enso_phase_reactable()`.
+#' @noRd
+enso_phase_sentence <- function(tbl, series, scale = 1, digits = 3L) {
+  d <- tbl[tbl$series == series, , drop = FALSE]
+  if (!nrow(d)) return(NULL)
+  part <- function(diff, n, name) {
+    if (is.na(diff)) return(NULL)
+    txt <- .enso_fmt(abs(diff), scale, digits)
+    if (!as.numeric(gsub(",", "", txt))) return(sprintf("about the same in %s years (%d)", name, n))
+    sprintf("%s %s in %s years (%d)", txt, if (diff < 0) "lower" else "higher", name, n)
+  }
+  parts <- c(
+    part(d$diff_el_nino, d$n_el_nino, "El Ni\u00f1o"), part(d$diff_la_nina, d$n_la_nina, "La Ni\u00f1a")
+  )
+  if (!length(parts)) return(NULL)
+  sprintf(
+    "In %s, the mean outcome is %s than in Neutral years (%d).", series, paste(parts, collapse = " and "),
+    d$n_neutral
+  )
 }
 
 # A number for a table cell: "-" for NA; a plus sign on positive values only when they do not round to 0.
@@ -641,28 +683,14 @@ enso_phase_reactable <- function(tbl, scale = 1, digits = 3L) {
       n_el_nino = cnt("Years"), mean_el_nino = num("Mean"), diff_el_nino = diff("vs Neutral"),
       n_neutral = cnt("Years"), mean_neutral = num("Mean"),
       n_la_nina = cnt("Years"), mean_la_nina = num("Mean"), diff_la_nina = diff("vs Neutral"),
-      n_mixed = cnt("Years"), mean_mixed = reactable::colDef(show = FALSE)
+      n_mixed = reactable::colDef(show = FALSE), mean_mixed = reactable::colDef(show = FALSE)
     ),
     columnGroups = list(
       reactable::colGroup("El Ni\u00f1o exposure", c("n_el_nino", "mean_el_nino", "diff_el_nino")),
       reactable::colGroup("Neutral", c("n_neutral", "mean_neutral")),
-      reactable::colGroup("La Ni\u00f1a exposure", c("n_la_nina", "mean_la_nina", "diff_la_nina")),
-      reactable::colGroup("Mixed", c("n_mixed", "mean_mixed"))
+      reactable::colGroup("La Ni\u00f1a exposure", c("n_la_nina", "mean_la_nina", "diff_la_nina"))
     ),
     compact = TRUE, highlight = TRUE, pagination = FALSE
-  )
-}
-
-#' Sentence on how many El Nino and La Nina exposure years a window holds (D8)
-#'
-#' @param labels Tibble from `enso_year_labels()`.
-#' @noRd
-enso_count_sentence <- function(labels) {
-  lab <- labels$label[!is.na(labels$label)]
-  n_en <- sum(lab == "el_nino")
-  paste0(
-    "This window has ", n_en, " El Ni\u00f1o and ", sum(lab == "la_nina"), " La Ni\u00f1a exposure years out of ",
-    length(lab), ".", if (n_en < 10L) " A longer historical window adds more events, and also moves the baseline."
   )
 }
 
@@ -736,7 +764,7 @@ enso_mark_toggle_ui <- function(ns) {
       ns("enso_mark"),
       label = NULL,
       aria_label = "Mark draws by ENSO phase",
-      choices = c("Off" = "off", "On" = "on"),
+      choices = c("Hide" = "off", "Show" = "on"),
       selected = "off",
       layout = "horizontal"
     )
@@ -797,36 +825,12 @@ enso_legend_ui <- function() {
 
 # Policy comparison by ENSO label (item 4) ----
 
-#' Baseline, policy and policy effect by ENSO label
-#'
-#' One row per series and label. Each series is averaged over its climate models by simulation
-#' year first, so a year counts once, then over the years of the label. The effect is policy minus
-#' baseline; `effect_vs_neutral` is the difference of the effect from its Neutral mean, shown only
-#' for El Nino and La Nina and only when both sides have `min_n` years (D5). Counts and means only.
-#'
-#' @param paired Data frame with `scenario`, `sim_year`, `baseline`, `policy`, `effect` (the
-#'   model-year pairs of `paired_model_year_effects()`, one `scenario` column added);
-#'   forecast-like series are left out.
-#' @param labels Tibble from `enso_year_labels()`.
-#' @param min_n Smallest number of years in a phase to compare it.
-#' @return Tibble: `series`, `label`, `n`, `baseline`, `policy`, `effect`, `effect_vs_neutral`;
-#'   `NULL` when nothing is left.
-#' @noRd
-enso_policy_table <- function(paired, labels, min_n = 3L) {
-  if (is.null(paired) || !nrow(paired)) return(NULL)
-  order_of <- unique(as.character(paired$scenario))
-  paired <- paired[!.step2_is_forecast_like(paired$scenario), , drop = FALSE]
-  paired <- paired[is.finite(paired$baseline) & is.finite(paired$policy) & is.finite(paired$effect), ,
-    drop = FALSE]
-  if (!nrow(paired)) return(NULL)
-  yearly <- stats::aggregate(
-    cbind(baseline, policy, effect) ~ scenario + sim_year, data = paired, FUN = mean
-  )
-  yearly$scenario <- as.character(yearly$scenario)
+# Rows of the policy table for the series of `yearly` (`scenario`, `sim_year`, `baseline`, `policy`, `effect`).
+.enso_policy_rows <- function(yearly, labels, series_order, min_n) {
   yearly$label <- labels$label[match(as.integer(yearly$sim_year), labels$sim_year)]
   yearly <- yearly[!is.na(yearly$label), , drop = FALSE]
   if (!nrow(yearly)) return(NULL)
-  rows <- lapply(intersect(order_of, unique(yearly$scenario)), function(s) {
+  rows <- lapply(intersect(series_order, unique(yearly$scenario)), function(s) {
     d <- yearly[yearly$scenario == s, , drop = FALSE]
     n <- vapply(ENSO_LABEL_LEVELS, function(k) sum(d$label == k), numeric(1))
     m <- function(col) {
@@ -845,6 +849,47 @@ enso_policy_table <- function(paired, labels, min_n = 3L) {
   do.call(rbind, rows)
 }
 
+#' Baseline, policy and policy effect by ENSO label
+#'
+#' One row per series and label. Each annual series is averaged over its climate models by simulation
+#' year first, so a year counts once, then over the years of the label. The effect is policy minus
+#' baseline; `effect_vs_neutral` is the difference of the effect from its Neutral mean, shown only
+#' for El Nino and La Nina and only when both sides have `min_n` years (D5). Counts and means only. The
+#' same-months Historical series of a forecast window comes after the annual ones.
+#'
+#' @param paired Data frame with `scenario`, `sim_year`, `baseline`, `policy`, `effect` (the
+#'   model-year pairs of `paired_model_year_effects()`, one `scenario` column added), or `NULL`;
+#'   forecast-like series are left out.
+#' @param labels Tibble from `enso_year_labels()`, or `NULL` without annual series.
+#' @param min_n Smallest number of years in a phase to compare it.
+#' @param window `NULL`, or a list: `paired` (one row per reference year, with the columns of `paired`) and
+#'   `labels` (tibble from `enso_window_labels()`).
+#' @return Tibble: `series`, `label`, `n`, `baseline`, `policy`, `effect`, `effect_vs_neutral`;
+#'   `NULL` when nothing is left.
+#' @noRd
+enso_policy_table <- function(paired, labels, min_n = 3L, window = NULL) {
+  out <- NULL
+  if (!is.null(paired) && nrow(paired) && !is.null(labels)) {
+    order_of <- unique(as.character(paired$scenario))
+    paired <- paired[!.step2_is_forecast_like(paired$scenario), , drop = FALSE]
+    paired <- paired[is.finite(paired$baseline) & is.finite(paired$policy) & is.finite(paired$effect), ,
+      drop = FALSE]
+    if (nrow(paired)) {
+      yearly <- stats::aggregate(
+        cbind(baseline, policy, effect) ~ scenario + sim_year, data = paired, FUN = mean
+      )
+      yearly$scenario <- as.character(yearly$scenario)
+      out <- .enso_policy_rows(yearly, labels, order_of, min_n)
+    }
+  }
+  if (!is.null(window) && !is.null(window$labels) && nrow(window$paired)) {
+    w <- window$paired
+    w$scenario <- as.character(w$scenario)
+    out <- rbind(out, .enso_policy_rows(w, window$labels, unique(w$scenario), min_n))
+  }
+  out
+}
+
 #' Reactable of the policy comparison by ENSO label (item 4)
 #'
 #' @param tbl Tibble from `enso_policy_table()`.
@@ -852,6 +897,7 @@ enso_policy_table <- function(paired, labels, min_n = 3L) {
 #' @param digits Decimals shown.
 #' @noRd
 enso_policy_reactable <- function(tbl, scale = 1, digits = 3L) {
+  tbl <- tbl[tbl$label != "mixed", , drop = FALSE]
   tbl$exposure <- enso_label_text(tbl$label)
   tbl <- tbl[c("series", "exposure", "n", "baseline", "policy", "effect", "effect_vs_neutral")]
   fmt <- function(v, sign = FALSE) .enso_fmt(v, scale, digits, sign)
@@ -874,9 +920,10 @@ enso_policy_reactable <- function(tbl, scale = 1, digits = 3L) {
   )
 }
 
-#' Sentence on the policy effect in El Nino and Neutral years of one series (item 4)
+#' Headline sentence of the policy comparison: the effect in each phase of one series
 #'
-#' `NULL` unless the series has at least `min_n` El Nino and Neutral years. Counts and means only.
+#' Names the effect in El Nino and La Nina years (each with at least `min_n` years) and in Neutral years;
+#' `NULL` without Neutral years to compare with, or without a phase to name. Counts and means only.
 #'
 #' @param tbl Tibble from `enso_policy_table()`.
 #' @param series Series to describe.
@@ -884,13 +931,17 @@ enso_policy_reactable <- function(tbl, scale = 1, digits = 3L) {
 #' @noRd
 enso_policy_sentence <- function(tbl, series, scale = 1, digits = 3L, min_n = 3L) {
   d <- tbl[tbl$series == series, , drop = FALSE]
-  en <- d[d$label == "el_nino", , drop = FALSE]
   ne <- d[d$label == "neutral", , drop = FALSE]
-  if (!nrow(en) || !nrow(ne) || en$n < min_n || ne$n < min_n) return(NULL)
-  f <- function(v) formatC(v * scale, digits = digits, format = "f", big.mark = ",")
+  if (!nrow(ne) || ne$n < min_n) return(NULL)
+  part <- function(k, name) {
+    r <- d[d$label == k, , drop = FALSE]
+    if (nrow(r) && r$n >= min_n) sprintf("%s in %s years (%d)", .enso_fmt(r$effect, scale, digits, TRUE), name, r$n)
+  }
+  parts <- c(part("el_nino", "El Ni\u00f1o"), part("la_nina", "La Ni\u00f1a"))
+  if (!length(parts)) return(NULL)
   sprintf(
-    "In %d El Ni\u00f1o exposure years the policy changes the outcome by %s on average, against %s in %d Neutral years.",
-    en$n, f(en$effect), f(ne$effect), ne$n
+    "In %s, the policy changes the outcome by %s and %s in Neutral years (%d).", series,
+    paste(parts, collapse = " and "), .enso_fmt(ne$effect, scale, digits, TRUE), ne$n
   )
 }
 

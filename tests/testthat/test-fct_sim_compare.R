@@ -93,7 +93,7 @@ test_that("forecast cards warn when the target months are rare in the training d
   rare <- setNames(list(list(training_months = list(share = 0, expected = 1 / 12))), label)
   common <- setNames(list(list(training_months = list(share = 0.09, expected = 1 / 12))), label)
   expect_match(step2_headline_cards(bands, saved_scenarios = rare)[[1L]]$basis_text,
-    "0% of the model's training observations")
+    "0% of training observations")
   expect_false(grepl("training observations",
     step2_headline_cards(bands, saved_scenarios = common)[[1L]]$basis_text))
 })

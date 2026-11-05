@@ -13,7 +13,13 @@
 )
 .ENSO_NOTE_FEW <- paste(
   "Few events fall in a window and they differ from each other; past events are not a forecast. A phase is",
-  "compared with Neutral only when both have at least three years."
+  "compared with Neutral only when both have at least three years. A longer historical window adds more events, and",
+  "also moves the baseline."
+)
+.ENSO_NOTE_WINDOW <- paste(
+  "A forecast window adds the Historical row of its target months: the same months of each historical year, labelled",
+  "by the ENSO state of those months. Forecast members have no label of their own; the placement card compares them",
+  "with the El Ni\u00f1o or La Ni\u00f1a years of the outlook's phase."
 )
 .ENSO_NOTE_SCENARIO <- paste(
   "Climate scenarios keep the observed ENSO sequence of their template years; changes in ENSO under warming are",
@@ -248,14 +254,16 @@
 
     # Section 1b: ENSO exposure years (item 3 of roadmap/enso.md) ----
     shiny::conditionalPanel(
-      condition = paste0("output['", ns("has_enso"), "'] && !output['", ns("forecast_only"), "']"),
+      condition = paste0("output['", ns("has_enso_table"), "']"),
       shiny::h4(
         "How do outcomes compare in El Ni\u00f1o and La Ni\u00f1a years?",
         info_popover(
           title = "ENSO exposure years",
           shiny::p(.ENSO_NOTE_LABELS),
           shiny::p(.ENSO_NOTE_FEW),
-          shiny::p(.ENSO_NOTE_SCENARIO)
+          shiny::p(.ENSO_NOTE_SCENARIO),
+          shiny::p(.ENSO_NOTE_WINDOW),
+          shiny::p(.ENSO_NOTE_MODEL)
         ),
         style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
       ),
@@ -266,11 +274,7 @@
           wise_reactable_csv_button(ns("enso_phase_table"), "enso_exposure_years")
         ),
         reactable::reactableOutput(ns("enso_phase_table")),
-        shiny::uiOutput(ns("enso_sentence")),
-        shiny::tags$p(
-          class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
-          .ENSO_NOTE_MODEL
-        )
+        shiny::uiOutput(ns("enso_sentence"))
       )
     ),
 
@@ -1836,11 +1840,26 @@ mod_2_02_results_server <- function(id,
     }
 
     # ENSO phase table and sentence (item 3) ----
+    # Annual series (not with a forecast alone, whose annual rows only repeat Historical) and, with a forecast, the
+    # Historical series of its target months.
     enso_table_rv <- reactive({
       lab <- enso_labels_rv()
-      req(lab)
-      enso_series_table(annual_distribution_curves_rv(), lab)
+      annual <- if (!is.null(lab) && !isTRUE(.forecast_only())) annual_distribution_curves_rv()
+      wl <- enso_window_labels_rv()
+      wv <- if (!is.null(wl)) .window_views_or_null()
+      window <- if (!is.null(wv$curves)) {
+        h <- wv$curves[as.character(wv$curves$scenario) == "Historical" & is.finite(wv$curves$value), , drop = FALSE]
+        list(
+          values = data.frame(series = window_series_rv()$reference_label, sim_year = h$sim_year, value = h$value),
+          labels = wl
+        )
+      }
+      tbl <- enso_series_table(annual, lab, window = window)
+      req(tbl)
+      tbl
     })
+    output$has_enso_table <- shiny::reactive(!is.null(tryCatch(enso_table_rv(), error = function(e) NULL)))
+    outputOptions(output, "has_enso_table", suspendWhenHidden = FALSE)
     output$enso_phase_table <- reactable::renderReactable({
       tbl <- enso_table_rv()
       req(tbl)
@@ -1899,11 +1918,15 @@ mod_2_02_results_server <- function(id,
       )
     )
     output$enso_sentence <- shiny::renderUI({
+      tbl <- enso_table_rv()
       lab <- enso_labels_rv()
-      req(lab)
+      x_label <- metric_axis_label(.selected_method(), results_source()$so, input$cmp_deviation %||% "none")
+      headline <- enso_phase_sentence(
+        tbl, tbl$series[[1L]], scale = if (nzchar(.wise_result_rate_unit(x_label))) 100 else 1
+      )
       curves <- annual_distribution_curves_rv()
       hist <- curves[curves$scenario == "Historical" & is.finite(curves$value), , drop = FALSE]
-      adverse <- if (nrow(hist)) {
+      adverse <- if (!is.null(lab) && !isTRUE(.forecast_only()) && nrow(hist)) {
         yearly <- stats::aggregate(value ~ sim_year, data = hist, FUN = mean)
         enso_adverse_sentence(
           lab, yearly, tryCatch(metric_metadata(.selected_method(), results_source()$so)$adverse_tail,
@@ -1912,7 +1935,7 @@ mod_2_02_results_server <- function(id,
       }
       shiny::tags$p(
         style = "margin: 12px 0 0;",
-        paste(c(adverse, enso_count_sentence(lab), enso_relevance_rv()), collapse = " ")
+        paste(c(headline, adverse, enso_relevance_rv()), collapse = " ")
       )
     })
 

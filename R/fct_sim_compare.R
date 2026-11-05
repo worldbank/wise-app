@@ -734,7 +734,7 @@ step2_headline_cards <- function(bands,
     "Historical baseline"
   }
   line2_1 <- if (has_future) {
-    paste0(base_label, arrow, scen_lab, if (forecast_focus) " \u00b7 target window" else " \u00b7 average year")
+    if (forecast_focus) paste0(base_label, arrow, "Forecast") else paste0(base_label, arrow, scen_lab, " \u00b7 average year")
   } else {
     "Average year"
   }
@@ -860,13 +860,15 @@ step2_headline_cards <- function(bands,
   if (forecast_focus) {
     tm <- saved_scenarios[[as.character(focus$scenario)]]$training_months
     if (is.finite(tm$share %||% NA_real_) && tm$share < 0.5 * tm$expected) {
-      season_txt <- paste0(
-        "Only ", formatC(100 * tm$share, format = "f", digits = 0), "% of the model's training observations ",
-        "were interviewed in the target months: the weather response is applied to months it was ",
-        "barely estimated from."
+      pct_txt <- formatC(100 * tm$share, format = "f", digits = 0)
+      card1$info <- paste0(
+        card1$info, " Only ", pct_txt, "% of the model's training observations were interviewed in the ",
+        "target months: the weather response is applied to months it was barely estimated from."
       )
-      card1$info <- paste(card1$info, season_txt)
-      card1$basis_text <- paste(card1$basis_text, season_txt, sep = " \u00b7 ")
+      card1$basis_text <- paste(
+        card1$basis_text, paste0("Only ", pct_txt, "% of training observations fall in the target months"),
+        sep = " \u00b7 "
+      )
     }
   }
   if (forecast_focus) {
@@ -875,7 +877,14 @@ step2_headline_cards <- function(bands,
       card1$info <- paste(card1$info, sk$text)
       # The basis strip only carries what weakens the reading.
       if (!isTRUE(sk$assessed) || !identical(sk$flag, "useful")) {
-        card1$basis_text <- paste(card1$basis_text, sk$text, sep = " \u00b7 ")
+        short <- if (!isTRUE(sk$assessed)) {
+          "Hindcast skill not assessed"
+        } else if (identical(sk$flag, "none")) {
+          "No demonstrated hindcast skill"
+        } else {
+          "Weak hindcast skill"
+        }
+        card1$basis_text <- paste(card1$basis_text, short, sep = " \u00b7 ")
       }
       card1$forecast_skill <- sk
     }
@@ -1003,8 +1012,8 @@ step2_headline_cards <- function(bands,
     card2$note <- paste(c(txt$median_text, txt$note), collapse = " \u00b7 ")
     # The ENSO line stays out of `note`, which the headline export reads (D1).
     card2$note_html <- shiny::tagList(
-      shiny::tags$div(txt$median_text),
-      shiny::tags$div(style = "font-weight: 600;", txt$note),
+      shiny::tags$div(txt$note),
+      shiny::tags$div(style = "font-weight: 600;", txt$median_text),
       if (!is.null(txt$enso)) shiny::tags$div(txt$enso)
     )
     card2$info <- txt$info
@@ -1143,8 +1152,9 @@ step2_headline_cards <- function(bands,
     member_sd <- if (length(focus_vals) >= 3L) stats::sd(focus_vals, na.rm = TRUE) else NA_real_
     sharp <- if (is.finite(member_sd) && is.finite(hist_sd) && hist_sd > 0) member_sd / hist_sd else NA_real_
     times <- function(x) paste0(format(round(x, 1), nsmall = 1), "\u00d7")
-    line1_3 <- "shift of the mean member, in historical standard deviations (same months)"
-    line2_3 <- if (is.finite(sharp)) paste0("Member spread is ", times(sharp), " the historical spread")
+    line1_3 <- "mean member shift, in historical standard deviations"
+    line2_3 <- if (is.finite(sharp)) paste0("Member spread ", times(sharp), " the historical spread")
+    line3_3 <- NULL
     card3$label <- "Signal vs noise"
     card3$value <- if (is.finite(snr)) times(snr) else "Unavailable"
     card3$note <- paste(c(line1_3, line2_3, line3_3), collapse = " \u00b7 ")
@@ -1241,16 +1251,16 @@ step2_headline_cards <- function(bands,
     "Historical baseline"
   }
   if (forecast_focus) card3$status <- NULL
-  if (forecast_focus) line1_r <- "Forecast member range"
-  line2_r <- if (has_future) scen_lab else "Inter-annual weather variability"
+  if (forecast_focus) line1_r <- "Lowest to highest member"
+  line2_r <- if (forecast_focus) NULL else if (has_future) scen_lab else "Inter-annual weather variability"
 
   card_range <- list(
     label = if (forecast_focus) "Forecast member range" else "Year-to-year range",
     value = val_r,
-    note = paste(line1_r, line2_r, sep = " \u00b7 "),
+    note = paste(c(line1_r, line2_r), collapse = " \u00b7 "),
     note_html = shiny::tagList(
       shiny::tags$div(line1_r),
-      shiny::tags$div(style = "font-weight: 600;", line2_r)
+      if (!is.null(line2_r)) shiny::tags$div(style = "font-weight: 600;", line2_r)
     ),
     info = if (forecast_focus) paste(
       "Range of the population aggregate across forecast members for the selected target",
@@ -1406,8 +1416,11 @@ step2_headline_cards <- function(bands,
     class = "neutral",
     # Provenance, not a result: drawn as a basis strip, not a card.
     basis_only = TRUE,
-    basis_text = paste0(val_5, if (forecast_focus) " forecast member runs: " else
-      " simulation years: ", line1_5, " \u00b7 ", prediction_note),
+    basis_text = if (forecast_focus) {
+      paste0(val_5, " forecast members \u00b7 ", prediction_note)
+    } else {
+      paste0(val_5, " simulation years: ", line1_5, " \u00b7 ", prediction_note)
+    },
     info = if (forecast_focus) paste(
       "Count of simulated target-window forecast member aggregates. The target start year",
       "anchors sim_year for joins, but each row represents a multi-month forecast window,",

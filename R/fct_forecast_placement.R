@@ -126,7 +126,7 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
 #' @param placement Result of `step2_forecast_placement()`.
 #' @return A list: `value` (share of members worse than the reference 1-in-10 level), `median_text`
 #'   (where the median member falls), `note` (indicator wording), `info` and `enso` (the ENSO line of
-#'   `placement$enso`, or `NULL`).
+#'   `placement$enso$short`, or `NULL`; the full line is in `info`).
 #' @noRd
 .forecast_placement_text <- function(placement) {
   s <- placement$summary
@@ -135,26 +135,26 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
   median_text <- if (!is.finite(p_med)) {
     "Placement unavailable"
   } else if (p_med >= 0.5) {
-    "Median member is better than the median historical year"
+    "Median member better than the median year"
   } else if (isTRUE(s$median_member_beyond)) {
-    "Median member is beyond the observed range"
+    "Median member beyond the observed range"
   } else {
-    paste0("Median member is about a 1-in-", format(max(1, round(s$median_member_return_period)),
+    paste0("Median member about a 1-in-", format(max(1, round(s$median_member_return_period)),
       big.mark = ","), " outcome")
   }
   list(
     value = paste0(formatC(100 * s$share_worse_than_1in10, format = "f", digits = 0), "% of members"),
     median_text = median_text,
-    note = paste0("Worse than the historical 1-in-10 \u00b7 ", n_ref, " historical years, same months"),
+    note = "worse than the historical 1-in-10",
     info = paste0(
       "Each forecast member is placed in the distribution of the same outcome under observed weather ",
-      "for the same calendar months in each historical year. ",
+      "for the same calendar months in each of ", n_ref, " historical years. ",
       "The share of members is an indicator, not a probability: the member spread is not calibrated and ",
       "skill is not established. Outcomes rarer than about 1-in-", floor(n_ref / 2),
       " are reported as beyond the observed range, not extrapolated.",
-      if (!is.null(placement$enso)) paste0(" ", placement$enso$info)
+      if (!is.null(placement$enso)) paste0(" ", placement$enso$line, " ", placement$enso$info)
     ),
-    enso = placement$enso$line
+    enso = placement$enso$short
   )
 }
 

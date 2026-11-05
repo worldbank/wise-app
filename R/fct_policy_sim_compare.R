@@ -2083,14 +2083,21 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
 
     # Section 1b: policy effect by ENSO exposure (item 4 of roadmap/enso.md) ----
     shiny::conditionalPanel(
-      condition = paste0("output['", ns("has_enso"), "'] && !output['", ns("forecast_only"), "']"),
+      condition = paste0("output['", ns("has_enso_table"), "']"),
       shiny::h4(
         "Does the policy help more in El Ni\u00f1o or La Ni\u00f1a years?",
         info_popover(
           title = "Policy effect by ENSO exposure",
           shiny::p(.ENSO_NOTE_LABELS),
           shiny::p(.ENSO_NOTE_FEW),
-          shiny::p(.ENSO_NOTE_SCENARIO)
+          shiny::p(.ENSO_NOTE_SCENARIO),
+          shiny::p(
+            "Baseline and policy are the mean outcome of the years with that exposure, averaged over climate models;",
+            "the effect is policy minus baseline. A forecast window adds the Historical row of its target months: the",
+            "same months of each historical year, labelled by the ENSO state of those months. Forecast members have",
+            "no label of their own."
+          ),
+          shiny::p(.ENSO_NOTE_MODEL)
         ),
         style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
       ),
@@ -2101,12 +2108,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           wise_reactable_csv_button(ns("enso_policy_table"), "policy_enso_exposure_years")
         ),
         reactable::reactableOutput(ns("enso_policy_table")),
-        shiny::uiOutput(ns("enso_policy_sentence")),
-        shiny::tags$p(
-          class = "text-muted small", style = "margin-top: 8px; margin-bottom: 0;",
-          "Baseline and policy are the mean outcome of the years with that exposure, averaged over climate models; ",
-          "the effect is policy minus baseline. ", .ENSO_NOTE_MODEL
-        )
+        shiny::uiOutput(ns("enso_policy_sentence"))
       )
     ),
 
@@ -3289,11 +3291,30 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels()))
   output$enso_legend <- shiny::renderUI(if (enso_marking()) enso_legend_ui())
   output$enso_mark_note <- shiny::renderUI(if (enso_marking()) enso_mark_note_ui(!is.null(enso_forecast_marks())))
+  # Annual series (not with a forecast alone, whose annual rows only repeat Historical) and, with a forecast, the
+  # Historical series of its target months.
   enso_policy_rv <- reactive({
     lab <- enso_labels()
-    req(lab)
-    enso_policy_table(dplyr::bind_rows(paired_effect_data()), lab)
+    annual <- if (!is.null(lab) && !isTRUE(.forecast_only())) dplyr::bind_rows(paired_effect_data())
+    wl <- enso_window_labels()
+    wv <- if (!is.null(wl)) .wv()
+    window <- if (!is.null(wv)) {
+      b <- window_baseline_rv()$historical
+      p <- window_policy_rv()$historical
+      list(
+        paired = data.frame(
+          scenario = wv$reference_label, sim_year = b$sim_year, baseline = b$value, policy = p$value,
+          effect = p$value - b$value
+        ),
+        labels = wl
+      )
+    }
+    tbl <- enso_policy_table(annual, lab, window = window)
+    req(tbl)
+    tbl
   })
+  output$has_enso_table <- shiny::reactive(!is.null(tryCatch(enso_policy_rv(), error = function(e) NULL)))
+  outputOptions(output, "has_enso_table", suspendWhenHidden = FALSE)
   enso_scale <- reactive({
     x_label <- metric_axis_label(aggregation_method(), baseline_hist_sim()$so, "none")
     if (nzchar(.wise_result_rate_unit(x_label))) 100 else 1
@@ -3309,7 +3330,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     s <- enso_policy_sentence(tbl, tbl$series[[1L]], scale = enso_scale())
     shiny::tags$p(
       style = "margin: 12px 0 0;",
-      paste(c(s, enso_count_sentence(enso_labels()), enso_relevance()), collapse = " ")
+      paste(c(s, enso_relevance()), collapse = " ")
     )
   })
   annual_distribution_chart <- function() {

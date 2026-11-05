@@ -421,6 +421,36 @@ test_that("the series table averages models per year and compares phases with Ne
   expect_null(enso_series_table(d[0, ], lab))
 })
 
+test_that("the series table adds the same-months Historical row of a window, and works on it alone", {
+  lab <- enso_labels_fixture()
+  d <- data.frame(model_id = "a", sim_year = 2001:2010, scenario = "Historical", value = 10)
+  window <- list(
+    values = data.frame(
+      series = "Historical (Nov - Jan)", sim_year = 2001:2010, value = c(1, 1, 1, 4, 4, 4, 7, 7, 0, 0)
+    ),
+    labels = lab
+  )
+  out <- enso_series_table(d, lab, window = window)
+  expect_equal(out$series, c("Historical", "Historical (Nov - Jan)"))
+  expect_equal(out$mean_el_nino[2], 1)
+  expect_equal(out$diff_el_nino[2], -3)
+  alone <- enso_series_table(NULL, NULL, window = window)
+  expect_equal(alone$series, "Historical (Nov - Jan)")
+  expect_null(enso_series_table(NULL, NULL))
+})
+
+test_that("the phase sentence names the differences from Neutral, and is absent without a comparison", {
+  lab <- enso_labels_fixture()
+  tbl <- enso_series_table(data.frame(scenario = "Historical", sim_year = 2001:2010, value = c(1, 1, 1, 4, 4, 4, 7, 7, 0, 0)), lab)
+  expect_match(
+    enso_phase_sentence(tbl, "Historical"),
+    "^In Historical, the mean outcome is 3.000 lower in El Ni\u00f1o years \\(3\\) than in Neutral years \\(3\\)\\.$"
+  )
+  expect_null(enso_phase_sentence(tbl, "Other"))
+  tbl$diff_el_nino <- NA_real_
+  expect_null(enso_phase_sentence(tbl, "Historical"))
+})
+
 test_that("the adverse sentence counts El Nino among the worst years", {
   lab <- enso_labels_fixture()
   # Worst 3 of 10 are the three El Nino years when low is adverse
@@ -433,14 +463,6 @@ test_that("the adverse sentence counts El Nino among the worst years", {
   expect_null(enso_adverse_sentence(lab[1:4, ], v[1:4, ])) # fewer than five labelled years
   none <- transform(lab, label = "neutral")
   expect_null(enso_adverse_sentence(none, v))
-})
-
-test_that("the count sentence names the window and suggests a wider one when events are few", {
-  s <- enso_count_sentence(enso_labels_fixture())
-  expect_match(s, "^This window has 3 El Niño and 2 La Niña exposure years out of 10\\.")
-  expect_match(s, "longer historical window")
-  big <- tibble::tibble(sim_year = 1:12, label = rep("el_nino", 12))
-  expect_no_match(enso_count_sentence(big), "longer")
 })
 
 test_that("baseline months come from int_month or timestamp and the weight column", {
@@ -683,7 +705,7 @@ test_that("the outlook drops member shares at an empty lead and names a value ab
   expect_match(enso_placement_text(e, f(full), run, enso_placement_fixture(), lab, "x")$line, "stronger than")
 })
 
-test_that("the ENSO line reaches the card and its popover, and not the exported note", {
+test_that("the ENSO phase reaches the card, the full line its popover, and neither the exported note", {
   reference <- 1:20
   placement <- c(.forecast_placement_stats(c(4, 5, 6, 7, 8), reference, "low"),
     list(reference = data.frame(year = 2001:2020, value = reference), method = "mean", adverse_tail = "low"))
@@ -692,12 +714,12 @@ test_that("the ENSO line reaches the card and its popover, and not the exported 
     lo = c(9, 5), hi = c(11, 7)
   )
   plain <- step2_headline_cards(bands, forecast_placement = placement)
-  placement$enso <- list(line = "ENSO outlook line.", info = "ENSO info.")
+  placement$enso <- list(line = "ENSO outlook line.", short = "ENSO outlook: El Ni\u00f1o", info = "ENSO info.")
   cards <- step2_headline_cards(bands, forecast_placement = placement)
   card <- Filter(function(x) identical(x$label, "Placement in climatology"), cards)[[1L]]
   card0 <- Filter(function(x) identical(x$label, "Placement in climatology"), plain)[[1L]]
-  expect_match(as.character(card$note_html), "ENSO outlook line.", fixed = TRUE)
-  expect_match(card$info, "ENSO info.", fixed = TRUE)
+  expect_match(as.character(card$note_html), "ENSO outlook: El Ni\u00f1o")
+  expect_match(card$info, "ENSO outlook line. ENSO info.", fixed = TRUE)
   expect_identical(card$note, card0$note)
   expect_no_match(as.character(card0$note_html), "ENSO")
   expect_identical(step2_headline_df(cards), step2_headline_df(plain))
@@ -759,13 +781,28 @@ test_that("the policy table leaves out forecast series, unlabelled years and emp
   expect_null(enso_policy_table(d, lab))
 })
 
-test_that("the policy sentence needs three El Nino and three Neutral years", {
+test_that("the policy table adds the same-months Historical row of a window, and works on it alone", {
+  lab <- enso_labels_fixture()
+  w <- data.frame(
+    scenario = "Historical (Nov - Jan)", sim_year = 2001:2010, baseline = 5,
+    effect = ifelse(2001:2010 <= 2003, 2, 1)
+  )
+  w$policy <- w$baseline + w$effect
+  both <- enso_policy_table(enso_paired_fixture(), lab, window = list(paired = w, labels = lab))
+  expect_equal(unique(both$series), c("Historical / 2001-2010", "SSP3-7.0 / 2025-2035", "Historical (Nov - Jan)"))
+  alone <- enso_policy_table(NULL, NULL, window = list(paired = w, labels = lab))
+  expect_equal(unique(alone$series), "Historical (Nov - Jan)")
+  expect_equal(alone$effect_vs_neutral[alone$label == "el_nino"], 1)
+  expect_null(enso_policy_table(NULL, NULL))
+})
+
+test_that("the policy sentence names the effect in each phase with three years, and needs Neutral", {
   tbl <- enso_policy_table(enso_paired_fixture(), enso_labels_fixture())
   expect_equal(
     enso_policy_sentence(tbl, "Historical / 2001-2010"),
-    "In 3 El Niño exposure years the policy changes the outcome by 3.000 on average, against 1.000 in 3 Neutral years."
+    "In Historical / 2001-2010, the policy changes the outcome by +3.000 in El Ni\u00f1o years (3) and +1.000 in Neutral years (3)."
   )
-  expect_match(enso_policy_sentence(tbl, "Historical / 2001-2010", scale = 100, digits = 1), "by 300.0 on average")
+  expect_match(enso_policy_sentence(tbl, "Historical / 2001-2010", scale = 100, digits = 1), "\\+300.0 in El")
   expect_null(enso_policy_sentence(tbl[tbl$label != "neutral", ], "Historical / 2001-2010"))
 })
 
