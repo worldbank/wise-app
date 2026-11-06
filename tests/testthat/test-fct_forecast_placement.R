@@ -35,3 +35,17 @@ test_that("a scenario without reference pipelines gives no placement", {
   expect_null(step2_forecast_placement(list(pipelines = list(1)), "mean",
     list(type = "numeric", name = "welfare", transform = "none"), "none", TRUE, 3))
 })
+
+test_that("the recent line reads the median member against the latest reference years", {
+  # Warming reference: the same outcome is worse in later years; higher is worse.
+  ref <- data.frame(year = 1991:2020, value = 1:30)
+  pl <- .forecast_placement_stats(rep(25.5, 5), ref$value, "high")
+  pl$reference <- ref
+  pl$adverse_tail <- "high"
+  expect_identical(.forecast_placement_recent(pl), "Median member worse than 5 of the last 10 years (2011-2020)")
+  expect_identical(.forecast_placement_text(pl)$recent, .forecast_placement_recent(pl))
+  low <- pl; low$adverse_tail <- "low"
+  expect_identical(.forecast_placement_recent(low), "Median member worse than 5 of the last 10 years (2011-2020)")
+  short <- pl; short$reference <- ref[1:10, ]
+  expect_null(.forecast_placement_recent(short))
+})

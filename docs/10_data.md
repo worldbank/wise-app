@@ -15,13 +15,14 @@ verified_against: 8639eb2
 
 ## Setup
 
-Three kinds of input are used.
+Four kinds of input are used.
 
 | Input | Content | Source |
 |---|---|---|
 | Survey microdata | Harmonised household, individual or firm records with welfare, characteristics, interview month and a location code tied to H3 cells | Global Monitoring Database [@worldbank2026], geocoded |
 | Observed weather | Monthly weather variables on a global grid, from 1950 | ERA5-Land reanalysis [@munozsabater2021], taken from the Copernicus climate atlas [@c3satlas2024] |
 | Climate projections | The same variables for up to 30 members of the CMIP6 ensemble [@eyring2016], for a historical baseline (1950 to 2014) and three emissions pathways (2015 to 2100) | Same atlas |
+| Seasonal forecasts (experimental) | Monthly temperature and rainfall for 51 members and six months, with the matching hindcasts | ECMWF SEAS5 from the Copernicus Climate Change Service [@c3sseasonal2018], adjusted to ERA5-Land in the data repository ([34_seasonal_forecast](34_seasonal_forecast.md)) |
 
 Three metadata tables describe the surveys, the variables and the price deflators. Their columns and the directory layout are defined in the data repository: <https://github.com/worldbank/wise-app-data>. This page does not copy them, so the two cannot drift apart.
 
@@ -111,7 +112,7 @@ User guide: [Data](https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
 
 ## References
 
-[@worldbank2026], [@munozsabater2021], [@c3satlas2024], [@eyring2016], [@schiavina2022], [@uber2018]. Full entries are in [references](references.md).
+[@worldbank2026], [@munozsabater2021], [@c3satlas2024], [@c3sseasonal2018], [@eyring2016], [@schiavina2022], [@uber2018]. Full entries are in [references](references.md).
 
 ## Implementation map
 

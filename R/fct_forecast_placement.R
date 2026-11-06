@@ -122,11 +122,31 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
   )
 }
 
+#' The median member against the most recent reference years
+#'
+#' The forecast carries the warming since the reference years, and the reference years do not, so the
+#' full-period placement mixes trend and forecast signal. This line reads the same member against the
+#' latest years only.
+#' @param placement Result of `step2_forecast_placement()`.
+#' @param n Number of recent years.
+#' @return A sentence, or `NULL` when the reference is not longer than `n` years.
+#' @noRd
+.forecast_placement_recent <- function(placement, n = 10L) {
+  ref <- placement$reference
+  if (is.null(ref) || nrow(ref) <= n) return(NULL)
+  ref <- utils::tail(ref[order(ref$year), , drop = FALSE], n)
+  med <- placement$summary$member_median
+  if (!is.finite(med)) return(NULL)
+  worse <- if (identical(placement$adverse_tail, "high")) sum(ref$value < med) else sum(ref$value > med)
+  paste0("Median member worse than ", worse, " of the last ", n, " years (", min(ref$year), "-", max(ref$year), ")")
+}
+
 #' Cards text for a placement
 #' @param placement Result of `step2_forecast_placement()`.
 #' @return A list: `value` (share of members worse than the reference 1-in-10 level), `median_text`
-#'   (where the median member falls), `note` (indicator wording), `info` and `enso` (the ENSO line of
-#'   `placement$enso$short`, or `NULL`; the full line is in `info`).
+#'   (where the median member falls), `note` (indicator wording), `info`, `enso` (the ENSO line of
+#'   `placement$enso$short`, or `NULL`; the full line is in `info`) and `recent` (the line of
+#'   `.forecast_placement_recent()`, or `NULL`).
 #' @noRd
 .forecast_placement_text <- function(placement) {
   s <- placement$summary
@@ -151,10 +171,13 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
       "for the same calendar months in each of ", n_ref, " historical years. ",
       "The share of members is an indicator, not a probability: the member spread is not calibrated and ",
       "skill is not established. Outcomes rarer than about 1-in-", floor(n_ref / 2),
-      " are reported as beyond the observed range, not extrapolated.",
+      " are reported as beyond the observed range, not extrapolated. ",
+      "Warming since the reference years moves this placement as well as the forecast signal, so compare ",
+      "with the most recent years.",
       if (!is.null(placement$enso)) paste0(" ", placement$enso$line, " ", placement$enso$info)
     ),
-    enso = placement$enso$short
+    enso = placement$enso$short,
+    recent = .forecast_placement_recent(placement)
   )
 }
 

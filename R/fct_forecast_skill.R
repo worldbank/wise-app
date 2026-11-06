@@ -20,6 +20,7 @@
   needed <- c("init_month", "lead_month", "level", "skill_flag")
   if (is.null(skill) || !all(needed %in% names(skill))) return(NULL)
   if (!"variable" %in% names(skill)) skill$variable <- "t"
+  if (!"window" %in% names(skill)) skill$window <- 1L
   skill <- skill[skill$level %in% "country" &
     as.integer(skill$init_month) == as.integer(format(as.Date(run$init), "%m")) &
     skill$skill_flag %in% .FORECAST_SKILL_FLAGS, , drop = FALSE]
@@ -33,8 +34,9 @@
 #'   several variables the flag is the worst of them and `text` lists each.
 #' @param run A validated run (`init`).
 #' @param start,len Target window start ("YYYY-MM") and length in months.
-#' @return A list: `assessed` (logical), `flag` (the worst flag over the target months, or `NA`),
-#'   `months` (data frame: `month`, `lead_month`, `skill_flag`, `acc`, `crpss`) and `text`.
+#' @return A list: `assessed` (logical), `flag` (the flag of the window mean when the table has that
+#'   window, else the worst flag over the target months, or `NA`), `months` (data frame: `month`,
+#'   `lead_month`, `skill_flag`, `acc`, `crpss`) and `text`.
 #' @noRd
 .forecast_skill_summary <- function(skill, run, start, len, variables = NULL) {
   vars <- if (!is.null(skill) && "variable" %in% names(skill)) unique(as.character(skill$variable))
@@ -64,6 +66,10 @@
     return(list(assessed = FALSE, flag = NA_character_, months = NULL,
       text = "Forecast skill was not assessed for this run."))
   }
+  # Tables without a `window` column (runs before November 2026) hold single months only.
+  windows <- if ("window" %in% names(skill)) as.integer(skill$window) else rep(1L, nrow(skill))
+  whole <- skill[windows == as.integer(len) & as.integer(skill$lead_month) == lead[1L], , drop = FALSE]
+  skill <- skill[windows == 1L, , drop = FALSE]
   hit <- match(lead, as.integer(skill$lead_month))
   col <- function(name) if (name %in% names(skill)) as.numeric(skill[[name]])[hit] else rep(NA_real_, length(hit))
   months <- data.frame(
@@ -85,6 +91,11 @@
     if (identical(worst, "none")) "No demonstrated hindcast skill: " else "Hindcast skill is ",
     paste(groups, collapse = "; "), "."
   )
+  if (as.integer(len) > 1L && nrow(whole) == 1L) {
+    flag <- as.character(whole$skill_flag)
+    return(list(assessed = TRUE, flag = flag, months = months,
+      text = paste0("Hindcast skill of the window mean is ", flag, ". By month: ", text)))
+  }
   list(assessed = TRUE, flag = worst, months = months, text = text)
 }
 

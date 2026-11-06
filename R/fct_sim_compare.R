@@ -1014,6 +1014,7 @@ step2_headline_cards <- function(bands,
     card2$note_html <- shiny::tagList(
       shiny::tags$div(txt$note),
       shiny::tags$div(style = "font-weight: 600;", txt$median_text),
+      if (!is.null(txt$recent)) shiny::tags$div(txt$recent),
       if (!is.null(txt$enso)) shiny::tags$div(txt$enso)
     )
     card2$info <- txt$info

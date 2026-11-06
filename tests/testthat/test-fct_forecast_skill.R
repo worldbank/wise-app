@@ -58,3 +58,15 @@ test_that("a table with several variables is read per variable; the worst flag l
   expect_identical(t_only$flag, "weak")
   expect_false("variable" %in% names(t_only$months))
 })
+
+test_that("a window row sets the flag of a multi-month window; the months stay in the table", {
+  win <- transform(skill_fixture()[2, ], lead_month = 2L, window = 3L, skill_flag = "useful")
+  tbl <- rbind(transform(skill_fixture()[1:4, ], window = 1L), win)
+  out <- .forecast_skill_summary(tbl, run, "2026-11", 3L)
+  expect_identical(out$flag, "useful")
+  expect_identical(out$months$skill_flag, c("weak", "none", "none"))
+  expect_match(out$text, "^Hindcast skill of the window mean is useful\\. By month: No demonstrated")
+  # A single month reads its own row, and a window without a row keeps the worst month.
+  expect_identical(.forecast_skill_summary(tbl, run, "2026-11", 1L)$flag, "weak")
+  expect_identical(.forecast_skill_summary(tbl, run, "2026-10", 3L)$flag, "none")
+})
