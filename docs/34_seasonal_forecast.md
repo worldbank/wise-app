@@ -1,6 +1,6 @@
 ---
 id: seasonal-forecast
-title: Seasonal forecast scenario (experimental pilot)
+title: Seasonal forecast scenario
 app_step: 2
 depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
@@ -9,15 +9,15 @@ code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.
 verified_against: 8639eb2
 ---
 
-# Seasonal forecast scenario (experimental pilot)
+# Seasonal forecast scenario
 
-> **Status: experimental local pilot.** Thirty-three countries have one draft run, October 2026, prepared for DEV testing. The app reads adjusted forecast weather from the local data root. Skill and scientific usefulness are not established. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows, and a shock-responsive transfer with a weather trigger and local, ex-post, fixed payments (Section 5).
+> **Status:** thirty-three countries have monthly runs. The October 2026 run is a draft for DEV testing, and runs from November 2026 are published by the data pipeline. The app reads adjusted forecast weather from the data root. Skill differs by season, lead and variable, so the app reports the flags. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows, and a shock-responsive transfer with a weather trigger and local, ex-post, fixed payments (Section 5).
 
 > A seasonal forecast is one more weather state, next to the historical record and the climate scenarios. It describes one dated target window, for example November to January, by the members of a forecast ensemble. The fitted model, the residual treatment and the metrics are the ones used for every other scenario.
 
 ## Setup
 
-The forecast comes from a seasonal prediction system run once a month, ECMWF SEAS5 (system 51) from the Copernicus Climate Change Service [@c3sseasonal2018]. Each run gives monthly values for the next six months for every **member** $m$ of an ensemble (51 members for ECMWF SEAS5). The pilot covers monthly mean temperature (`t`) and rainfall (`r`) for one country. Symbols are in [00_notation](00_notation.md): $\ell$ location, $\mu$ calendar month, $v$ weather variable, $m$ member.
+The forecast comes from a seasonal prediction system run once a month, ECMWF SEAS5 (system 51) from the Copernicus Climate Change Service [@c3sseasonal2018]. Each run gives monthly values for the next six months for every **member** $m$ of an ensemble (51 members for ECMWF SEAS5). The forecast covers monthly mean temperature (`t`) and rainfall (`r`) for one country. Symbols are in [00_notation](00_notation.md): $\ell$ location, $\mu$ calendar month, $v$ weather variable, $m$ member.
 
 The question the scenario answers is conditional: what does the fitted model imply for the target window if weather in each location follows member $m$, holding the survey's other characteristics fixed? It is not a forecast of welfare or poverty.
 
@@ -77,7 +77,7 @@ The band across members shows how much the forecast weather moves the model's ou
 
 ## Limitations and what is not modelled
 
-- The pilot provides monthly mean 2 m temperature (`t`) and rainfall (`r`). Minimum and maximum temperature (`tn`, `tx`) could be supported after their retrieval, adjustment and validation are added. Models using variables outside the prepared data cannot use the current forecast. Rainfall skill is weak or absent at most leads, so a model with rainfall is flagged by its worst variable. The latest observed context months can be preliminary (ERA5-Land-T, source `era5land_t`) for both variables. Daily extremes, soil moisture and drought indices remain outside the monthly pilot's scope.
+- The forecast provides monthly mean 2 m temperature (`t`) and rainfall (`r`). Minimum and maximum temperature (`tn`, `tx`) could be supported after their retrieval, adjustment and validation are added. Models using variables outside the prepared data cannot use the current forecast. Rainfall skill is weak or absent at most leads, so a model with rainfall is flagged by its worst variable. The latest observed context months can be preliminary (ERA5-Land-T, source `era5land_t`) for both variables. Daily extremes, soil moisture and drought indices remain outside the monthly pilot's scope.
 - One forecast system. No weighting or blending of systems.
 - Skill is unproven for most seasons and leads at a single start month. A real-time check over starts since 2017, pooled over start months and country means only, found no mean offset in temperature and a lower error than the recent climate (`wise-app-data`, `dev/forecast_adjustment_test.md`, Section 5). A season-level backtest is still needed before any season is shown without a warning.
 - Welfare responses are conditional on the fitted model; no adaptation within the target window.

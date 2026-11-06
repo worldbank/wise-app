@@ -720,12 +720,14 @@ mod_2_01_weathersim_server <- function(id,
       bad <- .step2_forecast_unsupported(wx)
       info_popover(
         title = "Seasonal forecast", placement = "bottom",
-        if (isTRUE(run$experimental)) {
-          shiny::p(
-            "Experimental DEV forecast data. Forecast skill and scientific usefulness are not established. ",
-            "The member spread is not a calibrated probability."
-          )
-        },
+        shiny::p(
+          if (isTRUE(run$experimental)) {
+            "Experimental DEV forecast data. Forecast skill and scientific usefulness are not established. "
+          } else {
+            "Forecast skill differs by season, lead and variable; read the skill flags. "
+          },
+          "The member spread is not a calibrated probability."
+        ),
         shiny::p(
           "The forecast members are compared with Historical for the same target months. ",
           "Hatched months before the target are observed months that the fitted lagged predictors also use."

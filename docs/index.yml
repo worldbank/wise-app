@@ -358,7 +358,7 @@ pages:
     verified_against: "f62a72b"
   - id: "seasonal-forecast"
     file: "34_seasonal_forecast.md"
-    title: "Seasonal forecast scenario (experimental pilot)"
+    title: "Seasonal forecast scenario"
     app_step: "2"
     depends_on: ["notation", "data", "weather-measures", "simulation"]
     methods:

@@ -52,7 +52,7 @@ Checked in the running app on BFA (shock card and annual cost table included, 20
 
 ## After the PR
 
-- **Skill tables from November 2026.** They add a `window` column (1, 3 or 6); October runs keep the old table and read as single months. The app reads both. The placement card adds the median member against the last 10 reference years.
+- **Production runs from November 2026.** Status `published` and `experimental` false, so they will show on Posit Connect once this branch is deployed; `schema_version` stays `draft-2`. Skill and climatology files are named per run, through the manifest's `skill_file`. Skill tables add a `window` column (1, 3 or 6); October runs keep the old table and read as single months. The app reads both. The placement card adds the median member against the last 10 reference years.
 - **Scientific usefulness (`wise-app-data` gates).** Record results including no-skill cases, then decide to continue, restrict or stop. Skill flags decide what the app shows. Production promotion is a separate approval.
 - **Data pipeline items that touch the app.** The November initialization.
 - **App hand-off items from `wise-app-data`, to confirm.** Check that the survey's cells are a subset of the run's cells, and warn rather than fail if the historical file changed since the run.
