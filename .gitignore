@@ -84,3 +84,6 @@ _targets/
 *.jpeg
 # App assets that must be committed (the page cannot render without them)
 !inst/app/www/*.png
+
+# Local slide decks
+presentations/
