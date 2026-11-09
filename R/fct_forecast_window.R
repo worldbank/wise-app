@@ -306,6 +306,13 @@ step2_window_placement <- function(w, method, so) {
     paste0("about 1 in ", format(round(1 / p, 1), nsmall = 1))
   }
   mid <- clip(pos$p[["mid"]])
+  # The label runs away from the nearer edge of the log axis, so a line near the left edge keeps it on the chart
+  ax <- e$x$opts$xAxis
+  if (is.list(ax) && is.null(ax$type) && length(ax)) ax <- ax[[1L]]
+  ax_min <- suppressWarnings(as.numeric(ax$min %||% NA))
+  ax_max <- suppressWarnings(as.numeric(ax$max %||% x_max))
+  frac <- if (isTRUE(ax_min > 0 && ax_max > ax_min)) log(mid / ax_min) / log(ax_max / ax_min) else 1
+  label_align <- if (isTRUE(frac < 0.5)) "left" else "right"
   has_band <- all(is.finite(pos$p[c("lo", "hi")]))
   band <- if (has_band) sort(c(clip(pos$p[["lo"]]), clip(pos$p[["hi"]])))
   overlay <- list(
@@ -328,7 +335,7 @@ step2_window_placement <- function(w, method, so) {
         xAxis = mid,
         lineStyle = list(color = colour, type = line_type, width = 2),
         label = list(
-          show = TRUE, position = "end", align = "right", offset = label_offset,
+          show = TRUE, position = "end", align = label_align, offset = label_offset,
           color = colour, fontSize = 11, fontWeight = "bold",
           formatter = paste0(label, ": ", rp(pos$p[["mid"]]))
         )

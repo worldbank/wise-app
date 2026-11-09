@@ -135,6 +135,23 @@ test_that("the overlay labels the far tail by rank, not by an interpolated 1-in-
   expect_match(label(2), "about 1 in 3.0", fixed = TRUE)
 })
 
+test_that("the overlay label runs away from the nearer edge of the log axis", {
+  ref <- 1:30
+  align <- function(member) {
+    e <- echart_blank("x")
+    e$x$opts$xAxis <- list(type = "log", min = 0.02, max = 0.55)
+    pos <- .step2_window_exceedance_position(ref, member, "low", band_q = NULL)
+    over <- .step2_window_exceedance_overlay(e, pos)$x$opts$series
+    over[[length(over)]]$markLine$data[[1L]]$label$align
+  }
+  expect_identical(align(1.5), "left")
+  expect_identical(align(14), "right")
+  # Without axis bounds the label keeps the right alignment
+  pos <- .step2_window_exceedance_position(ref, 1.5, "low", band_q = NULL)
+  over <- .step2_window_exceedance_overlay(echart_blank("x"), pos)$x$opts$series
+  expect_identical(over[[length(over)]]$markLine$data[[1L]]$label$align, "right")
+})
+
 test_that("the window adverse chart keeps the Historical levels and adds one Forecast row with the member band", {
   dot <- tibble::tibble(
     scenario = c("Historical", "Historical", "X"), is_historical = c(TRUE, TRUE, FALSE),
