@@ -172,7 +172,8 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
   } else if (isTRUE(s$median_member_beyond)) {
     paste0("Median member beyond every reference year (rarer than 1 in ", n_ref + 1L, ")")
   } else if (is.na(s$median_member_return_period)) {
-    paste0("Median member worse than ", n_ref - 1L, " of ", n_ref, " reference years")
+    n_worse <- s$median_member_n_worse %||% (n_ref - 1L)
+    paste0("Median member worse than ", n_worse, " of ", n_ref, " reference years")
   } else {
     paste0("Median member about a 1-in-", format(max(1, round(s$median_member_return_period)),
       big.mark = ","), " outcome")

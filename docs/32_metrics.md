@@ -82,7 +82,7 @@ The **return period of a historical adverse level** $\theta$ under another scena
 
 $$\hat\pi = \frac{c}{N+1}, \qquad \text{return period} = 1/\hat\pi = \frac{N+1}{c} \qquad \text{(4.3)}$$
 
-so that a historical level read under the historical scenario returns its own return period. If no model-year reaches the level, the app shows "more than 1 in $N+1$".
+so that a historical level read under the historical scenario returns its own return period, exactly at a whole rank and approximately between ranks (the 1-in-10 level of 30 years, at rank 3.1, reads back as $31/3$, about 1 in 10.3). If no model-year reaches the level, the app shows "more than 1 in $N+1$".
 
 **Far tail.** A level more adverse than every reference year has no return period: it is labelled "beyond every reference year (rarer than 1 in $n+1$)". A level between the two most adverse reference years is not given an interpolated 1-in-$X$ either, because it rests on one observation: it is labelled "worse than $n-1$ of $n$ reference years". Both labels are used on the forecast overlay of the exceedance chart and on the forecast placement card ([34_seasonal_forecast](34_seasonal_forecast.md)).
 
@@ -107,7 +107,7 @@ The simulated historical expected value is compared with the same metric compute
 ## Interpretation
 
 - The expected value is an average over weather years. The median year of the threshold table is a different summary and need not equal it.
-- A 1-in-10 adverse year is the annual value that is as bad as or worse than the rest in one year out of ten, in the simulated record, at the Weibull rank $31/10=3.1$ from the adverse end for 30 years. It rests on three years. Compared with the previous plotting position $k=n(1-q)+\tfrac12$ (Hazen), the level of a given return period is slightly more adverse (rank 3.1, not 3.5, from the adverse end), and an observed year is given a shorter return period: the worst of 30 years is 1 in 31, not 1 in 60.
+- A 1-in-10 adverse year is the annual value that is as bad as or worse than the rest in one year out of ten, in the simulated record, at the Weibull rank $31/10=3.1$ from the adverse end for 30 years. It rests on three years.
 - With 30 years, a 1-in-20 value rests on the two most extreme years. Its sampling error is not in the "Coef" or "Pooled" rows of the threshold table, which hold coefficient and model uncertainty only.
 - The 20 members of a future scenario share the same sequence of observed template years, shifted by each model's monthly change. They are not 600 independent years. The variance across members at a return period measures disagreement in the climate signal, not more weather variability.
 - Rates are changed in percentage points. A 2 percentage point rise in the poverty rate is not a 2 per cent rise.

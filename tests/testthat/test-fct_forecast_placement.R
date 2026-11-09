@@ -57,6 +57,9 @@ test_that("the median member text is a return period, a rank or beyond every yea
   expect_identical(text(rep(25, 5)), "Median member beyond every reference year (rarer than 1 in 21)")
   expect_identical(text(rep(-3, 5), "low"), "Median member beyond every reference year (rarer than 1 in 21)")
   expect_identical(text(rep(2, 5)), "Median member better than the median year")
+  # Two tied most adverse years: the member equals them and is worse than 18, not 19
+  tied <- .forecast_placement_text(.forecast_placement_stats(rep(20, 5), c(1:18, 20, 20), "high"))$median_text
+  expect_identical(tied, "Median member worse than 18 of 20 reference years")
 })
 
 test_that("non-finite members and an empty reference do not produce placements", {

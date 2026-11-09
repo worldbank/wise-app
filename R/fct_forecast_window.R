@@ -300,8 +300,8 @@ step2_window_placement <- function(w, method, so) {
     if (isTRUE(pos$beyond)) {
       return(paste0("beyond every reference year (rarer than 1 in ", pos$n + 1L, ")"))
     }
-    if (isTRUE(pos$n_worse == pos$n - 1L)) {
-      return(paste0("worse than ", pos$n - 1L, " of ", pos$n, " reference years"))
+    if (p < 2 / (pos$n + 1) - 1e-9 && !is.na(pos$n_worse)) {
+      return(paste0("worse than ", pos$n_worse, " of ", pos$n, " reference years"))
     }
     paste0("about 1 in ", format(round(1 / p, 1), nsmall = 1))
   }
@@ -556,7 +556,7 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
     policy = .step2_window_exceedance_position(ref_vals, wp$members$value - ref, tail, band_q = band_exceedance)
   )
   high <- identical(tail, "high")
-  threshold_10 <- rp_quantile(wb$historical$value[is.finite(wb$historical$value)], 0.1, tail)
+  threshold_10 <- rp_quantile(sort(wb$historical$value[is.finite(wb$historical$value)]), 0.1, tail)
   worse <- function(x) {
     if (is.na(threshold_10)) return(NA_real_)
     mean(if (high) x >= threshold_10 else x <= threshold_10, na.rm = TRUE)

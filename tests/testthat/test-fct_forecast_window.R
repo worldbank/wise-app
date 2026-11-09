@@ -230,6 +230,22 @@ test_that("the Step 3 window views pair baseline and policy for Historical and t
   expect_null(step3_window_views(wb, NULL, "mean", so))
 })
 
+test_that("the Step 3 window 1-in-10 level does not depend on the order of the reference years", {
+  sc <- window_fixture_scenario()
+  so <- step2_fixture_outcome()
+  wb <- step2_window_series(sc, window_fixture_label, "mean", so, "none", TRUE, 3, seed = 123L)
+  # 12 reference years in an unsorted order, enough for a 1-in-10 level (needs 9)
+  vals <- c(5, 1, 9, 3, 12, 7, 2, 11, 4, 10, 6, 8)
+  hist <- wb$historical[rep(seq_len(nrow(wb$historical)), length.out = length(vals)), ]
+  hist$value <- vals
+  wb$historical <- hist
+  wb$members$value <- seq(0, 6, length.out = nrow(wb$members))
+  v <- step3_window_views(wb, wb, "mean", so)
+  # Low values are adverse for the mean: the level is the type 6 quantile at 0.1
+  level <- stats::quantile(vals, 0.1, type = 6, names = FALSE)
+  expect_equal(v$effect$share_worse_baseline, mean(wb$members$value <= level))
+})
+
 test_that("merged charts order rows so that neighbours are the valid comparisons", {
   ref <- "Historical (Nov - Jan)"
   fc <- "Forecast (Nov 2026 - Jan 2027)"
