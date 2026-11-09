@@ -17,6 +17,7 @@
 ^CLAUDE\.md$
 ^batch$
 ^review$
+^roadmap$
 ^\.agents$
 ^\.claude$
 ^\.kilo$
