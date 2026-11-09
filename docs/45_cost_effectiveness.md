@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, social-protection, shock-sp, metrics, d
 symbols: [T, z, omega, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-results-tab
 code: [R/fct_policy_sp_effectiveness.R, R/fct_step3_tables.R, R/fct_policy_sp_shock.R, R/mod_3_10_cost_effectiveness.R]
-verified_against: 72a2fdb
+verified_against: 5b89f68
 ---
 
 # Cost-effectiveness of a cash transfer

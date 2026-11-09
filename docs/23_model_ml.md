@@ -6,7 +6,7 @@ depends_on: [notation, framework, model-specification, linear-model]
 symbols: [y, W, M, X, Z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-type
 code: [R/fct_model_fit.R, R/fct_step1_model_select.R, R/fct_model_predict.R, R/fct_metric_registry.R, R/mod_2_01_weathersim.R, R/fct_policy_decomp.R]
-verified_against: 8592a9d
+verified_against: 5b89f68
 ---
 
 # Tree-based models (random forest, gradient boosting)

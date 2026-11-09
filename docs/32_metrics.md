@@ -6,7 +6,7 @@ depends_on: [notation, outcomes, simulation]
 symbols: [Y, omega, z, T, G, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#interpreting-the-results-tab
 code: [R/fct_aggregation.R, R/fct_metric_registry.R, R/fct_step2_compare.R, R/fct_step2_tables.R, R/fct_uncertainty.R, R/fct_incidence.R, R/fct_step2_pipeline.R]
-verified_against: 1ecc93e
+verified_against: 5b89f68
 ---
 
 # Welfare metrics and how annual results are summarised

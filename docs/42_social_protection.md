@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, outcomes, metrics]
 symbols: [Y, omega, z, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers
 code: [R/fct_policy_sim.R, R/fct_step3_input.R, R/fct_policy_sp_effectiveness.R, R/fct_policy_metric_decomp.R, R/fct_aggregation_delta.R, R/mod_3_01_sp.R]
-verified_against: 3f4fc5f
+verified_against: 5b89f68
 ---
 
 # Regular cash transfers: targeting, amount, cost and reach

@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, linear-model, rif-model, metrics, socia
 symbols: [y, W, D, Delta, tau, beta, gamma, delta, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab
 code: [R/fct_policy_decomp.R, R/fct_policy_metric_decomp.R, R/fct_decomp_summary.R, R/fct_policy_sim.R]
-verified_against: f62a72b
+verified_against: 5b89f68
 ---
 
 # Decomposition of the policy effect into direct and resilience channels

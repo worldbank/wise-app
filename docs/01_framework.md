@@ -6,7 +6,7 @@ depends_on: [notation]
 symbols: [y, W, M, X, D, beta, gamma, delta, alpha, lambda, T, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: [R/fct_step1_model.R, R/fct_step2_compute.R, R/fct_step2_run.R, R/fct_policy_sim.R, R/fct_step3_async.R]
-verified_against: 72a2fdb
+verified_against: 5b89f68
 ---
 
 # Framework and identification

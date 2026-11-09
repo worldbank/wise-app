@@ -6,7 +6,7 @@ depends_on: [notation]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd
 code: []
-verified_against: 8592a9d
+verified_against: 5b89f68
 ---
 
 # References

@@ -6,7 +6,7 @@ depends_on: [notation, framework, linear-model, rif-model, simulation, metrics, 
 symbols: [D, Delta, T, y, W, tau, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model
 code: [R/fct_policy_sim.R, R/fct_policy_registry.R, R/fct_step3_input.R, R/fct_step3_async.R, R/fct_policy_decomp.R, R/fct_policy_metric_decomp.R, R/fct_echart_builders.R]
-verified_against: f62a72b
+verified_against: 5b89f68
 ---
 
 # Policy scenarios as a change to the simulated population

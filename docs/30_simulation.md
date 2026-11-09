@@ -6,7 +6,7 @@ depends_on: [notation, framework, weather-measures, linear-model, rif-model, cli
 symbols: [i, r, s, m, mu, W, y, Y, omega, T, epsilon]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare
 code: [R/fct_step2_input.R, R/fct_step2_compute.R, R/fct_step2_run.R, R/fct_step2_pipeline.R, R/fct_model_predict.R, R/fct_aggregation.R, R/fct_step2_diagnostics.R, R/fct_step2_compare.R, R/fct_spec_defaults.R]
-verified_against: 8639eb2
+verified_against: 5b89f68
 ---
 
 # Simulation of welfare under historical and future weather

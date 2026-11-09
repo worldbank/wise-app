@@ -6,7 +6,7 @@ depends_on: [notation, framework, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
 code: [R/utils_math.R, R/fct_provenance.R, R/fct_export.R, R/fct_aggregation.R, R/fct_policy_sim.R, R/fct_step2_compute.R]
-verified_against: 8639eb2
+verified_against: 5b89f68
 ---
 
 # Seeds, run provenance and exports

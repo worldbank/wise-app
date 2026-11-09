@@ -6,7 +6,7 @@ depends_on: []
 symbols: [i, l, g, t, r, mu, s, m, v, tau, Y, y, pi, omega, z, W, M, X, D, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma, L, F_hat, q_tau, T, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning
 code: [R/fct_step1_results.R, R/fct_step1_outcome.R, R/fct_step1_surveystats.R, R/fct_spec_defaults.R, R/fct_incidence.R, R/fct_step2_pipeline.R, R/fct_aggregation.R, R/fct_model_rif.R, R/fct_loc_panel.R, R/utils_math.R]
-verified_against: 8592a9d
+verified_against: 5b89f68
 ---
 
 # Notation and conventions

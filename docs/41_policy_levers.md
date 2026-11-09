@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, data]
 symbols: [D, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-levers
 code: [R/fct_policy_registry.R, R/fct_policy_sim.R, R/mod_3_levers.R, R/fct_step3_input.R]
-verified_against: 9881d96
+verified_against: 5b89f68
 ---
 
 # Policy levers: access, percent change, travel time and labour market
