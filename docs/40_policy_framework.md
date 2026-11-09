@@ -122,6 +122,7 @@ where $T^{\text{hist}}$ is the historical baseline value, $T^{s}$ the baseline v
 - Behavioural responses to a transfer beyond what the fitted coefficients contain.
 - Policy arms for logistic regression, binary outcomes and the machine-learning models.
 - A causal reading of any lever effect.
+- Timing within a seasonal forecast window. On a forecast window the correction is the same static correction in every target month, applied to each ensemble member and to each historical reference year ([34_seasonal_forecast](34_seasonal_forecast.md), Section 5).
 
 ## In the app
 

@@ -111,6 +111,7 @@ With row counts the targets are rounded to whole rows. A sector with $n_k > n_k^
 - Working rows with no sector flag. They count in the working population, but they belong to no sector and cannot move, so a services target can fall short by their weight (about 4 per cent of working rows in the BFA 2021 individual survey). They stay in the working population on purpose: excluding them would change the starting shares the sliders show. Reopen if a survey has a large share of working rows without a sector flag.
 - Interaction terms between two levers.
 - Whether the change in a variable is feasible. A universal option sets all units to 1 whatever the real constraints.
+- Timing of a lever within a seasonal forecast window. A lever changes the household once, so it has the same effect in every target month of the window ([34_seasonal_forecast](34_seasonal_forecast.md), Section 5).
 
 ## In the app
 

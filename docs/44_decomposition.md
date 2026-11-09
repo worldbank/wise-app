@@ -131,6 +131,7 @@ For each weather variable (and each bin of a binned variable), the app summarise
 - A complete derivative of the nonlinear model: only the repositioning and interaction channels are included, and not every nonlinear term.
 - For the average poverty metric, which uses only positive welfare, the households counted can differ across states. The population is not a fixed eligible subpopulation.
 - The effect of a policy on the position of a household in the weather-year distribution of a scenario: positions are fixed from the baseline survey.
+- Seasonal forecast windows. The decomposition reads the annual scenarios only; the forecast window shows the policy effect without a split into channels ([34_seasonal_forecast](34_seasonal_forecast.md), Section 5).
 
 ## In the app
 

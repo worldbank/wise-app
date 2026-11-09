@@ -117,6 +117,7 @@ Coverage is the share of the poor who receive a transfer. Leakage is the share o
 - Delivery failures other than the stated inclusion and exclusion errors.
 - A transfer that depends on household size by a schedule. The amount is the same for all eligible households, and is shared by size only when it is per household.
 - Tax or financing effects of the programme.
+- Timing of a regular transfer within a seasonal forecast window. It is a static change with the same amount in every target month; a shock-responsive transfer on a forecast window is described in [43_shock_responsive_sp](43_shock_responsive_sp.md) and [34_seasonal_forecast](34_seasonal_forecast.md), Section 5.
 
 ## In the app
 

@@ -74,6 +74,7 @@ For a poverty-based metric, the tab also shows how the cost divides between tran
 - Uncertainty in the adverse-year ratio.
 - Costs of any lever other than the cash transfer.
 - A comparison of programmes with different effect on different metrics. Each run is scored on one metric at a time.
+- Seasonal forecast windows. The tab joins annual cost to the annual effect and uses the annual scenarios only ([34_seasonal_forecast](34_seasonal_forecast.md), Section 5).
 
 ## In the app
 
