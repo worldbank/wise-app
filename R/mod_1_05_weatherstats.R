@@ -145,10 +145,15 @@ mod_1_05_weatherstats_server <- function(
     # Load and merge weather on button click ----
 
     weather_stats_event <- shiny::reactiveVal(NULL)
+    # The button is re-rendered whenever the weather selection changes, which
+    # resets its click count. The sequence keeps a repeated click distinct, so
+    # the reactiveVal fires.
+    wx_click_seq <- 0L
     shiny::observeEvent(input$weather_stats,
       {
         if (shiny::isTruthy(input$weather_stats)) {
-          weather_stats_event(list(source = "manual", value = input$weather_stats))
+          wx_click_seq <<- wx_click_seq + 1L
+          weather_stats_event(list(source = "manual", value = input$weather_stats, seq = wx_click_seq))
         }
       },
       ignoreInit = FALSE,
