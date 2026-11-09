@@ -1356,7 +1356,9 @@ mod_2_01_weathersim_server <- function(id,
            clicked_at_epoch = clicked_at_epoch,
           on_status = session_callback(function(status, job, detail) {
             if (identical(job$generation, run_generation())) {
-              run_status(status)
+              # The job's closing "complete" follows on_result's "success". Keep "success", which the
+              # configuration pipeline waits for.
+              run_status(if (identical(status, "complete")) "success" else status)
               lr <- live_run()
               if (status %in% c("cancelled", "failed", "stale")) {
                 live_run(NULL)
