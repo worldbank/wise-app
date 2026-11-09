@@ -6,15 +6,15 @@
 # (gitignored) unless `out` is given.
 #
 # Usage (from the repo root):
-#   Rscript dev/make_fixture_forecast_draft2.R [code] [init] [out]
-#   source("dev/make_fixture_forecast_draft2.R"); make_fixture_forecast_draft2()
+#   Rscript dev/forecast/make_fixture_forecast.R [code] [init] [out]
+#   source("dev/forecast/make_fixture_forecast.R"); make_fixture_forecast()
 #
 # Schema: wise-app-data README, "Gridded forecasts (draft-2 schema)". Observed
 # context rows use the ERA5-Land file where it has data (source "era5land") and
 # climatology plus fixed noise beyond it (source "era5land_t"). Forecast rows are
 # the calendar-month climatology plus a member shift and cell noise.
 
-make_fixture_forecast_draft2 <- function(
+make_fixture_forecast <- function(
   code = "BFA",
   init = as.Date("2026-10-01"),
   out = file.path("dev", "fixtures", "data_root"),
@@ -179,7 +179,7 @@ make_fixture_forecast_draft2 <- function(
 
 if (sys.nframe() == 0L) {
   args <- commandArgs(trailingOnly = TRUE)
-  make_fixture_forecast_draft2(
+  make_fixture_forecast(
     code = if (length(args) >= 1L) args[[1L]] else "BFA",
     init = if (length(args) >= 2L) as.Date(args[[2L]]) else as.Date("2026-10-01"),
     out = if (length(args) >= 3L) args[[3L]] else file.path("dev", "fixtures", "data_root")

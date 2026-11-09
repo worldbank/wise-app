@@ -9,7 +9,7 @@
 # Needs WISEAPP_DATA_PATH, targets, arrow and yaml. Not part of the test suite:
 # run per release.
 #
-# Usage: Rscript dev/batch_parity_bfa_models.R
+# Usage: Rscript batch/parity/batch_parity_bfa_models.R
 
 suppressMessages({
   pkgload::load_all(".", quiet = TRUE)

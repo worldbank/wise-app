@@ -37,9 +37,9 @@ Run with the tree quiet and committed (the manifest is built from `HEAD`):
    `devtools::check()`.
 4. `Rscript tests/e2e/smoke.R` (about 2 minutes; Chrome, `arrow` and the
    DuckDB `h3` extension). `main` requires the `e2e-smoke` status check.
-5. Real-data parity per release, not run in CI: `dev/batch_parity_bfa.R`,
-   `dev/batch_parity_bfa_models.R`, `dev/batch_parity_bfa_sim.R`,
-   `dev/batch_parity_bfa_policy.R` (need `WISEAPP_DATA_PATH`, read in R).
+5. Real-data parity per release, not run in CI: `batch/parity/batch_parity_bfa.R`,
+   `batch/parity/batch_parity_bfa_models.R`, `batch/parity/batch_parity_bfa_sim.R`,
+   `batch/parity/batch_parity_bfa_policy.R` (need `WISEAPP_DATA_PATH`, read in R).
 6. A browser pass of the changed screens (skill `wise-ui-check`).
 7. `Rscript dev/docs_check.R` and `Rscript dev/agents_check.R`.
 

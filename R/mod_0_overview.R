@@ -114,7 +114,7 @@ mod_0_overview_ui <- function(id) {
     div(
       class = "overview-footer-brand",
       tags$strong("WISE-APP"),
-      tags$span("Distributional Impact of Policies | World Bank Group")
+      tags$span("World Bank Group")
     ),
     div(
       class = "overview-footer-meta",

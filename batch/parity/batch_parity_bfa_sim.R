@@ -11,7 +11,7 @@
 # Needs WISEAPP_DATA_PATH (with the climate projections), targets, arrow and
 # yaml. Not part of the test suite: run per release.
 #
-# Usage: Rscript dev/batch_parity_bfa_sim.R [--batch-only]
+# Usage: Rscript batch/parity/batch_parity_bfa_sim.R [--batch-only]
 #   --batch-only  run the batch side only (to time it and read its peak memory,
 #                 for example under `/usr/bin/time -l`)
 

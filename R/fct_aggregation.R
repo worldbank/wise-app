@@ -642,10 +642,6 @@ deviation_from_centre <- function(df,
     mutate(value = sign * (value - ref))
 }
 
-# NOTE: plot_exceedance() and plot_hist_sim() had no active call sites and
-# were removed. They are superseded by the archived enhance_exceedance()
-# renderer in dev/archive/static_plots/sim_compare_static.R.
-
 # Shared aggregation helper ----
 
 #' Aggregate Simulation Predictions for Exceedance Plotting

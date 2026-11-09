@@ -413,8 +413,7 @@ mod_1_02_surveystats_server <- function(
 
         if (!survey_tab_added()) {
           # Interview dates bar chart. Grouped columns keep wave totals directly
-          # comparable; the archived ggplot renderer remains available under
-          # dev/archive/static_plots/ for design comparisons.
+          # comparable.
           interview_date_chart <- function() {
             en <- enso()
             df <- survey_data()

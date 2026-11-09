@@ -1,6 +1,6 @@
 # Check a data root's seasonal forecast files against what WISE-APP reads.
 #
-#   Rscript dev/check_forecast_data.R [code] [data_root]
+#   Rscript dev/forecast/check_forecast_data.R [code] [data_root]
 #
 # Defaults: BFA and WISEAPP_DATA_PATH. Read-only. Lists the runs the app accepts, why it skips the
 # others, the skill of each target month for every lead, and builds the forecast weather for the

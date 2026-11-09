@@ -1,9 +1,10 @@
 # Server-side LaTeX rendering. All math in the app is static, so the HTML is
 # pre-rendered by {katex} (a Suggests, needs V8) into inst/math_cache.json via
 # dev/make_math_cache.R and looked up at runtime; {katex} is only a fallback
-# for strings missing from the file. KaTeX CSS + fonts are bundled at
+# for strings missing from the file. The KaTeX CSS is bundled at
 # inst/app/www/katex/ and auto-linked by golem::bundle_resources() - no
-# htmlDependency wiring needed. This replaces client-side MathJax, which
+# htmlDependency wiring needed. The KaTeX font files its @font-face rules name
+# are not bundled, so math renders in a fallback serif font. This replaces client-side MathJax, which
 # failed to render on some Windows setups.
 
 .katex_cache <- new.env(parent = emptyenv())

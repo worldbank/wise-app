@@ -49,8 +49,8 @@ options(golem.app.prod = FALSE)
 )
 
 pkgload::load_all(.bench_repo_root, quiet = TRUE)
-source(file.path(.bench_repo_root, "dev", "bench", "bench_step2_helpers.R"), local = TRUE)
-source(file.path(.bench_repo_root, "dev", "bench", "bench_step3_helpers.R"), local = TRUE)
+source(file.path(.bench_repo_root, "dev", "bench", "lib", "bench_step2_helpers.R"), local = TRUE)
+source(file.path(.bench_repo_root, "dev", "bench", "lib", "bench_step3_helpers.R"), local = TRUE)
 
 .bench_env <- function(name, default = "") {
   value <- Sys.getenv(name, unset = default)

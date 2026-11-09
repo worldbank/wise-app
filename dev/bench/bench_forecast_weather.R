@@ -1,9 +1,9 @@
 # Development-only benchmark: seasonal forecast weather and Step 2 forecast run (BFA, draft-2 fixture).
 #
 # Reuses the input builders of dev/bench/bench_step2.R (function definitions only) and the synthetic
-# draft-2 data root from dev/make_fixture_forecast_draft2.R, so no forecast data is needed upstream.
+# draft-2 data root from dev/forecast/make_fixture_forecast.R, so no forecast data is needed upstream.
 #
-#   WISEAPP_DATA_PATH=/path/to/data Rscript dev/make_fixture_forecast_draft2.R   # once
+#   WISEAPP_DATA_PATH=/path/to/data Rscript dev/forecast/make_fixture_forecast.R   # once
 #   WISEAPP_DATA_PATH=/path/to/data /usr/bin/time -l Rscript dev/bench/bench_forecast_weather.R
 #
 # Env: WX (weather variables, comma-separated; default t), WF (Binned|Continuous), FE=1 (interview-month fixed effects), FSTARTS ("2026-11:3,2027-03:1"),

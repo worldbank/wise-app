@@ -519,7 +519,7 @@ run_lasso_selection <- function(
   # X_full and penalty are identical across iterations - build once.  The loop
   # only varies the random CV fold assignment for stability selection.
   # Sequential lapply: globals-export overhead of multisession exceeds the
-  # cv.glmnet compute time (confirmed via dev/archive/bench_lasso.R).
+  # cv.glmnet compute time (confirmed by benchmark).
   X_lasso <- drop_constant(as.matrix(df[, candidate_vars, drop = FALSE]))
   if (fwl && ncol(X_lasso) > 0) {
     X_lasso <- .lasso_partial_out(X_lasso, fe_df, drop_absorbed = TRUE)

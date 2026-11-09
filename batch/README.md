@@ -9,8 +9,7 @@ Work shared between runs (a sample, a weather variable, a fit, a simulation) is
 computed once and cached by `targets`.
 
 Table columns: `batch/docs/tables.md`. App input to spec field map:
-`batch/docs/spec_inventory.md`. Design: `review/archive/batch_pipeline_plan.md`. The old
-scripts in `batch/legacy/` are not maintained.
+`batch/docs/spec_inventory.md`. Design: `review/archive/batch_pipeline_plan.md`.
 
 Figures and model/spec selection are downstream work in each study's
 reproducibility package, using these tables; they are not a planned shared
@@ -262,10 +261,10 @@ table.
 
 ## Checking against the app
 
-`dev/batch_parity_bfa.R`, `dev/batch_parity_bfa_models.R`,
-`dev/batch_parity_bfa_sim.R` and `dev/batch_parity_bfa_policy.R` run one BFA spec
+`batch/parity/batch_parity_bfa.R`, `batch/parity/batch_parity_bfa_models.R`,
+`batch/parity/batch_parity_bfa_sim.R` and `batch/parity/batch_parity_bfa_policy.R` run one BFA spec
 through the pipeline and through the app's module servers and compare the tables.
-They need real data and run per release; `dev/batch_parity_bfa_policy.R
+They need real data and run per release; `batch/parity/batch_parity_bfa_policy.R
 --fixture` uses the small data folder of the tests. The policy script also
 writes the app's Export bundle and compares its CSVs with the module tables, and
 checks that the app's configuration export gives the same stage ids as the batch

@@ -3283,8 +3283,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
 
   # Section 1: Annual weather variation (baseline and policy) ----
   # Zero-arg echarts closures shared by the on-screen renders and the export
-  # bundle (guidelines sec. 7 pattern); static renderers are archived under
-  # dev/archive/static_plots/.
+  # bundle (guidelines sec. 7 pattern).
   # ENSO labels come from the Step 2 run (a label on results, D1); marking changes only the dots' style.
   output$has_enso <- shiny::reactive(!is.null(enso_labels()))
   outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
