@@ -316,14 +316,24 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
   df$scenario_key <- factor(df$scenario, levels = scenario_levels)
 
   has_source <- "source" %in% names(df) && length(unique(df$source)) > 1L
-  hist_vals <- if (has_source) {
-    h <- df$value[df$scenario == "Historical" & df$source == "Baseline"]
-    if (!length(h)) df$value[df$scenario == "Historical"] else h
+  # Forecast only (no climate scenario): the like-for-like baseline is the historical outcome of the forecast
+  # target months, not the annual one, so the reference line uses that row and names it.
+  non_hist <- scenario_levels[scenario_levels != "Historical"]
+  ref_scen <- if (length(non_hist) && all(vapply(non_hist, .step2_is_forecast_like, logical(1L)))) {
+    reference_scenarios[reference_scenarios %in% df$scenario][1L]
   } else {
-    df$value[df$scenario == "Historical"]
+    NA_character_
+  }
+  hist_scen <- if (is.na(ref_scen)) "Historical" else ref_scen
+  hist_vals <- if (has_source) {
+    h <- df$value[df$scenario == hist_scen & df$source == "Baseline"]
+    if (!length(h)) df$value[df$scenario == hist_scen] else h
+  } else {
+    df$value[df$scenario == hist_scen]
   }
   # The reference and marker use the same displayed historical baseline draws.
   hist_mean <- if (length(hist_vals)) mean(hist_vals, na.rm = TRUE) else NA_real_
+  hist_ref_label <- if (is.na(ref_scen)) "Historical mean" else paste(ref_scen, "mean")
 
   n_rows <- length(scenario_levels)
   df$row_y <- n_rows + 1L - as.integer(df$scenario_key)
@@ -642,7 +652,7 @@ echart_step3_annual_distribution <- function(tbl, x_label = "Outcome (outcome un
       data = list(list(xAxis = hist_mean)),
       label = list(
         show = TRUE,
-        formatter = "Historical mean",
+        formatter = hist_ref_label,
         position = "insideEndTop",
         rotate = 0,
         align = "left",

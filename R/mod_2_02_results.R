@@ -243,7 +243,7 @@
           "has one dot per historical year, with observed weather for those months, and the Forecast one per member. ",
           "Compare the Forecast with Historical for the same months. The gap between the two Historical series is ",
           "the effect of weather in the target months rather than the interview months; the seasonal welfare level ",
-          "of households stays fixed. The dashed line is the annual Historical mean; open circles mark means. ",
+          "of households stays fixed. The dashed line is the annual Historical mean, or the target-month Historical mean when only a forecast is shown; open circles mark means. ",
           .STEP2_DIFFERENCE_NOTE
         ),
         style = "margin-top: 18px; margin-bottom: 0;"
