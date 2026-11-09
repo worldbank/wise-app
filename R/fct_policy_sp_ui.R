@@ -285,8 +285,9 @@
         tags$p(
           "With a seasonal forecast the climate scenarios follow these rules. The forecast and Historical for the",
           "same months read the mean weather of the target months against the same months of the historical",
-          "years, and pay once per window. They need a weather trigger with local, ex-post, fixed payments and no",
-          "dynamic targeting."
+          "years, and pay once per window. They need ex-post payments. The impact trigger, the loss-linked",
+          "budget, the national gate and the targeting layers read each member's own weather, and ranking",
+          "locations needs at least 10 historical years for the same months."
         )
       )
     ),
@@ -659,6 +660,22 @@
                 )
               ),
               min = 0, max = 100, value = 0, step = 5, post = "%"
+            ),
+            sliderInput(
+              ns("forecast_member_share_pct"),
+              label = tags$span(
+                "Seasonal forecast: members that must pass the trigger (%)",
+                info_popover(
+                  title = "Paying on a seasonal forecast",
+                  tags$p(
+                    "With a seasonal forecast, the detection and false-alarm rates above do not apply. A location",
+                    "is paid when at least this share of the forecast members pass the trigger there. Each member",
+                    "and each historical year then shows whether that payment would have met an event. The shares",
+                    "are indicators: the member spread is not calibrated."
+                  )
+                )
+              ),
+              min = 5, max = 100, value = 50, step = 5, post = "%"
             ),
             numericInput(
               ns("effect_multiplier"),

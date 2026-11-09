@@ -18,7 +18,7 @@ STEP3_SP_IDS <- c(
   "dyn_geo", "dyn_geo_pct", "dyn_welfare", "dyn_welfare_pct", "dyn_incl_error_pct",
   "dyn_excl_error_pct", "budget_rule", "loss_share_pct", "annual_cap", "loss_event_pct",
   "transfer_n_payments", "transfer_timing", "timeliness_weeks", "forecast_pod_pct",
-  "forecast_far_pct", "effect_multiplier", "delay_loss_pct_per_week"
+  "forecast_far_pct", "forecast_member_share_pct", "effect_multiplier", "delay_loss_pct_per_week"
 )
 
 #' Control ids of the access levers of a slot
@@ -175,6 +175,7 @@ wise_sp_config <- function(x, currency = "PPP", analysis_unit = "hh") {
     # Forecast skill, multiplier and delay loss (shock only, P2-7)
     forecast_pod_pct = num(g("forecast_pod_pct") %||% 100),
     forecast_far_pct = num(g("forecast_far_pct") %||% 0),
+    forecast_member_share_pct = num(g("forecast_member_share_pct") %||% 50),
     effect_multiplier = num(g("effect_multiplier") %||% 1),
     delay_loss_pct_per_week = num(g("delay_loss_pct_per_week") %||% 0)
   )
@@ -466,6 +467,5 @@ wise_labor_config <- function(x, defaults) {
   if (is.null(svy)) {
     return("Survey data not available.")
   }
-  if (any(.step2_is_forecast_scenario(names(ss)))) return(.sp_forecast_shock_problem(sp))
   NULL
 }

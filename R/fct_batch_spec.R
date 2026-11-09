@@ -413,7 +413,8 @@
   national_k_pct = c(5, 100), payments_per_activation = c(1, 12), dyn_geo_pct = c(5, 100),
   dyn_welfare_pct = c(5, 60), dyn_incl_error_pct = c(0, 50), dyn_excl_error_pct = c(0, 50),
   loss_share_pct = c(1, 100), loss_event_pct = c(1, 50), timeliness_weeks = c(0, 52),
-  forecast_pod_pct = c(0, 100), forecast_far_pct = c(0, 100), effect_multiplier = c(0.1, 10),
+  forecast_pod_pct = c(0, 100), forecast_far_pct = c(0, 100), forecast_member_share_pct = c(5, 100),
+  effect_multiplier = c(0.1, 10),
   delay_loss_pct_per_week = c(0, 100), trigger_pov_line = c(0, Inf), annual_cap = c(0, Inf),
   health_travel_pct = c(-100, 20), health_travel_max = c(15, 240), labor_emp = c(-20, 20),
   sector_manufacturing = c(0, 100), sector_services = c(0, 100)
@@ -773,9 +774,6 @@ wise_spec_validate <- function(spec) {
   if (!is.null(spec$policy)) {
     if (is.null(spec$sim)) add("policy: a policy run needs a sim section (use `sim: {}` for the app defaults).")
     bad <- c(bad, .policy_problems(spec$policy))
-  }
-  if (!is.null(spec$sim$forecast) && !is.null(.sp_forecast_shock_problem(spec$policy$sp))) {
-    bad <- c(bad, paste("policy:", .sp_forecast_shock_problem(spec$policy$sp)))
   }
   if (length(bad)) {
     stop(

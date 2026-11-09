@@ -1,18 +1,3 @@
-test_that("a forecast rejects the shock-responsive designs it does not support, and no others", {
-  scenarios <- list("Seasonal forecast / Nov 2026 (October 2026 run)" = list())
-  national <- list(sp_type = "shock", payout_scope = "national_all")
-  expect_match(.step3_run_prerequisite_error(list(), list(), list(1), list(1), scenarios, national), "local payouts")
-  expect_error(apply_policy_delta_to_baseline(
-    svy_baseline = data.frame(hhid = 1L), svy_policy = data.frame(hhid = 1L),
-    model_fit = list(engine = "fixest"), so = list(name = "welfare"), hist_sim_baseline = list(),
-    saved_scenarios_baseline = scenarios, sp = national
-  ), "local payouts", fixed = TRUE)
-  expect_null(.step3_run_prerequisite_error(list(), list(), list(1), list(1), scenarios, list(sp_type = "regular")))
-  expect_null(.step3_run_prerequisite_error(list(), list(), list(1), list(1), scenarios, list(sp_type = "shock")))
-  # Without a forecast every design is open.
-  expect_null(.step3_run_prerequisite_error(list(), list(), list(1), list(1), list(), national))
-})
-
 test_that(".apply_binary_access hits the weighted share asked for (DOC-13)", {
   set.seed(1)
   n <- 2000L

@@ -94,7 +94,7 @@ Across the pages, the app does not model the following.
 - A policy arm for logistic regression, binary outcomes and machine-learning models.
 - A causal reading of any policy lever effect.
 - ENSO channels other than the selected local weather, and changes in ENSO under warming.
-- Calibrated seasonal forecast probabilities, proven seasonal forecast skill, or a transfer paid on the forecast itself. The local pilot is experimental DEV data; a shock-responsive transfer on a target window pays as if each member's weather happened.
+- Calibrated seasonal forecast probabilities, proven seasonal forecast skill, or a transfer paid on the forecast itself. The local pilot is experimental DEV data; a shock-responsive transfer on a target window pays as if each member's weather happened, or, if anticipatory, on the share of members that pass the trigger.
 
 ## In the app
 

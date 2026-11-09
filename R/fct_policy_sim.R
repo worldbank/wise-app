@@ -1670,10 +1670,6 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     is.null(hist_sim_baseline)) {
     return(NULL)
   }
-  if (any(.step2_is_forecast_scenario(names(saved_scenarios_baseline)))) {
-    problem <- .sp_forecast_shock_problem(sp)
-    if (!is.null(problem)) stop(problem, call. = FALSE)
-  }
   if (!is.null(decomp_context) && is.null(run_identity)) {
     stop("Current run identity is required.", call. = FALSE)
   }
@@ -1752,6 +1748,8 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
       ))
     }
     window_rows <- list()
+    window_cells <- list()
+    window_reach <- list()
     # Members of one scenario share timestamps: rebuild exposure tables with
     # one cached timestamp decomposition per scenario.
     exposure_cache <- new.env(parent = emptyenv())
@@ -1770,11 +1768,17 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
       } else {
         shock_parts[[length(shock_parts) + 1L]] <<- result$shock
       }
-      shock_cell_parts[[length(shock_cell_parts) + 1L]] <<- result$shock_cells
-      shock_reach <<- .sp_shock_reach_add(
-        shock_reach, names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
-        result$shock_reach, n_svy_policy
-      )
+      if (is_forecast) {
+        # Window cell and reach data stay with the window, out of the annual rescoring and reach tables
+        window_cells[[length(window_cells) + 1L]] <<- result$shock_cells
+        window_reach <<- .sp_shock_reach_add(window_reach, "window", result$shock_reach, n_svy_policy)
+      } else {
+        shock_cell_parts[[length(shock_cell_parts) + 1L]] <<- result$shock_cells
+        shock_reach <<- .sp_shock_reach_add(
+          shock_reach, names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
+          result$shock_reach, n_svy_policy
+        )
+      }
       result$pipeline
     })
     names(pipes_new) <- names(s$pipelines)
@@ -1794,6 +1798,10 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
         s$shock_forecast <- list(
           members = do.call(rbind, window_rows),
           reference = do.call(rbind, lapply(reference, `[[`, "shock")),
+          cells = if (any(!vapply(window_cells, is.null, logical(1)))) {
+            do.call(rbind, c(Filter(Negate(is.null), window_cells), list(make.row.names = FALSE)))
+          },
+          reach = window_reach[["window"]],
           currency = sp$currency %||% "PPP"
         )
       }

@@ -85,7 +85,12 @@ step3_forecast_batch_tables <- function(base_hs, base_ss, pol_hs, pol_ss, method
     stats <- c(
       member_share = s$member_share, reference_share = s$reference_share, exposed_member = s$exposed_member,
       exposed_reference = s$exposed_reference, cost_median = s$cost_median, cost_min = s$cost_range[[1L]],
-      cost_max = s$cost_range[[2L]], cost_reference = s$cost_reference
+      cost_max = s$cost_range[[2L]], cost_reference = s$cost_reference,
+      leakage = s$leakage, false_positive = s$false_positive, false_negative = s$false_negative,
+      loss_offset = s$loss_offset, leakage_reference = s$leakage_reference,
+      false_positive_reference = s$false_positive_reference, false_negative_reference = s$false_negative_reference,
+      loss_offset_reference = s$loss_offset_reference, false_alarm_cost_share = s$false_alarm_cost_share,
+      false_alarm_cost_share_reference = s$false_alarm_cost_share_reference, breakeven_m = s$breakeven_m
     )
     rows[[length(rows) + 1L]] <- data.frame(
       scenario = label, metric = NA_character_, section = "shock_window", measure = names(stats),

@@ -209,7 +209,7 @@ wise_default_policy <- function() {
       dyn_incl_error_pct = 20, dyn_excl_error_pct = 20, budget_rule = "fixed",
       loss_share_pct = 50, loss_event_pct = 10, transfer_timing = "expost",
       timeliness_weeks = 0, forecast_pod_pct = 100, forecast_far_pct = 0,
-      effect_multiplier = 1, delay_loss_pct_per_week = 0
+      forecast_member_share_pct = 50, effect_multiplier = 1, delay_loss_pct_per_week = 0
     ),
     infra = c(
       access(c("electricity", "water", "sanitation", "piped", "piped_to_prem", "water_sanitation")),

@@ -10,7 +10,7 @@ Built and committed:
 
 - **Step 2.** Reader for the draft-2 schema, one weather state per member, same-window reference years, member placement and skill flags.
 - **Results.** In Steps 2 and 3 each chart carries all series, ordered Forecast, Historical (Nov - Jan), Historical (annual), climate scenarios. Headline cards stay in two groups.
-- **Step 3.** All levers and regular transfers run on members and reference years. Shock-responsive transfers run in the first version below.
+- **Step 3.** All levers and regular transfers run on members and reference years. Shock-responsive transfers run in all designs (see "Full shock transfers on a forecast").
 - **Batch.** `sim.forecast`, the `forecast` table, and the `placement`, `skill`, `season`, `policy_effect` and `shock_window` summary sections. The `shock_window` rows run end to end in `test-batch-pipeline.R` (fixture, trigger of 0 so every member pays; partial triggering is covered by unit tests only).
 - **Run click fixed.** The Step 2 and Step 3 Run button is re-rendered after each run, which reset its click count, so a repeated click produced an identical event and was dropped. Manual events now carry a sequence number (`mod_2_01_weathersim.R`, `mod_3_scenario.R`). Verified on BFA: 4 of 4 Step 2 and 3 of 3 Step 3 consecutive runs started.
 - **Shock transfers, forecast off.** BFA batch tables (regular and return-period shock transfer) at `0d914ea` and at the current code are equal at `tolerance = 0` in all 11 tables (`decomposition` differs in row order only).
@@ -28,11 +28,33 @@ Checked in the running app on BFA (shock card and annual cost table included, 20
 - **Member spread** is not a calibrated probability. Shares of members are indicators. There is no return period for the ensemble mean.
 - **Forecast values** are published already adjusted; the app never adjusts them again. There is no gap filling.
 - **Shock transfers on a forecast.** A member's payment means "if this member's weather happened", not a payment on the forecast. The aim is consistency with the annual case, sharing code and adjusting only for the window.
-  - First version: a weather trigger with a value or a return period from the reference years, one trigger per survey round and location for the whole window, paid once, ex post, local, on the `/365` basis.
-  - Rejected with a forecast (`.sp_forecast_shock_problem()`): impact triggers, national gates, loss-share budgets, dynamic targeting and anticipatory payments.
+  - First version: a weather trigger with a value or a return period from the reference years, one trigger per survey round and location for the whole window, paid once, on the `/365` basis. Ex post, local, as a first version; see the extensions below.
+  - Extended on 2026-11-09 (see "Full shock transfers on a forecast"): impact triggers, national gates, loss-share budgets, dynamic targeting and anticipatory payments on the ensemble now run on a forecast.
   - Payout figures stay out of the annual cost, reach and basis-risk tables.
 - **Forecast-only runs** still show Historical (annual) in charts and tables.
 - **Working rules for this branch.** Regenerate `manifest.json` only as the last step (item 5) before the PR. One PR into `dev`, opened only after the forecast is tested with real data.
+
+## Full shock transfers on a forecast: decisions and progress
+
+Decided 2026-11-09. This brings the "Shock transfer extensions" item forward, before the PR. Order of work: gate, window reference level, targeting layers, impact trigger and loss budget, outputs, anticipatory. Each step ships with tests and a Section 7 update in `docs/43_shock_responsive_sp.md`. The forecast-off equality run on BFA is not needed, because no forecast release exists yet (decided 2026-11-09). New window numbers go in the Decision log with BFA headline figures before the PR.
+
+- **D1. Window reference level.** A household's typical welfare for a window is its mean central prediction over the same-window reference years. A member's loss is its window prediction against that mean. It serves the impact trigger, the loss-linked budget, the predicted-welfare layer and basis risk. A 1-in-N trigger is capped by the number of reference years.
+- **D2. National gate.** Share of population in triggered locations, read per member and per reference year, with the annual rule `rho >= k`.
+- **D3. Dynamic targeting.** Worst-affected locations use the standard deviation of the window-mean trigger over the reference years, with a minimum of 10 reference years (otherwise the layer is rejected with a message). The predicted-welfare layer uses D1.
+- **D4. Impact trigger and loss-linked budget.** Both use D1. The loss budget is scaled by L/12 to give the window's cost. Impact thresholds come from reference-year losses, with the annual small-unit and no-adverse-tail rules.
+- **D5. Outputs.** Leakage, false-positive and false-negative rates, share of loss offset and adequacy are computed for a window, in a separate window table, labelled as indicators. They stay out of the annual tables.
+- **D6. Anticipatory.** Ensemble decision rule: pay a location if at least p% of members trigger it; each member is then the realised outcome, so hits and false alarms are counted across members. Multiplier m and the ex-post benchmark m* still apply. Rates reflect the uncalibrated spread, so they are indicators, not skill. Done last.
+
+Progress:
+
+- [x] D2 gate (2026-11-09). Restriction removed in `.sp_forecast_shock_problem()`; each pipeline has one `sim_year`, so `.sp_trigger_scope()` already reads the share per member and reference year. Unit test added in `test-sp-shock-correction.R` (passes). Not yet run: forecast-off BFA equality, `dev/ui_drive.R` check, `verified_against` refresh.
+- [x] D1 reference level (2026-11-09). `sp_shock_window_plan()` pools the reference-year predictions into `plan$reference`; `sp_shock_pipeline_rows()` scores one cell per survey round and location (`.sp_window_cell()`). Window cell and reach data go to `shock_forecast$cells` and `$reach`, out of the annual rescoring and reach tables. Nothing new is shown yet (D5). Tests added; `fct_policy_sim`, `sp-shock`, `step3`, `fct_forecast`, batch pipeline pass.
+- [x] D3 targeting (2026-11-09). Restriction removed. `.sp_dyn_scope()` ranks one cell per survey round and location for a window and averages a household's level over its months for the welfare layer. `SP_WINDOW_MIN_REFERENCE_YEARS` (10) refuses worst-affected locations with fewer same-window years. Tests added.
+- [x] D4 impact trigger and loss budget (2026-11-09). `sp_shock_window_plan()` pools the reference years as one historical pipeline (`.window_unit`), so the impact column and thresholds come from the annual code; `sp_shock_plan()` takes a `record_fn` to reduce the exposure to one record per cell and year after the impact column is attached. The loss budget uses one cell per survey round and location and is multiplied by L/12. Only anticipatory payments are still rejected. Not yet seen with real data: impact thresholds with the real number of reference years, the L/12 cost against the fixed-amount cost.
+- [x] D5 outputs (2026-11-09), except coverage and adequacy of the affected poor. `sp_shock_window_summary()` adds leakage, false-positive and false-negative rates and loss offset for members and reference years; they appear in a card in Step 3 and in the `shock_window` batch rows. The reach data is stored in `shock_forecast$reach` but not shown (needs a poverty line; the annual table uses `sp_shock_reach()` with the survey frame). Open: show coverage and adequacy, if wanted.
+- [x] D6 anticipatory (2026-11-09). `.sp_window_ensemble()` gives the payment decision (`plan$ensemble`: share of members passing the trigger per survey round and location, paid at `forecast_member_share_pct`, default 50); every member and reference year takes it as given and scores it with its own weather. The historical years use the same decision (an information indicator, not a climatological rule). A new field `forecast_member_share_pct` runs through input, defaults, batch ranges and the Step 3 UI. `.sp_forecast_shock_problem()` is removed: no design is rejected on a forecast now.
+
+Browser check on BFA (2026-11-09, run Dec 2026 to Feb 2027, 51 members, 30 reference years, linear model, universal $1 transfer): no JS or output errors in 4 consecutive Step 3 runs. Seen: national gate (49% of members paid, cost $0 to $3.3M), anticipatory on the ensemble (at 50% of members nobody passes; at 10% every member pays, cost paid before no event 18% for members against 87% for historical years, break-even multiplier 2.43), ex post with worst-affected locations and a loss-linked budget (cost $0.9M to $17.7M). Not checked in the browser: the impact trigger, the predicted-welfare layer, return-period thresholds with fewer than 10 years, axe on the new slider, other countries. Not reviewed: whether the loss-linked cost scale (L/12) looks right against the fixed-amount cost.
 
 ## Before the PR into `dev`, in order
 
@@ -57,7 +79,6 @@ Checked in the running app on BFA (shock card and annual cost table included, 20
 - **Data pipeline items that touch the app.** The November initialization.
 - **App hand-off items from `wise-app-data`, to confirm.** Check that the survey's cells are a subset of the run's cells, and warn rather than fail if the historical file changed since the run.
 - **Climate scenarios for the target months.** A new Step 2 output, in protected numerics, needing a Decision log entry.
-- **Shock transfer extensions.** Any of the rejected designs above, if a user need appears.
 - **Refactor.** A `kind` field on scenarios and tables instead of label parsing. Shared weather helpers between `get_weather()` and `.get_forecast_weather()`, needing parity runs on all engines. `get_weather()` also calls `.get_forecast_weather()` with `weather_consumer = NULL`, which bypasses member streaming; this is harmless at current sizes.
 - **Benchmark.** `dev/bench/bench_step2.R` has no forecast option, so the removal of the redundant forecast aggregation is unmeasured. Add a forecast workload before making any speed claim.
 - **Hindcast comparator.** Only if placement turns out biased.

@@ -603,6 +603,37 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
   if (is.null(shock)) return(cards)
   s <- sp_shock_window_summary(shock)
   money <- function(x) fmt_num(x, digits = 0, prefix = .sp_currency_prefix(shock$currency), na = "Not available")
+  targeting <- if (is.finite(s$leakage) || is.finite(s$loss_offset)) {
+    pct_na <- function(x) if (is.finite(x)) pct(x) else "n/a"
+    list(card(
+      "Payments to locations without a loss", pct_na(s$leakage),
+      paste0("Members pooled; ", pct_na(s$leakage_reference), " in the historical years"),
+      paste0("Payments offset ", pct_na(s$loss_offset), " of the modelled loss; missed ",
+        pct_na(s$false_negative), ", false alarms ", pct_na(s$false_positive)),
+      paste(
+        "A location has a loss event when its modelled welfare in the target months is at least the loss-event",
+        "share (10% by default) below its level in the same months of the historical years. Leakage is the share",
+        "of spending in locations without one. Missed is the share of the population in loss-event locations that",
+        "was not paid, and false alarms the share in other locations that was. Indicators on the members, not",
+        "probabilities: the member spread is not calibrated."
+      )
+    ))
+  }
+  anticipatory <- if (is.finite(s$false_alarm_cost_share)) {
+    list(card(
+      "Cost paid before no event", pct(s$false_alarm_cost_share),
+      paste0("Members pooled, against ", pct(s$false_alarm_cost_share_reference), " in the historical years"),
+      paste0("Break-even multiplier: ",
+        if (is.finite(s$breakeven_m)) formatC(s$breakeven_m, format = "f", digits = 2) else "n/a"),
+      paste(
+        "The payment is made on the forecast: a location is paid when enough members pass the trigger there. A",
+        "member or year scores it by its own weather. The share of cost paid where that weather did not pass the",
+        "trigger is lower when the forecast is informative, and the historical years show it for payments with no",
+        "information about their weather. The break-even multiplier is the effectiveness gain a payment before an",
+        "event needs to match paying the same locations after it. Indicators: the member spread is not calibrated."
+      )
+    ))
+  }
   c(cards, list(card(
     "Population in triggered locations", pct(s$exposed_member),
     paste0("Mean member, against ", pct(s$exposed_reference), " in a historical year; ", pct(s$member_share),
@@ -615,5 +646,5 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
       "The cost is the median member and the range across members: what the window would cost if that member's",
       "weather happened, not an expected or annual cost. Shares of members are indicators, not probabilities."
     )
-  )))
+  )), targeting, anticipatory)
 }
