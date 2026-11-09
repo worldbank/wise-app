@@ -1669,7 +1669,10 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
           nameGap = if (vertical_name) 44 else 8,
           nameTextStyle = if (vertical_name) wise_eaxis_name() else wise_eyaxis_name(),
            axisLabel = wise_eaxis_label(),
-          splitLine = wise_esplit_line()
+          splitLine = wise_esplit_line(),
+          # Keep the y axis on the left edge; by default echarts draws it
+          # where x = 0 whenever the x range spans zero.
+          axisLine = list(onZero = FALSE)
         )
       }
       rif_y_bounds <- function(d) {
@@ -2583,6 +2586,10 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
           rug_x <- if (isTRUE(show_rug)) {
             rx <- mm[[pred_var]]
             rx <- rx[is.finite(rx)]
+            # One mark per 1/500 of the range: tens of thousands of marks made
+            # echarts render the rug progressively and stop part way.
+            step <- diff(range(rx)) / 500
+            if (length(rx) > 500L && step > 0) rx <- unique(round(rx / step) * step)
             rx
           } else {
             numeric(0)
@@ -2632,7 +2639,7 @@ echart_weather_effect_plot <- function(fit, pred_var, interaction_terms, is_binn
               name = "Observed", type = "scatter",
               data = lapply(rug_x, function(v) list(v, rug_y)),
               symbol = "rect", symbolSize = list(1.5, 9),
-              itemStyle = list(color = .wise_slate, opacity = 0.15),
+              itemStyle = list(color = .wise_slate, opacity = 0.5),
               silent = TRUE, z = 1, tooltip = list(show = FALSE),
               xAxisIndex = 0, yAxisIndex = 0
             ))
