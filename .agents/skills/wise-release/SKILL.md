@@ -24,7 +24,22 @@ credentials or `.Renviron`.
 
 The version is in two places that must match: `Version:` in `DESCRIPTION` and
 `golem_version` in `inst/golem-config.yml` (`dev/agents_check.R` checks this).
+Edit both by hand: `usethis::use_version()` would touch only `DESCRIPTION`.
 After a bump, regenerate the manifest (section 3).
+
+Add the user-facing changes to `NEWS.md` under a heading `# wiseapp X.Y.Z`
+(newest first; sections per feature; no internal refactors beyond a short
+"Other" list). `NEWS.md` is not in the manifest bundle, so it needs no
+regeneration.
+
+On a feature branch, the bump and the `NEWS.md` entry may be committed with the
+work, but regenerate `manifest.json` only as the last step before the PR into
+`dev` (it is built from `HEAD`). `test-deploy-contract.R` fails until then.
+
+Tags: if the team tags releases, create an annotated tag `vX.Y.Z` locally on the
+commit that ships, after it is merged into the release branch and the manifest
+is committed. Never tag a feature branch. Pushing the tag or creating a GitHub
+Release needs the user's explicit go-ahead.
 
 ## 2. Readiness checks
 
