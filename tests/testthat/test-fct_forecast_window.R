@@ -120,6 +120,8 @@ test_that("the forecast position on the Historical exceedance curve uses the cur
   expect_identical(over$name, "forecast__position")
   expect_match(over$markLine$data[[1L]]$label$formatter, "better than the median year")
   expect_equal(over$markLine$data[[1L]]$xAxis, 0.55)
+  # ECharts rounds a marker's axis value to `precision` (default 2); the line must keep the dot's x
+  expect_gte(over$markLine$precision, 6)
 })
 
 test_that("the overlay labels the far tail by rank, not by an interpolated 1-in-X", {

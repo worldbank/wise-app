@@ -329,8 +329,9 @@ step2_window_placement <- function(w, method, so) {
       label = list(show = FALSE),
       data = list(list(coord = list(mid, unname(pos$value[["mid"]]))))
     ),
+    # `precision` stops ECharts rounding the line's `xAxis` to two decimals, which moved it off the dot
     markLine = list(
-      symbol = "none", silent = TRUE, animation = FALSE,
+      symbol = "none", silent = TRUE, animation = FALSE, precision = 12,
       data = list(list(
         xAxis = mid,
         lineStyle = list(color = colour, type = line_type, width = 2),
