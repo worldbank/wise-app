@@ -2052,6 +2052,11 @@ input.form-control:disabled {
   margin-right: 0;
 }
 
+/* Wrapped period checkboxes need 24px of clear space between rows (WCAG 2.5.8). */
+.step2-sidebar .shiny-input-container-inline .checkbox-inline {
+  margin-bottom: 0.35rem;
+}
+
 .step2-sidebar .checkbox-group .shiny-options-group {
   display: flex;
   flex-wrap: wrap;
