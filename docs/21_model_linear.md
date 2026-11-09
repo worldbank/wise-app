@@ -6,7 +6,7 @@ depends_on: [notation, framework, outcomes, model-specification]
 symbols: [y, Y, W, M, X, beta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning
 code: [R/fct_model_fit.R, R/fct_model_predict.R, R/fct_step1_headline.R, R/fct_aggregation.R, R/fct_step1_results.R]
-verified_against: 8592a9d
+verified_against: 5b89f68
 ---
 
 # Linear and logistic models
@@ -61,7 +61,7 @@ A prediction of the model-scale outcome for a unit with regressors $Z_i$ is $\ha
 
 $$y_i^{*} = \hat y_i + \hat e_i, \qquad Y_i^{*} = \exp\big(y_i^{*}\big) \qquad \text{(4.1)}$$
 
-The residual term $\hat e_i$ is the unit's own fitted residual, a draw from the fitted residuals, a normal draw with the same standard deviation, or zero ([30_simulation](30_simulation.md)). The app applies no smearing correction. With a residual term, the retransformed outcome keeps the dispersion of the data. Without one, $\exp(\hat y_i)$ estimates the conditional geometric mean of welfare (the median if the errors are symmetric) and not its mean, and so understates the mean by an amount that grows with the residual variance.
+The residual term $\hat e_i$ is the unit's own fitted residual, a draw from the fitted residuals, or zero ([30_simulation](30_simulation.md)). The app applies no smearing correction. With a residual term, the retransformed outcome keeps the dispersion of the data. Without one, $\exp(\hat y_i)$ estimates the conditional geometric mean of welfare (the median if the errors are symmetric) and not its mean, and so understates the mean by an amount that grows with the residual variance.
 
 A fixed effect that is absent from the estimation sample has no estimate. A unit in such a cell has a missing prediction, and the number of such units is counted and reported with the simulation.
 
