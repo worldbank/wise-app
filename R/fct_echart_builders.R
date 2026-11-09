@@ -2091,7 +2091,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       shiny::uiOutput(ns("enso_mark_note"))
     ),
 
-    # Section 1b: policy effect by ENSO exposure (item 4 of roadmap/enso.md) ----
+    # Section 1b: policy effect by ENSO exposure (item 4 of review/archive/enso.md) ----
     shiny::conditionalPanel(
       condition = paste0("output['", ns("has_enso_table"), "']"),
       shiny::h4(

@@ -1,4 +1,4 @@
-# Wording of the ENSO section (roadmap/enso.md, "Wording to carry").
+# Wording of the ENSO section (review/archive/enso.md, "Wording to carry").
 .ENSO_NOTE_LABELS <- paste(
   "Labels describe the ENSO state of the months that enter the model for each household. A simulated year is a",
   "composite, not a real year: it is El Ni\u00f1o or La Ni\u00f1a exposure when at least half of that exposure",
@@ -252,7 +252,7 @@
     ),
 
 
-    # Section 1b: ENSO exposure years (item 3 of roadmap/enso.md) ----
+    # Section 1b: ENSO exposure years (item 3 of review/archive/enso.md) ----
     shiny::conditionalPanel(
       condition = paste0("output['", ns("has_enso_table"), "']"),
       shiny::h4(

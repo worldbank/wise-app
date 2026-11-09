@@ -444,7 +444,7 @@ mod_1_02_surveystats_server <- function(
             ch
           })
 
-          # Legend of the ENSO marks on the interview chart (roadmap/enso.md, item 1). Absent without
+          # Legend of the ENSO marks on the interview chart (review/archive/enso.md, item 1). Absent without
           # the ENSO tables.
           output$enso_interviews <- shiny::renderUI({
             if (is.null(enso())) NULL else enso_legend_ui()

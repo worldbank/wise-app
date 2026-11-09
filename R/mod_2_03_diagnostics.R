@@ -465,7 +465,7 @@ mod_2_03_diagnostics_server <- function(id,
     })
 
     # Weather outside the fitted support in El Nino and La Nina exposure years (item 6 of
-    # roadmap/enso.md). Weather support, not interview phase, is the check that matters: it
+    # review/archive/enso.md). Weather support, not interview phase, is the check that matters: it
     # says whether the weather of those years lies where the model was fitted. Absent without
     # ENSO labels, or when a phase has fewer than three years in a series.
     output$enso_support_ui <- renderUI({

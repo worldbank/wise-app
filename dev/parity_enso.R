@@ -1,4 +1,4 @@
-# Parity of an annotation-only feature (roadmap/enso.md, D1): Steps 1 to 3 run twice in one process,
+# Parity of an annotation-only feature (review/archive/enso.md, D1): Steps 1 to 3 run twice in one process,
 # with the ENSO tables absent (`enso` NULL) and then loaded. Every registered export table must be
 # identical under identical() and all.equal(tolerance = 0), and so must hist_sim. To reuse it for
 # another label-only feature, change what `run_once()` passes in.
@@ -43,7 +43,7 @@ cfg <- if (use_fixture) {
     )
   )
 } else if (use_forecast) {
-  # The prototype of roadmap/enso.md: one wave, t over months 1 to 3 and r over months 1 to 6, both continuous.
+  # The prototype of review/archive/enso.md: one wave, t over months 1 to 3 and r over months 1 to 6, both continuous.
   list(
     economy = economy, years = c(BFA = 2021, MWI = 2019)[[economy]], covs = c("hhsize", "electricity", "cellphone"),
     fe = "gaul1_code", sim_hist = c(1991, 2020), future = c(2025, 2035),

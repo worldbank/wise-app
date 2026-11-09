@@ -354,7 +354,7 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
 #'   `wise_step2_input()`, which forces "none" for RIF), or `NULL`.
 #' @param baseline_months Share of the baseline weight in each interview month
 #'   (`enso_baseline_months()`), or `NULL`. Kept beside `sim_summary`, not in it: only the ENSO
-#'   labels of the Results read it, and Step 3 does not copy it (D1 of `roadmap/enso.md`).
+#'   labels of the Results read it, and Step 3 does not copy it (D1 of `review/archive/enso.md`).
 #' @param forecast_run `init` and `model_id` of the forecast run, or `NULL`. Beside `sim_summary`
 #'   for the same reason: only the ENSO outlook of the Results reads it.
 #' @return `result`, with the fields set on `hist_sim_result`.

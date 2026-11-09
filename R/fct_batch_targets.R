@@ -85,7 +85,7 @@ wise_targets <- function(spec_file, out_dir = "results", keep_step2 = TRUE) {
       pattern = quote(map(policy_specs)), iteration = "list", resources = .batch_sim_resources()
     ),
     # ENSO labels: always re-read, and apart from the simulations, so a refreshed table rebuilds
-    # only these labels and the results store (D1 of roadmap/enso.md).
+    # only these labels and the results store (D1 of review/archive/enso.md).
     t("enso_source", quote(wiseapp::wise_batch_enso_source(grid)), cue = targets::tar_cue(mode = "always")),
     t("enso_tables", quote(wiseapp::wise_batch_enso(enso_source, sim_tables))),
     t("results", bquote(wiseapp::wise_batch_write(

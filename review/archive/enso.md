@@ -1,6 +1,6 @@
-# ENSO: remaining work
+# ENSO: state at archive
 
-Updated 2026-11-04. Branch `seasonal-forecast`, not yet merged into `dev`; ENSO goes to `dev` in one PR with the forecast. This file holds the state, the decisions to keep and what remains. The method is in `docs/35_enso.md`. The order of the PR is in `roadmap/seasonal_forecast.md`. The upstream tables are described in `wise-app-data` (`dev/enso_plan.md`, README section "`enso.csv` and `enso_forecast.csv`").
+Archived 2026-11-09 from `roadmap/enso.md`. Branch `seasonal-forecast`, not yet merged into `dev`; ENSO goes to `dev` in one PR with the forecast. This file holds the state, the decisions to keep and what remains. The browser checks below are handed to a new session; the list is also in item 5 of `review/archive/seasonal_forecast.md`. The method is in `docs/35_enso.md`. The order of the PR is in `review/archive/seasonal_forecast.md`. The upstream tables are described in `wise-app-data` (`dev/enso_plan.md`, README section "`enso.csv` and `enso_forecast.csv`").
 
 The full plan, with the evidence, the prototype figures and the stage-by-stage verification, is in git: `git show 3552240:roadmap/enso.md`.
 
@@ -63,7 +63,7 @@ Later ideas, not prototyped:
 - **Row-level phase estimate.** Pool household-year rows by the phase of each row's own exposure, standardised to the interview months. It removes the Mixed class, needs a new aggregation with its own uncertainty and a methods review. Build it only if the year labels prove too coarse.
 - **ENSO analogue scenario.** "Past El Niño years" as a series for countries with no forecast or beyond the horizon.
 - **ENSO composite map.** Mean weather anomaly by phase, with `summarise_weather_anomaly_by_loc()`.
-- **ENSO-based triggers** for shock transfers. A policy decision first; anticipatory designs are rejected with a forecast.
+- **ENSO-based triggers** for shock transfers. A policy decision first; anticipatory designs now run on a forecast window (`review/archive/seasonal_forecast.md`).
 - **Forecast members by own RONI.** Held upstream; no use while every member is El Niño.
 
 ## Left alone on purpose

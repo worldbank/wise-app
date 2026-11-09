@@ -11,6 +11,7 @@ Status: **standard** (rules to follow) · **open** (work in progress, may change
 | `TRACKING.md` | open | Actionable app/repo maintenance by category; Working rules define adding, updating, closing and reopening items |
 | `archive/agent_setup_review.md` | reference | Completed agent-setup design and verification limits; current setup is in `AGENTS.md` and README "Agent skills" |
 | `archive/batch_pipeline_plan.md` | reference | Built batch pipeline design, cited by `batch/` docs and tests. No open work in `TRACKING.md`; figures and selection belong in downstream reproducibility packages |
+| `archive/seasonal_forecast.md`, `archive/enso.md` | reference | State, decisions and the checks left before the PR of the seasonal forecast and ENSO features (branch `seasonal-forecast`); methods in `docs/34_seasonal_forecast.md`, `docs/35_enso.md`, `docs/43_shock_responsive_sp.md` |
 | `archive/` | archive | Closed/deferred decisions, numerical Decision log and earlier plans; look up by ID, not for orientation. `REVIEW-2026-10-06.md` is immutable; `REVIEW-2026-10-06-tracking-full.md` holds closure evidence and reopen triggers. The SP plans remain design records cited by code. |
 
 ## Conventions
