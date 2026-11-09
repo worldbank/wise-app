@@ -1034,7 +1034,8 @@ enso_support_sentences <- function(tbl, label) {
 #'
 #' @param weather Data frame with `loc_id`, `cal_year` and the weather variables.
 #' @param labels Tibble from `enso_year_labels()` (`sim_year`, `roni_exp`).
-#' @param variables Weather variable names; non-numeric columns are skipped.
+#' @param variables Weather variable names. A binned variable (non-numeric) is read from its continuous companion
+#'   `<name>_cont` when the data has one; otherwise it is skipped.
 #' @param min_years Smallest number of years for a location.
 #' @return Tibble: `variable`, `n_years`, `n_locations`, `rho` (median, signed) and `abs_rho` (median of the
 #'   absolute values); zero rows when nothing can be computed.
@@ -1047,6 +1048,7 @@ enso_weather_relevance <- function(weather, labels, variables, min_years = 8L) {
   rows <- list()
   for (v in intersect(variables, names(weather))) {
     x <- weather[[v]]
+    if (!is.numeric(x) && paste0(v, "_cont") %in% names(weather)) x <- weather[[paste0(v, "_cont")]]
     if (!is.numeric(x)) next
     r <- labels$roni_exp[match(as.integer(weather$cal_year), labels$sim_year)]
     ok <- is.finite(x) & is.finite(r)

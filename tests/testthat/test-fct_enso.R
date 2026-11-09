@@ -1054,6 +1054,14 @@ test_that("weather relevance is the median rank correlation over locations", {
   expect_identical(nrow(enso_weather_relevance(grid, lab, "follows", min_years = 25L)), 0L)
   expect_identical(nrow(enso_weather_relevance(grid, NULL, "follows")), 0L)
   expect_identical(nrow(enso_weather_relevance(grid[c("loc_id", "follows")], lab, "follows")), 0L)
+
+  # A binned variable is read from its continuous companion.
+  grid$binned <- factor(grid$follows > stats::median(grid$follows))
+  grid$binned_cont <- grid$follows
+  binned <- enso_weather_relevance(grid, lab, "binned")
+  expect_identical(binned$variable, "binned")
+  expect_equal(binned$rho, 1)
+  expect_identical(nrow(enso_weather_relevance(grid[names(grid) != "binned_cont"], lab, "binned")), 0L)
 })
 
 test_that("the relevance sentence grades the correlation and caveats a flat one", {
