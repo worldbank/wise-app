@@ -37,12 +37,12 @@ as `fit_model()`. Step 2 and Step 3 are gated to `fixest` and `rif`:
 - `mod_2_01_weathersim.R` (`output$run_sim_ui`) shows "Simulations are not yet
   implemented for ... models" for any other engine.
 - `fct_policy_sim.R` (annual policy correction) errors with "requires RIF or
-  linear fixest"; `fct_policy_decompose.R` and
-  `.policy_annual_channel_status()` in `fct_policy_metric_decompose.R` return
-  NULL or `"unsupported"`. `tests/testthat/test-fct-policy-metric-decompose.R`
+  linear fixest"; `fct_policy_decomp.R` and
+  `.policy_annual_channel_status()` in `fct_policy_metric_decomp.R` return
+  NULL or `"unsupported"`. `tests/testthat/test-fct_policy_metric_decomp.R`
   asserts this for `ranger` and `xgboost`.
 - Coefficient-uncertainty draws assume a `fixest` fit: `compute_chol_vcov()` in
-  `fct_simulations.R` has `stopifnot(inherits(fit, "fixest"))`.
+  `fct_step2_pipeline.R` has `stopifnot(inherits(fit, "fixest"))`.
 
 **Decide the target tier with the user before writing code:**
 
@@ -60,9 +60,9 @@ sample, weighting and prediction semantics when comparing implementations.
 
 ## Constraints that apply to every engine
 
-- **Protected areas** (`review/code_hygiene.md`): `fct_run_simulation.R`,
-  `fct_step2_compute.R`, `fct_step2_async.R`, `fct_policy_decompose.R`,
-  `fct_policy_metric_decompose.R`, `fct_decomposition_summary.R`, the
+- **Protected areas** (`review/code_hygiene.md`): `fct_step2_run.R`,
+  `fct_step2_compute.R`, `fct_step2_async.R`, `fct_policy_decomp.R`,
+  `fct_policy_metric_decomp.R`, `fct_decomp_summary.R`, the
   `ENGINE_REGISTRY` and metric-registry fields, `.wiseapp_*` columns, and the
   `year` type contract (`ARCHITECTURE.md`, CR-CQ-07). Edits there are deliberate
   feature work, not drive-by changes; keep them minimal and covered by tests.
@@ -91,7 +91,7 @@ sample, weighting and prediction semantics when comparing implementations.
 Each step names the function to edit. See [reference.md](reference.md) for the
 contracts and landmarks.
 
-### 1. Register in `R/fct_fit_model.R`
+### 1. Register in `R/fct_model_fit.R`
 
 Add an entry to `ENGINE_REGISTRY` with all six fields:
 
@@ -119,7 +119,7 @@ Engines that need extra options get them through `engine_opts` (see the
 metadata pass them back through `prepare_outcome()` attributes (see `rif_taus`
 and `rif_cols`).
 
-### 2. Wire selection in `R/fct_model_select.R`
+### 2. Wire selection in `R/fct_step1_model_select.R`
 
 - `infer_engine()`: add the model-type string to the `switch()`.
 - `model_type_choices()`: add the type to the right outcome branch **only if
@@ -128,7 +128,7 @@ and `rif_cols`).
 - Update the roxygen on `infer_engine()` and `build_selected_model()` (both
   list the mapping), then run `devtools::document()` with roxygen2 7.3.3.
 
-### 3. Prediction in `R/fct_predict_outcomes.R`
+### 3. Prediction in `R/fct_model_predict.R`
 
 `predict_outcome()` detects `fixest` by class or `engine`, then `parsnip`
 `model_fit`, then falls back to bare `lm`/`glm` via `broom::augment()`. A
@@ -142,16 +142,16 @@ Search for engine branches rather than trusting a list:
 `grep -rnE 'identical\(.*engine, "rif"\)|engine == "rif"|\.s1_engine' R`.
 The places that branch today:
 
-- `fct_results.R`: `extract_native_fit()`, `extract_rif_median()`,
+- `fct_step1_results.R`: `extract_native_fit()`, `extract_rif_median()`,
   `make_regtable_df()`, `calc_fit_stats()`, `echart_make_coefplot()`,
-  `echart_weather_effect_plot()`; `fct_results_table2.R` (focused and specs
+  `echart_weather_effect_plot()`; `fct_step1_results_table.R` (focused and specs
   tables).
 - `fct_step1_headline.R`: `.s1_engine()` maps `ranger` and `xgboost` to `"ml"`;
   headline cards branch on `rif`, `fixest` and `ml`. A new engine needs its own
   class there or an explicit decision to reuse `ml`.
 - `mod_1_07_results.R` and `mod_1_08_modelfit.R`: RIF-specific labels, popovers
   and diagnostics unwrapping.
-- `fct_model_card.R` (`model_badge()`): add an engine label if the key is not
+- `fct_step1_model_card.R` (`model_badge()`): add an engine label if the key is not
   self-explanatory.
 
 Engines that return a model with usable `residuals()` and `fitted()` get the
@@ -170,14 +170,14 @@ New tests go in `tests/testthat/test-<R file>.R` (fixtures move to a
 `helper-*.R` only when two or more files use them). Cover at least:
 
 - registry entry shape and unknown-engine / unsupported-model-type errors
-  (`test-fct_fit_model.R`, `test-fct_fit_model_fallback.R`)
+  (`test-fct_model_fit.R`, `test-fct_model_fit_fallback.R`)
 - `infer_engine()` / `model_type_choices()` mapping
 - determinism and single-thread behaviour (`test-determinism.R` pattern)
-- prediction (`test-fct_predict_outcomes.R`)
+- prediction (`test-fct_model_predict.R`)
 - results functions and headline cards for the new branch
 - `step2_slim_model_fit()` keeps what Step 2 needs (`test-step2-slim-model-fit.R`)
 - that Step 2 and Step 3 still reject the engine cleanly if it is Tier A
-  (`test-fct-policy-metric-decompose.R` asserts this for `ranger` and `xgboost`)
+  (`test-fct_policy_metric_decomp.R` asserts this for `ranger` and `xgboost`)
 - regression: `fixest` and `rif` paths unchanged
 
 Engine packages are Suggests-only, so tests that need them must
@@ -190,8 +190,8 @@ complete recipe; expect to discover more by running the pipeline.
 
 1. **Step 2 gate.** `mod_2_01_weathersim.R`: `run_sim_ui` allow-list and the
    `fixest`/`rif` assumptions in the run observer (search `is_rif`).
-2. **Simulation.** `run_sim_pipeline()` (`fct_simulations.R`) and the
-   `fct_run_simulation.R` reference path. The default branch assumes a
+2. **Simulation.** `run_sim_pipeline()` (`fct_step2_pipeline.R`) and the
+   `fct_step2_run.R` reference path. The default branch assumes a
    `fixest` fit for stored fitted values and coefficient draws.
    `compute_chol_vcov()` is `fixest`-only. Decide how this engine expresses
    coefficient or model uncertainty (or declare it unsupported) and which
@@ -203,11 +203,11 @@ complete recipe; expect to discover more by running the pipeline.
 4. **Metric registry.** `fct_metric_registry.R` carries a per-metric `engines`
    field (default `c("ols", "rif")`) and `uncertainty` sources. Extend only the
    metrics the engine genuinely supports.
-5. **Step 3.** The gates in `fct_policy_sim.R`, `fct_policy_decompose.R` and
+5. **Step 3.** The gates in `fct_policy_sim.R`, `fct_policy_decomp.R` and
    `.policy_annual_channel_status()`. The decomposition (main effect plus
    resilience: repositioning and interaction) is defined for fixest and RIF;
    a new engine needs its own definition, not a bypass. Update
-   `test-fct-policy-metric-decompose.R` expectations deliberately.
+   `test-fct_policy_metric_decomp.R` expectations deliberately.
 6. **Evidence.** Run the determinism tests, then benchmark with the
    `wise-benchmark` skill on the BFA and IRN payloads. Report parity against
    the existing engines.

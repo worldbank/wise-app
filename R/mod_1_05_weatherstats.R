@@ -310,7 +310,7 @@ mod_1_05_weatherstats_server <- function(
 
           # UI-48: builder first, renderer second, so the export bundle and the
           # screen draw the same figure. Echarts builders (guidelines section 7) use
-          # the shared data preparation above them in fct_weatherstats.R.
+          # the shared data preparation above them in fct_step1_weatherstats.R.
           weather_dist_fig <- function(idx) {
             function() {
               swx <- req(wx_spec())

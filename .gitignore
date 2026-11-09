@@ -45,7 +45,7 @@ src/*.so
 src/*.dll
 # Uncompressed DuckDB extension binaries stay untracked; the .gz versions in
 # inst/duckdb_extensions/ are committed because Posit Connect loads them at
-# runtime through system.file() (R/fct_load_data.R).
+# runtime through system.file() (R/fct_data_load.R).
 *.duckdb_extension
 
 # Run outputs and test artifacts

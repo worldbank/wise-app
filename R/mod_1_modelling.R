@@ -75,7 +75,7 @@ mod_1_modelling_ui <- function(id) {
 #' 1_modelling Server Functions
 #'
 #' Orchestrates sub-modules 01-08. All pure logic is delegated to
-#' `fct_modelling.R`. Returns a flat API list consumed by Step 2 / Step 3.
+#' the `fct_step1_*` and `fct_model_*` files. Returns a flat API list consumed by Step 2 / Step 3.
 #'
 #' @param id              Module id.
 #' @param connection_params Reactive named list from mod_0_overview.

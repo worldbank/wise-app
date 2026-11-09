@@ -73,7 +73,7 @@ test_that("policy decomposition derives a missing poor outcome", {
 })
 
 test_that("variance additivity: Var(total) == Var(main) + Var(res1) + Var(res2)", {
-  # Under the diagonal-Σ approximation documented in fct_policy_decompose.R,
+  # Under the diagonal-Σ approximation documented in fct_policy_decomp.R,
   # channels are independent and variances add exactly.
   fx <- make_ols_fixture()
   r  <- wiseapp::decompose_policy_effect(fx$svy_base, fx$svy_policy,

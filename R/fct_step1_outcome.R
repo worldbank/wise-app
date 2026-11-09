@@ -215,7 +215,7 @@ build_selected_outcome <- function(info, currency = NULL, poverty_line = NULL) {
 # economy, matching the wave series in the interview-date and weather charts.
 # The ridge labels already identify each wave, so a quiet economy-level fill is
 # clearer than a separate legend entry per wave. Delegates to the shared wave
-# palette in fct_weatherstats.R.
+# palette in fct_step1_weatherstats.R.
 #' @noRd
 .outcome_density_palette <- function(codes) {
   codes <- sort(unique(as.character(codes)))

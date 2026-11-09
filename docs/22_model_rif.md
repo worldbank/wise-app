@@ -5,7 +5,7 @@ app_step: 1
 depends_on: [notation, framework, outcomes, model-specification, linear-model]
 symbols: [y, tau, q_tau, f_Y, beta_tau, W, X, F_hat]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif
-code: [R/fct_fit_model.R, R/fct_rif_sim.R, R/fct_step1_headline.R, R/fct_results.R]
+code: [R/fct_model_fit.R, R/fct_model_rif.R, R/fct_step1_headline.R, R/fct_step1_results.R]
 verified_against: b4f2807
 ---
 
@@ -120,12 +120,12 @@ User guide: [Unconditional quantile regression](https://github.com/worldbank/wis
 
 | Concept | Equation | Code |
 |---|---|---|
-| RIF transformation | (1.1) | `R/fct_rif_sim.R` `compute_rif()`, `compute_rif_multi()` |
-| Bandwidth and density, shared across quantiles | (1.1) | `R/fct_fit_model.R` `ENGINE_REGISTRY` (`rif` entry, `prepare_outcome`) |
-| Stacked regression for the nine quantiles | (2.1) | `R/fct_fit_model.R` `ENGINE_REGISTRY` (`rif` entry, `fit_one`), `fit_model()` |
-| Joint covariance of the nine equations | (2.1) | `R/fct_simulations.R` `compute_rif_joint_vcov()`; `R/fct_fit_model.R` `fit_model()` stores it |
-| Quantile curve table | (2.1) | `R/fct_rif_sim.R` `build_rif_grid()` |
-| Position of a household | (3.1) | `R/fct_rif_sim.R` `predict_rif()` |
-| Weather effect at each grid point and interpolation | (4.1) to (4.3) | `R/fct_rif_sim.R` `predict_rif()`, `interpolate_delta()` |
+| RIF transformation | (1.1) | `R/fct_model_rif.R` `compute_rif()`, `compute_rif_multi()` |
+| Bandwidth and density, shared across quantiles | (1.1) | `R/fct_model_fit.R` `ENGINE_REGISTRY` (`rif` entry, `prepare_outcome`) |
+| Stacked regression for the nine quantiles | (2.1) | `R/fct_model_fit.R` `ENGINE_REGISTRY` (`rif` entry, `fit_one`), `fit_model()` |
+| Joint covariance of the nine equations | (2.1) | `R/fct_step2_pipeline.R` `compute_rif_joint_vcov()`; `R/fct_model_fit.R` `fit_model()` stores it |
+| Quantile curve table | (2.1) | `R/fct_model_rif.R` `build_rif_grid()` |
+| Position of a household | (3.1) | `R/fct_model_rif.R` `predict_rif()` |
+| Weather effect at each grid point and interpolation | (4.1) to (4.3) | `R/fct_model_rif.R` `predict_rif()`, `interpolate_delta()` |
 | Test that the effect is flat across quantiles | Interpretation | `R/fct_step1_headline.R` `step1_rif_heterogeneity_p()` |
-| Quantile curve figure | (2.1) | `R/fct_results.R` `echart_weather_effect_plot()` |
+| Quantile curve figure | (2.1) | `R/fct_step1_results.R` `echart_weather_effect_plot()` |

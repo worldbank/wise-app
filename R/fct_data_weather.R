@@ -6,7 +6,7 @@
 #
 # Called by:
 #   - mod_1_04_weather.R  (weather preview in Module 1)
-#   - fct_run_simulation.R / mod_2_01_weathersim.R (simulation in Module 2)
+#   - fct_step2_run.R / mod_2_01_weathersim.R (simulation in Module 2)
 #
 # Main exports:
 #   get_weather()          - full weather loading pipeline

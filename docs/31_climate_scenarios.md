@@ -5,7 +5,7 @@ app_step: 2
 depends_on: [notation, data, weather-measures]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation
-code: [R/fct_get_weather.R, R/fct_simulations.R, R/fct_step2_input.R, R/fct_run_simulation.R]
+code: [R/fct_data_weather.R, R/fct_step2_pipeline.R, R/fct_step2_input.R, R/fct_step2_run.R]
 verified_against: 8639eb2
 ---
 
@@ -109,9 +109,9 @@ User guide: [The delta method](https://github.com/worldbank/wise-app-docs/blob/m
 | Concept | Equation | Code |
 |---|---|---|
 | Baseline and future period of the run | 1 | `R/fct_step2_input.R` `wise_step2_input()`, `.step2_valid_future_period()` |
-| Climate-model monthly climatology | (1.1) | `R/fct_get_weather.R` `get_weather()` (internal `.cmip6_h3_monthly`) |
-| Change factor and population-weighted location change | (2.1) | `R/fct_get_weather.R` `get_weather()` (internal `.make_delta_exprs`) |
-| Additive or multiplicative rule | (2.1) | `R/fct_simulations.R` `build_perturbation_method()` |
-| Perturbed monthly series, window, anomaly, bins | (3.1) | `R/fct_get_weather.R` `get_weather()` (internal `.make_perturb_exprs`), `.apply_transformations()`, `.apply_binning()` |
-| Exclusion of incomplete members | 4 | `R/fct_get_weather.R` `get_weather()`, `.cmip_expected_keys()`, `.cmip_member_coverage()`, `.cmip_missing_summary()` |
-| Scenario keys by pathway, period, member | 4 | `R/fct_run_simulation.R` `fct_run_simulation()` |
+| Climate-model monthly climatology | (1.1) | `R/fct_data_weather.R` `get_weather()` (internal `.cmip6_h3_monthly`) |
+| Change factor and population-weighted location change | (2.1) | `R/fct_data_weather.R` `get_weather()` (internal `.make_delta_exprs`) |
+| Additive or multiplicative rule | (2.1) | `R/fct_step2_pipeline.R` `build_perturbation_method()` |
+| Perturbed monthly series, window, anomaly, bins | (3.1) | `R/fct_data_weather.R` `get_weather()` (internal `.make_perturb_exprs`), `.apply_transformations()`, `.apply_binning()` |
+| Exclusion of incomplete members | 4 | `R/fct_data_weather.R` `get_weather()`, `.cmip_expected_keys()`, `.cmip_member_coverage()`, `.cmip_missing_summary()` |
+| Scenario keys by pathway, period, member | 4 | `R/fct_step2_run.R` `fct_run_simulation()` |

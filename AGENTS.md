@@ -10,7 +10,7 @@ Guidance for coding agents working in this repository. This file holds the rules
 
 - **Git:** work on `dev` or a branch off it (`origin` is `worldbank/wise-app`). Do not push, deploy or upload without an explicit go-ahead.
 - **Secrets and data:** never open or print `.Renviron` or credentials. Real data is at `WISEAPP_DATA_PATH`; read it from R (`Sys.getenv("WISEAPP_DATA_PATH")`), because the shell does not load `.Renviron`. The sibling repo `wise-app-data` is data-prep code only, with no produced datasets.
-- **Pinned tools:** `devtools::document()` only with roxygen2 7.3.3 (`RoxygenNote`; 8.x rewrites `NAMESPACE`). the DuckDB engine version must equal `.DUCKDB_BUNDLE_VERSION` (`R/fct_load_data.R`); the bundled extensions are built for it.
+- **Pinned tools:** `devtools::document()` only with roxygen2 7.3.3 (`RoxygenNote`; 8.x rewrites `NAMESPACE`). the DuckDB engine version must equal `.DUCKDB_BUNDLE_VERSION` (`R/fct_data_load.R`); the bundled extensions are built for it.
 - **Version:** `DESCRIPTION` and `inst/golem-config.yml` must match; regenerate `manifest.json` after.
 - **Protected areas** (numerics, async code, contract surface; list in `review/code_hygiene.md`): change only deliberately, with tests that cover the change.
 - **`year` type contract:** do not unify the type of `year` across stages without parity runs on every engine (CR-CQ-07, see `ARCHITECTURE.md`).
@@ -62,7 +62,7 @@ Install dependencies with `pak::local_install_deps()` or from `DESCRIPTION` `Imp
 | UI (modules, CSS, charts, maps) | Check in the running app (skill `wise-ui-check`); `tests/e2e/smoke.R` for larger changes |
 | Performance | Skill `wise-benchmark` |
 | `R/`, `inst/` or dependencies, before a deploy | `Rscript dev/00_make_manifest.R`; settings in `DEPLOYMENT.md` |
-| DuckDB version | Rebuild `inst/duckdb_extensions/`, update the `DESCRIPTION` minimum, the version constant and the SHA-256 values in `R/fct_load_data.R` together (`DEPLOYMENT.md`) |
+| DuckDB version | Rebuild `inst/duckdb_extensions/`, update the `DESCRIPTION` minimum, the version constant and the SHA-256 values in `R/fct_data_load.R` together (`DEPLOYMENT.md`) |
 | A review finding | Close it per the Working rules in `review/TRACKING.md` |
 
 ## Skills

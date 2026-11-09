@@ -112,6 +112,6 @@ This page describes no code of its own. Each assumption is stated on the page na
 
 | Concept | Equation | Code |
 |---|---|---|
-| Weather-support diagnostic | | `R/fct_sim_diag.R` |
-| Calibration check against the survey | | `R/fct_sim_diag.R` |
+| Weather-support diagnostic | | `R/fct_step2_diagnostics.R` |
+| Calibration check against the survey | | `R/fct_step2_diagnostics.R` |
 | Levers that cannot act | | `R/fct_policy_sim.R` `.access_levers_unavailable()` |

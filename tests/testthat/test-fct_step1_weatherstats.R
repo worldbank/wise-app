@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_weatherstats.R                                       #
+# tests/testthat/test-fct_step1_weatherstats.R                                       #
 # ============================================================================ #
 
 library(testthat)

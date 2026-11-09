@@ -16,7 +16,7 @@
 # Internal:
 #   draw_residuals_vec
 #
-# resolve_band_q() is defined once, in fct_sim_compare.R (a duplicate here
+# resolve_band_q() is defined once, in fct_step2_compare.R (a duplicate here
 # with divergent "minmax" semantics was removed - DUP-01).
 #
 # The closed-form delta-method aggregator (aggregate_with_uncertainty_delta)

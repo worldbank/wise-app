@@ -1,5 +1,5 @@
 # Simulation comparison and visualisation ----
-# fct_sim_compare.R
+# fct_step2_compare.R
 #
 # Pure comparison and visualisation functions for Module 2.
 # Called by mod_2_02_results.R
@@ -64,7 +64,7 @@ label_deviation <- function(key) {
 #' Single authoritative definition (DUP-01): the former duplicate in
 #' fct_aggregation.R - whose "minmax" winsorised to 0.001/0.999 instead of the
 #' full 0/1 range used here - has been deleted. This variant matches the
-#' behaviour every caller has seen at runtime (fct_sim_compare.R is sourced
+#' behaviour every caller has seen at runtime (fct_step2_compare.R is sourced
 #' after fct_aggregation.R and previously overwrote it).
 #'
 #' @param band_key Character. One of "p25_p75", "p20_p80", "p10_p90",
@@ -86,7 +86,7 @@ resolve_band_q <- function(band_key) {
 }
 
 # Internal helpers: parse scenario key components ----
-# .normalise_ssp() and .parse_year() live in fct_simulations.R (single robust
+# .normalise_ssp() and .parse_year() live in fct_step2_pipeline.R (single robust
 # implementation - do not re-define them here).
 
 # Forecast labels are separate from SSP/year labels and follow Historical. With the Historical series of the
@@ -1541,7 +1541,7 @@ step2_headline_df <- function(cards, metadata = NULL, summary = NULL) {
 #' Pure function that converts a named list of aggregated series (output of
 #' \code{aggregate_sim_preds()}) into a sorted data frame suitable for
 #' \code{DT::datatable()}. Replaces the inline wrangling that previously
-#' lived inside \code{renderDT} in mod_2_06_sim_compare_server().
+#' lived inside \code{renderDT} in mod_2_02_results_server().
 #'
 #' @param threshold_tbl Data frame. Band-assembled threshold frame with
 #'   columns `scenario`, `source`, `rp_label`, `Estimate`, and `value`.

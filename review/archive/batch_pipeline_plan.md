@@ -56,10 +56,10 @@ files are in `batch/R/` (`batch_utils.R`, `expand_weather_specs.R`,
 
 | Step | Boundary | File |
 |---|---|---|
-| 0 | `load_overview_metadata()`, `build_connection_params` family, `load_data()` | `fct_overview_metadata.R`, `fct_connection.R`, `fct_load_data.R` |
-| 1 | `build_selected_surveys()`, `build_selected_outcome()`, `build_selected_weather()`, `get_weather()`, `merge_survey_weather()`, `run_lasso_selection()`, `fit_model()` | `fct_sample.R`, `fct_outcome.R`, `fct_weather_select.R`, `fct_get_weather.R`, `fct_weatherstats.R`, `fct_fit_model.R` |
+| 0 | `load_overview_metadata()`, `build_connection_params` family, `load_data()` | `fct_step0_overview_metadata.R`, `fct_data_connection.R`, `fct_data_load.R` |
+| 1 | `build_selected_surveys()`, `build_selected_outcome()`, `build_selected_weather()`, `get_weather()`, `merge_survey_weather()`, `run_lasso_selection()`, `fit_model()` | `fct_step1_sample.R`, `fct_step1_outcome.R`, `fct_step1_weather_select.R`, `fct_data_weather.R`, `fct_step1_weatherstats.R`, `fct_model_fit.R` |
 | 2 | `step2_compute(input, seed)` (pure, serial; validated input list) | `fct_step2_compute.R` |
-| 3 | `step3_compute(svy, hs, ss, mf, ...)`, `.policy_metric_decomposition()` | `fct_step3_async.R`, `fct_policy_metric_decompose.R` |
+| 3 | `step3_compute(svy, hs, ss, mf, ...)`, `.policy_metric_decomposition()` | `fct_step3_async.R`, `fct_policy_metric_decomp.R` |
 | Export | `wise_config_snapshot()` (config JSON, input-id keyed), `wise_export_table()` registry, `wise_provenance()` | `fct_export.R`, `fct_provenance.R` |
 
 ### 3.3 The gap
@@ -371,7 +371,7 @@ Progress (2026-10-19): done as planned, with these differences.
   location panel join of `mod_1_02` stay in the module (Phase 2 moves the
   panel join when the model needs `loc_id_panel`).
 - Tables: `variable_stats`, `interview_dates`, `weather_stats`
-  (`R/fct_step1_tables.R`; reference in `batch/docs/tables.md`). The
+  (`R/fct_step1_stat_tables.R`; reference in `batch/docs/tables.md`). The
   `weather_stats` builder calls the app's `build_weather_stats_table()`
   (survey rows). Schema deviations from the draft are listed in
   `batch/docs/tables.md` (the draft columns and the table decisions D1-D5 of
@@ -392,7 +392,7 @@ Progress (2026-10-19): done as planned, with these differences.
   failure record, so `error = "continue"` is not needed for the branches.
   `targets`, `crew` and `yaml` are in Suggests.
 - Tests: spec (`test-fct_batch_spec.R`), tables with module parity
-  (`test-fct_step1_tables.R`), end-to-end pipeline on a fixture data folder
+  (`test-fct_step1_stat_tables.R`), end-to-end pipeline on a fixture data folder
   (`test-batch-pipeline.R`). Real data: `dev/batch_parity_bfa.R` (BFA, two
   waves, weather `t` binned and `r` continuous) passes against the module
   servers' tables; it does not use the Export download.
@@ -510,7 +510,7 @@ Progress (2026-10-19): Phase 3 implemented with the scope below.
   the pane starts at `none` (D3 names the band p10-p90; `none` has no spread);
   (2) the Results pane aggregates a metric with the metrics of its group, the
   streamed (async) tables and the batch aggregate all metrics in one call; the
-  results agree to about 1e-15; (3) the inline Step 2 join in `fct_simulations.R`
+  results agree to about 1e-15; (3) the inline Step 2 join in `fct_step2_pipeline.R`
   is many-to-many by construction and dplyr warns about it (the app too);
   batch mutes that one warning; (4) the batch stage items for survey and frame
   carry file paths, not content stamps, so a rebuilt data file does not rerun

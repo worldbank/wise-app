@@ -6,8 +6,8 @@
 #   - mod_2_01_weathersim.R (observeEvent(input$run_sim))
 #
 # Depends on:
-#   - fct_simulations.R  (run_sim_pipeline, compute_chol_vcov, format_elapsed)
-#   - fct_get_weather.R  (get_weather)
+#   - fct_step2_pipeline.R  (run_sim_pipeline, compute_chol_vcov, format_elapsed)
+#   - fct_data_weather.R  (get_weather)
 #   - fct_aggregation.R  (compute_hist_agg, compute_scenario_agg)
 
 

@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_weather_pipeline.R                                   #
+# tests/testthat/test-fct_step1_weather_card.R                                   #
 # Weather pipeline card: spec row -> stage labels/glyphs, and the assembled    #
 # card rows (no "div" leak, stage order, history row).                         #
 # ============================================================================ #

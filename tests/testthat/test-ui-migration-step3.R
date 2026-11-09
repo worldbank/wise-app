@@ -1,6 +1,6 @@
 # Batch 2 UI migration contracts for the Step 3 surfaces:
 # mod_3_08_diagnostics, mod_3_09_decomposition, and the policy-sim results
-# pane in fct_policy_sim_compare.R (guidelines §6/§7). The ggplot builders
+# pane in fct_echart_builders.R (guidelines §6/§7). The ggplot builders
 # stay intact; these tests assert the new echarts/reactable structures.
 
 library(testthat)

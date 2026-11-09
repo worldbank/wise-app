@@ -1,4 +1,4 @@
-# Tests for predict_outcome() (R/fct_predict_outcomes.R): fitted values per
+# Tests for predict_outcome() (R/fct_model_predict.R): fitted values per
 # model family, and the four residual modes.
 
 make_po_data <- function(n = 40, seed = 11) {

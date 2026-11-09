@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_run_simulation.R                                     #
+# tests/testthat/test-fct_step2_run.R                                     #
 # REACT-12 / TEST-01: direct tests of fct_run_simulation()'s per-key failure   #
 # ledger - fail fast on historical or whole-group failure, publish partial     #
 # results with ledger + provenance counts otherwise. Weather loading and the   #
@@ -524,8 +524,8 @@ test_that("a group whose members all fail still completes once, then the run err
 
 test_that("profiling helpers are called without defensive exists() guards (CR-CQ-05)", {
   src <- testthat::test_path("..", "..", "R", c(
-    "fct_run_simulation.R", "fct_rif_sim.R", "fct_simulations.R",
-    "fct_policy_decompose.R"
+    "fct_step2_run.R", "fct_model_rif.R", "fct_step2_pipeline.R",
+    "fct_policy_decomp.R"
   ))
   skip_if(!all(file.exists(src)), "R/ source tree not available (installed package)")
   text <- unlist(lapply(src, readLines, warn = FALSE))

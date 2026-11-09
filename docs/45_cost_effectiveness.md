@@ -5,7 +5,7 @@ app_step: 3
 depends_on: [notation, policy-framework, social-protection, shock-sp, metrics, decomposition]
 symbols: [T, z, omega, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-results-tab
-code: [R/fct_sp_effectiveness.R, R/fct_step3_tables.R, R/fct_sp_shock.R, R/mod_3_10_cost_effectiveness.R]
+code: [R/fct_policy_sp_effectiveness.R, R/fct_step3_tables.R, R/fct_policy_sp_shock.R, R/mod_3_10_cost_effectiveness.R]
 verified_against: 72a2fdb
 ---
 
@@ -89,13 +89,13 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 
 | Concept | Equation | Code |
 |---|---|---|
-| Effect by scenario, average and adverse year | Section 1 | `R/fct_sp_effectiveness.R` `sp_effect_by_scenario()` |
-| Population represented | Setup | `R/fct_sp_effectiveness.R` `.sp_ce_population()` |
-| Cost per person lifted and gap per dollar | (2.1), (3.1) | `R/fct_sp_effectiveness.R` `sp_cost_effectiveness()` |
-| Near-zero effect rule | (2.1) | `R/fct_sp_effectiveness.R` `SP_CE_MIN_EFFECT` |
-| Intervals | Section 4 | `R/fct_sp_effectiveness.R` `sp_cost_effectiveness()` |
+| Effect by scenario, average and adverse year | Section 1 | `R/fct_policy_sp_effectiveness.R` `sp_effect_by_scenario()` |
+| Population represented | Setup | `R/fct_policy_sp_effectiveness.R` `.sp_ce_population()` |
+| Cost per person lifted and gap per dollar | (2.1), (3.1) | `R/fct_policy_sp_effectiveness.R` `sp_cost_effectiveness()` |
+| Near-zero effect rule | (2.1) | `R/fct_policy_sp_effectiveness.R` `SP_CE_MIN_EFFECT` |
+| Intervals | Section 4 | `R/fct_policy_sp_effectiveness.R` `sp_cost_effectiveness()` |
 | Regular programme cost | Section 1 | `R/fct_step3_tables.R` `step3_cost_effectiveness()`; `R/fct_policy_sim.R` `.sp_transfer_totals()` |
-| Shock programme cost on the effect's support | Section 1 | `R/fct_sp_shock.R` `sp_shock_cost_by_scenario()` |
-| Climate-adjusted cost | Section 6 | `R/fct_sp_shock.R` `sp_shock_climate_cost()` |
+| Shock programme cost on the effect's support | Section 1 | `R/fct_policy_sp_shock.R` `sp_shock_cost_by_scenario()` |
+| Climate-adjusted cost | Section 6 | `R/fct_policy_sp_shock.R` `sp_shock_climate_cost()` |
 | Cost split and leakage | Section 6 | `R/fct_step3_tables.R` `step3_cost_effectiveness()`, `step3_sp_effectiveness()` |
-| Display tables | In the app | `R/fct_sp_effectiveness.R` `.sp_ce_display()`; `R/mod_3_10_cost_effectiveness.R` |
+| Display tables | In the app | `R/fct_policy_sp_effectiveness.R` `.sp_ce_display()`; `R/mod_3_10_cost_effectiveness.R` |

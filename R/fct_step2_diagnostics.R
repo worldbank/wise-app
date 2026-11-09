@@ -1,8 +1,8 @@
 # Simulation diagnostics ----
-# fct_sim_diag.R
+# fct_step2_diagnostics.R
 #                                                                              #
 # Pure diagnostic functions for Module 2 Diagnostics tab.                     #
-# Called by mod_2_05_sim_diag_server() only.                                  #
+# Called by mod_2_03_diagnostics_server() only.                                  #
 # No Shiny, no reactives -- fully testable.                                   #
 #                                                                              #
 # Functions:                                                                   #

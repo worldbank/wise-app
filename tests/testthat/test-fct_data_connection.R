@@ -471,7 +471,7 @@ test_that("token requests use the token timeout and summarise errors", {
 })
 
 test_that("extension loading calls .on_posit_connect() without an exists() guard (CR-CQ-05)", {
-  src <- testthat::test_path("..", "..", "R", "fct_load_data.R")
+  src <- testthat::test_path("..", "..", "R", "fct_data_load.R")
   skip_if(!file.exists(src), "R/ source tree not available (installed package)")
   expect_false(any(grepl("exists\\(\"\\.on_posit_connect\"", readLines(src, warn = FALSE))))
 

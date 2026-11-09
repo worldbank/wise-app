@@ -5,7 +5,7 @@ app_step: 1
 depends_on: [notation, framework, model-specification, linear-model]
 symbols: [y, W, M, X, Z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-type
-code: [R/fct_fit_model.R, R/fct_model_select.R, R/fct_predict_outcomes.R, R/fct_metric_registry.R, R/mod_2_01_weathersim.R, R/fct_policy_decompose.R]
+code: [R/fct_model_fit.R, R/fct_step1_model_select.R, R/fct_model_predict.R, R/fct_metric_registry.R, R/mod_2_01_weathersim.R, R/fct_policy_decomp.R]
 verified_against: 8592a9d
 ---
 
@@ -86,11 +86,11 @@ Breiman (2001), "Random Forests", *Machine Learning* 45, 5-32; Friedman (2001), 
 
 | Concept | Equation | Code |
 |---|---|---|
-| Random forest settings | (1.1) | `R/fct_fit_model.R` `ENGINE_REGISTRY` (`ranger` entry) |
-| Gradient boosting settings | (1.2) | `R/fct_fit_model.R` `ENGINE_REGISTRY` (`xgboost` entry) |
-| Engine from model type | 1 | `R/fct_model_select.R` `infer_engine()` |
-| Model types offered | Status | `R/fct_model_select.R` `model_type_choices()` |
-| Prediction and in-sample residuals | 2 | `R/fct_predict_outcomes.R` `predict_outcome()` |
+| Random forest settings | (1.1) | `R/fct_model_fit.R` `ENGINE_REGISTRY` (`ranger` entry) |
+| Gradient boosting settings | (1.2) | `R/fct_model_fit.R` `ENGINE_REGISTRY` (`xgboost` entry) |
+| Engine from model type | 1 | `R/fct_step1_model_select.R` `infer_engine()` |
+| Model types offered | Status | `R/fct_step1_model_select.R` `model_type_choices()` |
+| Prediction and in-sample residuals | 2 | `R/fct_model_predict.R` `predict_outcome()` |
 | Engines in the metric definitions | Status | `R/fct_metric_registry.R` `.WISE_METRIC_REGISTRY` |
 | Step 2 engine check | Status | `R/mod_2_01_weathersim.R` `mod_2_01_weathersim_server()` |
-| Step 3 engine check | Status | `R/fct_policy_decompose.R` `decompose_policy_effect()` |
+| Step 3 engine check | Status | `R/fct_policy_decomp.R` `decompose_policy_effect()` |

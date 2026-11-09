@@ -40,7 +40,7 @@ pages:
       - "Baseline survey, historical window, scenarios: Step 2 > Simulation settings."
       - "Policy variables: Step 3, one panel per lever group."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning"
-    code: ["R/fct_results.R", "R/fct_outcome.R", "R/fct_surveystats.R", "R/fct_spec_defaults.R", "R/fct_incidence.R", "R/fct_simulations.R", "R/fct_aggregation.R", "R/fct_rif_sim.R", "R/fct_loc_panel.R", "R/utils_math.R"]
+    code: ["R/fct_step1_results.R", "R/fct_step1_outcome.R", "R/fct_step1_surveystats.R", "R/fct_spec_defaults.R", "R/fct_incidence.R", "R/fct_step2_pipeline.R", "R/fct_aggregation.R", "R/fct_model_rif.R", "R/fct_loc_panel.R", "R/utils_math.R"]
     verified_against: "8592a9d"
   - id: "framework"
     file: "01_framework.md"
@@ -65,7 +65,7 @@ pages:
       - "Step 2 > Simulation settings: baseline survey, historical window, scenarios."
       - "Step 3 > policy levers, Results, Diagnostics, Decomposition."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations"
-    code: ["R/fct_step1_model.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_policy_sim.R", "R/fct_step3_async.R"]
+    code: ["R/fct_step1_model.R", "R/fct_step2_compute.R", "R/fct_step2_run.R", "R/fct_policy_sim.R", "R/fct_step3_async.R"]
     verified_against: "72a2fdb"
   - id: "data"
     file: "10_data.md"
@@ -89,7 +89,7 @@ pages:
       - "Step 0 > Overview: data source and survey list."
       - "Step 1 > Sample: economy, survey rounds and level of analysis; Survey stats shows interview timing and the location map."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/data.qmd"
-    code: ["R/fct_surveystats.R", "R/fct_step1_data.R", "R/fct_loc_panel.R", "R/fct_get_weather.R", "R/fct_sample.R", "R/fct_incidence.R", "R/fct_weatherstats.R"]
+    code: ["R/fct_step1_surveystats.R", "R/fct_step1_data.R", "R/fct_loc_panel.R", "R/fct_data_weather.R", "R/fct_step1_sample.R", "R/fct_incidence.R", "R/fct_step1_weatherstats.R"]
     verified_against: "8639eb2"
   - id: "outcomes"
     file: "11_outcomes.md"
@@ -112,7 +112,7 @@ pages:
     ui:
       - "Step 1 > Outcome: choose the outcome, currency and poverty line. Outcome stats shows summary statistics, distributions by round, and the share of units with a non-missing outcome by location."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#welfare-outcome"
-    code: ["R/fct_outcome.R", "R/fct_results.R", "R/fct_spec_defaults.R", "R/fct_step1_data.R", "R/fct_policy_sim.R"]
+    code: ["R/fct_step1_outcome.R", "R/fct_step1_results.R", "R/fct_spec_defaults.R", "R/fct_step1_data.R", "R/fct_policy_sim.R"]
     verified_against: "8592a9d"
   - id: "weather-measures"
     file: "12_weather_measures.md"
@@ -135,7 +135,7 @@ pages:
     ui:
       - "Step 1 > Weather: choose variables, then Configure each one. Weather stats shows the pipeline for each variable, the distribution of each wave against its own history, maps of the regressor, binned scatter plots of the outcome, and summary tables."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#weather-variables-transformations"
-    code: ["R/fct_get_weather.R", "R/fct_weather_select.R", "R/fct_weather_pipeline.R", "R/fct_weatherstats.R", "R/fct_loc_panel.R", "R/utils_mod_1_helpers.R", "R/mod_1_04_weather.R", "R/mod_1_05_weatherstats.R"]
+    code: ["R/fct_data_weather.R", "R/fct_step1_weather_select.R", "R/fct_step1_weather_card.R", "R/fct_step1_weatherstats.R", "R/fct_loc_panel.R", "R/utils_step1.R", "R/mod_1_04_weather.R", "R/mod_1_05_weatherstats.R"]
     verified_against: "b8d37e4"
   - id: "model-specification"
     file: "20_model_specification.md"
@@ -160,7 +160,7 @@ pages:
     ui:
       - "Step 1 > Model: model type, interaction moderator, Model settings (fixed effects, covariate selection, Lasso options), then Run model. The model summary card shows the specification, the cluster and the covariate count."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation"
-    code: ["R/fct_model_select.R", "R/fct_step1_model.R", "R/fct_fit_model.R", "R/mod_1_06_model.R", "R/fct_model_card.R", "R/fct_results.R", "R/fct_simulations.R"]
+    code: ["R/fct_step1_model_select.R", "R/fct_step1_model.R", "R/fct_model_fit.R", "R/mod_1_06_model.R", "R/fct_step1_model_card.R", "R/fct_step1_results.R", "R/fct_step2_pipeline.R"]
     verified_against: "3db0c63"
   - id: "linear-model"
     file: "21_model_linear.md"
@@ -184,7 +184,7 @@ pages:
     ui:
       - "Step 1 > Model: choose Linear regression or Logistic regression. Results show effect curves, the progressive coefficient plot and the regression table; Model fit shows fit statistics and diagnostics (24_model_results)."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning"
-    code: ["R/fct_fit_model.R", "R/fct_predict_outcomes.R", "R/fct_step1_headline.R", "R/fct_aggregation.R", "R/fct_results.R"]
+    code: ["R/fct_model_fit.R", "R/fct_model_predict.R", "R/fct_step1_headline.R", "R/fct_aggregation.R", "R/fct_step1_results.R"]
     verified_against: "8592a9d"
   - id: "rif-model"
     file: "22_model_rif.md"
@@ -207,7 +207,7 @@ pages:
     ui:
       - "Step 1 > Model: choose \"Unconditional quantile regression (RIF)\" when the outcome is continuous. Results shows the quantile curve with its 95 per cent band; Model fit reports fit statistics for each quantile."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#unconditional-quantile-regression-rif"
-    code: ["R/fct_fit_model.R", "R/fct_rif_sim.R", "R/fct_step1_headline.R", "R/fct_results.R"]
+    code: ["R/fct_model_fit.R", "R/fct_model_rif.R", "R/fct_step1_headline.R", "R/fct_step1_results.R"]
     verified_against: "b4f2807"
   - id: "ml-models"
     file: "23_model_ml.md"
@@ -223,7 +223,7 @@ pages:
     symbols: ["y", "W", "M", "X", "Z"]
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-type"
-    code: ["R/fct_fit_model.R", "R/fct_model_select.R", "R/fct_predict_outcomes.R", "R/fct_metric_registry.R", "R/mod_2_01_weathersim.R", "R/fct_policy_decompose.R"]
+    code: ["R/fct_model_fit.R", "R/fct_step1_model_select.R", "R/fct_model_predict.R", "R/fct_metric_registry.R", "R/mod_2_01_weathersim.R", "R/fct_policy_decomp.R"]
     verified_against: "8592a9d"
   - id: "model-results"
     file: "24_model_results.md"
@@ -250,7 +250,7 @@ pages:
       - "Step 1 > Results: headline cards, effect curves, progressive coefficient plot and the regression table with a download button."
       - "Step 1 > Model fit: the model summary, fit statistics, residual panels, importance and the raw model output."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#interpreting-the-results-tab"
-    code: ["R/fct_step1_headline.R", "R/fct_step1_model_tables.R", "R/fct_results.R", "R/fct_results_table2.R", "R/mod_1_07_results.R", "R/mod_1_08_modelfit.R"]
+    code: ["R/fct_step1_headline.R", "R/fct_step1_model_tables.R", "R/fct_step1_results.R", "R/fct_step1_results_table.R", "R/mod_1_07_results.R", "R/mod_1_08_modelfit.R"]
     verified_against: "72a2fdb"
   - id: "simulation"
     file: "30_simulation.md"
@@ -275,7 +275,7 @@ pages:
       - "Step 2 > Simulation settings: baseline survey, historical window, projection periods, scenarios, residuals, coefficient uncertainty. Run simulation starts the run."
       - "Step 2 > Results: annual series, scenario bands, threshold tables. Step 2 > Diagnostics: weather distributions and the sources of uncertainty."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare"
-    code: ["R/fct_step2_input.R", "R/fct_step2_compute.R", "R/fct_run_simulation.R", "R/fct_simulations.R", "R/fct_predict_outcomes.R", "R/fct_aggregation.R", "R/fct_sim_diag.R", "R/fct_sim_compare.R", "R/fct_spec_defaults.R"]
+    code: ["R/fct_step2_input.R", "R/fct_step2_compute.R", "R/fct_step2_run.R", "R/fct_step2_pipeline.R", "R/fct_model_predict.R", "R/fct_aggregation.R", "R/fct_step2_diagnostics.R", "R/fct_step2_compare.R", "R/fct_spec_defaults.R"]
     verified_against: "8639eb2"
   - id: "climate-scenarios"
     file: "31_climate_scenarios.md"
@@ -295,7 +295,7 @@ pages:
     ui:
       - "Step 2 > Simulation settings: historical window, projection periods (up to three) and pathways. The Diagnostics tab compares the weather distribution of each scenario with the weather used in estimation."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation"
-    code: ["R/fct_get_weather.R", "R/fct_simulations.R", "R/fct_step2_input.R", "R/fct_run_simulation.R"]
+    code: ["R/fct_data_weather.R", "R/fct_step2_pipeline.R", "R/fct_step2_input.R", "R/fct_step2_run.R"]
     verified_against: "8639eb2"
   - id: "metrics"
     file: "32_metrics.md"
@@ -325,7 +325,7 @@ pages:
     ui:
       - "Step 2 > Results: choose the metric, the poverty line, a difference from the historical mean or median, and the band widths. The tabs show the expected outcome, annual curves, the return-period table, the sources of uncertainty and the effects by decile."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#interpreting-the-results-tab"
-    code: ["R/fct_aggregation.R", "R/fct_metric_registry.R", "R/fct_sim_compare.R", "R/fct_step2_tables.R", "R/fct_uncertainty_helpers.R", "R/fct_incidence.R", "R/fct_simulations.R"]
+    code: ["R/fct_aggregation.R", "R/fct_metric_registry.R", "R/fct_step2_compare.R", "R/fct_step2_tables.R", "R/fct_uncertainty.R", "R/fct_incidence.R", "R/fct_step2_pipeline.R"]
     verified_against: "1ecc93e"
   - id: "uncertainty"
     file: "33_uncertainty.md"
@@ -354,7 +354,7 @@ pages:
       - "Step 2 > Simulation settings: Include coefficient uncertainty."
       - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
-    code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_simulations.R", "R/fct_results.R", "R/fct_rif_sim.R", "R/fct_step2_tables.R", "R/fct_sim_compare.R", "R/fct_uncertainty_helpers.R"]
+    code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_step2_pipeline.R", "R/fct_step1_results.R", "R/fct_model_rif.R", "R/fct_step2_tables.R", "R/fct_step2_compare.R", "R/fct_uncertainty.R"]
     verified_against: "f62a72b"
   - id: "seasonal-forecast"
     file: "34_seasonal_forecast.md"
@@ -375,7 +375,7 @@ pages:
       - "Step 3: a policy run with a forecast shows the same series in each Results chart as Step 2, each with baseline and policy, and the same two card groups. The target-month cards give the median policy effect of the members and of the historical years and the share of members worse than the historical 1-in-10 without and with the policy. The exceedance chart shows the no-policy historical curve of the same months and places the median member of each arm on it. The ensemble-spread controls set the member band as they set the climate-model band. A shock-responsive transfer adds a card: the population share in triggered locations against historical years of the same months, the shares of members and years with payments, and the cost of the window."
       - "Step 2 > Results: with a forecast, each chart and the return-period table carry both sets of series: \"Historical (annual)\" and the climate scenarios, and \"Historical (Nov - Jan)\" and the forecast. A forecast-only run shows the same charts without scenario rows. The headline cards stay in two groups, annual and target months. The cards of the target months show the placement, the shift against the historical spread of the same months and the member range. With the ENSO tables, the placement card in the level view adds the ENSO outlook of the target months (35_enso, Section 4)."
     guide: "https://github.com/worldbank/wise-app-docs"
-    code: ["R/utils_forecast_ui.R", "R/mod_2_01_weathersim.R", "R/fct_forecast_catalogue.R", "R/fct_forecast_weather.R", "R/fct_forecast_placement.R", "R/fct_forecast_window.R", "R/fct_forecast_skill.R", "R/fct_run_simulation.R"]
+    code: ["R/fct_step2_forecast.R", "R/mod_2_01_weathersim.R", "R/fct_forecast_catalogue.R", "R/fct_forecast_weather.R", "R/fct_forecast_placement.R", "R/fct_forecast_window.R", "R/fct_forecast_skill.R", "R/fct_step2_run.R"]
     verified_against: "8639eb2"
   - id: "enso"
     file: "35_enso.md"
@@ -404,7 +404,7 @@ pages:
       - "Step 2 > Diagnostics: bands on the weather-year trajectories, and a line on weather support by label."
       - "Export: the labels, the comparison tables and the outlook; the run record gives the table versions."
     guide: "https://github.com/worldbank/wise-app-docs"
-    code: ["R/fct_enso.R", "R/fct_forecast_window.R", "R/fct_forecast_placement.R", "R/fct_overview_metadata.R", "R/fct_batch_targets.R", "R/mod_2_02_results.R", "R/fct_policy_sim_compare.R"]
+    code: ["R/fct_enso.R", "R/fct_forecast_window.R", "R/fct_forecast_placement.R", "R/fct_step0_overview_metadata.R", "R/fct_batch_targets.R", "R/mod_2_02_results.R", "R/fct_echart_builders.R"]
     verified_against: "8639eb2"
   - id: "policy-framework"
     file: "40_policy_framework.md"
@@ -432,7 +432,7 @@ pages:
       - "Step 3 > Run: builds the modified survey and the policy arm."
       - "Step 3 > Results, Diagnostics, Decomposition and Cost-effectiveness: the policy and baseline series side by side, the before-and-after summary of the changed variables, the channels and the cost per outcome gained."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model"
-    code: ["R/fct_policy_sim.R", "R/fct_policy_registry.R", "R/fct_step3_input.R", "R/fct_step3_async.R", "R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_policy_sim_compare.R"]
+    code: ["R/fct_policy_sim.R", "R/fct_policy_registry.R", "R/fct_step3_input.R", "R/fct_step3_async.R", "R/fct_policy_decomp.R", "R/fct_policy_metric_decomp.R", "R/fct_echart_builders.R"]
     verified_against: "f62a72b"
   - id: "policy-levers"
     file: "41_policy_levers.md"
@@ -485,7 +485,7 @@ pages:
       - "Step 3 > Social protection: choose a regular programme, the targeting rule and its threshold, inclusion and exclusion errors, how errors are concentrated, the basis of the amount, an amount first or a budget first, the number of payments and the administration share. A preview card shows who is reached and what it costs before the run."
       - "Step 3 > Diagnostics: total cost, cost per recipient, coverage, leakage, adequacy and realised errors."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers"
-    code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_sp_effectiveness.R", "R/fct_policy_metric_decompose.R", "R/fct_aggregation_delta.R", "R/mod_3_01_sp.R"]
+    code: ["R/fct_policy_sim.R", "R/fct_step3_input.R", "R/fct_policy_sp_effectiveness.R", "R/fct_policy_metric_decomp.R", "R/fct_aggregation_delta.R", "R/mod_3_01_sp.R"]
     verified_against: "3f4fc5f"
   - id: "shock-sp"
     file: "43_shock_responsive_sp.md"
@@ -519,7 +519,7 @@ pages:
       - "Step 3 > Social protection (preview card): expected activation and annual cost on the historical record before the run."
       - "Step 3 > Diagnostics and Cost-effectiveness: the run outputs of Section 6."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release"
-    code: ["R/fct_sp_shock.R", "R/fct_policy_sim.R", "R/fct_policy_metric_decompose.R", "R/fct_step3_input.R", "R/mod_3_01_sp.R"]
+    code: ["R/fct_policy_sp_shock.R", "R/fct_policy_sim.R", "R/fct_policy_metric_decomp.R", "R/fct_step3_input.R", "R/mod_3_01_sp.R"]
     verified_against: "edaaa1d"
   - id: "decomposition"
     file: "44_decomposition.md"
@@ -549,7 +549,7 @@ pages:
       - "Step 3 > Decomposition: \"What drives the total policy effect?\" shows the headline channels for a scenario, in outcome units, per cent of the baseline or in the units of the metric, and by weather-year basis (average or adverse year). \"Who gains, and through which channel?\" shows the channels by baseline decile. For the quantile model, panels show the weather-sensitivity curve."
       - "A banner appears when the model has no weather-by-policy interaction, since the interaction channel is then zero."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab"
-    code: ["R/fct_policy_decompose.R", "R/fct_policy_metric_decompose.R", "R/fct_decomposition_summary.R", "R/fct_policy_sim.R"]
+    code: ["R/fct_policy_decomp.R", "R/fct_policy_metric_decomp.R", "R/fct_decomp_summary.R", "R/fct_policy_sim.R"]
     verified_against: "f62a72b"
   - id: "cost-effectiveness"
     file: "45_cost_effectiveness.md"
@@ -570,7 +570,7 @@ pages:
     ui:
       - "Step 3 > Cost-effectiveness: a table of the ratio by scenario and weather year (average or 1-in-20), with the annual cost, the change in the metric and a 95 per cent interval, followed by a chart of the ratio and of the annual cost. A programme with a trigger adds the climate-adjusted cost and the coverage of the affected poor."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-results-tab"
-    code: ["R/fct_sp_effectiveness.R", "R/fct_step3_tables.R", "R/fct_sp_shock.R", "R/mod_3_10_cost_effectiveness.R"]
+    code: ["R/fct_policy_sp_effectiveness.R", "R/fct_step3_tables.R", "R/fct_policy_sp_shock.R", "R/mod_3_10_cost_effectiveness.R"]
     verified_against: "72a2fdb"
   - id: "assumptions"
     file: "50_assumptions_limitations.md"
@@ -617,7 +617,7 @@ pages:
     symbols: []
     ui: []
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/export.qmd"
-    code: ["R/fct_batch_spec.R", "R/fct_batch_targets.R", "R/fct_spec_defaults.R", "R/fct_step1_tables.R", "R/fct_step2_tables.R", "R/fct_step3_tables.R"]
+    code: ["R/fct_batch_spec.R", "R/fct_batch_targets.R", "R/fct_spec_defaults.R", "R/fct_step1_stat_tables.R", "R/fct_step2_tables.R", "R/fct_step3_tables.R"]
     verified_against: "8639eb2"
   - id: "references"
     file: "references.md"

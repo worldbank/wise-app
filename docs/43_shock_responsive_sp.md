@@ -5,7 +5,7 @@ app_step: 3
 depends_on: [notation, policy-framework, social-protection, simulation, climate-scenarios, metrics]
 symbols: [omega, T, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release
-code: [R/fct_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decompose.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
+code: [R/fct_policy_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decomp.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
 verified_against: edaaa1d
 ---
 
@@ -190,24 +190,24 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 
 | Concept | Equation | Code |
 |---|---|---|
-| Checks of a specification | Section 1 | `R/fct_sp_shock.R` `.sp_shock_problem()`, `.sp_timing_problem()`, `.sp_dyn_problem()` |
-| Thresholds from the historical record | (1.1) | `R/fct_sp_shock.R` `sp_trigger_thresholds()`, `.sp_group_quantile()` |
-| Exceedance of the trigger | (1.2) | `R/fct_sp_shock.R` `.sp_trigger_exceeds()` |
-| Impact metrics | Section 1 | `R/fct_sp_shock.R` `.sp_impact_plan()`, `.sp_impact_column()`, `sp_shock_reference()` |
-| Response check | Section 1 | `R/fct_sp_shock.R` `sp_response_check()` |
-| Payout scope and national gate | (2.1) | `R/fct_sp_shock.R` `.sp_trigger_scope()`, `sp_trigger_state()` |
-| Dynamic targeting layers | (3.1) | `R/fct_sp_shock.R` `.sp_dyn_plan()`, `.sp_dyn_scope()`, `.sp_trigger_severity()` |
-| Fixed amount | Section 4 | `R/fct_sp_shock.R` `.sp_dynamic_per_household()`, `sp_shock_plan()` |
-| Budget linked to loss | (4.1) | `R/fct_sp_shock.R` `.sp_shock_loss_share_transfer()` |
-| Annual cap | (4.2) | `R/fct_sp_shock.R` `.sp_shock_apply_cap()` |
-| Timing, forecast | (5.1), (5.2) | `R/fct_sp_shock.R` `.sp_timing_plan()`, `.sp_forecast_fire()`, `.sp_timing_effect()` |
-| Transfer and state of one pipeline | Section 4 | `R/fct_sp_shock.R` `sp_shock_pipeline_state()`, `sp_shock_pipeline_transfer()` |
-| Welfare effect of the dynamic transfer | (5.2) | `R/fct_sp_shock.R` `sp_dynamic_effect()`; `R/fct_policy_metric_decompose.R` `.policy_annual_channel_block()` |
-| Annual cost and activation | Section 6 | `R/fct_sp_shock.R` `sp_shock_annual()` |
-| Basis risk and rescoring | (6.1), (6.2) | `R/fct_sp_shock.R` `.sp_shock_basis()`, `sp_shock_pipeline_rows()`, `sp_shock_rescore()` |
-| Summary across scenarios | Section 6 | `R/fct_sp_shock.R` `sp_shock_summary()`, `sp_shock_climate_cost()` |
-| Break-even multiplier | (6.3) | `R/fct_sp_shock.R` `sp_shock_summary()` |
-| Coverage and adequacy of the affected | Section 6 | `R/fct_sp_shock.R` `sp_shock_reach()` |
-| Forecast window: trigger, thresholds, payment once, payout figures | (7.1) | `R/fct_sp_shock.R` `.sp_forecast_shock_problem()`, `.sp_window_trigger_table()`, `sp_shock_window_plan()`, `.sp_window_channels()`, `sp_shock_window_summary()` |
-| Preview before the run | Setup | `R/fct_sp_shock.R` `sp_shock_preview()` |
+| Checks of a specification | Section 1 | `R/fct_policy_sp_shock.R` `.sp_shock_problem()`, `.sp_timing_problem()`, `.sp_dyn_problem()` |
+| Thresholds from the historical record | (1.1) | `R/fct_policy_sp_shock.R` `sp_trigger_thresholds()`, `.sp_group_quantile()` |
+| Exceedance of the trigger | (1.2) | `R/fct_policy_sp_shock.R` `.sp_trigger_exceeds()` |
+| Impact metrics | Section 1 | `R/fct_policy_sp_shock.R` `.sp_impact_plan()`, `.sp_impact_column()`, `sp_shock_reference()` |
+| Response check | Section 1 | `R/fct_policy_sp_shock.R` `sp_response_check()` |
+| Payout scope and national gate | (2.1) | `R/fct_policy_sp_shock.R` `.sp_trigger_scope()`, `sp_trigger_state()` |
+| Dynamic targeting layers | (3.1) | `R/fct_policy_sp_shock.R` `.sp_dyn_plan()`, `.sp_dyn_scope()`, `.sp_trigger_severity()` |
+| Fixed amount | Section 4 | `R/fct_policy_sp_shock.R` `.sp_dynamic_per_household()`, `sp_shock_plan()` |
+| Budget linked to loss | (4.1) | `R/fct_policy_sp_shock.R` `.sp_shock_loss_share_transfer()` |
+| Annual cap | (4.2) | `R/fct_policy_sp_shock.R` `.sp_shock_apply_cap()` |
+| Timing, forecast | (5.1), (5.2) | `R/fct_policy_sp_shock.R` `.sp_timing_plan()`, `.sp_forecast_fire()`, `.sp_timing_effect()` |
+| Transfer and state of one pipeline | Section 4 | `R/fct_policy_sp_shock.R` `sp_shock_pipeline_state()`, `sp_shock_pipeline_transfer()` |
+| Welfare effect of the dynamic transfer | (5.2) | `R/fct_policy_sp_shock.R` `sp_dynamic_effect()`; `R/fct_policy_metric_decomp.R` `.policy_annual_channel_block()` |
+| Annual cost and activation | Section 6 | `R/fct_policy_sp_shock.R` `sp_shock_annual()` |
+| Basis risk and rescoring | (6.1), (6.2) | `R/fct_policy_sp_shock.R` `.sp_shock_basis()`, `sp_shock_pipeline_rows()`, `sp_shock_rescore()` |
+| Summary across scenarios | Section 6 | `R/fct_policy_sp_shock.R` `sp_shock_summary()`, `sp_shock_climate_cost()` |
+| Break-even multiplier | (6.3) | `R/fct_policy_sp_shock.R` `sp_shock_summary()` |
+| Coverage and adequacy of the affected | Section 6 | `R/fct_policy_sp_shock.R` `sp_shock_reach()` |
+| Forecast window: trigger, thresholds, payment once, payout figures | (7.1) | `R/fct_policy_sp_shock.R` `.sp_forecast_shock_problem()`, `.sp_window_trigger_table()`, `sp_shock_window_plan()`, `.sp_window_channels()`, `sp_shock_window_summary()` |
+| Preview before the run | Setup | `R/fct_policy_sp_shock.R` `sp_shock_preview()` |
 | Eligibility written for the programme | Setup | `R/fct_policy_sim.R` `apply_policy_to_svy()` |

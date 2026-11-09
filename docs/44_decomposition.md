@@ -5,7 +5,7 @@ app_step: 3
 depends_on: [notation, policy-framework, linear-model, rif-model, metrics, social-protection]
 symbols: [y, W, D, Delta, tau, beta, gamma, delta, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab
-code: [R/fct_policy_decompose.R, R/fct_policy_metric_decompose.R, R/fct_decomposition_summary.R, R/fct_policy_sim.R]
+code: [R/fct_policy_decomp.R, R/fct_policy_metric_decomp.R, R/fct_decomp_summary.R, R/fct_policy_sim.R]
 verified_against: f62a72b
 ---
 
@@ -147,17 +147,17 @@ User guide: [Interpreting the Decomposition tab](https://github.com/worldbank/wi
 
 | Concept | Equation | Code |
 |---|---|---|
-| Channel kernel, quantile model | (1.1), (2.1), (3.1), (3.2) | `R/fct_policy_decompose.R` `.compute_rif_channels()` |
-| Channel kernel, linear model | (1.1), (3.2) | `R/fct_policy_decompose.R` `.decompose_ols()` |
-| Household decomposition entry point | (3.3) | `R/fct_policy_decompose.R` `decompose_policy_effect()`, `.build_decomposition_context()` |
-| Covariate changes | (1.1) | `R/fct_policy_decompose.R` `.compute_policy_deltas()` |
+| Channel kernel, quantile model | (1.1), (2.1), (3.1), (3.2) | `R/fct_policy_decomp.R` `.compute_rif_channels()` |
+| Channel kernel, linear model | (1.1), (3.2) | `R/fct_policy_decomp.R` `.decompose_ols()` |
+| Household decomposition entry point | (3.3) | `R/fct_policy_decomp.R` `decompose_policy_effect()`, `.build_decomposition_context()` |
+| Covariate changes | (1.1) | `R/fct_policy_decomp.R` `.compute_policy_deltas()` |
 | Matching variables to terms | (1.1) | `R/fct_policy_sim.R` `.policy_lever_terms()` |
-| Channels per prediction row | (1.2), Setup, (3.3) | `R/fct_policy_metric_decompose.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()` |
-| Outcome-unit channels | (4.1) | `R/fct_policy_metric_decompose.R` `.policy_level_channels()` |
-| Cumulative states and contributions | (5.1), (5.2) | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()`, `.policy_metric_contributions()` |
-| Summary across years and members | Section 5 | `R/fct_policy_metric_decompose.R` `.policy_metric_summary()`, `.policy_metric_decomposition()` |
-| Adverse-year read | (5.3) | `R/fct_policy_metric_decompose.R` `.policy_metric_tails()` |
-| Decile groups | Section 5 | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()`; `R/fct_decomposition_summary.R` `.decomposition_outcome_deciles()` |
-| Mechanism diagnostics | Section 6 | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()` |
-| Outcome-unit summary of channels | (4.1) | `R/fct_decomposition_summary.R` `.decomposition_outcome_channels()`, `.decomposition_outcome_summary()` |
-| Check that states end at the policy arm | (5.2) | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()` |
+| Channels per prediction row | (1.2), Setup, (3.3) | `R/fct_policy_metric_decomp.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()` |
+| Outcome-unit channels | (4.1) | `R/fct_policy_metric_decomp.R` `.policy_level_channels()` |
+| Cumulative states and contributions | (5.1), (5.2) | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()`, `.policy_metric_contributions()` |
+| Summary across years and members | Section 5 | `R/fct_policy_metric_decomp.R` `.policy_metric_summary()`, `.policy_metric_decomposition()` |
+| Adverse-year read | (5.3) | `R/fct_policy_metric_decomp.R` `.policy_metric_tails()` |
+| Decile groups | Section 5 | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()`; `R/fct_decomp_summary.R` `.decomposition_outcome_deciles()` |
+| Mechanism diagnostics | Section 6 | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()` |
+| Outcome-unit summary of channels | (4.1) | `R/fct_decomp_summary.R` `.decomposition_outcome_channels()`, `.decomposition_outcome_summary()` |
+| Check that states end at the policy arm | (5.2) | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()` |

@@ -5,7 +5,7 @@ app_step: cross
 depends_on: [notation]
 symbols: [y, W, M, X, D, beta, gamma, delta, alpha, lambda, T, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
-code: [R/fct_step1_model.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_policy_sim.R, R/fct_step3_async.R]
+code: [R/fct_step1_model.R, R/fct_step2_compute.R, R/fct_step2_run.R, R/fct_policy_sim.R, R/fct_step3_async.R]
 verified_against: 72a2fdb
 ---
 
@@ -130,7 +130,7 @@ User guide: [Overview and limitations](https://github.com/worldbank/wise-app-doc
 | Concept | Equation | Code |
 |---|---|---|
 | Estimation of the weather-welfare model | (3.1) | `R/fct_step1_model.R` `wise_fit()` |
-| Fixed baseline population, weather varied by year | (2.1), (2.2) | `R/fct_step2_compute.R` `step2_compute()`; `R/fct_run_simulation.R` |
+| Fixed baseline population, weather varied by year | (2.1), (2.2) | `R/fct_step2_compute.R` `step2_compute()`; `R/fct_step2_run.R` |
 | Policy change of the survey variables | (4.1) | `R/fct_policy_sim.R` `apply_policy_to_svy()` |
 | Policy arm built from the baseline pipelines | (4.1) | `R/fct_step3_async.R` `step3_compute()` |
-| Location-panel clustering | (3.1) | `R/fct_simulations.R` `COEF_VCOV_SPEC` |
+| Location-panel clustering | (3.1) | `R/fct_step2_pipeline.R` `COEF_VCOV_SPEC` |

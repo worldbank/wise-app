@@ -46,7 +46,7 @@ mod_3_04_labor_server <- function(id,
     ns <- session$ns
 
     # Get model coefficients ----
-    # REACT-08: shared coefficient decomposition (utils_mod_1_helpers.R).
+    # REACT-08: shared coefficient decomposition (utils_step1.R).
     coeffs_rx <- model_coefficient_reactives(selected_model)
     coeffs <- coeffs_rx$all
 

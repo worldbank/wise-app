@@ -50,7 +50,7 @@
 #'
 #' Named numeric vectors mapping return-period labels to exceedance
 #' probabilities. Used consistently across the threshold table and exceedance
-#' curve in mod_2_06 and fct_sim_compare.
+#' curve in mod_2_02_results and fct_step2_compare.
 #'
 #' \describe{
 #'   \item{RP_LOW}{Rare low-outcome tail: 1:50, 1:20, 1:10, 1:5}
@@ -913,7 +913,7 @@ run_sim_pipeline <- function(weather_raw,
   # SP_TRANSFER_COL is set on svy by apply_policy_to_svy() in fct_policy_sim.R.
   # The transfer is a direct welfare boost, not a regression covariate, so it
   # is added after prediction. To stay consistent with the decomposition
-  # (.decompose_ols / .compute_rif_channels in fct_policy_decompose.R, which
+  # (.decompose_ols / .compute_rif_channels in fct_policy_decomp.R, which
   # define delta_sp = log(exp(y) + sp) - y), the boost is applied on the level
   # scale and re-logged when so$transform == "log".
   #

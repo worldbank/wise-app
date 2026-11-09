@@ -70,7 +70,7 @@ members, data version), so replacing files under an existing run id changes
 ### variable_stats
 
 Key `data_id`. One row per scope (wave, `All`, pooled) x `var_group` x
-`variable` x `sample`. Builders: `variable_stats_table()` (`R/fct_step1_tables.R`).
+`variable` x `sample`. Builders: `variable_stats_table()` (`R/fct_step1_stat_tables.R`).
 
 | Column | Meaning | Source |
 |---|---|---|

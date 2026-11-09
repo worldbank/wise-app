@@ -1,9 +1,9 @@
-# Speed opportunities: RIF quantile regression (`fct_rif_sim.R`)
+# Speed opportunities: RIF quantile regression (`fct_model_rif.R`)
 
 **Status: candidate — low priority. Consider for implementation; not enforced (see `optimization_guidelines.md`). Objective: raw speed.**
 
 Most speed work has already landed: RIF columns are computed once per tau and reused
-across the three progressive fits (`fct_fit_model.R` ~241, PERF-03), and the `dens=`
+across the three progressive fits (`fct_model_fit.R` ~241, PERF-03), and the `dens=`
 hook shares one KDE across taus.
 
 **2026-09-18 update: profiled and implemented on real Section 9 payloads

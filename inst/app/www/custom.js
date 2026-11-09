@@ -274,7 +274,7 @@
   });
 })();
 
-// Map legend info markers (.wx-tip, wx_info_marker() in fct_weatherstats.R):
+// Map legend info markers (.wx-tip, wx_info_marker() in fct_step1_weatherstats.R):
 // Escape dismisses the tooltip while it is hovered or focused (WCAG 1.4.13).
 // The dismissal lasts until the pointer leaves or focus moves away.
 (function () {

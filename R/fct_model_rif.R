@@ -5,8 +5,8 @@
 # Firpo, Fortin & Lemieux (2009) for estimating distributional impacts.        #
 #                                                                              #
 # Used by:                                                                     #
-#   Module 1 - fct_fit_model.R (compute_rif, build_rif_grid)                   #
-#   Module 2 - fct_simulations.R (predict_rif)                                 #
+#   Module 1 - fct_model_fit.R (calls compute_rif, build_rif_grid)               #
+#   Module 2 - fct_step2_pipeline.R (calls predict_rif)                        #
 
 
 # RIF computation ----

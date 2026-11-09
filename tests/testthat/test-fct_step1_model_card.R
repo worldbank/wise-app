@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_model_card.R                                         #
+# tests/testthat/test-fct_step1_model_card.R                                         #
 # Model card rows and model badge.                                              #
 # ============================================================================ #
 

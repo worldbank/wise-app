@@ -1072,7 +1072,7 @@ mod_2_02_results_server <- function(id,
     # Lazy delta-method aggregation ----
     # Replaces the eager compute_hist_agg / compute_scenario_agg path. Returns
     # the same nested list shape (weighted/unweighted -> method -> tibble) so
-    # downstream consumers in fct_sim_compare.R see a compatible schema.
+    # downstream consumers in fct_step2_compare.R see a compatible schema.
     agg_methods <- reactive({
       req(hist_sim())
       so <- results_source()$so
@@ -1508,7 +1508,7 @@ mod_2_02_results_server <- function(id,
     #   - inter-annual (within-model spread of value_all across years)
     #   - inter-model  (across-model spread of model means; future only)
 
-    # Helpers are now defined in R/fct_uncertainty_helpers.R as package-internal
+    # Helpers are now defined in R/fct_uncertainty.R as package-internal
     # functions so Module 3 can call the same code path. Aliases keep the
     # existing inline call sites below readable.
     .by_model_matrix <- function(tbl) {

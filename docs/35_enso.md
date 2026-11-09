@@ -5,7 +5,7 @@ app_step: 2
 depends_on: [notation, data, simulation, climate-scenarios, seasonal-forecast]
 symbols: [mu, r, m]
 guide: https://github.com/worldbank/wise-app-docs
-code: [R/fct_enso.R, R/fct_forecast_window.R, R/fct_forecast_placement.R, R/fct_overview_metadata.R, R/fct_batch_targets.R, R/mod_2_02_results.R, R/fct_policy_sim_compare.R]
+code: [R/fct_enso.R, R/fct_forecast_window.R, R/fct_forecast_placement.R, R/fct_step0_overview_metadata.R, R/fct_batch_targets.R, R/mod_2_02_results.R, R/fct_echart_builders.R]
 verified_against: 8639eb2
 ---
 
@@ -110,7 +110,7 @@ None yet.
 
 | Concept | Equation | Code |
 |---|---|---|
-| Optional tables and their validation | | `R/fct_enso.R` `enso_load()`; `R/fct_overview_metadata.R` `load_overview_metadata()` |
+| Optional tables and their validation | | `R/fct_enso.R` `enso_load()`; `R/fct_step0_overview_metadata.R` `load_overview_metadata()` |
 | Fitted window and interview-month weights | 1.1 | `R/fct_enso.R` `enso_window()`, `enso_month_weights()`, `enso_baseline_months()` |
 | Year label, shares and exposure RONI | 1.1, 1.2 | `R/fct_enso.R` `enso_year_labels()` |
 | Labels on the annual rows, template years included | | `R/fct_enso.R` `enso_attach_labels()` |
@@ -120,7 +120,7 @@ None yet.
 | Comparison by label | | `R/fct_enso.R` `enso_phase_summary()`, `enso_series_table()`, `enso_policy_table()` |
 | Weather support by label | | `R/fct_enso.R` `weather_support_by_phase()` |
 | How closely the weather follows ENSO | 7 | `R/fct_enso.R` `enso_weather_relevance()`, `enso_relevance_sentences()` |
-| Phase marks on the forecast flyout strip | | `R/fct_enso.R` `enso_strip_marks()`; `R/utils_forecast_ui.R` `forecast_strip_input()` |
+| Phase marks on the forecast flyout strip | | `R/fct_enso.R` `enso_strip_marks()`; `R/fct_step2_forecast.R` `forecast_strip_input()` |
 | Forecast members on the distribution chart | | `R/fct_enso.R` `enso_forecast_marks()`, `enso_attach_forecast_labels()` |
 | Table versions and exported tables | | `R/fct_enso.R` `enso_provenance()`, `enso_year_table()`, `enso_outlook_table()` |
 | Batch labels, apart from the simulations | | `R/fct_batch_targets.R` `wise_batch_enso_source()`, `wise_batch_enso()`, `.batch_enso_inputs()` |

@@ -1252,7 +1252,7 @@ table.dataTable {
 
 /* Wrapped summary-table cells: long variable labels stay readable instead of
    forcing horizontal scroll. Applied via columnDefs className = "dt-wrap"
-   (fct_surveystats.R, fct_weatherstats.R) and colDef class = "wise-dt-wrap"
+   (fct_step1_surveystats.R, fct_step1_weatherstats.R) and colDef class = "wise-dt-wrap"
    (reactable summary tables). */
 table.dataTable td.dt-wrap {
   white-space: normal !important;

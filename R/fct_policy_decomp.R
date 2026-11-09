@@ -10,11 +10,11 @@
 # The shared helper .compute_rif_channels() is the single source of truth
 # for all RIF channel calculations. Both the decomposition display AND the
 # RIF simulation pipeline (.compute_rif_policy_correction below, invoked
-# from run_sim_pipeline in fct_simulations.R) call it, so the Results pane
+# from run_sim_pipeline in fct_step2_pipeline.R) call it, so the Results pane
 # and the Decomposition pane always agree numerically.
 #
 # Used by: mod_3_06_policy_sim.R (decomposition display)
-#          fct_simulations.R     (run_sim_pipeline RIF policy correction)
+#          fct_step2_pipeline.R     (run_sim_pipeline RIF policy correction)
 
 
 # Shared helpers ----

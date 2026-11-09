@@ -36,11 +36,11 @@ without `test-`) catches both. Search for the function name in `tests/` too:
 
 | Changed | Run (filter) |
 |---|---|
-| `fct_fit_model.R`, `fct_predict_outcomes.R`, `fct_rif_sim.R` | `fct.fit.model`, `fct.predict`, `fct.rif`, `determinism` |
-| `fct_simulations.R`, `fct_run_simulation.R`, `fct_step2_*` | `fct.simulations`, `fct.run.simulation`, `step2`, `determinism`, `w3` |
+| `fct_model_fit.R`, `fct_model_predict.R`, `fct_model_rif.R` | `fct.fit.model`, `fct.predict`, `fct.rif`, `determinism` |
+| `fct_step2_pipeline.R`, `fct_step2_run.R`, `fct_step2_*` | `fct.simulations`, `fct.run.simulation`, `step2`, `determinism`, `w3` |
 | `fct_aggregation*.R` | `aggregation`, `w3` |
 | `fct_policy_*`, `fct_sp_*`, `fct_step3_*` | `policy`, `^sp`, `fct.step3`, `fct.sp` |
-| `fct_policy_decompose.R`, `fct_policy_metric_decompose.R`, `fct_decomposition_summary.R` | `policy.decomposition`, `policy.metric.decompose`, `decomposition`, `w3.b` |
+| `fct_policy_decomp.R`, `fct_policy_metric_decomp.R`, `fct_decomp_summary.R` | `policy.decomposition`, `policy.metric.decompose`, `decomposition`, `w3.b` |
 | `fct_metric_registry.R`, uncertainty code | `uncertainty`, `policy.decomposition.uncertainty` |
 | `fct_hexmap.R`, `inst/app/vendor/` | `hexmap` (rendering needs the browser, see below) |
 | `fct_export.R`, `fct_provenance.R` | `export` |

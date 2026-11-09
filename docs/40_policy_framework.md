@@ -5,7 +5,7 @@ app_step: 3
 depends_on: [notation, framework, linear-model, rif-model, simulation, metrics, uncertainty]
 symbols: [D, Delta, T, y, W, tau, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#policy-variables-must-be-in-the-step-1-model
-code: [R/fct_policy_sim.R, R/fct_policy_registry.R, R/fct_step3_input.R, R/fct_step3_async.R, R/fct_policy_decompose.R, R/fct_policy_metric_decompose.R, R/fct_policy_sim_compare.R]
+code: [R/fct_policy_sim.R, R/fct_policy_registry.R, R/fct_step3_input.R, R/fct_step3_async.R, R/fct_policy_decomp.R, R/fct_policy_metric_decomp.R, R/fct_echart_builders.R]
 verified_against: f62a72b
 ---
 
@@ -143,12 +143,12 @@ User guide: [Policy variables must be in the Step 1 model](https://github.com/wo
 | Modified survey | (1.1) | `R/fct_policy_sim.R` `apply_policy_to_svy()` |
 | Gating by the Step 1 model | Section 1 | `R/fct_policy_sim.R` `.lever_in_model()`, `.policy_lever_terms()`, `.access_levers_unavailable()` |
 | Seeded streams per lever | Section 1 | `R/fct_policy_sim.R` `apply_policy_to_svy()` |
-| Covariate changes | (1.1) | `R/fct_policy_decompose.R` `.compute_policy_deltas()` |
-| Policy arm from the baseline pipelines | (2.1), (2.3) | `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()`; `R/fct_policy_metric_decompose.R` `.apply_policy_annual_pipeline()` |
+| Covariate changes | (1.1) | `R/fct_policy_decomp.R` `.compute_policy_deltas()` |
+| Policy arm from the baseline pipelines | (2.1), (2.3) | `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()`; `R/fct_policy_metric_decomp.R` `.apply_policy_annual_pipeline()` |
 | Run orchestration | Section 2 | `R/fct_step3_async.R` `step3_compute()`; `R/fct_step3_input.R` `wise_step3_input()` |
 | Factor loading of the policy arm | (5.1) | `R/fct_policy_loading.R` `.policy_arm_loading()`, `.policy_arm_loading_rif()`, `.policy_loading_terms()`, `.policy_loading_rows()` |
-| Correction per prediction row | (2.2), (3.1) | `R/fct_policy_metric_decompose.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()`, `.validate_policy_annual_exposure()` |
-| Supported models and outcomes | Section 4 | `R/fct_policy_sim_compare.R` `.policy_endpoint_status()`; `R/fct_policy_metric_decompose.R` `.policy_annual_channel_status()` |
+| Correction per prediction row | (2.2), (3.1) | `R/fct_policy_metric_decomp.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()`, `.validate_policy_annual_exposure()` |
+| Supported models and outcomes | Section 4 | `R/fct_echart_builders.R` `.policy_endpoint_status()`; `R/fct_policy_metric_decomp.R` `.policy_annual_channel_status()` |
 | Run with no effect | Section 2 | `R/fct_policy_sim.R` `.scenario_has_effect()` |
 | Before-and-after summaries | Interpretation | `R/fct_policy_sim.R` `.policy_diagnostics_snapshot()` |
-| Share of climate loss offset | (6.1) | `R/fct_policy_sim_compare.R` `step3_offset_share()` |
+| Share of climate loss offset | (6.1) | `R/fct_echart_builders.R` `step3_offset_share()` |

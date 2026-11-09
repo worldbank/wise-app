@@ -5,7 +5,7 @@ app_step: 2
 depends_on: [notation, outcomes, simulation]
 symbols: [Y, omega, z, T, G, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#interpreting-the-results-tab
-code: [R/fct_aggregation.R, R/fct_metric_registry.R, R/fct_sim_compare.R, R/fct_step2_tables.R, R/fct_uncertainty_helpers.R, R/fct_incidence.R, R/fct_simulations.R]
+code: [R/fct_aggregation.R, R/fct_metric_registry.R, R/fct_step2_compare.R, R/fct_step2_tables.R, R/fct_uncertainty.R, R/fct_incidence.R, R/fct_step2_pipeline.R]
 verified_against: 1ecc93e
 ---
 
@@ -147,10 +147,10 @@ User guide: [Interpreting the Results tab](https://github.com/worldbank/wise-app
 | Units, direction and change kind | 2 | `R/fct_metric_registry.R` `metric_metadata()`, `.WISE_METRIC_REGISTRY` |
 | Historical reference | (2.1) | `R/fct_step2_tables.R` `step2_hist_ref()` |
 | Expected value and bands | 3 | `R/fct_step2_tables.R` `step2_pointrange_bands()`, `step2_timeseries_curves()` |
-| Rank interpolation and support | (4.1), (4.2) | `R/fct_uncertainty_helpers.R` `rank_interp()`, `adverse_year_support()` |
-| Return-period probabilities | 4 | `R/fct_simulations.R` `RP_LOW`, `RP_HIGH` |
+| Rank interpolation and support | (4.1), (4.2) | `R/fct_uncertainty.R` `rank_interp()`, `adverse_year_support()` |
+| Return-period probabilities | 4 | `R/fct_step2_pipeline.R` `RP_LOW`, `RP_HIGH` |
 | Threshold table | 4 | `R/fct_step2_tables.R` `step2_threshold_table()` |
-| Return period of an adverse level | (4.3) | `R/fct_sim_compare.R` `step2_adverse_return_period()` |
+| Return period of an adverse level | (4.3) | `R/fct_step2_compare.R` `step2_adverse_return_period()` |
 | Adverse tail by metric | 4 | `R/fct_metric_registry.R` `metric_metadata()`, `metric_decision_return_periods()` |
 | Variance breakdown | (5.1) | `R/fct_step2_tables.R` `step2_variance_breakdown()` |
 | Decile incidence | (6.1) | `R/fct_incidence.R` `step2_incidence_by_decile()`, `weighted_baseline_deciles()` |

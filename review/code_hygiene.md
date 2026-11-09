@@ -55,7 +55,7 @@ These describe what the codebase already does. New and modified code should foll
 
 Whitespace and comment edits only; flag anything else.
 
-- **Numerics:** `fct_run_simulation.R`, `fct_step2_compute.R`, and the decomposition code (`fct_policy_decompose.R`, `fct_policy_metric_decompose.R`, `fct_decomposition_summary.R`). Reference numerics and determinism tests depend on them.
+- **Numerics:** `fct_step2_run.R`, `fct_step2_compute.R`, and the decomposition code (`fct_policy_decomp.R`, `fct_policy_metric_decomp.R`, `fct_decomp_summary.R`). Reference numerics and determinism tests depend on them.
 - **Async code:** `fct_step2_async.R` and anything serialized to mirai workers. Functions, globals and arguments may be captured by name, so "unused" cannot be proven by static reading.
 - **Contract surface:** exported functions, `ENGINE_REGISTRY` and metric-registry fields, `.wiseapp_*` columns, and any identifier used in `inst/` JS, `Shiny.setInputValue` or `tests/`. This includes the `year` type contract described in `ARCHITECTURE.md`.
 

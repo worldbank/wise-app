@@ -53,7 +53,7 @@ Glue (`R/fct_step1_data.R`): `wise_select_surveys()`, `load_survey_frame()`,
 `prepare_survey_data()`, `wise_selected_outcome()`, `wise_outcome_data()`,
 `wise_selected_weather()`, `wise_load_weather()`, `wise_load_location_panel()`.
 The table builders are `variable_stats_table()`, `interview_dates_table()` and
-`weather_stats_table()` (`R/fct_step1_tables.R`).
+`weather_stats_table()` (`R/fct_step1_stat_tables.R`).
 
 ## 3. Step 1 - model (`mod_1_06`)
 
@@ -74,7 +74,7 @@ Glue: `wise_valid_vars()`, Lasso helpers, `wise_selected_model()`,
 `wise_model_from_spec()`, `wise_fit()` (`R/fct_step1_model.R`); effect
 translations and the table builders `model_terms_table()`, `model_fit_table()`,
 `model_vcov_table()` (`R/fct_step1_model_tables.R`); `fit_stats_raw()` and
-`importance_shares()` (`R/fct_results.R`).
+`importance_shares()` (`R/fct_step1_results.R`).
 
 ## 4. Step 2 - simulation (`mod_2_01_weathersim`)
 

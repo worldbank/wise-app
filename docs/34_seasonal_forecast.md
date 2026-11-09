@@ -5,7 +5,7 @@ app_step: 2
 depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
-code: [R/utils_forecast_ui.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_window.R, R/fct_forecast_skill.R, R/fct_run_simulation.R]
+code: [R/fct_step2_forecast.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_window.R, R/fct_forecast_skill.R, R/fct_step2_run.R]
 verified_against: 8639eb2
 ---
 
@@ -103,18 +103,18 @@ User guide: [wise-app-docs](https://github.com/worldbank/wise-app-docs).
 
 | Concept | Equation | Code |
 |---|---|---|
-| Forecast controls, window and lag text | 2 | `R/utils_forecast_ui.R` `.step2_forecast_window()`, `.step2_forecast_lag_text()` |
-| Reach-back of the fitted predictors | 2 | `R/utils_forecast_ui.R` `.step2_forecast_lag()` |
-| Predictor-month availability and allowed starts | 2 | `R/utils_forecast_ui.R` `.step2_forecast_months()`, `.step2_forecast_starts()` |
-| Variables the forecast provides | 1 | `R/utils_forecast_ui.R` `.step2_forecast_unsupported()`, `.STEP2_FORECAST_VARS` |
-| Forecast scenario name and run signature | 3 | `R/utils_forecast_ui.R` `.step2_forecast_display_key()`, `.step2_forecast_signature()` |
+| Forecast controls, window and lag text | 2 | `R/fct_step2_forecast.R` `.step2_forecast_window()`, `.step2_forecast_lag_text()` |
+| Reach-back of the fitted predictors | 2 | `R/fct_step2_forecast.R` `.step2_forecast_lag()` |
+| Predictor-month availability and allowed starts | 2 | `R/fct_step2_forecast.R` `.step2_forecast_months()`, `.step2_forecast_starts()` |
+| Variables the forecast provides | 1 | `R/fct_step2_forecast.R` `.step2_forecast_unsupported()`, `.STEP2_FORECAST_VARS` |
+| Forecast scenario name and run signature | 3 | `R/fct_step2_forecast.R` `.step2_forecast_display_key()`, `.step2_forecast_signature()` |
 | Local run discovery and publication identity | 1 | `R/fct_forecast_catalogue.R` `.forecast_catalogue_runs()` |
 | Same-window reference weather (`refyear_<year>` frames) | 4 | `R/fct_forecast_weather.R` `.get_forecast_weather(reference_years = )` |
-| Reference pipelines and the interview-month join key | 3, 4 | `R/fct_run_simulation.R` `consume_reference()`, `.step2_forecast_join_keys()` |
+| Reference pipelines and the interview-month join key | 3, 4 | `R/fct_step2_run.R` `consume_reference()`, `.step2_forecast_join_keys()` |
 | Hindcast skill of the target months and of the window | 4 | `R/fct_forecast_skill.R` `.forecast_skill_table()`, `.forecast_skill_summary()` |
-| Policy under the forecast: exposure contract for the window, reference pipelines | 5 | `R/fct_policy_metric_decompose.R` `.policy_forecast_window()`, `.validate_policy_annual_exposure()`; `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()` |
+| Policy under the forecast: exposure contract for the window, reference pipelines | 5 | `R/fct_policy_metric_decomp.R` `.policy_forecast_window()`, `.validate_policy_annual_exposure()`; `R/fct_policy_sim.R` `apply_policy_delta_to_baseline()` |
 | Policy effect: window views, cards, batch rows | 5 | `R/fct_forecast_window.R` `step3_window_views()`, `.step3_window_cards()`; `R/fct_forecast_policy.R` `step3_forecast_policy()`, `step3_forecast_batch_tables()` |
 | Member placement in the reference, and against the last 10 reference years | 4 | `R/fct_forecast_placement.R` `.forecast_placement_stats()`, `.forecast_placement_recent()`, `step2_forecast_placement()`; `R/fct_forecast_window.R` `step2_window_placement()` |
-| Cards comparator and training-month warning | 4 | `R/fct_sim_compare.R` `step2_headline_cards()` |
-| Forecast window views: the target-month samples through the annual view builders, the Forecast row, the exceedance position, the merged charts | 4 | `R/fct_forecast_window.R` `step2_window_series()`, `step2_window_views()`, `.step2_window_adverse_dots()`, `.step2_window_exceedance_position()`, `.step2_window_merge()`; `R/mod_2_02_results.R` and `R/fct_policy_sim_compare.R` (one chart per section) |
+| Cards comparator and training-month warning | 4 | `R/fct_step2_compare.R` `step2_headline_cards()` |
+| Forecast window views: the target-month samples through the annual view builders, the Forecast row, the exceedance position, the merged charts | 4 | `R/fct_forecast_window.R` `step2_window_series()`, `step2_window_views()`, `.step2_window_adverse_dots()`, `.step2_window_exceedance_position()`, `.step2_window_merge()`; `R/mod_2_02_results.R` and `R/fct_echart_builders.R` (one chart per section) |
 | Adjusted monthly weather and fitted predictor windows | 2 | `R/fct_forecast_weather.R` `.get_forecast_weather()` |

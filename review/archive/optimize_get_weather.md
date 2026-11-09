@@ -1,4 +1,4 @@
-# Speed opportunities: weather pipeline (`fct_get_weather.R`)
+# Speed opportunities: weather pipeline (`fct_data_weather.R`)
 
 **Status: candidate — unvalidated. Consider for implementation; not enforced (see `optimization_guidelines.md`). Objective: raw speed; validate on the Section 9 payloads.**
 **Update 2026-09-18: #1–#3 implemented and validated (see ADOPTED markers + new traps); #4–#6 deferred/rejected.**
@@ -71,7 +71,7 @@ quantify its share before micro-optimizing elsewhere.
 - **#1 (extended)**: both `h3_weights` (the h3 file scan + population summarise) and
   `loc_monthly` (post-join, post-pop-weight, pre-rolling) are disk-cached via
   `.wx_loc_cache_store()/.wx_loc_cache_load()/.wx_loc_cache_key()` in
-  `fct_get_weather.R`. Key covers both cache version constants, weather + h3 fnames,
+  `fct_data_weather.R`. Key covers both cache version constants, weather + h3 fnames,
   weather vars, date span, and the harmonised H3 resolutions. Applies to local backends
   too (the join cost does not depend on the parquet location); honours
   `WISEAPP_WEATHER_CACHE_DISABLE`; shares tmp+rename race handling and LRU eviction with

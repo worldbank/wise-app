@@ -5,7 +5,7 @@ app_step: 1
 depends_on: [notation, framework, outcomes, model-specification]
 symbols: [y, Y, W, M, X, beta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning
-code: [R/fct_fit_model.R, R/fct_predict_outcomes.R, R/fct_step1_headline.R, R/fct_aggregation.R, R/fct_results.R]
+code: [R/fct_model_fit.R, R/fct_model_predict.R, R/fct_step1_headline.R, R/fct_aggregation.R, R/fct_step1_results.R]
 verified_against: 8592a9d
 ---
 
@@ -108,11 +108,11 @@ User guide: [Model specification and estimation](https://github.com/worldbank/wi
 
 | Concept | Equation | Code |
 |---|---|---|
-| Linear and logit estimation with absorbed fixed effects | (1.1), (3.1) | `R/fct_fit_model.R` `ENGINE_REGISTRY` (`fixest` entry), `fit_model()` |
-| Fall back from logit to linear | 3 | `R/fct_fit_model.R` `fit_model()` |
+| Linear and logit estimation with absorbed fixed effects | (1.1), (3.1) | `R/fct_model_fit.R` `ENGINE_REGISTRY` (`fixest` entry), `fit_model()` |
+| Fall back from logit to linear | 3 | `R/fct_model_fit.R` `fit_model()` |
 | Coefficient reading, contrasts | (2.1) | `R/fct_step1_headline.R` `step1_scenarios()`, `.s1_fixest_scenarios()`, `step1_fmt_effect()` |
 | Probability change at the median-risk household | (3.2) | `R/fct_step1_headline.R` `.s1_to_pp()` |
-| Slope curve and band for polynomial terms | 2 | `R/fct_results.R` `echart_weather_effect_plot()` |
-| Prediction | (4.1) | `R/fct_predict_outcomes.R` `predict_outcome()` |
+| Slope curve and band for polynomial terms | 2 | `R/fct_step1_results.R` `echart_weather_effect_plot()` |
+| Prediction | (4.1) | `R/fct_model_predict.R` `predict_outcome()` |
 | Residual rules | (4.1) | `R/fct_aggregation.R` `draw_residuals_vec()` |
-| Missing predictions counted | 4 | `R/fct_run_simulation.R` `step2_data_quality_notice()` |
+| Missing predictions counted | 4 | `R/fct_step2_run.R` `step2_data_quality_notice()` |

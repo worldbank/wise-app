@@ -1,6 +1,7 @@
-# Policy scenario discovery and diagnostics ----
-# Pure functions for policy scenario variable discovery and diagnostics.
-# Stateless and testable without Shiny.
+# Policy lever application and scenario diagnostics ----
+# Pure functions that detect which levers moved, apply them to the survey
+# (apply_policy_to_svy(), apply_policy_delta_to_baseline()) and summarise the
+# scenario. Stateless and testable without Shiny.
 
 
 #' Internal column name holding the per-household SP cash-transfer amount
@@ -1543,7 +1544,7 @@ apply_policy_to_svy <- function(svy,
 
     # Social protection: add per-recipient transfer as SP_TRANSFER_COL column.
     # welfare is the regression outcome (not a covariate), so we tag the
-    # transfer amount here; run_sim_pipeline() (fct_simulations.R) reads the
+    # transfer amount here; run_sim_pipeline() (fct_step2_pipeline.R) reads the
     # column post-prediction and adds it to y_point on the level scale
     # (re-logged when so$transform == "log") so the boost flows into
     # aggregate_with_uncertainty_delta() and matches the decomposition's delta_sp.

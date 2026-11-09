@@ -5,7 +5,7 @@ app_step: 1
 depends_on: [notation, framework, outcomes, weather-measures]
 symbols: [y, W, M, X, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#model-specification-estimation
-code: [R/fct_model_select.R, R/fct_step1_model.R, R/fct_fit_model.R, R/mod_1_06_model.R, R/fct_model_card.R, R/fct_results.R, R/fct_simulations.R]
+code: [R/fct_step1_model_select.R, R/fct_step1_model.R, R/fct_model_fit.R, R/mod_1_06_model.R, R/fct_step1_model_card.R, R/fct_step1_results.R, R/fct_step2_pipeline.R]
 verified_against: 3db0c63
 ---
 
@@ -128,15 +128,15 @@ User guide: [Model specification and estimation](https://github.com/worldbank/wi
 
 | Concept | Equation | Code |
 |---|---|---|
-| Specification assembly | 1 | `R/fct_model_select.R` `build_selected_model()`, `model_type_choices()`; `R/fct_step1_model.R` `wise_selected_model()` |
-| Pairwise terms and the three formulas | (1.1) to (1.3) | `R/fct_fit_model.R` `fit_model()`, `ENGINE_REGISTRY` |
-| Fixed-effect defaults and roles | 2 | `R/fct_spec_defaults.R` `wise_default_fixed_effects()`; `R/fct_model_select.R` `filter_vars_by_role()` |
-| Policy-locked moderators | 1 | `R/fct_model_select.R` `get_policy_locked_vars()` |
+| Specification assembly | 1 | `R/fct_step1_model_select.R` `build_selected_model()`, `model_type_choices()`; `R/fct_step1_model.R` `wise_selected_model()` |
+| Pairwise terms and the three formulas | (1.1) to (1.3) | `R/fct_model_fit.R` `fit_model()`, `ENGINE_REGISTRY` |
+| Fixed-effect defaults and roles | 2 | `R/fct_spec_defaults.R` `wise_default_fixed_effects()`; `R/fct_step1_model_select.R` `filter_vars_by_role()` |
+| Policy-locked moderators | 1 | `R/fct_step1_model_select.R` `get_policy_locked_vars()` |
 | Cluster variable | (3.1) | `R/fct_step1_model.R` `wise_cluster_var()` |
-| Covariance fallbacks | 3 | `R/fct_results.R` `.fixest_vcov()`; `R/fct_simulations.R` `compute_chol_vcov()` |
-| Complete-case sample | 4 | `R/fct_fit_model.R` `fit_model()` |
-| Candidate pool (90 per cent complete) | 5 | `R/fct_step1_model.R` `wise_valid_vars()`, `WISE_LABOR_ROW_RULES`; `R/fct_model_select.R` `filter_valid_vars()` |
-| Stability Lasso | (5.1), (5.2) | `R/fct_fit_model.R` `run_lasso_selection()`; `R/fct_step1_model.R` `wise_lasso_selection()`, `wise_lasso_covariates()` |
+| Covariance fallbacks | 3 | `R/fct_step1_results.R` `.fixest_vcov()`; `R/fct_step2_pipeline.R` `compute_chol_vcov()` |
+| Complete-case sample | 4 | `R/fct_model_fit.R` `fit_model()` |
+| Candidate pool (90 per cent complete) | 5 | `R/fct_step1_model.R` `wise_valid_vars()`, `WISE_LABOR_ROW_RULES`; `R/fct_step1_model_select.R` `filter_valid_vars()` |
+| Stability Lasso | (5.1), (5.2) | `R/fct_model_fit.R` `run_lasso_selection()`; `R/fct_step1_model.R` `wise_lasso_selection()`, `wise_lasso_covariates()` |
 | Lasso defaults | 5 | `R/fct_spec_defaults.R` `wise_default_lasso()` |
 | Fit wrapper with snapshot | 1 | `R/fct_step1_model.R` `wise_fit()` |
-| Specification summary card | Setup | `R/fct_model_card.R` `model_card_rows()` |
+| Specification summary card | Setup | `R/fct_step1_model_card.R` `model_card_rows()` |

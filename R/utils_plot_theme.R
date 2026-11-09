@@ -55,8 +55,8 @@
 
 # Sequential ramp (charts) ----
 # Single-hue brand-blue ramp for magnitude fills in ggplot charts. Map ramps
-# (YlOrRd / RdBu / Mako in fct_weatherstats.R, fct_surveystats.R,
-# fct_outcome.R) are reserved for maps and must not be reused in charts.
+# (YlOrRd / RdBu / Mako in fct_step1_weatherstats.R, fct_step1_surveystats.R,
+# fct_step1_outcome.R) are reserved for maps and must not be reused in charts.
 
 wise_seq_ramp <- function(n) {
   grDevices::colorRampPalette(c("#D9EFF8", "#0071BC", "#002244"))(n)

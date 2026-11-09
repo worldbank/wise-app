@@ -58,11 +58,11 @@ are not in the bundle, so changing them needs no regeneration.
 
 The bundled extensions (`inst/duckdb_extensions/`: `h3` and `httpfs`, as
 `.gz`) are built for one exact DuckDB version, and the app refuses a mismatch
-or a wrong checksum (`.duck_check_bundled_ext()` in `R/fct_load_data.R`). To
+or a wrong checksum (`.duck_check_bundled_ext()` in `R/fct_data_load.R`). To
 upgrade, change together:
 
 - `duckdb (== X)` in `DESCRIPTION`;
-- `.DUCKDB_BUNDLE_VERSION` and `.DUCKDB_BUNDLE_SHA256` in `R/fct_load_data.R`;
+- `.DUCKDB_BUNDLE_VERSION` and `.DUCKDB_BUNDLE_SHA256` in `R/fct_data_load.R`;
 - the two binaries, rebuilt for that version.
 
 How the binaries are built is not recorded in this repository: ask the user

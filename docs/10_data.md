@@ -5,7 +5,7 @@ app_step: 0
 depends_on: [notation, framework]
 symbols: [i, l, t, mu, Y, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
-code: [R/fct_surveystats.R, R/fct_step1_data.R, R/fct_loc_panel.R, R/fct_get_weather.R, R/fct_sample.R, R/fct_incidence.R, R/fct_weatherstats.R]
+code: [R/fct_step1_surveystats.R, R/fct_step1_data.R, R/fct_loc_panel.R, R/fct_data_weather.R, R/fct_step1_sample.R, R/fct_incidence.R, R/fct_step1_weatherstats.R]
 verified_against: 8639eb2
 ---
 
@@ -118,13 +118,13 @@ User guide: [Data](https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
 
 | Concept | Equation | Code |
 |---|---|---|
-| Conversion to 2021 PPP | (1.1) | `R/fct_surveystats.R` `convert_lcu_to_ppp()`, `assign_data_level()` |
-| Bottom-coding | (1.2) in notation | `R/fct_surveystats.R` `bottom_code_welfare()` |
+| Conversion to 2021 PPP | (1.1) | `R/fct_step1_surveystats.R` `convert_lcu_to_ppp()`, `assign_data_level()` |
+| Bottom-coding | (1.2) in notation | `R/fct_step1_surveystats.R` `bottom_code_welfare()` |
 | Survey preparation order | (1.1) | `R/fct_step1_data.R` `prepare_survey_data()` |
 | Records without deflator | (1.1) | `R/fct_step1_data.R` `survey_n_no_deflator()` |
-| H3 resolution harmonisation | 2 | `R/fct_get_weather.R` `.harmonise_h3()` |
-| Population-weighted location weather | (3.1) | `R/fct_get_weather.R` `get_weather()` |
+| H3 resolution harmonisation | 2 | `R/fct_data_weather.R` `.harmonise_h3()` |
+| Population-weighted location weather | (3.1) | `R/fct_data_weather.R` `get_weather()` |
 | Location panel | (4.1) | `R/fct_loc_panel.R` `loc_panel()`; `R/fct_step1_data.R` `wise_location_panel()` |
-| Survey-weather merge | 5 | `R/fct_weatherstats.R` `merge_survey_weather()` |
+| Survey-weather merge | 5 | `R/fct_step1_weatherstats.R` `merge_survey_weather()` |
 | Weight column | 7 | `R/fct_incidence.R` `survey_weight_column()` |
-| Available surveys and files | 5 | `R/fct_sample.R` `build_survey_fnames()`, `build_selected_surveys()` |
+| Available surveys and files | 5 | `R/fct_step1_sample.R` `build_survey_fnames()`, `build_selected_surveys()` |

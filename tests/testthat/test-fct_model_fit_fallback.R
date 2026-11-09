@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_fit_model_fallback.R                                 #
+# tests/testthat/test-fct_model_fit_fallback.R                                 #
 # REACT-14: silent specification fallbacks (logistic -> linear, clustered ->   #
 # unclustered VCV) are recorded as structured metadata on the fit result so    #
 # the Step 1 results banner can disclose them.                                 #

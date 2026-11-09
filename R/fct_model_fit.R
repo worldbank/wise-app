@@ -611,7 +611,7 @@ run_lasso_selection <- function(
 #'     \item{\code{$cluster}}{Variable name(s) for clustered SEs (fixest
 #'       only). Step 1 defaults to \code{"loc_id_panel"} - the survey-location
 #'       panel level at which the weather hazard is assigned - matching
-#'       \code{COEF_VCOV_SPEC} in fct_simulations.R. Variables absent from
+#'       \code{COEF_VCOV_SPEC} in fct_step2_pipeline.R. Variables absent from
 #'       the data trigger a warning and an unclustered fit.}
 #'   }
 #'
@@ -878,7 +878,7 @@ fit_model <- function(df, selected_outcome, selected_weather, selected_model,
   # default specification). fixest caches this fit-time VCV, so Step 1's
   # displayed standard errors and Step 2's coefficient-uncertainty draws
   # (compute_chol_vcov() tries the fit-time VCV first) share one sampling
-  # distribution - matching COEF_VCOV_SPEC in fct_simulations.R.
+  # distribution - matching COEF_VCOV_SPEC in fct_step2_pipeline.R.
   engine_opts <- list(
     fixest = if (length(cluster_vars) > 0) {
       list(cluster = stats::as.formula(

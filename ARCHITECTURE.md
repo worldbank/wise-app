@@ -8,18 +8,20 @@ Step 0 Overview (`mod_0_overview`) picks the data source and loads survey metada
 
 `R/` splits into `mod_*` (Shiny), `fct_*` (logic, no Shiny) and `utils_*` (shared helpers); `app_*` and `run_app.R` wire the app and `app_config.R` detects the environment (`inst/golem-config.yml` plus environment variables). `src/welfare_stats.cpp` is the Rcpp kernel for aggregation statistics.
 
+**Naming:** `<role>_<stage or domain>_<topic>.R`. The stage is `step0` to `step3`; the domain is one of `data`, `model`, `forecast`, `policy`, `decomp`, `batch`. `mod_N_*` is the UI of Step N, so `mod_2_*` pairs with `fct_step2_*`. The files `fct_stepN_{data,model,input,tables}` are the glue that both the modules and the batch pipeline call; the other `fct_stepN_*` files serve that step only.
+
 ## The `fct_` files
 
 One line each; the file header and its roxygen hold the design.
 
 | Area | Files |
 |---|---|
-| Data | `fct_connection.R` (storage-backend parameters), `fct_load_data.R` (ingestion and validation through DuckDB), `fct_weatherstats.R`, `fct_get_weather.R`, `fct_forecast_catalogue.R` (local experimental run discovery), `fct_forecast_weather.R` (forecast predictor windows) |
-| Models | `fct_fit_model.R` (`ENGINE_REGISTRY`), `fct_predict_outcomes.R`, `fct_rif_sim.R` (RIF quantile regression) |
-| Step 2 | `fct_simulations.R` (pipeline), `fct_run_simulation.R` and `fct_step2_compute.R` (reference numerics, pure and serial), `fct_step2_async.R` (mirai coordinator, also the Overview metadata pool), `fct_sim_compare.R` (comparison views), `fct_metric_registry.R` (metric metadata) |
-| Step 3 | `fct_policy_registry.R` (levers), `fct_policy_sim.R`, `fct_policy_sim_compare.R`, `fct_sp_effectiveness.R` (cost and targeting metrics, cost-effectiveness engine), `fct_sp_shock.R` (shock-responsive transfers), `fct_policy_decompose.R`, `fct_policy_metric_decompose.R`, `fct_decomposition_summary.R` |
-| Output | `fct_results.R`, `fct_export.R` (export bundles), `fct_provenance.R` (immutable run record), `fct_hexmap.R` (MapLibre bridge) |
-| Batch glue | `fct_step1_data.R`, `fct_spec_defaults.R`, `fct_step1_tables.R`, `fct_step1_model.R`, `fct_step1_model_tables.R`, `fct_step2_input.R`, `fct_step2_tables.R`, `fct_step3_input.R`, `fct_step3_tables.R`: Shiny-free code that the modules and the batch pipeline both call (table reference `batch/docs/tables.md`), plus `fct_batch_spec.R` and `fct_batch_targets.R` (run spec and `targets` runner, template in `inst/batch/`) |
+| Data | `fct_data_connection.R` (storage-backend parameters), `fct_data_load.R` (ingestion and validation through DuckDB), `fct_step1_weatherstats.R`, `fct_data_weather.R`, `fct_forecast_catalogue.R` (local experimental run discovery), `fct_forecast_weather.R` (forecast predictor windows) |
+| Models | `fct_model_fit.R` (`ENGINE_REGISTRY`), `fct_model_predict.R`, `fct_model_rif.R` (RIF quantile regression) |
+| Step 2 | `fct_step2_pipeline.R` (pipeline), `fct_step2_run.R` and `fct_step2_compute.R` (reference numerics, pure and serial), `fct_step2_async.R` (mirai coordinator, also the Overview metadata pool), `fct_step2_compare.R` (comparison views), `fct_metric_registry.R` (metric metadata) |
+| Step 3 | `fct_policy_registry.R` (levers), `fct_policy_sim.R`, `fct_echart_builders.R`, `fct_policy_sp_effectiveness.R` (cost and targeting metrics, cost-effectiveness engine), `fct_policy_sp_shock.R` (shock-responsive transfers), `fct_policy_decomp.R`, `fct_policy_metric_decomp.R`, `fct_decomp_summary.R` |
+| Output | `fct_step1_results.R`, `fct_export.R` (export bundles), `fct_provenance.R` (immutable run record), `fct_hexmap.R` (MapLibre bridge) |
+| Batch glue | `fct_step1_data.R`, `fct_spec_defaults.R`, `fct_step1_stat_tables.R`, `fct_step1_model.R`, `fct_step1_model_tables.R`, `fct_step2_input.R`, `fct_step2_tables.R`, `fct_step3_input.R`, `fct_step3_tables.R`: Shiny-free code that the modules and the batch pipeline both call (table reference `batch/docs/tables.md`), plus `fct_batch_spec.R` and `fct_batch_targets.R` (run spec and `targets` runner, template in `inst/batch/`) |
 
 ## Contracts that span files
 
@@ -37,7 +39,7 @@ One line each; the file header and its roxygen hold the design.
 
 ## Data backends
 
-DuckDB is the one query engine. S3, GCS and Databricks use the `httpfs` extension; Azure needs `azure` and `delta` (not bundled, installed on first use, local and dev runs only); local needs none. Auth variables and the allowlists: `DEPLOYMENT.md`. Code: `fct_connection.R`, `fct_load_data.R`.
+DuckDB is the one query engine. S3, GCS and Databricks use the `httpfs` extension; Azure needs `azure` and `delta` (not bundled, installed on first use, local and dev runs only); local needs none. Auth variables and the allowlists: `DEPLOYMENT.md`. Code: `fct_data_connection.R`, `fct_data_load.R`.
 
 ## Testing details
 

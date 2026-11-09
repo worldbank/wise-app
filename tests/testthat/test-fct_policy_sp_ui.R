@@ -1,5 +1,5 @@
 # Direct tests of the pure helpers of the social protection panel. The rendered
-# reach card is also covered through the module in test-fct_sp_shock.R.
+# reach card is also covered through the module in test-fct_policy_sp_shock.R.
 
 test_that(".sp_unit_word words each analysis unit and defaults to households", {
   expect_equal(.sp_unit_word(), "households")

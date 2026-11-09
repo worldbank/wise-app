@@ -5,7 +5,7 @@ app_step: cross
 depends_on: [notation, reproducibility, simulation, policy-framework]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/export.qmd
-code: [R/fct_batch_spec.R, R/fct_batch_targets.R, R/fct_spec_defaults.R, R/fct_step1_tables.R, R/fct_step2_tables.R, R/fct_step3_tables.R]
+code: [R/fct_batch_spec.R, R/fct_batch_targets.R, R/fct_spec_defaults.R, R/fct_step1_stat_tables.R, R/fct_step2_tables.R, R/fct_step3_tables.R]
 verified_against: 8639eb2
 ---
 
@@ -88,6 +88,6 @@ None. Full entries for other pages are in [references](references.md).
 | Start from an app configuration | Setup | `R/fct_batch_spec.R` `wise_spec_from_config()` |
 | Runner and caching by stage | Section 2 | `R/fct_batch_targets.R` `wise_targets()`, `wise_batch_controller()`, `wise_batch_template()` |
 | Input-file fingerprints in the stage work items | Section 2 | `R/fct_batch_targets.R` `.batch_item_files()`, `.batch_data_digest()` |
-| Step 0 and 1 tables | Section 3 | `R/fct_step1_tables.R`; `R/fct_step1_model_tables.R` |
+| Step 0 and 1 tables | Section 3 | `R/fct_step1_stat_tables.R`; `R/fct_step1_model_tables.R` |
 | Step 2 tables | Section 3 | `R/fct_step2_tables.R` |
 | Step 3 tables | Section 3 | `R/fct_step3_tables.R` `step3_batch_tables()` |

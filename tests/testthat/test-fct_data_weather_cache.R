@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_wx_cache.R                                           #
+# tests/testthat/test-fct_data_weather_cache.R                                           #
 # PERF-13: bounded disk cache for remote weather parquet fetches.              #
 #  - cached slice is bit-identical to the direct lazy scan                     #
 #  - second call reads the cache (source can be removed)                       #

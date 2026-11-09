@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_sp_shock.R                                           #
+# tests/testthat/test-fct_policy_sp_shock.R                                           #
 # Shock-responsive SP: spec validation (P1-1) and trigger thresholds (P1-2).   #
 # ============================================================================ #
 

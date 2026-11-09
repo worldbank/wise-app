@@ -12,7 +12,7 @@ mod_1_02_surveystats_ui <- function(id) {
   # The `dt-wrap` column style lives in custom.css. It used to be built here
   # as a bare tags$style() that was evaluated and then thrown away - the
   # tagList below is what the function returns - so the rule never reached the
-  # page. It now also serves the weather stats tables (fct_weatherstats.R).
+  # page. It now also serves the weather stats tables (fct_step1_weatherstats.R).
   tagList(
     uiOutput(ns("survey_stats_button_ui"))
   )

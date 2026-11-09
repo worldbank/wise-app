@@ -19,7 +19,7 @@ The original review found that the suite would not behave the same on CI as loca
 1. **CI has never run green.** A workflow existed but failed at dependency resolution (see 2.1). The fix is committed; the first run after a push is unverified.
 2. **Fixtures are duplicated across files and test files are named after project history**, not after the `R/` file they cover. This costs maintainability, not correctness.
 3. **No browser layer.** MapLibre/hexmap JS, `conditionalPanel` visibility, `update*Input()` restoration on config import, and the real Step 0 to 3 flow are not exercised.
-4. **Coverage is uneven.** Step 3 policy-lever modules, `mod_1_08_modelfit`, `fct_predict_outcomes`, `fct_step1_headline`, and `app_server` had little or none at review time (section 6; numbers not re-measured).
+4. **Coverage is uneven.** Step 3 policy-lever modules, `mod_1_08_modelfit`, `fct_model_predict`, `fct_step1_headline`, and `app_server` had little or none at review time (section 6; numbers not re-measured).
 
 ---
 
@@ -67,7 +67,7 @@ The original review found that the suite would not behave the same on CI as loca
 |---|---|
 | `test-rerun-regressions.R`: the 3 toy-server tests | Remove; they test `observeEvent()`, not app code. The real-module tests in the same file cover the regressions. |
 | `test-export-wiring-contract.R` + `test-csv-export-wiring-contract.R` | Merge into one source-contract file with one scanner. |
-| `test-table-csv-export.R` | Move `make_regtable_df` tests to the `fct_results` tests. |
+| `test-table-csv-export.R` | Move `make_regtable_df` tests to the `fct_step1_results` tests. |
 | `test-step3-wave2-e.R`, `test-ui-migration-step3.R`, `test-uncertainty-decomposition.R`, `test-perf02-weather-transformations.R`, `test-visualization-contracts.R` | Redistribute to the files they test. |
 | `test-w3-a-...`, `test-w3-b-...` characterization files | Keep assertions that nothing else pins; delete the rest. |
 | Step 2 contract / compute / payload; aggregation kernel / delta / cache | Keep separate (different layers). Only the fixtures overlap. |
@@ -124,14 +124,14 @@ The original review found that the suite would not behave the same on CI as loca
 
 | File | Coverage then | Notes |
 |---|---|---|
-| `fct_predict_outcomes.R` | 38% | Core prediction path. Highest priority. |
+| `fct_model_predict.R` | 38% | Core prediction path. Highest priority. |
 | `mod_3_02_infra.R`, `mod_3_03_digital.R`, `mod_3_04_labor.R`, `mod_3_05_education.R` | 4 to 6% | Only UI constructors run; servers untested. |
 | `mod_1_08_modelfit.R` | 0% | No tests. |
 | `fct_step1_headline.R` | 43% | Headline numbers shown to users. Tests were added since (`test-fct_step1_headline.R`, `test-step1-headline-cards.R`); re-measure. |
 | `app_server.R`, `run_app.R` | 0% | No app-level test. |
-| `fct_results.R` | 58% | Largest file. Only branches that produce user-visible numbers matter. |
-| `fct_sim_diag.R`, `mod_2_01_weathersim.R` | 59 to 64% | |
+| `fct_step1_results.R` | 58% | Largest file. Only branches that produce user-visible numbers matter. |
+| `fct_step2_diagnostics.R`, `mod_2_01_weathersim.R` | 59 to 64% | |
 
-Best covered (above 92%): `fct_policy_sim_compare.R`, `mod_2_02_results.R`, `fct_policy_metric_decompose.R`, `fct_surveystats.R`, `fct_aggregation_delta.R`, `fct_metric_registry.R`, `fct_hexmap.R`, `utils_*`.
+Best covered (above 92%): `fct_echart_builders.R`, `mod_2_02_results.R`, `fct_policy_metric_decomp.R`, `fct_step1_surveystats.R`, `fct_aggregation_delta.R`, `fct_metric_registry.R`, `fct_hexmap.R`, `utils_*`.
 
-The biggest correctness gaps are not in the heavily tested numerical core. They are in the Step 3 lever modules, `mod_1_08_modelfit`, `fct_predict_outcomes`, and app wiring: a user-visible scenario or number can break there with no test failing. Do not set a global coverage gate in CI until these are closed.
+The biggest correctness gaps are not in the heavily tested numerical core. They are in the Step 3 lever modules, `mod_1_08_modelfit`, `fct_model_predict`, and app wiring: a user-visible scenario or number can break there with no test failing. Do not set a global coverage gate in CI until these are closed.

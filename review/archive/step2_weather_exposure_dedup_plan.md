@@ -10,11 +10,11 @@ Status: option A implemented (2026-10-05, uncommitted); option C not done (small
 | qs2 result file | 196.5 MB | 113.8 MB (-42%) |
 | Resolve all 16 members of one scenario (with per-scenario cache) | - | 0.07 s |
 
-- Producer: `run_sim_pipeline()` stores `.policy_exposure_compact()` (schema 2). Resolver: `step2_exposure_resolve(pipeline, owner, cache)` in `R/fct_simulations.R`; schema-1 mappings pass through unchanged.
+- Producer: `run_sim_pipeline()` stores `.policy_exposure_compact()` (schema 2). Resolver: `step2_exposure_resolve(pipeline, owner, cache)` in `R/fct_step2_pipeline.R`; schema-1 mappings pass through unchanged.
 - Consumers: `.validate_policy_annual_exposure()` resolves; `owner`/cache threaded through `.policy_annual_channels()`, `.policy_annual_channels_reference()`, `.apply_policy_annual_pipeline()` (callers in `R/fct_policy_sim.R`) and `.policy_metric_pipeline()` / `.policy_metric_decomposition()`. The baseline/policy alignment check now also requires identical `weather_raw`.
 - Parity: the resolved mapping is `identical()` to the schema-1 mapping for every pipeline of a real run (31 members + historical), and in unit tests (plain, shared-key weather, cached), including the end-to-end annual policy correction.
 - Finding (separate issue, pre-existing): weather inputs are not bit-reproducible across runs. One CMIP6 member's `spei6` differed by about 4e-5 relative between two identical BFA runs, which suggests non-deterministic floating-point aggregation in DuckDB. Predictions were identical in that case, but it is worth a determinism follow-up.
-Scope: the per-pipeline `weather_exposure` mapping produced in `run_sim_pipeline()` (`R/fct_simulations.R`) and consumed by the Step 3 metric-aware decomposition (`R/fct_policy_metric_decompose.R`).
+Scope: the per-pipeline `weather_exposure` mapping produced in `run_sim_pipeline()` (`R/fct_step2_pipeline.R`) and consumed by the Step 3 metric-aware decomposition (`R/fct_policy_metric_decomp.R`).
 
 ## 1. Problem
 
@@ -32,7 +32,7 @@ Extrapolated to 3 SSP x 3 periods (about 145 pipelines), the main Shiny process 
 
 ## 2. What `weather_exposure` contains (per climate model, about 28.5 MB)
 
-Built by `.policy_exposure_mapping()` (`R/fct_simulations.R:891`) from `.policy_exposure_table()` (`R/fct_simulations.R:869`):
+Built by `.policy_exposure_mapping()` (`R/fct_step2_pipeline.R:891`) from `.policy_exposure_table()` (`R/fct_step2_pipeline.R:869`):
 
 | Field | Size | Redundancy |
 |---|---:|---|
@@ -45,7 +45,7 @@ Removing only the derivable and duplicated parts removes about 27 of the 28.5 MB
 
 ## 3. Consumers (all in Step 3)
 
-- `.validate_policy_annual_exposure()` (`R/fct_policy_metric_decompose.R:87-140`):
+- `.validate_policy_annual_exposure()` (`R/fct_policy_metric_decomp.R:87-140`):
   - checks `status`;
   - checks that the 4 duplicated vectors equal the pipeline's;
   - validates `row_index`/`prediction_row_id`;
@@ -103,7 +103,7 @@ This is an add-on to A or B, saving about 1.7 MB per member. Do it only if Step 
   - shared and unshared `weather_raw`;
   - memory and reference weather storage;
   - historical and future members.
-- The Step 3 decomposition outputs are unchanged. These tests already exist: `test-fct-policy-metric-decompose.R`, `test-policy-decomposition-uncertainty.R`, `test-w3-b-future-decomposition-characterization.R` and the policy snapshot tests. They must pass without snapshot updates.
+- The Step 3 decomposition outputs are unchanged. These tests already exist: `test-fct_policy_metric_decomp.R`, `test-policy-decomposition-uncertainty.R`, `test-w3-b-future-decomposition-characterization.R` and the policy snapshot tests. They must pass without snapshot updates.
 - Payload size regression test: the per-member `weather_exposure` object size is below a small bound (for example, under 5% of the member pipeline).
 
 ## 7. Benchmarks (`review/optimization_guidelines.md` section 9)

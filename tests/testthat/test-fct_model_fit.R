@@ -1,5 +1,5 @@
 # ============================================================================ #
-# tests/testthat/test-fct_fit_model.R                                          #
+# tests/testthat/test-fct_model_fit.R                                          #
 # fit_model() / run_lasso_selection() sample and role-flag regressions.        #
 # ============================================================================ #
 

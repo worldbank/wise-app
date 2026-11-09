@@ -5,7 +5,7 @@ app_step: 1
 depends_on: [notation, data]
 symbols: [W, mu, l, v, x]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#weather-variables-transformations
-code: [R/fct_get_weather.R, R/fct_weather_select.R, R/fct_weather_pipeline.R, R/fct_weatherstats.R, R/fct_loc_panel.R, R/utils_mod_1_helpers.R, R/mod_1_04_weather.R, R/mod_1_05_weatherstats.R]
+code: [R/fct_data_weather.R, R/fct_step1_weather_select.R, R/fct_step1_weather_card.R, R/fct_step1_weatherstats.R, R/fct_loc_panel.R, R/utils_step1.R, R/mod_1_04_weather.R, R/mod_1_05_weatherstats.R]
 verified_against: b8d37e4
 ---
 
@@ -125,13 +125,13 @@ User guide: [Weather variables and transformations](https://github.com/worldbank
 
 | Concept | Equation | Code |
 |---|---|---|
-| Defaults per variable | Setup | `R/fct_weather_select.R` `weather_spec_defaults()`, `temporal_agg_default()`, `transformation_default()` |
-| Window and aggregation | (1.1) | `R/fct_get_weather.R` `get_weather()` (rolling expressions) |
-| Normal and anomalies | (2.1), (2.2) | `R/fct_get_weather.R` `.build_climate_reference()`, `.apply_transformations()`, `.warn_zero_sd_reference()` |
-| Cut points | 3 | `R/fct_get_weather.R` `.compute_breaks()` |
-| Binning | (3.1) | `R/fct_get_weather.R` `.apply_binning()`; `R/fct_weather_select.R` `relabel_bin_levels()`, `parse_custom_breaks()` |
-| Polynomial terms | 3 | `R/fct_fit_model.R` `fit_model()` |
-| Dates of historical comparison | (5.1) | `R/fct_weatherstats.R` `expand_hist_dates()`, `join_hist_sample_cells()` |
-| Anomaly and percentile | (5.1) | `R/fct_weatherstats.R` `summarise_weather_anomaly_by_loc()`, `summarise_weather_by_loc()` |
-| Weighted summaries | 5 | `R/utils_mod_1_helpers.R` `weighted_summary_long()`; `R/fct_weatherstats.R` `build_weather_stats_table()` |
-| Pipeline description in the card | Setup | `R/fct_weather_pipeline.R` `weather_pipeline_stages()` |
+| Defaults per variable | Setup | `R/fct_step1_weather_select.R` `weather_spec_defaults()`, `temporal_agg_default()`, `transformation_default()` |
+| Window and aggregation | (1.1) | `R/fct_data_weather.R` `get_weather()` (rolling expressions) |
+| Normal and anomalies | (2.1), (2.2) | `R/fct_data_weather.R` `.build_climate_reference()`, `.apply_transformations()`, `.warn_zero_sd_reference()` |
+| Cut points | 3 | `R/fct_data_weather.R` `.compute_breaks()` |
+| Binning | (3.1) | `R/fct_data_weather.R` `.apply_binning()`; `R/fct_step1_weather_select.R` `relabel_bin_levels()`, `parse_custom_breaks()` |
+| Polynomial terms | 3 | `R/fct_model_fit.R` `fit_model()` |
+| Dates of historical comparison | (5.1) | `R/fct_step1_weatherstats.R` `expand_hist_dates()`, `join_hist_sample_cells()` |
+| Anomaly and percentile | (5.1) | `R/fct_step1_weatherstats.R` `summarise_weather_anomaly_by_loc()`, `summarise_weather_by_loc()` |
+| Weighted summaries | 5 | `R/utils_step1.R` `weighted_summary_long()`; `R/fct_step1_weatherstats.R` `build_weather_stats_table()` |
+| Pipeline description in the card | Setup | `R/fct_step1_weather_card.R` `weather_pipeline_stages()` |
