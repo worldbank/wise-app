@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, social-protection, shock-sp, metrics, d
 symbols: [T, z, omega, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-results-tab
 code: [R/fct_policy_sp_effectiveness.R, R/fct_step3_tables.R, R/fct_policy_sp_shock.R, R/mod_3_10_cost_effectiveness.R]
-verified_against: 5b89f68
+verified_against: 469c000
 ---
 
 # Cost-effectiveness of a cash transfer
@@ -23,7 +23,7 @@ The tab joins two results of the same Step 3 run: the **cost** of the programme 
 
 **Effect.** For the average year, the effect $\Delta T^{\text{avg}}$ is the expected paired effect of the policy on the chosen metric. Years are averaged within each climate member first, then members are averaged with equal weight, with its coefficient standard deviation from the paired contrast ([33_uncertainty](33_uncertainty.md)). For the adverse year, the effect $\Delta T^{\text{adv}}$ is the total effect of the policy in the 1-in-20 adverse year of the baseline, read as in Eq. (5.3) of [44_decomposition](44_decomposition.md). It has no interval, because the uncertainty of its components is not estimated.
 
-**Cost.** For a regular programme, the cost is the same in every year, Eq. (4.1) of [42_social_protection](42_social_protection.md), so the average-year cost and the adverse-year cost are equal. For a shock-responsive programme, the cost differs by year, and it is pooled on the same member-years as the effect. The average-year cost is the equal-weight mean over climate models of each model's mean annual cost. The adverse-year cost applies the same adverse-year ranking as the effect, by rank interpolation between the two baseline years of each model, and averages over models.
+**Cost.** For a regular programme, the cost is the same in every year, Eq. (4.1) of [42_social_protection](42_social_protection.md), so the average-year cost and the adverse-year cost are equal. For a shock-responsive programme, the cost differs by year, and it is pooled on the same member-years as the effect. The average-year cost is the equal-weight mean over climate models of each model's mean annual cost. The adverse-year cost applies the same adverse-year ranking as the effect, by rank interpolation (the Weibull rank of Eq. (4.1) in [32_metrics](32_metrics.md)) between the two baseline years of each model, and averages over models.
 
 ### 2. Poverty rate: cost per person lifted
 

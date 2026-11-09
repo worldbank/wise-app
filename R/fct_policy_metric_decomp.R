@@ -786,7 +786,7 @@
     row$adverse_basis <- "baseline_selected_metric"
     row$center_method <- if (identical(scenario, "Historical")) "single_historical" else "equal_model_mean"
     row$ensemble_center <- row$center_method
-    row$quantile_method <- "rank_interp_n_p_plus_half"
+    row$quantile_method <- "weibull_rank_n_plus_1_p"
     row$tie_method <- "value_then_sim_year_ascending"
     row$n_models <- length(model_ids)
     row$n_supported_models <- sum(support_ok)

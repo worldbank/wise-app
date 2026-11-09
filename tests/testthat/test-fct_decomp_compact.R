@@ -98,8 +98,8 @@ test_that("adverse helpers rank within members and need support for every model"
   supports <- .decomp_adverse_supports(x, "S", "adverse_20", welfare)
   expect_named(supports, c("a", "b"))
   values <- .decomp_adverse_values(rows, supports)
-  # 40 years at p = 0.05: rank 40 * 0.05 + 0.5 = 2.5 on baseline year - 2000.
-  expect_equal(values[["baseline_level"]], 2.5)
+  # 40 years at p = 0.05: Weibull adverse rank 41 * 0.05 = 2.05 on baseline year - 2000.
+  expect_equal(values[["baseline_level"]], 2.05)
   expect_equal(values[["delta_total"]], 1)
   expect_null(.decomp_adverse_values(rows, list()))
   # One model without enough years: no basis value.

@@ -4,10 +4,13 @@
 #'
 #' `member_values` is one outcome per forecast member for the target window. `reference_values` is the
 #' same outcome computed under observed weather for the same calendar months in each reference year.
-#' A member is as adverse as `p` of the reference years when `p` is the share of reference years at
-#' least as adverse as the member; its return period is `1 / p`. With `n` reference years, return
-#' periods beyond `n / 2` (about 1-in-15 for 30 years) are not resolved: they are reported as
-#' beyond the observed range (`NA` return period, `beyond = TRUE`) rather than extrapolated.
+#' The reference years sit at the Weibull positions `rank / (n + 1)` in the adverse order and a member is
+#' placed between them by linear interpolation (`rp_of_level()`); its return period is `1 / p`. With
+#' `n` reference years, a return period is resolved only for a member no more adverse than the second most
+#' adverse year (`p >= 2 / (n + 1)`, about 1-in-15 for 30 years). A member between the two most adverse years
+#' is "worse than `n - 1` of `n` reference years" and one more adverse than every year is "beyond every
+#' reference year (rarer than 1 in `n + 1`)": both have an `NA` return period, and only the second has
+#' `beyond = TRUE`. Nothing is extrapolated.
 #'
 #' The member share is an indicator, not a probability: the ensemble spread is not calibrated and
 #' skill is not established. There is no return period for the ensemble mean.
@@ -24,22 +27,30 @@
   reference <- reference[is.finite(reference)]
   n_ref <- length(reference)
   high <- identical(adverse_tail, "high")
-  p_adverse <- vapply(member_values, function(v) {
-    if (!is.finite(v) || !n_ref) return(NA_real_)
-    mean(if (high) reference >= v else reference <= v)
-  }, numeric(1L))
-  cap <- n_ref / 2
-  rp <- ifelse(is.na(p_adverse) | p_adverse <= 0, NA_real_, 1 / p_adverse)
-  beyond <- !is.na(p_adverse) & (p_adverse <= 0 | (!is.na(rp) & rp > cap))
-  rp[beyond] <- NA_real_
+  # Resolved up to the second most adverse year; the tolerance keeps p = 2 / (n + 1) itself
+  p_min <- 2 / (n_ref + 1) - 1e-9
+  place <- function(values) {
+    at <- rp_of_level(reference, values, adverse_tail)
+    if (is.null(at)) {
+      return(data.frame(p = rep(NA_real_, length(values)), beyond = FALSE, n_worse = NA_integer_))
+    }
+    at
+  }
+  at_members <- place(member_values)
+  p_adverse <- at_members$p
+  resolved <- !is.na(p_adverse) & p_adverse >= p_min
+  rp <- ifelse(resolved, 1 / p_adverse, NA_real_)
+  beyond <- at_members$beyond
   worse_than <- function(threshold) {
+    if (is.na(threshold)) return(NA_real_)
     mean(if (high) member_values >= threshold else member_values <= threshold, na.rm = TRUE)
   }
-  p10 <- if (n_ref) stats::quantile(reference, if (high) 0.9 else 0.1, names = FALSE) else NA_real_
+  p10 <- rp_quantile(sort(reference), 0.1, adverse_tail)
   ref_median <- if (n_ref) stats::median(reference) else NA_real_
   med_member <- stats::median(member_values, na.rm = TRUE)
-  med_p <- if (n_ref && is.finite(med_member)) mean(if (high) reference >= med_member else reference <= med_member) else NA_real_
-  med_rp <- if (is.na(med_p) || med_p <= 0 || 1 / med_p > cap) NA_real_ else 1 / med_p
+  at_med <- place(med_member)
+  med_p <- at_med$p
+  med_rp <- if (!is.na(med_p) && med_p >= p_min) 1 / med_p else NA_real_
   list(
     members = data.frame(value = member_values, p_adverse = p_adverse, return_period = rp, beyond = beyond),
     n_reference = n_ref,
@@ -52,7 +63,9 @@
       share_worse_than_median = if (n_ref) worse_than(ref_median) else NA_real_,
       share_worse_than_1in10 = if (n_ref) worse_than(p10) else NA_real_,
       median_member_return_period = med_rp,
-      median_member_beyond = !is.na(med_p) && (med_p <= 0 || 1 / med_p > cap),
+      median_member_beyond = isTRUE(at_med$beyond),
+      median_member_p_adverse = med_p,
+      median_member_n_worse = at_med$n_worse,
       n_beyond = sum(beyond)
     )
   )
@@ -151,27 +164,35 @@ step2_forecast_placement_view <- function(scenarios, method, hs, pov_line = NULL
 .forecast_placement_text <- function(placement) {
   s <- placement$summary
   n_ref <- placement$n_reference
-  p_med <- stats::median(placement$members$p_adverse, na.rm = TRUE)
+  p_med <- s$median_member_p_adverse %||% stats::median(placement$members$p_adverse, na.rm = TRUE)
   median_text <- if (!is.finite(p_med)) {
     "Placement unavailable"
   } else if (p_med >= 0.5) {
     "Median member better than the median year"
   } else if (isTRUE(s$median_member_beyond)) {
-    "Median member beyond the observed range"
+    paste0("Median member beyond every reference year (rarer than 1 in ", n_ref + 1L, ")")
+  } else if (is.na(s$median_member_return_period)) {
+    paste0("Median member worse than ", n_ref - 1L, " of ", n_ref, " reference years")
   } else {
     paste0("Median member about a 1-in-", format(max(1, round(s$median_member_return_period)),
       big.mark = ","), " outcome")
   }
   list(
-    value = paste0(formatC(100 * s$share_worse_than_1in10, format = "f", digits = 0), "% of members"),
+    value = if (is.finite(s$share_worse_than_1in10)) {
+      paste0(formatC(100 * s$share_worse_than_1in10, format = "f", digits = 0), "% of members")
+    } else {
+      "Not available"
+    },
     median_text = median_text,
     note = "worse than the historical 1-in-10",
     info = paste0(
       "Each forecast member is placed in the distribution of the same outcome under observed weather ",
       "for the same calendar months in each of ", n_ref, " historical years. ",
       "The share of members is an indicator, not a probability: the member spread is not calibrated and ",
-      "skill is not established. Outcomes rarer than about 1-in-", floor(n_ref / 2),
-      " are reported as beyond the observed range, not extrapolated. ",
+      "skill is not established. Each year of the record has the probability rank / (", n_ref, " + 1). ",
+      "An outcome between the two most adverse years is reported as worse than ", n_ref - 1L, " of ", n_ref,
+      " years, and one more adverse than every year as beyond the record (rarer than 1 in ", n_ref + 1L,
+      "); neither is extrapolated. ",
       "Warming since the reference years moves this placement as well as the forecast signal, so compare ",
       "with the most recent years.",
       if (!is.null(placement$enso)) paste0(" ", placement$enso$line, " ", placement$enso$info)

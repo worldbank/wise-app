@@ -1078,7 +1078,9 @@ test_that("a policy on a forecast window writes the policy arm of the forecast t
     "share_worse_policy") %in% eff$measure))
   expect_gt(eff$estimate[eff$measure == "effect_member_median"], 0)
   expect_gt(eff$estimate[eff$measure == "effect_reference_median"], 0)
-  expect_lte(eff$estimate[eff$measure == "share_worse_policy"], eff$estimate[eff$measure == "share_worse_baseline"])
+  # The fixture has 2 reference years, and a 1-in-10 level needs 9 (Weibull rank 0.1 (n + 1) >= 1): the shares are NA
+  expect_true(is.na(eff$estimate[eff$measure == "share_worse_policy"]))
+  expect_true(is.na(eff$estimate[eff$measure == "share_worse_baseline"]))
   # The annual tables of the policy arm carry no forecast scenario.
   annual <- arrow::open_dataset(file.path(out, "tables", "annual")) |> dplyr::collect()
   expect_false(label %in% annual$scenario[!is.na(annual$policy_id)])

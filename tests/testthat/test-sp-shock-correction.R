@@ -1080,7 +1080,9 @@ test_that("return-period thresholds of a window come from the same months of the
   tbl <- plan$thresholds$table
   expect_identical(tbl$int_month, c(0L, 0L))
   expect_identical(tbl$n_years, c(6L, 6L))
-  expect_equal(tbl$threshold, rep(stats::quantile(2 * 1:6, 2 / 3, names = FALSE), 2L))
+  # 1 in 3 of 6 years: Weibull adverse rank 7 / 3 from the top, quantile type 6 at 2/3 (type 7 gave 8.67)
+  expect_equal(tbl$threshold, rep(stats::quantile(2 * 1:6, 2 / 3, names = FALSE, type = 6), 2L))
+  expect_equal(tbl$threshold, c(28 / 3, 28 / 3))
   expect_identical(plan$window_len, 2L)
   expect_error(sp_shock_window_plan(list(pipelines = list()), fx$spec, NULL, fx$shock_policy, "hh",
     is_log = FALSE, level_factor = 1, seed = 5L), "same-window historical years")
@@ -1382,7 +1384,8 @@ test_that("a threshold at the historical minimum gives a cell no adverse tail", 
   # The 1-in-5 level is 0, the historical minimum: it would fire every year
   expect_error(sp_trigger_thresholds(tbl, spec), "no adverse tail", class = "sp_trigger_problem")
   spec$trigger_return_period_years <- 20
-  expect_equal(sp_trigger_thresholds(tbl, spec)$table$threshold, 5.15)
+  # Weibull adverse rank 21 / 20 = 1.05 from the top: 5 + 0.95 * (8 - 5) (type 7 gave 5.15)
+  expect_equal(sp_trigger_thresholds(tbl, spec)$table$threshold, 7.85)
   # A continuous metric is unaffected
   tbl$.impact_metric <- seq(0.5, 10, by = 0.5)
   spec$trigger_return_period_years <- 5

@@ -150,10 +150,12 @@ test_that("the quantile model adds the transfer after repositioning (DOC-11)", {
 test_that("adverse support interpolates deterministic year keys and fails closed", {
   low <- adverse_year_support(1:20, 2030:2049, .05, "low")
   high <- adverse_year_support(1:20, 2030:2049, .05, "high")
-  expect_equal(low$baseline_value, 1.5)
-  expect_equal(high$baseline_value, 19.5)
+  # 20 years at p = 0.05: Weibull adverse rank 21 * 0.05 = 1.05 from the adverse end
+  expect_equal(low$baseline_value, 1.05)
+  expect_equal(high$baseline_value, 19.95)
   expect_equal(c(low$year_lo, low$year_hi), c(2030, 2031))
-  expect_equal(c(low$weight_lo, low$weight_hi), c(.5, .5))
+  expect_equal(c(low$weight_lo, low$weight_hi), c(.95, .05))
+  expect_identical(low$quantile_method, "weibull_rank_n_plus_1_p")
   tied <- adverse_year_support(c(1, 1, 2:19), 2049:2030, .05, "low")
   expect_equal(tied$year_lo, 2048)
   expect_equal(apply_adverse_year_support(c(NA, 4), c(2030, 2031), low)$status, "unavailable")

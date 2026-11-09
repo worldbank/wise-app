@@ -583,10 +583,13 @@ step2_delta_ci <- function(hist_tbl, scen_tbl) {
 
 #' Return period of the historical adverse level under another scenario
 #'
-#' Share of simulated model-years at or beyond `threshold` on the adverse side
-#' gives the exceedance probability; its inverse is the new return period.
-#' Returns `Inf` when no simulated year reaches the threshold and `NA` when
-#' there is nothing to evaluate.
+#' Count `c` of the `N` simulated model-years at or beyond `threshold` on the
+#' adverse side gives the exceedance probability `c / (N + 1)` (the Weibull
+#' rule of `rp_positions()`: a historical level read under the historical
+#' scenario returns its own return period); its inverse is the new return
+#' period. Returns `Inf` when no simulated year reaches the threshold (the
+#' return period is then more than `N + 1`) and `NA` when there is nothing to
+#' evaluate.
 #' @param values Numeric vector of annual aggregates (all models pooled).
 #' @param threshold Numeric scalar, the historical adverse level.
 #' @param adverse_tail `"high"` or `"low"`.
@@ -597,8 +600,7 @@ step2_adverse_return_period <- function(values, threshold, adverse_tail = "high"
     return(NA_real_)
   }
   hit <- if (identical(adverse_tail, "high")) values >= threshold else values <= threshold
-  p <- mean(hit)
-  if (p <= 0) Inf else 1 / p
+  if (!any(hit)) Inf else (length(values) + 1) / sum(hit)
 }
 
 #' Build Step 2 Results Headline Cards
@@ -934,7 +936,7 @@ step2_headline_cards <- function(bands,
   rp_text <- if (is.na(rp_focus)) {
     NULL
   } else if (is.infinite(rp_focus)) {
-    paste0("rarer than 1-in-", format(length(focus_vals), big.mark = ","))
+    paste0("more than 1-in-", format(length(focus_vals) + 1L, big.mark = ","))
   } else {
     paste0("about 1-in-", format(max(1, round(rp_focus)), big.mark = ","))
   }
@@ -990,8 +992,9 @@ step2_headline_cards <- function(bands,
       "automatically by the selected metric. Thresholds are the equal-weight mean across",
       "climate models of each model's rank-interpolated adverse year.",
       if (!is.null(rp_text)) paste0(
-        "Return-period shift: the share of simulated model-years under the focus scenario",
-        " at or beyond the historical 1-in-20 level gives the new frequency (",
+        "Return-period shift: the count of simulated model-years under the focus scenario",
+        " at or beyond the historical 1-in-20 level, over the number of model-years plus one,",
+        " gives the new frequency (",
         rp_text, ")."
       ),
       if (both_20) paste0("Historical: ", display_value(v20_hist, change = FALSE),

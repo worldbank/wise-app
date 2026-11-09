@@ -1633,7 +1633,8 @@ mod_2_02_results_server <- function(id,
 
     # exceedance_curves_rv: per (scenario, model) ECDF rows ----
     # One row per (scenario, model, rank). welfare_val is sorted in the adverse
-    # tail direction; exceed_prob is (rank - 0.5)/n_pts limited to <= 0.50 AEP.
+    # tail direction; exceed_prob is the Weibull rank/(n + 1) limited to <= 0.50 AEP
+    # (rp_exceedance_rows()).
     exceedance_curves_rv <- reactive({
       req(hist_agg_rv())
       hist_ref <- hist_ref_val()
@@ -1651,54 +1652,7 @@ mod_2_02_results_server <- function(id,
         if (is.null(mm)) {
           return(NULL)
         }
-        vals <- mm$vals
-        sds <- mm$sds
-        n_yrs <- ncol(vals)
-        if (n_yrs == 0L) {
-          return(NULL)
-        }
-
-        do.call(dplyr::bind_rows, lapply(seq_len(nrow(vals)), function(i) {
-          v <- vals[i, ]
-          s <- sds[i, ]
-          ok <- is.finite(v)
-          if (!any(ok)) {
-            return(NULL)
-          }
-          v <- v[ok]
-          s <- s[ok]
-          n_pts <- length(v)
-
-          # Adverse tail direction:
-          # If adverse_tail == "low" (welfare/consumption): smaller is worse -> ascending.
-          # If adverse_tail == "high" (poverty): larger is worse -> descending.
-          ord <- if (identical(adverse_tail, "high")) {
-            order(v, decreasing = TRUE)
-          } else {
-            order(v, decreasing = FALSE)
-          }
-          v_ord <- v[ord]
-          s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
-          # Hazen plotting positions, (rank - 0.5) / n: the same convention as
-          # the threshold table's rank_interp(), so "1 in 10" agrees in both.
-          probs <- (seq_along(ord) - 0.5) / n_pts
-
-          # Limit strictly to adverse tail: 0.50 AEP or less
-          keep <- probs <= 0.50
-          if (!any(keep)) {
-            return(NULL)
-          }
-
-          tibble::tibble(
-            scenario      = scenario_label,
-            model_id      = mm$model_ids[[i]],
-            rank          = seq_along(ord)[keep],
-            welfare_val   = v_ord[keep] - hist_ref,
-            coef_sd       = s_ord[keep],
-            exceed_prob   = probs[keep],
-            is_historical = is_hist
-          )
-        }))
+        rp_exceedance_rows(mm, scenario_label, adverse_tail, hist_ref, is_hist)
       }
 
       rows <- list(one_scenario(

@@ -100,22 +100,39 @@ test_that("relabelling names the Historical row by its target months in data, te
 
 test_that("the forecast position on the Historical exceedance curve uses the curve's plotting positions", {
   ref <- c(1, 2, 3, 4, 5)
-  # Lower is worse: the most adverse year (1) sits at p = 0.1, the next at 0.3.
+  # Weibull positions m / (n + 1) = m / 6. Lower is worse: the most adverse year (1) sits at p = 1/6, the next at 2/6.
   pos <- .step2_window_exceedance_position(ref, c(2, 2, 2), "low")
-  expect_equal(unname(pos$p), rep(0.3, 3L))
+  expect_equal(unname(pos$p), rep(2 / 6, 3L))
+  expect_equal(c(pos$p_min, pos$p_max), c(1 / 6, 5 / 6))
   pos <- .step2_window_exceedance_position(ref, seq(1.5, 2.5, length.out = 11L), "low")
-  expect_equal(pos$p[["mid"]], 0.3)
+  expect_equal(pos$p[["mid"]], 2 / 6)
   expect_equal(pos$value[["mid"]], 2)
   # Higher is worse: 5 is the most adverse year.
-  expect_equal(.step2_window_exceedance_position(ref, 5, "high")$p[["mid"]], 0.1)
-  # Beyond the observed range: the end probability.
-  expect_equal(.step2_window_exceedance_position(ref, 0, "low")$p[["mid"]], 0.1)
+  expect_equal(.step2_window_exceedance_position(ref, 5, "high")$p[["mid"]], 1 / 6)
+  # Beyond the observed range: the end probability, flagged.
+  beyond <- .step2_window_exceedance_position(ref, 0, "low")
+  expect_equal(beyond$p[["mid"]], 1 / 6)
+  expect_true(beyond$beyond)
+  expect_false(.step2_window_exceedance_position(ref, 1, "low")$beyond)
   expect_null(.step2_window_exceedance_position(1, 2, "low"))
   e <- .step2_window_exceedance_overlay(echart_blank("x"), .step2_window_exceedance_position(ref, 4.9, "low"))
   over <- e$x$opts$series[[length(e$x$opts$series)]]
   expect_identical(over$name, "forecast__position")
   expect_match(over$markLine$data[[1L]]$label$formatter, "better than the median year")
   expect_equal(over$markLine$data[[1L]]$xAxis, 0.55)
+})
+
+test_that("the overlay labels the far tail by rank, not by an interpolated 1-in-X", {
+  ref <- c(1, 2, 3, 4, 5)
+  label <- function(member, tail = "low") {
+    pos <- .step2_window_exceedance_position(ref, member, tail, band_q = NULL)
+    over <- .step2_window_exceedance_overlay(echart_blank("x"), pos)$x$opts$series
+    over[[length(over)]]$markLine$data[[1L]]$label$formatter
+  }
+  expect_match(label(0), "Forecast median: beyond every reference year (rarer than 1 in 6)", fixed = TRUE)
+  expect_match(label(6, "high"), "beyond every reference year (rarer than 1 in 6)", fixed = TRUE)
+  expect_match(label(1.5), "worse than 4 of 5 reference years", fixed = TRUE)
+  expect_match(label(2), "about 1 in 3.0", fixed = TRUE)
 })
 
 test_that("the window adverse chart keeps the Historical levels and adds one Forecast row with the member band", {
@@ -153,7 +170,8 @@ test_that("the window views run the annual builders on the target-month samples 
   expect_identical(v$variance$var_within[fc], 0)
   expect_gt(v$variance$var_across[fc], 0)
   expect_identical(nrow(v$exceedance), 6L)
-  expect_equal(max(v$exceedance$exceed_prob), 5.5 / 6)
+  # Weibull: the least adverse of 6 reference years sits at 6 / 7
+  expect_equal(max(v$exceedance$exceed_prob), 6 / 7)
   expect_identical(v$cards[[3L]]$label, "Signal vs noise")
   # Deviation: the Historical mean of the same months is the baseline of this group.
   d <- step2_window_views(w, "mean", so, deviation = "mean", scenario = sc, hist_sim = list(so = so))
@@ -206,7 +224,9 @@ test_that("the Step 3 window views pair baseline and policy for Historical and t
   expect_true(v$position$policy$p[["mid"]] >= v$position$baseline$p[["mid"]])
   cards <- .step3_window_cards(v, metric_metadata("mean", so))
   expect_length(cards, 3L)
-  expect_match(cards[[3L]]$value, "%")
+  # The fixture has 6 historical years and a 1-in-10 level needs 9, so the shares are not available
+  expect_true(is.na(v$effect$share_worse_baseline) && is.na(v$effect$share_worse_policy))
+  expect_match(cards[[3L]]$value, "n/a")
   expect_null(step3_window_views(wb, NULL, "mean", so))
 })
 
@@ -284,7 +304,7 @@ test_that("the merged exceedance chart draws both Historical curves and anchors 
   )
   window <- tibble::tibble(
     scenario = "Historical", model_id = "Historical", rank = 1:6, welfare_val = 2:7, coef_sd = 0.1,
-    exceed_prob = (1:6 - 0.5) / 6, is_historical = TRUE
+    exceed_prob = rp_positions(6L), is_historical = TRUE
   )
   out <- .step2_window_merge(annual, window, ref)
   e <- echart_exceedance(out, "Mean", n_sim_years = 6, logit_x = TRUE, band_q = NULL,

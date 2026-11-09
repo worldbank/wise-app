@@ -250,29 +250,32 @@ step2_window_placement <- function(w, method, so) {
 #' Where the forecast members fall on the Historical same-window exceedance curve
 #'
 #' The Historical curve gives each outcome level its adverse exceedance probability among the reference years
-#' (Hazen positions, `(rank - 0.5) / n`, as the exceedance chart). The median member and the 10th and 90th
-#' percentiles of the members are read off that curve by linear interpolation; levels beyond the most or least
-#' adverse reference year take the end probability.
+#' (Weibull positions, `rank / (n + 1)`, as the exceedance chart). The median member and the 10th and 90th
+#' percentiles of the members are read off that curve by linear interpolation (`rp_of_level()`); levels beyond the
+#' most or least adverse reference year take the end probability.
 #' @param reference,members Numeric: reference-year and member outcomes on the chart's scale.
 #' @param adverse_tail `"high"` when higher values are worse, else `"low"`.
 #' @param band_q Quantile pair of the member band (the Results ensemble-spread control), or `NULL` for none.
 #' @return `NULL` without values, else a list: `value` and `p` (each `lo`, `mid`, `hi` for the lower band
 #'   quantile, median and upper band quantile of the members; `lo` and `hi` are `NA` without a band), `p_min` and
-#'   `p_max` (the end probabilities).
+#'   `p_max` (the end probabilities), `n` (reference years), and for the median member `beyond` (more adverse than
+#'   every reference year) and `n_worse` (reference years it is more adverse than).
 #' @noRd
 .step2_window_exceedance_position <- function(reference, members, adverse_tail = "low",
                                               band_q = c(lo = 0.1, hi = 0.9)) {
-  reference <- sort(reference[is.finite(reference)], decreasing = identical(adverse_tail, "high"))
+  reference <- reference[is.finite(reference)]
   members <- members[is.finite(members)]
   n <- length(reference)
   if (n < 2L || !length(members)) return(NULL)
-  probs <- (seq_len(n) - 0.5) / n
+  probs <- rp_positions(n)
   q <- if (is.null(band_q)) c(NA_real_, 0.5, NA_real_) else c(band_q[["lo"]], 0.5, band_q[["hi"]])
   value <- stats::setNames(rep(NA_real_, 3L), c("lo", "mid", "hi"))
   value[!is.na(q)] <- stats::quantile(members, q[!is.na(q)], names = FALSE)
-  p <- rep(NA_real_, 3L)
-  p[!is.na(q)] <- stats::approx(reference, probs, xout = value[!is.na(q)], rule = 2, ties = mean)$y
-  list(value = value, p = stats::setNames(p, names(value)), p_min = probs[[1L]], p_max = probs[[n]])
+  at <- rp_of_level(reference, unname(value), adverse_tail)
+  list(
+    value = value, p = stats::setNames(at$p, names(value)), p_min = probs[[1L]], p_max = probs[[n]],
+    n = n, beyond = at$beyond[[2L]], n_worse = at$n_worse[[2L]]
+  )
 }
 
 #' Forecast overlay on the Historical exceedance curve of the window scope
@@ -291,8 +294,15 @@ step2_window_placement <- function(w, method, so) {
                                              label_offset = c(0, 0)) {
   if (is.null(pos) || !inherits(e, "htmlwidget")) return(e)
   clip <- function(p) min(max(p, 1e-6), x_max)
+  # Far tail: a rank statement, not a return period the record cannot resolve
   rp <- function(p) {
     if (p > 0.5) return("better than the median year")
+    if (isTRUE(pos$beyond)) {
+      return(paste0("beyond every reference year (rarer than 1 in ", pos$n + 1L, ")"))
+    }
+    if (isTRUE(pos$n_worse == pos$n - 1L)) {
+      return(paste0("worse than ", pos$n - 1L, " of ", pos$n, " reference years"))
+    }
     paste0("about 1 in ", format(round(1 / p, 1), nsmall = 1))
   }
   mid <- clip(pos$p[["mid"]])
@@ -389,7 +399,7 @@ step2_window_placement <- function(w, method, so) {
 #' Exceedance curve rows of the Historical target-month outcome
 #'
 #' The rows of the exceedance chart (`echart_exceedance()`) for the one Historical sample of the window: values in
-#' the adverse order, Hazen positions `(rank - 0.5) / n`, coefficient SDs. Unlike the annual curves, the whole
+#' the adverse order, Weibull positions `rank / (n + 1)`, coefficient SDs. Unlike the annual curves, the whole
 #' curve is kept, so a forecast less adverse than the median year still falls on it.
 #' @param tbl Window Historical table (`step2_window_series()$historical`, contrast SDs applied).
 #' @param hist_ref Value subtracted (deviation views).
@@ -408,7 +418,7 @@ step2_window_placement <- function(w, method, so) {
   tibble::tibble(
     scenario = "Historical", model_id = "Historical", rank = seq_along(ord),
     welfare_val = v[ord] - hist_ref, coef_sd = sd[ord],
-    exceed_prob = (seq_along(ord) - 0.5) / length(ord), is_historical = TRUE
+    exceed_prob = rp_positions(length(ord)), is_historical = TRUE
   )
 }
 
@@ -546,8 +556,11 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
     policy = .step2_window_exceedance_position(ref_vals, wp$members$value - ref, tail, band_q = band_exceedance)
   )
   high <- identical(tail, "high")
-  threshold_10 <- stats::quantile(wb$historical$value, if (high) 0.9 else 0.1, names = FALSE)
-  worse <- function(x) mean(if (high) x >= threshold_10 else x <= threshold_10, na.rm = TRUE)
+  threshold_10 <- rp_quantile(wb$historical$value[is.finite(wb$historical$value)], 0.1, tail)
+  worse <- function(x) {
+    if (is.na(threshold_10)) return(NA_real_)
+    mean(if (high) x >= threshold_10 else x <= threshold_10, na.rm = TRUE)
+  }
   effect <- list(
     member_median = stats::median(wp$members$value - wb$members$value, na.rm = TRUE),
     reference_median = stats::median(wp$historical$value - wb$historical$value, na.rm = TRUE),
@@ -573,7 +586,7 @@ step3_window_views <- function(wb, wp, method, so, deviation = "none", band_adve
 .step3_window_cards <- function(views, metadata, shock = NULL) {
   e <- views$effect
   fmt <- function(x) format_metric_value(x, metadata, change = TRUE, digits = 3L)
-  pct <- function(x) paste0(formatC(100 * x, format = "f", digits = 0), "%")
+  pct <- function(x) if (is.finite(x)) paste0(formatC(100 * x, format = "f", digits = 0), "%") else "n/a"
   card <- function(label, value, line1, line2, info) {
     list(
       label = label, value = value, note = paste(line1, line2, sep = " \u00b7 "),

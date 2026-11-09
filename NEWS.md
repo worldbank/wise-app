@@ -17,4 +17,5 @@
 
 ## Other
 
+* Return periods use the Weibull rule (`m / (n + 1)`) throughout; the level of a 1-in-N year is slightly more adverse than before, and an observed year is given a shorter return period (the worst of 30 years is 1 in 31, not 1 in 60).
 * R files renamed to `<role>_<stage or domain>_<topic>.R`. No change in behaviour.

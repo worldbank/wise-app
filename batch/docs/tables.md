@@ -229,7 +229,7 @@ Long form at the app defaults: outcome level, coefficient band p10-p90, ensemble
 band p10-p90 across climate models. Columns: `policy_id`, `scenario`, `metric`
 (`NA` for `incidence`), `section`, `measure`, `group`, `return_period` (`1:5`,
 `1:10`, `1:20`, `1:50`; `1:1` the median year, `4:5` ... `49:50` the favourable
-tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
+tail; levels at the Weibull rank `(n + 1) p`, quantile type 6), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 
 | `section` | `measure` / `group` | Meaning |
 |---|---|---|
@@ -239,7 +239,7 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `uncertainty` | `var_coef`, `var_resid`, `var_within`, `var_across` | Variance components: coefficient (for the stored view, a level; no residual part), residual draws (0 under `original`), weather year within models (under `resample` it also holds the year-to-year residual noise), between models. |
 | `headline` | `Expected change`, `Adverse weather years`, `Signal vs noise`, `Year-to-year range`, `Simulation years` / `historical`, `focus`, `difference`, `range`, `count` | Headline cards for the focus scenario (the first future scenario, else historical). `text` holds the displayed value on the `focus` row. |
 | `incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean effect of the scenario on each fixed baseline decile, in outcome units; `n` = households. |
-| `placement` | forecast scenarios only; `n_members`, `member_median`, `reference_median`, `difference_median`, `reference_adverse_1in10`, `share_worse_than_median`, `share_worse_than_1in10`, `median_member_return_period`, `median_member_beyond` (1 or 0), `n_beyond` | Where the forecast members fall in the same-window reference (see `forecast`). `n` = reference years. Each is one row per metric. |
+| `placement` | forecast scenarios only; `n_members`, `member_median`, `reference_median`, `difference_median`, `reference_adverse_1in10`, `share_worse_than_median`, `share_worse_than_1in10`, `median_member_return_period`, `median_member_beyond` (1 or 0: more adverse than every reference year), `median_member_p_adverse`, `median_member_n_worse` (reference years the median member is more adverse than; `n - 1` for a member between the two most adverse years), `n_beyond` | Where the forecast members fall in the same-window reference (see `forecast`). `n` = reference years. `reference_adverse_1in10` is the Weibull 1-in-10 level (quantile type 6) and is `NA`, with the share worse than it, for fewer than 9 reference years. Each is one row per metric. |
 | `skill` | forecast scenarios only; `skill_flag` / `group` = target month (`YYYY-MM`, prefixed by the variable when the model has several) | Hindcast skill flag of each target month in `text` (`none`, `weak`, `useful`), `estimate` = anomaly correlation, `n` = lead. One row of text ("not assessed") when the run has no skill table. `metric` is `NA`. |
 | `season` | forecast scenarios only; `training_month_share`, `training_month_expected` | Share of the model's training observations interviewed in the target months, and the share an even spread over the year would give. `metric` is `NA`. |
 | `policy_effect` | policy arm of forecast scenarios only; `effect_member_median`, `effect_reference_median`, `share_worse_baseline`, `share_worse_policy`, `reference_adverse_1in10` | Policy effect under the forecast; see the `forecast` table. `n` = members. |
@@ -268,10 +268,12 @@ written only when a run has a forecast scenario with a same-window reference. Lo
 reference year; `NA` for members), `value` (the target-window aggregate:
 every baseline household in every target month at `weight / len`, the same
 model, residual rule and lag windows for members and reference years),
-`p_adverse` (members: the share of reference years at least as adverse as the
-member), `return_period` (`1 / p_adverse`) and `beyond` (`TRUE` when the member
-is rarer than half the number of reference years, or beyond every reference
-year; `return_period` is then `NA`). The reference years are the years of
+`p_adverse` (members: the exceedance probability of the member among the
+reference years, Weibull positions `rank / (n + 1)` read off by interpolation),
+`return_period` (`1 / p_adverse`, `NA` unless the member is no more adverse than
+the second most adverse reference year, `p_adverse >= 2 / (n + 1)`) and
+`beyond` (`TRUE` when the member is more adverse than every reference year).
+The reference years are the years of
 `sim.hist_years`; a year without observed weather for every target and
 predictor month is left out. The share of members is an indicator, not a
 probability. The policy arm has the same rows with the policy applied; its

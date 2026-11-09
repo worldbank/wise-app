@@ -3180,53 +3180,7 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
       if (is.null(mm)) {
         return(NULL)
       }
-      vals <- mm$vals
-      sds <- mm$sds
-      n_yrs <- ncol(vals)
-      if (n_yrs == 0L) {
-        return(NULL)
-      }
-
-      dplyr::bind_rows(lapply(seq_len(nrow(vals)), function(i) {
-        v <- vals[i, ]
-        s <- sds[i, ]
-        ok <- is.finite(v)
-        if (!any(ok)) {
-          return(NULL)
-        }
-        v <- v[ok]
-        s <- s[ok]
-        n_pts <- length(v)
-
-        # Adverse tail direction:
-        ord <- if (identical(adverse_tail, "high")) {
-          order(v, decreasing = TRUE)
-        } else {
-          order(v, decreasing = FALSE)
-        }
-        v_ord <- v[ord]
-        s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
-        # Hazen plotting positions, (rank - 0.5) / n: the same convention as
-        # the threshold table's rank_interp(), so "1 in 10" agrees in both.
-        probs <- (seq_along(ord) - 0.5) / n_pts
-
-        # Limit to adverse tail direction only: 0.50 AEP or less
-        keep <- probs <= 0.50
-        if (!any(keep)) {
-          return(NULL)
-        }
-
-        tibble::tibble(
-          scenario      = scenario_label,
-          source        = source_label,
-          model_id      = mm$model_ids[[i]],
-          rank          = seq_along(ord)[keep],
-          welfare_val   = v_ord[keep] - hist_ref,
-          coef_sd       = s_ord[keep],
-          exceed_prob   = probs[keep],
-          is_historical = is_hist
-        )
-      }))
+      rp_exceedance_rows(mm, scenario_label, adverse_tail, hist_ref, is_hist, source = source_label)
     }
     rows <- list(one(agg_hist$out, "Historical", TRUE))
     if (!is.null(agg_scn)) {

@@ -187,12 +187,13 @@ test_that("return-period thresholds equal the hand-computed quantile per cell", 
   tbl <- th$table
   expect_equal(nrow(tbl), 4L)
   expect_true(all(tbl$n_years == 30L & tbl$supported))
-  # Cell a / month 3 holds temp = 1.03 .. 30.03, so the 0.9 quantile is 27.13
+  # Cell a / month 3 holds temp = 1.03 .. 30.03. The 1-in-10 level is the Weibull rank 31 / 10 = 3.1 from the top,
+  # that is quantile type 6 at 0.9: 27.93 (type 7 gave 27.13).
   row <- tbl[tbl$loc_id == "a" & tbl$int_month == 3L, ]
-  expect_equal(row$threshold, unname(stats::quantile(1:30 + 0.03, 0.9)))
-  expect_equal(row$threshold, 27.13)
+  expect_equal(row$threshold, unname(stats::quantile(1:30 + 0.03, 0.9, type = 6)))
+  expect_equal(row$threshold, 27.93)
   row_b <- tbl[tbl$loc_id == "b" & tbl$int_month == 9L, ]
-  expect_equal(row_b$threshold, unname(stats::quantile(1:30 + 100.09, 0.9)))
+  expect_equal(row_b$threshold, unname(stats::quantile(1:30 + 100.09, 0.9, type = 6)))
   # Same activation probability everywhere: 3 of 30 years sit at or above it
   for (i in seq_len(nrow(tbl))) {
     cell <- ex[ex$loc_id == tbl$loc_id[i] & ex$int_month == tbl$int_month[i], ]
@@ -836,16 +837,16 @@ test_that("a return period at either extreme splits the chance over two tails", 
   th <- sp_trigger_thresholds(ex, spec)
   tbl <- th$table
   expect_true(all(tbl$supported))
-  # 1 in 10 shared over two tails: the 95th and 5th percentiles
-  expect_equal(tbl$threshold[1], unname(stats::quantile(1:40, 0.95)))
-  expect_equal(tbl$threshold_low[1], unname(stats::quantile(1:40, 0.05)))
+  # 1 in 10 shared over two tails: type 6 at the 95th and 5th percentiles (ranks 41 / 20 = 2.05 from each end)
+  expect_equal(tbl$threshold[1], unname(stats::quantile(1:40, 0.95, type = 6)))
+  expect_equal(tbl$threshold_low[1], unname(stats::quantile(1:40, 0.05, type = 6)))
   fires <- sp_trigger_state(ex, th, NULL, spec)$exceeds
-  # 38.05 and 2.95: years 39, 40 and 1, 2 fire, 4 of 40 = 1 in 10 in every cell
+  # 38.95 and 2.05: years 39, 40 and 1, 2 fire, 4 of 40 = 1 in 10 in every cell
   expect_true(all(tapply(fires, paste(ex$loc_id, ex$int_month), sum) == 4L))
   # The one-sided triggers keep their own probability
   one <- sp_trigger_thresholds(ex, shock_sp(trigger_type = "return_period",
     trigger_return_period_years = 10, trigger_value = NA_real_))
-  expect_equal(one$table$threshold[1], unname(stats::quantile(1:40, 0.9)))
+  expect_equal(one$table$threshold[1], unname(stats::quantile(1:40, 0.9, type = 6)))
   expect_false("threshold_low" %in% names(one$table))
 })
 

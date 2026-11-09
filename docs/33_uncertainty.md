@@ -6,7 +6,7 @@ depends_on: [notation, model-specification, linear-model, rif-model, simulation,
 symbols: [Sigma, L, F, h, T, Y, omega, z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations
 code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_step2_pipeline.R, R/fct_step1_results.R, R/fct_model_rif.R, R/fct_step2_tables.R, R/fct_step2_compare.R, R/fct_uncertainty.R]
-verified_against: 5b89f68
+verified_against: 469c000
 ---
 
 # Uncertainty propagation
@@ -119,7 +119,7 @@ $$\sigma^2_{\text{within}} = \frac1M\sum_m\big(\mathrm{Var}_{\text{coef}}^{m} + 
 
 This is the law of total variance. The analytic pooled band is $\bar T \pm z_q\ \sigma_{\text{pool}}$, and the empirical model band takes quantiles of the member values. With one member, $\sigma^2_{\text{across}}=0$.
 
-In the return-period table, the pooled standard deviation combines the median coefficient SD across members at the return period with the variance across members of the return-period value ([32_metrics](32_metrics.md)). Inter-annual variation is already inside each annual value and is not added again.
+In the return-period table, the pooled standard deviation combines the median coefficient SD across members at the return period with the variance across members of the return-period value, read at the Weibull rank of Eq. (4.1) ([32_metrics](32_metrics.md)). Inter-annual variation is already inside each annual value and is not added again.
 
 ### 8. Paired contrasts
 

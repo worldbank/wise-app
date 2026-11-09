@@ -325,8 +325,8 @@ pages:
     ui:
       - "Step 2 > Results: choose the metric, the poverty line, a difference from the historical mean or median, and the band widths. The tabs show the expected outcome, annual curves, the return-period table, the sources of uncertainty and the effects by decile."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#interpreting-the-results-tab"
-    code: ["R/fct_aggregation.R", "R/fct_metric_registry.R", "R/fct_step2_compare.R", "R/fct_step2_tables.R", "R/fct_uncertainty.R", "R/fct_incidence.R", "R/fct_step2_pipeline.R"]
-    verified_against: "5b89f68"
+    code: ["R/fct_aggregation.R", "R/fct_metric_registry.R", "R/fct_step2_compare.R", "R/fct_step2_tables.R", "R/fct_uncertainty.R", "R/utils_return_period.R", "R/fct_incidence.R", "R/fct_step2_pipeline.R"]
+    verified_against: "469c000"
   - id: "uncertainty"
     file: "33_uncertainty.md"
     title: "Uncertainty propagation"
@@ -355,7 +355,7 @@ pages:
       - "Step 2 > Results: the width of the coefficient band and of the model band. Step 2 > Diagnostics: the contribution of each source."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations"
     code: ["R/fct_aggregation_delta.R", "R/fct_aggregation.R", "R/fct_step2_pipeline.R", "R/fct_step1_results.R", "R/fct_model_rif.R", "R/fct_step2_tables.R", "R/fct_step2_compare.R", "R/fct_uncertainty.R"]
-    verified_against: "5b89f68"
+    verified_against: "469c000"
   - id: "seasonal-forecast"
     file: "34_seasonal_forecast.md"
     title: "Seasonal forecast scenario"
@@ -376,7 +376,7 @@ pages:
       - "Step 2 > Results: with a forecast, each chart and the return-period table carry both sets of series: \"Historical (annual)\" and the climate scenarios, and \"Historical (Nov - Jan)\" and the forecast. A forecast-only run shows the same charts without scenario rows. The headline cards stay in two groups, annual and target months. The cards of the target months show the placement, the shift against the historical spread of the same months and the member range. With the ENSO tables, the placement card in the level view adds the ENSO outlook of the target months (35_enso, Section 4)."
     guide: "https://github.com/worldbank/wise-app-docs"
     code: ["R/fct_step2_forecast.R", "R/mod_2_01_weathersim.R", "R/fct_forecast_catalogue.R", "R/fct_forecast_weather.R", "R/fct_forecast_placement.R", "R/fct_forecast_window.R", "R/fct_forecast_skill.R", "R/fct_step2_run.R"]
-    verified_against: "8639eb2"
+    verified_against: "469c000"
   - id: "enso"
     file: "35_enso.md"
     title: "ENSO labels on results"
@@ -520,7 +520,7 @@ pages:
       - "Step 3 > Diagnostics and Cost-effectiveness: the run outputs of Section 6."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release"
     code: ["R/fct_policy_sp_shock.R", "R/fct_policy_sim.R", "R/fct_policy_metric_decomp.R", "R/fct_step3_input.R", "R/mod_3_01_sp.R"]
-    verified_against: "edaaa1d"
+    verified_against: "469c000"
   - id: "decomposition"
     file: "44_decomposition.md"
     title: "Decomposition of the policy effect into direct and resilience channels"
@@ -550,7 +550,7 @@ pages:
       - "A banner appears when the model has no weather-by-policy interaction, since the interaction channel is then zero."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab"
     code: ["R/fct_policy_decomp.R", "R/fct_policy_metric_decomp.R", "R/fct_decomp_summary.R", "R/fct_policy_sim.R"]
-    verified_against: "5b89f68"
+    verified_against: "469c000"
   - id: "cost-effectiveness"
     file: "45_cost_effectiveness.md"
     title: "Cost-effectiveness of a cash transfer"
@@ -571,7 +571,7 @@ pages:
       - "Step 3 > Cost-effectiveness: a table of the ratio by scenario and weather year (average or 1-in-20), with the annual cost, the change in the metric and a 95 per cent interval, followed by a chart of the ratio and of the annual cost. A programme with a trigger adds the climate-adjusted cost and the coverage of the affected poor."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-results-tab"
     code: ["R/fct_policy_sp_effectiveness.R", "R/fct_step3_tables.R", "R/fct_policy_sp_shock.R", "R/mod_3_10_cost_effectiveness.R"]
-    verified_against: "5b89f68"
+    verified_against: "469c000"
   - id: "assumptions"
     file: "50_assumptions_limitations.md"
     title: "Assumptions and limitations in one place"

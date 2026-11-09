@@ -255,10 +255,11 @@ SP_WINDOW_MIN_REFERENCE_YEARS <- 10L
 #' `"weather"` returns the common value the user entered. `"return_period"`
 #' returns one threshold per (survey round, location, interview month) at the
 #' 1-in-N level of that cell's historical record, on the adverse side given by
-#' `trigger_direction`: `above` uses the `1 - 1/N` quantile and fires at or above
-#' it, `below` uses the `1/N` quantile and fires at or below it (the rule of
-#' `step2_adverse_return_period()`). Following Step 2, a 1-in-N trigger is
-#' offered only when the historical record has at least N finite years; cells
+#' `trigger_direction`: `above` uses the level exceeded with probability `1/N`
+#' (the upper tail) and fires at or above it, `below` the level in the lower tail
+#' and fires at or below it. The level is the Weibull rank `(n + 1) / N` of the
+#' cell's `n` years, as in the Step 2 tables (`rp_group_quantile()`). Following
+#' Step 2, a 1-in-N trigger is offered only when the historical record has at least N finite years; cells
 #' with a shorter record get no threshold (`NA`, never fires) and the call stops
 #' when no cell supports N.
 #'
@@ -319,15 +320,15 @@ sp_trigger_thresholds <- function(hist_exposure, spec) {
   tbl$threshold <- NA_real_
   if (either) tbl$threshold_low <- NA_real_
   ok <- which(tbl$supported)
-  quant <- function(p) .sp_group_quantile(vv[fin], gi[fin], n_cells, p)
+  level <- function(tail) rp_group_quantile(vv[fin], gi[fin], n_cells, 1 / n_tail, tail)
   if (!identical(direction, "below")) {
-    tbl$threshold[ok] <- quant(1 - 1 / n_tail)[ok]
+    tbl$threshold[ok] <- level("high")[ok]
   }
   if (identical(direction, "below")) {
-    tbl$threshold[ok] <- quant(1 / n_tail)[ok]
+    tbl$threshold[ok] <- level("low")[ok]
   }
   if (either) {
-    tbl$threshold_low[ok] <- quant(1 / n_tail)[ok]
+    tbl$threshold_low[ok] <- level("low")[ok]
   }
   if (identical(var, SP_IMPACT_COL)) {
     # A discrete impact (a poverty rate of 0 in most years) can have a threshold
@@ -420,10 +421,10 @@ sp_trigger_state <- function(exposure, thresholds, weights = NULL, spec) {
 }
 
 # Type-7 sample quantile of finite values by group, in one sort: the arithmetic
-# of `stats::quantile()` (same interpolation, so the thresholds are identical)
-# without a call per cell. The threshold step runs it over about 10,000 cells on
-# BFA, where the per-cell calls were 60 % of the sidebar preview (PR-12).
-# `g` holds integer group ids in 1..`n_groups`; groups with no value return NA.
+# of `stats::quantile()` (same interpolation) without a call per cell. Only the
+# lowest value (p = 0) is read with it now; the 1-in-N thresholds use the
+# Weibull rule of `rp_group_quantile()`. `g` holds integer group ids in
+# 1..`n_groups`; groups with no value return NA.
 .sp_group_quantile <- function(x, g, n_groups, p) {
   out <- rep(NA_real_, n_groups)
   if (!length(x)) {

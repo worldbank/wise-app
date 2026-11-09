@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, linear-model, rif-model, metrics, socia
 symbols: [y, W, D, Delta, tau, beta, gamma, delta, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab
 code: [R/fct_policy_decomp.R, R/fct_policy_metric_decomp.R, R/fct_decomp_summary.R, R/fct_policy_sim.R]
-verified_against: 5b89f68
+verified_against: 469c000
 ---
 
 # Decomposition of the policy effect into direct and resilience channels
@@ -95,7 +95,7 @@ The resilience effect is the sum of the repositioning and the interaction contri
 
 **Summaries.** For each scenario, each contribution is averaged over the years of a member and then over the members with equal weight, as in Section 3 of [32_metrics](32_metrics.md). A model-year with a missing state is left out of the expected value, and the number of years left out is reported.
 
-**Adverse years.** The decomposition can also be read in a bad year of the baseline. For return period $1/p$, the years of each member are ranked by the baseline value of the metric, and the baseline value in the adverse year is found by rank interpolation, Eq. (4.1) in [32_metrics](32_metrics.md), between two years $r_{\text{lo}}$ and $r_{\text{hi}}$ with weights $1-\theta$ and $\theta$. Every state is read at the same two years with the same weights:
+**Adverse years.** The decomposition can also be read in a bad year of the baseline. For return period $1/p$, the years of each member are ranked by the baseline value of the metric, and the baseline value in the adverse year is found by rank interpolation at the Weibull rank, Eq. (4.1) in [32_metrics](32_metrics.md), between two years $r_{\text{lo}}$ and $r_{\text{hi}}$ with weights $1-\theta$ and $\theta$. Every state is read at the same two years with the same weights:
 
 $$T_k^{\text{adverse}} = (1-\theta)\ T_k^{(r_{\text{lo}})} + \theta\ T_k^{(r_{\text{hi}})} \qquad \text{(5.3)}$$
 

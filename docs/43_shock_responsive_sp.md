@@ -6,7 +6,7 @@ depends_on: [notation, policy-framework, social-protection, simulation, climate-
 symbols: [omega, T, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release
 code: [R/fct_policy_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decomp.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
-verified_against: edaaa1d
+verified_against: 469c000
 ---
 
 # Shock-responsive cash transfers: triggers, payments and basis risk
@@ -39,7 +39,7 @@ The threshold is either a value entered by the user, or a **return period**: the
 
 $$\xi_c = Q_{1-1/N_{\text{tail}}}\big(\lbrace x_{c,r}\rbrace _{r \in \text{hist}}\big) \qquad \text{(1.1)}$$
 
-where $Q_q$ is the sample quantile of type 7. A trigger that fires below uses $Q_{1/N_{\text{tail}}}$. A cell supports a 1-in-$N$ trigger only if its historical record has at least $\lceil N_{\text{tail}}\rceil$ finite years, as in the return-period rule of Step 2. A cell with a shorter record never fires. The run stops if no cell supports the trigger. For an impact metric, a cell whose threshold equals its lowest historical value is treated as having no adverse tail and never fires.
+where $Q_q$ is the sample quantile of type 6, that is the Weibull rule of Step 2 ([32_metrics](32_metrics.md), Eq. 4.1): with $n$ historical years the threshold sits at the adverse rank $(n+1)/N_{\text{tail}}$, so the 1-in-10 level of 30 years is 3.1 ranks from the adverse end. A trigger that fires below uses $Q_{1/N_{\text{tail}}}$. A cell supports a 1-in-$N$ trigger only if its historical record has at least $\lceil N_{\text{tail}}\rceil$ finite years, as in the return-period rule of Step 2. A cell with a shorter record never fires. The run stops if no cell supports the trigger. For an impact metric, a cell whose threshold equals its lowest historical value is treated as having no adverse tail and never fires.
 
 The trigger fires for a cell-year when
 
@@ -193,7 +193,7 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 | Concept | Equation | Code |
 |---|---|---|
 | Checks of a specification | Section 1 | `R/fct_policy_sp_shock.R` `.sp_shock_problem()`, `.sp_timing_problem()`, `.sp_dyn_problem()` |
-| Thresholds from the historical record | (1.1) | `R/fct_policy_sp_shock.R` `sp_trigger_thresholds()`, `.sp_group_quantile()` |
+| Thresholds from the historical record | (1.1) | `R/fct_policy_sp_shock.R` `sp_trigger_thresholds()`, `R/utils_return_period.R` `rp_group_quantile()` |
 | Exceedance of the trigger | (1.2) | `R/fct_policy_sp_shock.R` `.sp_trigger_exceeds()` |
 | Impact metrics | Section 1 | `R/fct_policy_sp_shock.R` `.sp_impact_plan()`, `.sp_impact_column()`, `sp_shock_reference()` |
 | Response check | Section 1 | `R/fct_policy_sp_shock.R` `sp_response_check()` |
