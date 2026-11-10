@@ -1,6 +1,6 @@
 # Seasonal forecast: state at archive
 
-Archived 2026-11-09 from `roadmap/seasonal_forecast.md`. Branch `seasonal-forecast`, not yet merged into `dev`. The build is done. What remains before the PR into `dev` is checking, listed below, and was handed to a new session. Earlier history is in git: `git show 94020d7:roadmap/seasonal_forecast.md` (also `seasonal_forecast_review.md` and `seasonal_forecast_step3_design.md`).
+Archived 2026-11-09 from `roadmap/seasonal_forecast.md`. Branch `seasonal-forecast`, not yet merged into `dev`. The build is done, and the checks before the PR into `dev` (browser, real data, final gates) were completed by the maintainer; their list is removed from this file. Earlier history is in git: `git show 94020d7:roadmap/seasonal_forecast.md` (also `seasonal_forecast_review.md` and `seasonal_forecast_step3_design.md`).
 
 The method is in `docs/34_seasonal_forecast.md`, and shock transfers on a forecast in `docs/43_shock_responsive_sp.md`, Section 7. The data pipeline is in the sibling repo `wise-app-data` (`dev/forecast_plan.md`, issue #83). The ENSO side is in `review/archive/enso.md`.
 
@@ -42,23 +42,6 @@ The full test suite fails only on `test-deploy-contract.R:76`, which is expected
 - **Shock transfers on a forecast.** A member's payment means "if this member's weather happened", not a payment on the forecast, except for the anticipatory design above. Payout figures stay out of the annual cost, reach and basis-risk tables.
 - **Forecast-only runs** still show Historical (annual) in charts and tables.
 - **Working rules for this branch.** Regenerate `manifest.json` only as the last step before the PR. One PR into `dev`, opened only after the forecast is tested with real data.
-
-## Before the PR into `dev`: checks handed to a new session
-
-1. **Two defects found while extending the smoke, to check by hand.** The smoke stays on the annual path; forecast screens need real data and are checked with `dev/ui_drive.R`.
-   - Switching from `tx` to `t` after a full `tx` pipeline and model fit failed at "Weather variable(s) not found in data: t". Setting `t` on a fresh page works. Cause not found (suspect the selector or weather data not reloading after a fit).
-   - With the projections flyout open, axe reports `target-size` (serious) on the period checkboxes (`input[value="2025-2035"]` and others).
-2. **Shock transfers in the browser, not yet seen:** the impact trigger, the predicted-welfare layer, fewer than 10 reference years, axe on the `forecast_member_share_pct` slider, and whether the loss-linked cost (L/12) looks right against a fixed amount.
-3. **Config export and import replay** with real forecast data, including `forecast_member_share_pct`. The restore order of the start radio, which the server re-renders, is untested.
-4. **Real-data coverage.**
-   - Other countries: 33 are published (COL, DOM, LKA and TJK added 2026-11-05, with `r` at a lowered recent-overlap share of 0.95), and only BFA has been reviewed. MWI has run, unreviewed.
-   - 6-month windows. The Continuous form has run in `dev/parity_enso.R --forecast` (BFA, MWI), unreviewed.
-   - Levers other than social protection with a forecast.
-   - Diagnostics and Decomposition tabs with a shock transfer on a forecast.
-   - Pilot parity across engines.
-5. **ENSO browser checks** (`review/archive/enso.md`).
-6. **Screen-reader check** of the month strip. Arrow keys and focus order are already checked.
-7. **Final gates.** Refresh `verified_against` in the methods pages not touched by the ENSO and shock work, then run the full suite, `Rscript dev/docs_check.R` and `Rscript dev/agents_check.R`. Regenerate `manifest.json` last with `Rscript dev/00_make_manifest.R`, then open the PR.
 
 ## After the PR
 

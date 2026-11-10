@@ -1,6 +1,6 @@
 # ENSO: state at archive
 
-Archived 2026-11-09 from `roadmap/enso.md`. Branch `seasonal-forecast`, not yet merged into `dev`; ENSO goes to `dev` in one PR with the forecast. This file holds the state, the decisions to keep and what remains. The browser checks below are handed to a new session; the list is also in item 5 of `review/archive/seasonal_forecast.md`. The method is in `docs/35_enso.md`. The order of the PR is in `review/archive/seasonal_forecast.md`. The upstream tables are described in `wise-app-data` (`dev/enso_plan.md`, README section "`enso.csv` and `enso_forecast.csv`").
+Archived 2026-11-09 from `roadmap/enso.md`. Branch `seasonal-forecast`, not yet merged into `dev`; ENSO goes to `dev` in one PR with the forecast. This file holds the state, the decisions to keep and what remains. The browser checks before the PR were completed by the maintainer; their list is removed from this file. The method is in `docs/35_enso.md`. The order of the PR is in `review/archive/seasonal_forecast.md`. The upstream tables are described in `wise-app-data` (`dev/enso_plan.md`, README section "`enso.csv` and `enso_forecast.csv`").
 
 The full plan, with the evidence, the prototype figures and the stage-by-stage verification, is in git: `git show 3552240:roadmap/enso.md`.
 
@@ -26,14 +26,6 @@ Verified at `8639eb2`, with the fixture parity and the smoke rerun after the rev
 - **D7. No ENSO in estimation.** RONI as a regressor has no local variation, is absorbed by the `year` effect and extrapolates to 3.35 from a sample range near plus or minus 1. A weather-by-phase interaction mostly measures a difference between waves, because phase is often the same as wave. Training on one phase removes the weather variation the response needs. Simulating past El Niño years is valid as long as their weather lies in the fitted range, which is why Diagnostics reports weather support by label.
 - **D8. No ENSO control in Step 2 settings.** All years are simulated anyway. Filtering years would move the baseline of the delta method and rebuild return periods on a few years. Selecting years is a view of results.
 - **Open decisions, settled for now.** Toggle off by default. No headline card in the annual group. Year rule as in D2; the alternative, exposure RONI at plus or minus 0.5, has no Mixed class but labels a year on a few strong months.
-
-## Before the PR into `dev`
-
-- **Forecast marks on the distribution chart (Steps 2 and 3).** The toggle reads "ENSO phase" in line, the legend names El Niño and La Niña only, and the forecast members carry the outlook phase of the target months (D4, one state for all members). The note below the chart says how years and forecast months are classified. Not checked in the browser.
-- **Second-version items built, not checked in the browser.** The phase mark per month on the forecast flyout strip (`enso_strip_marks()`, symbols as in the chart legend, RONI and source in the tooltip), and the "Weather and ENSO" sentence in the ENSO section of Steps 2 and 3 (`enso_weather_relevance()`: median over locations of the rank correlation of yearly weather with exposure RONI). Check the strip on a narrow flyout, the target tile contrast, and the sentence on BFA (expected: barely) and MWI (expected: stronger).
-- **Browser checks not run.** MWI Step 3 forecast marks; Step 3 with the ENSO files removed; the file-removed and MWI checks of the Step 3 comparison and the weather support line. All use gates already checked in Step 2. Use `dev/ui_drive.R` (skill `wise-ui-check`) on MWI, which has a signal, on BFA, which has none, and with the files removed.
-- **Zip downloads.** The new tables were read through the export registry, not downloaded in the browser.
-- **BFA forecast position.** It depends on the specification: reference years at least as adverse as the median member are 1 of 30 in the parity run and 28 of 30 with the app defaults. Look at this in the forecast checks; it is not an ENSO defect.
 
 ## For the Connect release
 

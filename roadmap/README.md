@@ -11,7 +11,7 @@ Working plans for features in flight. They are state and decisions, not guidance
 
 When a feature merges, cut its file down to a pointer to the `docs/` method page or delete it; the full text stays in git.
 
-Current files: none in flight. The ENSO and seasonal forecast plans (branch `seasonal-forecast`, not yet merged) are in `review/archive/enso.md` and `review/archive/seasonal_forecast.md`, with the checks left before the PR.
+Current files: a feature in flight has its own `roadmap/<feature>.md` (run `ls roadmap/`); the proposals listed below are not in flight. When a feature's build is done, move its plan to `review/archive/` and keep the "After the PR" items there. Find archived plans with `ls review/archive/`.
 
 Proposals for open issues (no branch yet; each file lists its issues):
 
