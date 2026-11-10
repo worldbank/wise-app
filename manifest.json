@@ -3584,7 +3584,7 @@
       "checksum": "e01f3f2093202bb14f7f2837997fbd92"
     },
     "R/fct_echart_builders.R": {
-      "checksum": "8c1e1688494e855ed430c7669744656e"
+      "checksum": "7dec91380928e929d64eaac2d7f92e99"
     },
     "R/fct_enso.R": {
       "checksum": "ca5890ad8ff206bc93a1e3f264cb4925"
@@ -3596,7 +3596,7 @@
       "checksum": "94f13ec20d5c88d18f7c607c65f32e8d"
     },
     "R/fct_forecast_placement.R": {
-      "checksum": "c6b65cf838ee08cab9d8e2078abfc215"
+      "checksum": "d697b8f3a75ed51bb6e7461ec21cae94"
     },
     "R/fct_forecast_policy.R": {
       "checksum": "125be654e94bf38b06b7671e9d82f405"
@@ -3608,7 +3608,7 @@
       "checksum": "13eb52d29186734ecb6b5a2829e1f056"
     },
     "R/fct_forecast_window.R": {
-      "checksum": "bae0680b6afe2e513d410f25fb43656d"
+      "checksum": "0d522cbc24f9b7a6cf25dd03f3d761f5"
     },
     "R/fct_hexmap.R": {
       "checksum": "70cfbfbd01fac72dc0b0679bf4906381"
@@ -3644,7 +3644,7 @@
       "checksum": "a9f784ef23d952a07b4966ffeaeb3d35"
     },
     "R/fct_policy_metric_decomp.R": {
-      "checksum": "9e5130a1865a50038d2bae87a490ff75"
+      "checksum": "4ea4caf739208a2fce270014f25bcc8c"
     },
     "R/fct_policy_registry.R": {
       "checksum": "d4624d6698ac611c18eb04782e88ce14"
@@ -3659,7 +3659,7 @@
       "checksum": "f61d29c048d079b5723837a9a50cf274"
     },
     "R/fct_policy_sp_shock.R": {
-      "checksum": "be4a8126e568c9b3e7b16788d598678b"
+      "checksum": "15bbe8c014e9cd3f7f2dd31e93013201"
     },
     "R/fct_policy_sp_ui.R": {
       "checksum": "6bc1a8b032b309ef960936b3eeea1e1b"
@@ -3698,7 +3698,7 @@
       "checksum": "32fb1b4115a9cb9b0bf117a5c48ac5dc"
     },
     "R/fct_step1_results.R": {
-      "checksum": "ee8f4904984dd1325317168bbe3d1544"
+      "checksum": "79ef2aa08698abee08430a8560290505"
     },
     "R/fct_step1_sample.R": {
       "checksum": "03df4b5be896b9d5d31ca296428c4276"
@@ -3722,7 +3722,7 @@
       "checksum": "ac90957d2f328dbadd58a7e25d96fa1c"
     },
     "R/fct_step2_compare.R": {
-      "checksum": "7b54831d84440d84162292d7ab0c9500"
+      "checksum": "276f1a1833fe42c161f3d9ad5f3cf660"
     },
     "R/fct_step2_compute.R": {
       "checksum": "f43a6a22b6f41bf6c2fb830cb1682566"
@@ -3758,7 +3758,7 @@
       "checksum": "742629d8c36eccdf266eaf3857324163"
     },
     "R/fct_uncertainty.R": {
-      "checksum": "c777a6895fecfedc465a81b16d2a962c"
+      "checksum": "f1508f238813cb8ee5dddde9e06e4f51"
     },
     "R/globals.R": {
       "checksum": "2f1ab12319978feedb54e2e4e6cbfb71"
@@ -3797,7 +3797,7 @@
       "checksum": "48f1ebd9947b283f200dbb7b045612ed"
     },
     "R/mod_2_02_results.R": {
-      "checksum": "bcfacc804a91ac1603d643116a6faab1"
+      "checksum": "f2594bd5bfa618ca91626fb6b5393f52"
     },
     "R/mod_2_03_diagnostics.R": {
       "checksum": "450de1feaf2b4a39a5c2d21e16f2b0d5"
@@ -3858,6 +3858,9 @@
     },
     "R/utils_plot_theme.R": {
       "checksum": "63f0077872b653947eab520dfcac2c5c"
+    },
+    "R/utils_return_period.R": {
+      "checksum": "0c23af04c7a70a20afc23d447eda36b2"
     },
     "R/utils_step1.R": {
       "checksum": "aa8f183344f164a874eae8541e0cff63"
