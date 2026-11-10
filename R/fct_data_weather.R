@@ -1286,6 +1286,11 @@ WISEAPP_WX_LOC_CACHE_VERSION <- "v2"
 #'   Default `FALSE`: the frames are exactly as before.
 #' @param seed Integer seed for the K-means bin breaks (the session seed in
 #'   the app). Unused when `stored_breaks` is supplied.
+#' @param forecast Optional seasonal-forecast window, a list with `run` (a
+#'   forecast run from the forecast reader), `start` and `len` (first target
+#'   month and number of months) and `reference_years`. When given, the
+#'   forecast members and the same-window reference frames are added to the
+#'   returned list. Default `NULL`: no forecast frames.
 #' @return A named list of collected data frames with columns
 #'   `code, year, survname, loc_id, timestamp, <weather_vars>`:
 #'   * `"historical"` - unperturbed result filtered to `dates`.

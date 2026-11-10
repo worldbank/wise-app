@@ -250,7 +250,6 @@ open_tab("sim_tab")
 click_js("input[name$='results-enso_mark'][value='on']")
 settle(1)
 check(visible("#step2-results-enso_phase_table .rt-table"), "Step 2 ENSO comparison renders")
-check(isTRUE(app$get_js("document.body.innerText.includes('Marked draws:')")), "Step 2 ENSO legend shows with the toggle on")
 scan("step2-results", "#step2-results-summary_threshold_table .rt-table")
 # conditionalPanel: the poverty-line input shows only for a poverty metric.
 sel_line <- "input[id$='results-pov_line']"

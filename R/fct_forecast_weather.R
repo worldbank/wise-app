@@ -197,17 +197,17 @@
   # The pipeline guarantees the run file's grid; check only what the survey locations need: every
   # member present for every location and needed month, once, with no missing predictor.
   n_locations <- h3_slim |> dplyr::distinct(code, year, survname, loc_id) |> dplyr::count() |>
-    dplyr::pull(n) |> as.numeric()
+    dplyr::pull("n") |> as.numeric()
   if (!n_locations) {
     stop("Forecast has no location rows matching the selected surveys.", call. = FALSE)
   }
   coverage <- monthly |>
     dplyr::summarise(
       n = dplyr::n(),
-      n_keys = dplyr::n_distinct(member, code, year, survname, loc_id, timestamp),
-      n_members = dplyr::n_distinct(member),
-      min_member = min(member, na.rm = TRUE),
-      max_member = max(member, na.rm = TRUE),
+      n_keys = dplyr::n_distinct(.data$member, code, year, survname, loc_id, timestamp),
+      n_members = dplyr::n_distinct(.data$member),
+      min_member = min(.data$member, na.rm = TRUE),
+      max_member = max(.data$member, na.rm = TRUE),
       dplyr::across(dplyr::all_of(vars), ~ sum(as.integer(is.na(.x))))
     ) |>
     dplyr::collect()
@@ -279,7 +279,7 @@
     dplyr::mutate(!!!roll_exprs) |>
     .apply_transformations(selected_weather, observed_roll, climate_ref = climate_ref) |>
     dplyr::filter(timestamp %in% !!targets) |>
-    dplyr::arrange(member, code, year, survname, loc_id, timestamp) |>
+    dplyr::arrange(.data$member, code, year, survname, loc_id, timestamp) |>
     dplyr::collect()
   frames <- .wx_round_weather_values(frames, vars)
   if (has_binning) frames <- .apply_binning(frames, stored_breaks, keep_continuous)
