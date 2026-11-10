@@ -5,8 +5,8 @@ app_step: 2
 depends_on: [notation, data, weather-measures]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#the-delta-method-change-factor-perturbation
-code: [R/fct_get_weather.R, R/fct_simulations.R, R/fct_step2_input.R, R/fct_run_simulation.R]
-verified_against: b4f2807
+code: [R/fct_data_weather.R, R/fct_step2_pipeline.R, R/fct_step2_input.R, R/fct_step2_run.R]
+verified_against: 5b89f68
 ---
 
 # Climate scenarios (monthly delta method)
@@ -40,7 +40,9 @@ For each cell, member and month, the change from the baseline to the future peri
 
 $$\Delta^{m}_{c\mu} = \begin{cases} \bar x^{\ m}_{c\mu}(P_s) - \bar x^{\ m}_{c\mu}(P_0) & \text{additive} \\\\[6pt] \dfrac{\bar x^{\ m}_{c\mu}(P_s) + \varepsilon}{\bar x^{\ m}_{c\mu}(P_0) + \varepsilon} & \text{multiplicative} \end{cases} \qquad \text{(2.1)}$$
 
-with $\varepsilon = 0.001$ to avoid division by zero in dry months. A variable measured in millimetres or in days uses the multiplicative form. Every other variable, including temperature and standardised indices, uses the additive form.
+with $\varepsilon = 0.001$ to avoid division by zero in dry months. The form is set by variable name: rainfall (`r`, `rx5day`) and the counts of days (`r20`, `tx35`, `tr`) use the multiplicative form; temperatures (`t`, `tn`, `tx`), soil moisture (`mrsos`) and standardised indices (`spei6`) use the additive form. A variable that is not listed falls back to its unit: millimetres (`mm`, `mm/day`) and `days` are multiplicative and every other unit is additive. Defining the form by name keeps a unit written differently (for example `mm/day`) from silently switching rainfall to an additive change, which could make rainfall negative.
+
+A multiplicative count of days, such as days of heavy rain or hot days, is also limited to the days of its calendar month after the change factor is applied, because a count cannot exceed the month.
 
 The change at the location is the population-weighted mean of the cell changes, with the weights and the missing-value rule of Eq. (3.1) in [10_data](10_data.md). If the climate grid is coarser than the survey cells, the survey cells are mapped to their parent climate cell.
 
@@ -67,7 +69,7 @@ The simulation years of a future series are the years of the historical window. 
 - A future series keeps the observed order of wet and dry, hot and cool years of the historical window. Its monthly means are those of the future climate according to member $m$.
 - Differences between members are differences in the projected change, not in the weather sequence.
 - Near-term periods (to 2035) differ little between pathways. Pathways diverge toward mid-century.
-- A multiplicative change cannot make rainfall negative. A very large ratio in a dry month can produce a large absolute change.
+- A multiplicative change cannot make rainfall negative. A very large ratio in a dry month can produce a large absolute change, and a count of days is limited to the days of the month.
 - Because the baseline of the climate model is taken over the same window as the observed record, the change is internally consistent. A short window gives a less stable model climatology than a 30-year window.
 
 ## Assumptions
@@ -90,6 +92,7 @@ The simulation years of a future series are the years of the historical window. 
 - Known data limitation, climate-model variables. Some climate models do not provide some variables in the supplied files, and the same models lack the same variables in every economy. Of the 22 to 27 members of a pathway, 2 lack `r`, `rx5day` and `r20`, 4 to 5 lack `tn` and `tr`, 5 to 8 lack `tx` and `tx35`, and about half lack `mrsos`. A member without a selected variable is excluded as incomplete, so the number of members depends on the variables chosen.
 - Known data limitation, soil moisture. `mrsos` is also undefined at the cells of some coastal and island locations. In Colombia (two surveys), Fiji, Myanmar and Mauritania (2014) at least one location has no `mrsos` value in any cell, so every member is excluded when `mrsos` is selected. In Guinea-Bissau a few members remain. The other variables have no such location-level gaps.
 - Only the weather variables that the model uses are perturbed.
+- Changes in ENSO. A future series keeps the observed sequence of its template years, so a scenario year carries the ENSO label of its template year ([35_enso](35_enso.md)). It reads as a past event in a warmer climate; changes in ENSO frequency, strength or teleconnections are not represented.
 
 ## In the app
 
@@ -106,9 +109,9 @@ User guide: [The delta method](https://github.com/worldbank/wise-app-docs/blob/m
 | Concept | Equation | Code |
 |---|---|---|
 | Baseline and future period of the run | 1 | `R/fct_step2_input.R` `wise_step2_input()`, `.step2_valid_future_period()` |
-| Climate-model monthly climatology | (1.1) | `R/fct_get_weather.R` `get_weather()` (internal `.cmip6_h3_monthly`) |
-| Change factor and population-weighted location change | (2.1) | `R/fct_get_weather.R` `get_weather()` (internal `.make_delta_exprs`) |
-| Additive or multiplicative rule | (2.1) | `R/fct_simulations.R` `build_perturbation_method()` |
-| Perturbed monthly series, window, anomaly, bins | (3.1) | `R/fct_get_weather.R` `get_weather()` (internal `.make_perturb_exprs`), `.apply_transformations()`, `.apply_binning()` |
-| Exclusion of incomplete members | 4 | `R/fct_get_weather.R` `get_weather()`, `.cmip_expected_keys()`, `.cmip_member_coverage()`, `.cmip_missing_summary()` |
-| Scenario keys by pathway, period, member | 4 | `R/fct_run_simulation.R` `fct_run_simulation()` |
+| Climate-model monthly climatology | (1.1) | `R/fct_data_weather.R` `get_weather()` (internal `.cmip6_h3_monthly`) |
+| Change factor and population-weighted location change | (2.1) | `R/fct_data_weather.R` `get_weather()` (internal `.make_delta_exprs`) |
+| Additive or multiplicative rule | (2.1) | `R/fct_step2_pipeline.R` `build_perturbation_method()` |
+| Perturbed monthly series, window, anomaly, bins | (3.1) | `R/fct_data_weather.R` `get_weather()` (internal `.make_perturb_exprs`), `.apply_transformations()`, `.apply_binning()` |
+| Exclusion of incomplete members | 4 | `R/fct_data_weather.R` `get_weather()`, `.cmip_expected_keys()`, `.cmip_member_coverage()`, `.cmip_missing_summary()` |
+| Scenario keys by pathway, period, member | 4 | `R/fct_step2_run.R` `fct_run_simulation()` |

@@ -5,8 +5,8 @@ app_step: 2
 depends_on: [notation, framework, weather-measures, linear-model, rif-model, climate-scenarios]
 symbols: [i, r, s, m, mu, W, y, Y, omega, T, epsilon]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#simulating-welfare
-code: [R/fct_step2_input.R, R/fct_step2_compute.R, R/fct_run_simulation.R, R/fct_simulations.R, R/fct_predict_outcomes.R, R/fct_aggregation.R, R/fct_sim_diag.R, R/fct_sim_compare.R, R/fct_spec_defaults.R]
-verified_against: 9881d96
+code: [R/fct_step2_input.R, R/fct_step2_compute.R, R/fct_step2_run.R, R/fct_step2_pipeline.R, R/fct_model_predict.R, R/fct_aggregation.R, R/fct_step2_diagnostics.R, R/fct_step2_compare.R, R/fct_spec_defaults.R]
+verified_against: 5b89f68
 ---
 
 # Simulation of welfare under historical and future weather
@@ -120,6 +120,7 @@ The simulated historical statistic, averaged over the years, is compared with th
 - Weights are not rescaled when households are dropped.
 - A household appears in the interview months of its own survey only. Weather in other months is not used.
 - The historical window may end before the survey year, so the observed weather of the survey year itself need not be among the simulation years.
+- A simulation year places the interview months of one survey in one calendar year, so an ENSO event can fall in two simulation years. The labels of [35_enso](35_enso.md) follow the months the model reads, not the calendar year.
 
 ## In the app
 
@@ -138,13 +139,13 @@ User guide: [Simulating welfare](https://github.com/worldbank/wise-app-docs/blob
 |---|---|---|
 | Baseline waves and complete cases | 1 | `R/fct_step2_input.R` `step2_baseline_svy()`, `step2_baseline_complete()`, `step2_baseline_run()` |
 | Run input and defaults | Setup | `R/fct_step2_input.R` `wise_step2_input()`; `R/fct_spec_defaults.R` `wise_default_sim()`, `WISEAPP_SIM_HIST_RANGE` |
-| Simulation grid of months and years | (2.1) | `R/fct_simulations.R` `build_hist_sim_dates()`, `.add_sim_timestamp_fields()` |
-| Survey-weather join and prediction | (3.1) | `R/fct_simulations.R` `run_sim_pipeline()`; `R/fct_predict_outcomes.R` `predict_outcome()` |
-| Quantile-model prediction | 3 | `R/fct_rif_sim.R` `predict_rif()` |
-| Training residuals | 4 | `R/fct_run_simulation.R` `fct_run_simulation()` |
-| Residual rules | (4.1) | `R/fct_aggregation.R` `draw_residuals_vec()`; `R/fct_simulations.R` `residual_choices()`, `step2_add_residual_key()` |
+| Simulation grid of months and years | (2.1) | `R/fct_step2_pipeline.R` `build_hist_sim_dates()`, `.add_sim_timestamp_fields()` |
+| Survey-weather join and prediction | (3.1) | `R/fct_step2_pipeline.R` `run_sim_pipeline()`; `R/fct_model_predict.R` `predict_outcome()` |
+| Quantile-model prediction | 3 | `R/fct_model_rif.R` `predict_rif()` |
+| Training residuals | 4 | `R/fct_step2_run.R` `fct_run_simulation()` |
+| Residual rules | (4.1) | `R/fct_aggregation.R` `draw_residuals_vec()`; `R/fct_step2_pipeline.R` `residual_choices()`, `step2_add_residual_key()` |
 | Annual statistics | (5.1) | `R/fct_aggregation_delta.R` `aggregate_pipeline_per_year()` |
-| Excluded household-years | 5 | `R/fct_run_simulation.R` `step2_data_quality_notice()` |
-| Weather support | 6 | `R/fct_sim_diag.R` `weather_support_reference()`, `weather_support_scenario()`, `weather_support_pool()` |
-| Calibration check | 7 | `R/fct_sim_compare.R` `step2_baseline_check()` |
-| Orchestration of the run | all | `R/fct_step2_compute.R` `step2_compute()`; `R/fct_run_simulation.R` `fct_run_simulation()` |
+| Excluded household-years | 5 | `R/fct_step2_run.R` `step2_data_quality_notice()` |
+| Weather support | 6 | `R/fct_step2_diagnostics.R` `weather_support_reference()`, `weather_support_scenario()`, `weather_support_pool()` |
+| Calibration check | 7 | `R/fct_step2_compare.R` `step2_baseline_check()` |
+| Orchestration of the run | all | `R/fct_step2_compute.R` `step2_compute()`; `R/fct_step2_run.R` `fct_run_simulation()` |

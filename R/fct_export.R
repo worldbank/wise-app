@@ -544,7 +544,7 @@ wise_config_apply <- function(config, session, existing = character(0)) {
 #' @noRd
 pipeline_runner <- function(triggers, results, on_state = NULL,
                             on_settle = NULL,
-                            ready_to_run = function() TRUE,
+                            ready_to_run = function(key) TRUE,
                             stage_timeout = .PIPELINE_STAGE_TIMEOUT) {
   stages <- .pipeline_stages()
   keys <- vapply(stages, `[[`, character(1), "key")
@@ -632,7 +632,7 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     deadline(Sys.time() + stage_timeout)
     settling(next_key)
     settle_until(Sys.time() + .pipeline_settle_seconds())
-    if (is.function(on_settle)) on_settle()
+    if (is.function(on_settle)) on_settle(next_key)
     emit()
   }
 
@@ -643,8 +643,8 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
       return(invisible(NULL))
     }
     if (Sys.time() >= until) {
-      if (!isTRUE(ready_to_run())) {
-        if (is.function(on_settle)) on_settle()
+      if (!isTRUE(ready_to_run(key))) {
+        if (is.function(on_settle)) on_settle(key)
         shiny::invalidateLater(250)
         return(invisible(NULL))
       }
@@ -655,7 +655,7 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
       fired(TRUE)
       emit()
     } else {
-      if (is.function(on_settle)) on_settle()
+      if (is.function(on_settle)) on_settle(key)
       shiny::invalidateLater(250)
     }
   })
@@ -749,7 +749,7 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     deadline(Sys.time() + stage_timeout)
     settling(first)
     settle_until(Sys.time() + .pipeline_settle_seconds())
-    if (is.function(on_settle)) on_settle()
+    if (is.function(on_settle)) on_settle(first)
     emit()
     invisible(NULL)
   }
@@ -1757,6 +1757,44 @@ export_menu_server <- function(input, output, session,
     res
   }
 
+  # Steps 2 and 3 only: Step 1 controls are not re-rendered by a later stage.
+  reapply_step_inputs <- function(key) {
+    prefix <- switch(key, step2 = "^step2-", step3 = "^step3-", NULL)
+    cfg <- staged_cfg()
+    if (is.null(prefix) || is.null(cfg) || isTRUE(import_state$cancelled)) {
+      return(invisible(NULL))
+    }
+    ids <- grep(prefix, names(cfg$inputs), value = TRUE)
+    if (!length(ids)) {
+      return(invisible(NULL))
+    }
+    cfg$inputs <- cfg$inputs[ids]
+    live <- names(shiny::reactiveValuesToList(input))
+    wise_config_apply(cfg, session, existing = live)
+    invisible(NULL)
+  }
+
+  # A message sent to an input reaches the server after the run that follows it would have read the old value.
+  # Wait until the server's values match the configuration, for at most `max_tries` checks (inputs that cannot
+  # take the saved value, such as a choice that is no longer offered, must not hold the run).
+  step_inputs_settled <- function(key, max_tries = 40L) {
+    prefix <- switch(key, step2 = "^step2-", step3 = "^step3-", NULL)
+    cfg <- staged_cfg()
+    if (is.null(prefix) || is.null(cfg)) {
+      return(TRUE)
+    }
+    ids <- grep(prefix, names(cfg$inputs), value = TRUE)
+    ids <- ids[.export_keep_input(ids)]
+    same <- vapply(ids, function(id) {
+      want <- cfg$inputs[[id]]
+      have <- tryCatch(shiny::isolate(input[[id]]), error = function(e) NULL)
+      is.null(want) || is.null(have) || identical(as.character(unlist(want)), as.character(unlist(have)))
+    }, logical(1))
+    tries <- (import_state$settle_tries[[key]] %||% 0L) + 1L
+    import_state$settle_tries[[key]] <- tries
+    all(same) || tries >= max_tries
+  }
+
   apply_pending <- function() {
     if (isTRUE(import_state$cancelled)) {
       return(invisible(NULL))
@@ -1825,13 +1863,16 @@ export_menu_server <- function(input, output, session,
   runner <- pipeline_runner(
     triggers = run_triggers,
     results = step_results,
-    on_settle = function() {
+    on_settle = function(key) {
       apply_pending()
+      # Earlier stages re-render the controls of a later step (the forecast window, the Step 3 panels), which
+      # drops values applied at the start. Apply a step's settings again just before it runs.
+      reapply_step_inputs(key)
       import_wake(shiny::isolate(import_wake()) + 1L)
     },
-    ready_to_run = function() {
+    ready_to_run = function(key) {
       pending <- import_state$pending
-      is.null(pending) || !length(pending$ids)
+      (is.null(pending) || !length(pending$ids)) && step_inputs_settled(key)
     },
     on_state = function(state, phase, text) {
       pipeline_view(list(state = state, phase = phase, message = text))
@@ -1870,6 +1911,7 @@ export_menu_server <- function(input, output, session,
       return(invisible(NULL))
     }
     import_state$cancelled <- FALSE
+    import_state$settle_tries <- NULL
     previous_cfg(wise_config_snapshot(input, seed = wise_current_seed(seed, session)))
     imported_seed <- suppressWarnings(as.integer(cfg$random_seed)[1L])
     session$userData$wise_analysis_seed <- if (is.na(imported_seed)) {

@@ -36,11 +36,11 @@ without `test-`) catches both. Search for the function name in `tests/` too:
 
 | Changed | Run (filter) |
 |---|---|
-| `fct_fit_model.R`, `fct_predict_outcomes.R`, `fct_rif_sim.R` | `fct.fit.model`, `fct.predict`, `fct.rif`, `determinism` |
-| `fct_simulations.R`, `fct_run_simulation.R`, `fct_step2_*` | `fct.simulations`, `fct.run.simulation`, `step2`, `determinism`, `w3` |
+| `fct_model_fit.R`, `fct_model_predict.R`, `fct_model_rif.R` | `fct.fit.model`, `fct.predict`, `fct.rif`, `determinism` |
+| `fct_step2_pipeline.R`, `fct_step2_run.R`, `fct_step2_*` | `fct.simulations`, `fct.run.simulation`, `step2`, `determinism`, `w3` |
 | `fct_aggregation*.R` | `aggregation`, `w3` |
 | `fct_policy_*`, `fct_sp_*`, `fct_step3_*` | `policy`, `^sp`, `fct.step3`, `fct.sp` |
-| `fct_policy_decompose.R`, `fct_policy_metric_decompose.R`, `fct_decomposition_summary.R` | `policy.decomposition`, `policy.metric.decompose`, `decomposition`, `w3.b` |
+| `fct_policy_decomp.R`, `fct_policy_metric_decomp.R`, `fct_decomp_summary.R` | `policy.decomposition`, `policy.metric.decompose`, `decomposition`, `w3.b` |
 | `fct_metric_registry.R`, uncertainty code | `uncertainty`, `policy.decomposition.uncertainty` |
 | `fct_hexmap.R`, `inst/app/vendor/` | `hexmap` (rendering needs the browser, see below) |
 | `fct_export.R`, `fct_provenance.R` | `export` |
@@ -52,7 +52,7 @@ Tests that start real mirai workers or Chrome (`step2-async*`,
 `fct-overview-metadata`, `export-bundle`, `mod-0-overview`) are slow: run them
 only when the change touches async, metadata or export code.
 
-Run the whole suite (`devtools::test()`, 4 to 6 minutes, using the tool's
+Run the whole suite (`devtools::test()`, 5 to 10 minutes, using the tool's
 background-process support if available) once at the end of a multi-file code
 change, with the tree quiet.
 
@@ -77,7 +77,8 @@ Do the rows that apply.
 | A method, equation, default or assumption | Update the page in `docs/`, set its `verified_against` to the commit checked, `Rscript dev/docs_index.R`, then `Rscript dev/docs_check.R` |
 | Batch table columns or meaning | `batch/docs/tables.md`; batch tests |
 | `AGENTS.md`, `ARCHITECTURE.md`, `DEPLOYMENT.md`, a skill | `Rscript dev/agents_check.R` |
-| UI (module, CSS, chart, map, tab) | Skill `wise-ui-check`; larger UI changes also `Rscript tests/e2e/smoke.R` (about 5 minutes, needs Chrome) |
+| UI (module, CSS, chart, map, tab) | Skill `wise-ui-check`; larger UI changes also `Rscript tests/e2e/smoke.R` (about 2 minutes, needs Chrome) |
+| A change that must not move any number (a label or annotation on results) | `Rscript dev/parity_enso.R --fixture` while iterating, without `--fixture` (BFA) once at the end: every registered table identical with and without the feature |
 | A speed or memory claim | Skill `wise-benchmark` |
 | Model or simulation numbers move | Skill `wise-numeric-change` |
 | A review finding | Close it per Working rules in `review/TRACKING.md` |
@@ -106,3 +107,10 @@ which follow-ups were done, and what was not run and why. Do not write
 - Tests pin their environment (`setup-env.R`): `WISEAPP_DATA_*` and cloud
   credentials are unset there. Do not rely on `.Renviron`.
 - `tests/testthat/testthat-problems.rds` is a local artifact and is git-ignored.
+- `test-deploy-contract.R` fails while `manifest.json` lacks new `R/` files. On a
+  branch that defers the manifest to the PR (see the branch notes in
+  `roadmap/`), report it as expected instead of regenerating the manifest.
+- Some files mix CRLF and LF line endings (`R/mod_2_simulation.R`). A scripted
+  rewrite in text mode normalises them and fills the diff. Edit with the Edit
+  tool, or in binary mode, and check `git diff --stat` for a line count far
+  above your change.

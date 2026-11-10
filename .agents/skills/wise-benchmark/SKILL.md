@@ -53,14 +53,13 @@ app offers for IRN.
 | Area | Harness |
 |---|---|
 | Step 2 pipeline end to end | `dev/bench/run_step2_benchmark.sh` (wraps `dev/bench/bench_step2.R`, adds process-tree peak RSS) |
-| Step 3 policy | `dev/bench/bench_step2.R` with `WISEAPP_STEP2_INCLUDE_STEP3=1` and `WISEAPP_STEP3_POLICIES=...`; helpers in `dev/bench/bench_step3_helpers.R` |
-| Aggregation / welfare stats | `dev/bench/bench_aggregation.R`, `dev/bench/bench_surveystats.R`, `dev/bench/profile_agg_hotpath.R` |
+| Step 3 policy | `dev/bench/bench_step2.R` with `WISEAPP_STEP2_INCLUDE_STEP3=1` and `WISEAPP_STEP3_POLICIES=...`; helpers in `dev/bench/lib/bench_step3_helpers.R` |
+| Aggregation / welfare stats | `dev/bench/bench_aggregation.R`, `dev/bench/bench_surveystats.R` |
 | RIF | `dev/bench/bench_rif_kernels.R`, `dev/bench/bench_rif_preparation.R` |
 | Prediction | `dev/bench/bench_prediction_core.R` |
 | Weather | `dev/bench/bench_w3_weather.R`, `dev/bench/bench_weather_threads.R` |
 | Overview metadata | `dev/bench/bench_overview_metadata.R` |
 | UI stages | `dev/bench/bench_ui_step1.R`, `dev/bench/bench_ui_step2.R`, `dev/bench/bench_ui_step3.R` |
-| Multi-process | `dev/bench/bench_multi_par.R` |
 
 Open the chosen script header to confirm its env vars; they differ per harness.
 

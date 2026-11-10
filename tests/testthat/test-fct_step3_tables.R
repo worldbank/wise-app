@@ -5,7 +5,7 @@
 
 # dev/ is not part of the built package, so the fixture run only exists in a
 # source checkout.
-bench_ok <- file.exists(testthat::test_path("../../dev/bench/bench_step3_helpers.R"))
+bench_ok <- file.exists(testthat::test_path("../../dev/bench/lib/bench_step3_helpers.R"))
 
 step3_fixture_cache <- new.env(parent = emptyenv())
 
@@ -16,8 +16,8 @@ step3_fixture <- function(label = "targeted_sp") {
   if (!is.null(step3_fixture_cache[[label]])) {
     return(step3_fixture_cache[[label]])
   }
-  source(testthat::test_path("../../dev/bench/bench_step3_helpers.R"), local = TRUE)
-  source(testthat::test_path("../../dev/bench/bench_step2_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/lib/bench_step3_helpers.R"), local = TRUE)
+  source(testthat::test_path("../../dev/bench/lib/bench_step2_helpers.R"), local = TRUE)
   input <- .bench_small_step3_input(n = 60L)
   baseline <- .bench_small_step2_result(input, "ols", "one_ssp_one_period")
   fixture <- .bench_step3_policy_fixtures(label)[[1L]]

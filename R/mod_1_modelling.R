@@ -75,7 +75,7 @@ mod_1_modelling_ui <- function(id) {
 #' 1_modelling Server Functions
 #'
 #' Orchestrates sub-modules 01-08. All pure logic is delegated to
-#' `fct_modelling.R`. Returns a flat API list consumed by Step 2 / Step 3.
+#' the `fct_step1_*` and `fct_model_*` files. Returns a flat API list consumed by Step 2 / Step 3.
 #'
 #' @param id              Module id.
 #' @param connection_params Reactive named list from mod_0_overview.
@@ -92,6 +92,7 @@ mod_1_modelling_server <- function(id,
                                    survey_list,
                                    variable_list,
                                    cpi_ppp,
+                                   enso = shiny::reactive(NULL),
                                    run_trigger = shiny::reactive(NULL),
                                    load_survey_trigger = shiny::reactive(NULL),
                                    load_weather_trigger = shiny::reactive(NULL)) {
@@ -111,6 +112,7 @@ mod_1_modelling_server <- function(id,
       connection_params = connection_params,
       variable_list     = variable_list,
       cpi_ppp           = cpi_ppp,
+      enso              = enso,
       selected_surveys  = s1$selected_surveys,
       tabset_id         = "step1_output_tabs",
       tabset_session    = session,
@@ -149,6 +151,7 @@ mod_1_modelling_server <- function(id,
       hist_years = s4$hist_years,
       survey_data = s2$survey_data,
       cell_data = s2$cell_data,
+      enso = enso,
       survey_version = s2$survey_version,
       survey_data_generation = s2$survey_data_generation,
       tabset_id = "step1_output_tabs",

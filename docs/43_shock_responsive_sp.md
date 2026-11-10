@@ -5,8 +5,8 @@ app_step: 3
 depends_on: [notation, policy-framework, social-protection, simulation, climate-scenarios, metrics]
 symbols: [omega, T, r, m, s]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#shock-responsive-sp-future-release
-code: [R/fct_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decompose.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
-verified_against: 3f4fc5f
+code: [R/fct_policy_sp_shock.R, R/fct_policy_sim.R, R/fct_policy_metric_decomp.R, R/fct_step3_input.R, R/mod_3_01_sp.R]
+verified_against: 469c000
 ---
 
 # Shock-responsive cash transfers: triggers, payments and basis risk
@@ -39,7 +39,7 @@ The threshold is either a value entered by the user, or a **return period**: the
 
 $$\xi_c = Q_{1-1/N_{\text{tail}}}\big(\lbrace x_{c,r}\rbrace _{r \in \text{hist}}\big) \qquad \text{(1.1)}$$
 
-where $Q_q$ is the sample quantile of type 7. A trigger that fires below uses $Q_{1/N_{\text{tail}}}$. A cell supports a 1-in-$N$ trigger only if its historical record has at least $\lceil N_{\text{tail}}\rceil$ finite years, as in the return-period rule of Step 2. A cell with a shorter record never fires. The run stops if no cell supports the trigger. For an impact metric, a cell whose threshold equals its lowest historical value is treated as having no adverse tail and never fires.
+where $Q_q$ is the sample quantile of type 6, that is the Weibull rule of Step 2 ([32_metrics](32_metrics.md), Eq. 4.1): with $n$ historical years the threshold sits at the adverse rank $(n+1)/N_{\text{tail}}$, so the 1-in-10 level of 30 years is 3.1 ranks from the adverse end. A trigger that fires below uses $Q_{1/N_{\text{tail}}}$. A cell supports a 1-in-$N$ trigger only if its historical record has at least $\lceil N_{\text{tail}}\rceil$ finite years, as in the return-period rule of Step 2. A cell with a shorter record never fires. The run stops if no cell supports the trigger. For an impact metric, a cell whose threshold equals its lowest historical value is treated as having no adverse tail and never fires.
 
 The trigger fires for a cell-year when
 
@@ -132,6 +132,26 @@ $$m^{*} = \max\Big(\frac{V^{\text{ex post}} - V^{\text{false}}}{V^{\text{hit}}},
 where $V^{\text{hit}}$ and $V^{\text{false}}$ are the weighted values of payments made before an event and with none, and $V^{\text{ex post}}$ is the weighted value that the ex-post design pays after its delay. The app also reports the multiplier at which the effect per unit of spending matches.
 - **Climate-adjusted cost.** The change in activation and in mean cost of each climate scenario against the historical record.
 
+### 7. Seasonal forecast window
+
+With a seasonal forecast ([34_seasonal_forecast](34_seasonal_forecast.md)), the historical run and the climate scenarios keep the rules above. Each forecast member and each same-window historical year follows the same rules, adjusted only where the target window requires it.
+
+- **Cell.** A survey round and a survey location. Under a forecast the weather follows the target month, not the interview month, so the interview month no longer separates cells.
+- **Trigger.** The mean of the trigger variable over the $L$ target months, so that a location fires for the whole window:
+
+$$\bar x_{c,r} = \frac{1}{L}\sum_{h \in \text{window}} x_{c,h} \qquad \text{(7.1)}$$
+
+- **Threshold.** Eq. (1.1) with $\bar x_{c,r}$ over the same-window historical years, so a 1-in-$N$ trigger compares like months with like months. A threshold entered by the user applies to $\bar x_{c,r}$.
+- **Payment.** Once per window. A paid household receives the same daily equivalent as in a simulated year, in each target month. Each of its target months has a weight of $w_i/L$, so the amount is counted once. An annual cap limits the cost of the window.
+
+- **Reference level.** A household's typical welfare for the window, $\bar Y^{\text{win}}_i$, is the mean of its central predictions over the target months of all same-window historical years. It replaces $\bar Y_i$ of Section 3 and Eq. (4.1) wherever a window reads a loss, and the loss events of Eq. (6.1) are scored per survey round and location, not per target month.
+
+A member's payment is what the programme would pay if that member's weather happened. It is not a payment made on the forecast, so the forecast skill and false-alarm settings of Section 5 do not apply.
+
+The window takes ex-post payments, with a delay if set, or anticipatory payments on the ensemble. **National gate.** The payout scope of Section 2 applies to each member and each same-window historical year: $\rho$ is the population share in triggered locations of that member or year, and $G = 1$ when $\rho > 0$ and $\rho \ge k/100$. The gate is read per member, not on the ensemble. **Layers of Section 3.** The two layers apply per member and per reference year. *Worst-affected locations* rank locations by the depth of the window mean beyond its threshold, in units of the standard deviation of the window mean over the same-window historical years, and keep or drop all months of a location together. That deviation needs at least 10 such years, and the run is refused with a message when it has fewer. *Predicted welfare* compares the household's mean prediction over the target months with the cut-off, which is a quantile of the reference level, and the random error draws are shared by its months. **Impact trigger.** The impact of Section 1 is read for each member and each same-window historical year from the central predictions of its target months against the reference level, with the small-area rule of Section 1. The thresholds come from the reference years, so a 1-in-$N$ trigger needs at least $N$ of them. **Budget linked to loss.** Eq. (4.1) applies to a cell of a survey round and a location, with the reference level above, and the loss lasts $L$ of 12 months, so the budget is multiplied by $L/12$. **Anticipatory payments.** The forecast is the ensemble, so the detection and false-alarm rates of Section 5 do not apply. A survey round and location is paid when at least a share $p$ of the members pass its trigger (and at least one does); with the national gate, $\rho$ is read on these paid locations. Every member and every same-window historical year takes that one payment decision as given, and its own weather scores it: the payment is a hit where the weather passes the trigger and a false alarm where it does not, with the multiplier $m$ and the break-even multiplier of Eq. (6.3) as in the annual design. Severity for the worst-affected layer is the share of members passing the trigger. The historical years are scored on the same decision, so a lower false-alarm share among members than among historical years is a sign that the forecast carries information; it is an indicator, because the member spread is not calibrated.
+
+The outputs are the mean population share in triggered locations, the shares of members and of same-window historical years with payments, and the median and range of the window's cost across members. The population share leads, because with many locations almost every member has a payment somewhere. They are indicators, not an expected or annual cost: the member spread is not calibrated. They stay out of the annual cost, reach and basis-risk tables. With the reference level above, the window also reports, pooled over members and, separately, over same-window historical years: the leakage, the false-positive and false-negative rates of Eq. (6.2), and the share of modelled loss offset by payments. A loss event is scored per survey round and location. Coverage and adequacy of the affected poor are stored for a window but not yet shown, because they need a poverty line.
+
 ## Interpretation
 
 - Because the thresholds are fixed on the historical record, a scenario shows how the programme would respond to a changed climate. A rise in activation or in cost is a rise in the bill for a rule that was set today.
@@ -172,23 +192,24 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 
 | Concept | Equation | Code |
 |---|---|---|
-| Checks of a specification | Section 1 | `R/fct_sp_shock.R` `.sp_shock_problem()`, `.sp_timing_problem()`, `.sp_dyn_problem()` |
-| Thresholds from the historical record | (1.1) | `R/fct_sp_shock.R` `sp_trigger_thresholds()`, `.sp_group_quantile()` |
-| Exceedance of the trigger | (1.2) | `R/fct_sp_shock.R` `.sp_trigger_exceeds()` |
-| Impact metrics | Section 1 | `R/fct_sp_shock.R` `.sp_impact_plan()`, `.sp_impact_column()`, `sp_shock_reference()` |
-| Response check | Section 1 | `R/fct_sp_shock.R` `sp_response_check()` |
-| Payout scope and national gate | (2.1) | `R/fct_sp_shock.R` `.sp_trigger_scope()`, `sp_trigger_state()` |
-| Dynamic targeting layers | (3.1) | `R/fct_sp_shock.R` `.sp_dyn_plan()`, `.sp_dyn_scope()`, `.sp_trigger_severity()` |
-| Fixed amount | Section 4 | `R/fct_sp_shock.R` `.sp_dynamic_per_household()`, `sp_shock_plan()` |
-| Budget linked to loss | (4.1) | `R/fct_sp_shock.R` `.sp_shock_loss_share_transfer()` |
-| Annual cap | (4.2) | `R/fct_sp_shock.R` `.sp_shock_apply_cap()` |
-| Timing, forecast | (5.1), (5.2) | `R/fct_sp_shock.R` `.sp_timing_plan()`, `.sp_forecast_fire()`, `.sp_timing_effect()` |
-| Transfer and state of one pipeline | Section 4 | `R/fct_sp_shock.R` `sp_shock_pipeline_state()`, `sp_shock_pipeline_transfer()` |
-| Welfare effect of the dynamic transfer | (5.2) | `R/fct_sp_shock.R` `sp_dynamic_effect()`; `R/fct_policy_metric_decompose.R` `.policy_annual_channel_block()` |
-| Annual cost and activation | Section 6 | `R/fct_sp_shock.R` `sp_shock_annual()` |
-| Basis risk and rescoring | (6.1), (6.2) | `R/fct_sp_shock.R` `.sp_shock_basis()`, `sp_shock_pipeline_rows()`, `sp_shock_rescore()` |
-| Summary across scenarios | Section 6 | `R/fct_sp_shock.R` `sp_shock_summary()`, `sp_shock_climate_cost()` |
-| Break-even multiplier | (6.3) | `R/fct_sp_shock.R` `sp_shock_summary()` |
-| Coverage and adequacy of the affected | Section 6 | `R/fct_sp_shock.R` `sp_shock_reach()` |
-| Preview before the run | Setup | `R/fct_sp_shock.R` `sp_shock_preview()` |
+| Checks of a specification | Section 1 | `R/fct_policy_sp_shock.R` `.sp_shock_problem()`, `.sp_timing_problem()`, `.sp_dyn_problem()` |
+| Thresholds from the historical record | (1.1) | `R/fct_policy_sp_shock.R` `sp_trigger_thresholds()`, `R/utils_return_period.R` `rp_group_quantile()` |
+| Exceedance of the trigger | (1.2) | `R/fct_policy_sp_shock.R` `.sp_trigger_exceeds()` |
+| Impact metrics | Section 1 | `R/fct_policy_sp_shock.R` `.sp_impact_plan()`, `.sp_impact_column()`, `sp_shock_reference()` |
+| Response check | Section 1 | `R/fct_policy_sp_shock.R` `sp_response_check()` |
+| Payout scope and national gate | (2.1) | `R/fct_policy_sp_shock.R` `.sp_trigger_scope()`, `sp_trigger_state()` |
+| Dynamic targeting layers | (3.1) | `R/fct_policy_sp_shock.R` `.sp_dyn_plan()`, `.sp_dyn_scope()`, `.sp_trigger_severity()` |
+| Fixed amount | Section 4 | `R/fct_policy_sp_shock.R` `.sp_dynamic_per_household()`, `sp_shock_plan()` |
+| Budget linked to loss | (4.1) | `R/fct_policy_sp_shock.R` `.sp_shock_loss_share_transfer()` |
+| Annual cap | (4.2) | `R/fct_policy_sp_shock.R` `.sp_shock_apply_cap()` |
+| Timing, forecast | (5.1), (5.2) | `R/fct_policy_sp_shock.R` `.sp_timing_plan()`, `.sp_forecast_fire()`, `.sp_timing_effect()` |
+| Transfer and state of one pipeline | Section 4 | `R/fct_policy_sp_shock.R` `sp_shock_pipeline_state()`, `sp_shock_pipeline_transfer()` |
+| Welfare effect of the dynamic transfer | (5.2) | `R/fct_policy_sp_shock.R` `sp_dynamic_effect()`; `R/fct_policy_metric_decomp.R` `.policy_annual_channel_block()` |
+| Annual cost and activation | Section 6 | `R/fct_policy_sp_shock.R` `sp_shock_annual()` |
+| Basis risk and rescoring | (6.1), (6.2) | `R/fct_policy_sp_shock.R` `.sp_shock_basis()`, `sp_shock_pipeline_rows()`, `sp_shock_rescore()` |
+| Summary across scenarios | Section 6 | `R/fct_policy_sp_shock.R` `sp_shock_summary()`, `sp_shock_climate_cost()` |
+| Break-even multiplier | (6.3) | `R/fct_policy_sp_shock.R` `sp_shock_summary()` |
+| Coverage and adequacy of the affected | Section 6 | `R/fct_policy_sp_shock.R` `sp_shock_reach()` |
+| Forecast window: trigger, thresholds, payment once, payout figures | (7.1) | `R/fct_policy_sp_shock.R` `.sp_window_trigger_table()`, `.sp_window_cell()`, `sp_shock_window_plan()`, `.sp_window_ensemble()`, `.sp_window_channels()`, `sp_shock_window_summary()` |
+| Preview before the run | Setup | `R/fct_policy_sp_shock.R` `sp_shock_preview()` |
 | Eligibility written for the programme | Setup | `R/fct_policy_sim.R` `apply_policy_to_svy()` |

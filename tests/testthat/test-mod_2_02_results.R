@@ -550,7 +550,7 @@ test_that("all Module 2 summaries use the same complete scenario set", {
   )
 })
 
-test_that("exceedance curve uses Hazen plotting positions (R2-BUG-16)", {
+test_that("exceedance curve uses Weibull plotting positions (R2-BUG-16)", {
   hist <- make_hist_sim_fixture()
   n_years <- 10L
   n <- 400L
@@ -574,8 +574,8 @@ test_that("exceedance curve uses Hazen plotting positions (R2-BUG-16)", {
       session$flushReact()
       curves <- exceedance_curves_rv()
       expect_gt(nrow(curves), 2L)
-      # Same convention as rank_interp(): k = n * (1 - p) + 0.5.
-      expect_equal(curves$exceed_prob, (curves$rank - 0.5) / n_years)
+      # Weibull plotting positions, rank / (n + 1), as the threshold table (rp_quantile()).
+      expect_equal(curves$exceed_prob, curves$rank / (n_years + 1))
     }
   )
 })
@@ -872,7 +872,7 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "What outcomes are predicted in adverse weather years?", fixed = TRUE)
   expect_match(html, "What is the probability of severe outcomes occurring?", fixed = TRUE)
   expect_match(html, "results-exceedance_model_spread", fixed = TRUE)
-  expect_match(html, "Climate model spread", fixed = TRUE)
+  expect_match(html, "Ensemble spread", fixed = TRUE)
   expect_match(html, "Full ensemble spread", fixed = TRUE)
   expect_match(html, "results-ensemble_band", fixed = TRUE)
   expect_match(html, "value=\"none\"", fixed = TRUE)
@@ -1183,10 +1183,11 @@ test_that("lazy aggregation S3 methods live at package top level (CR-BUG-15)", {
   expect_identical(calls, 1L)
 })
 
-test_that("step2_adverse_return_period inverts the adverse exceedance share", {
+test_that("step2_adverse_return_period inverts the adverse exceedance count over N + 1", {
   v <- c(rep(1, 90), rep(5, 10))
-  expect_equal(step2_adverse_return_period(v, 5, "high"), 10)
-  expect_equal(step2_adverse_return_period(-v, -5, "low"), 10)
+  # Eq. 4.3: 10 of 100 model-years reach the level, so p = 10 / 101 (Weibull), not 10 / 100
+  expect_equal(step2_adverse_return_period(v, 5, "high"), 101 / 10)
+  expect_equal(step2_adverse_return_period(-v, -5, "low"), 101 / 10)
   expect_identical(step2_adverse_return_period(v, 9, "high"), Inf)
   expect_true(is.na(step2_adverse_return_period(numeric(0), 5)))
   expect_true(is.na(step2_adverse_return_period(v, NA_real_)))

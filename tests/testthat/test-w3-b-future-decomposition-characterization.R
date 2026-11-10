@@ -82,17 +82,18 @@ test_that("adverse weather year follows the Step 2 rank-interpolation rule", {
   welfare <- list(name = "welfare", type = "numeric")
   poor <- list(name = "poor", type = "logical", direction = "lower_is_better")
   compact <- .adverse_compact(list(a = function(y) y - 2000))
-  # Higher welfare is better: the low tail is adverse, ranks 1 and 2 at p = 0.05.
+  # Higher welfare is better: the low tail is adverse, Weibull adverse rank (n + 1) p
+  # of 20 years: p = 0.05 -> k = 1.05 (was 1.5 with Hazen), and delta = 10 * baseline.
   res <- .compact_future_decomp(compact, "Scenario A", "adverse_20", welfare)
-  expect_equal(res$baseline_annual, 1.5)
-  expect_equal(res$delta_total, 15)
-  expect_equal(res$lvl_total, 15)
-  # p = 0.10 -> k = 2.5; p = 0.20 -> k = 4.5.
-  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_10", welfare)$baseline_annual, 2.5)
-  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_5", welfare)$baseline_annual, 4.5)
+  expect_equal(res$baseline_annual, 1.05)
+  expect_equal(res$delta_total, 10.5)
+  expect_equal(res$lvl_total, 10.5)
+  # p = 0.10 -> k = 2.1; p = 0.20 -> k = 4.2.
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_10", welfare)$baseline_annual, 2.1)
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_5", welfare)$baseline_annual, 4.2)
   # Lower is better (poverty): the high tail is adverse.
-  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_20", poor)$baseline_annual, 19.5)
-  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_5", poor)$baseline_annual, 16.5)
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_20", poor)$baseline_annual, 19.95)
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_5", poor)$baseline_annual, 16.8)
 })
 
 test_that("adverse weather year is chosen within each model, then averaged equally", {
@@ -100,10 +101,10 @@ test_that("adverse weather year is chosen within each model, then averaged equal
   compact <- .adverse_compact(list(a = function(y) y - 2000, b = function(y) 2021 - y))
   res <- .compact_future_decomp(compact, "Scenario A", "adverse_20", welfare)
   # Model a: years 2001/2002 (delta 10 * baseline 1, 2); model b: years 2020/2019.
-  expect_equal(res$baseline_annual, 1.5)
-  expect_equal(res$delta_total, 15)
+  expect_equal(res$baseline_annual, 1.05)
+  expect_equal(res$delta_total, 10.5)
   deciles <- .compact_future_decile_summary(compact, "Scenario A", "adverse_20", welfare)
-  expect_equal(deciles$total, 15)
+  expect_equal(deciles$total, 10.5)
 })
 
 test_that("adverse basis is unavailable without enough simulated years", {

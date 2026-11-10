@@ -15,6 +15,8 @@
 .wise_baseline <- "#5B6B79" # baseline scenario in policy comparisons
 .wise_policy <- "#D55E00" # policy accent (bright, colourblind-safe)
 .wise_policy_dark <- "#7F2704" # darker companion for policy outlines/labels
+.wise_forecast <- "#CC79A7" # forecast scenario (seasonal or subseasonal); reddish purple, 3.1:1
+.wise_forecast_reference <- "#8A4F73" # Historical for the forecast target months; darker shade of the forecast
 .wise_marker <- "#D55E00" # poverty lines, tau/quantile markers
 .wise_marker_alt <- "#A86400" # secondary markers (quantile labels), 4.7:1 on white
 .wise_support <- "#243746" # ensemble / support points and outlines
@@ -53,8 +55,8 @@
 
 # Sequential ramp (charts) ----
 # Single-hue brand-blue ramp for magnitude fills in ggplot charts. Map ramps
-# (YlOrRd / RdBu / Mako in fct_weatherstats.R, fct_surveystats.R,
-# fct_outcome.R) are reserved for maps and must not be reused in charts.
+# (YlOrRd / RdBu / Mako in fct_step1_weatherstats.R, fct_step1_surveystats.R,
+# fct_step1_outcome.R) are reserved for maps and must not be reused in charts.
 
 wise_seq_ramp <- function(n) {
   grDevices::colorRampPalette(c("#D9EFF8", "#0071BC", "#002244"))(n)

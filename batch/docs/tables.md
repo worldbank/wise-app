@@ -1,6 +1,6 @@
 # Batch output tables - column reference
 
-All tables of a batch run: 11 result tables and the run-level files. The user
+All tables of a batch run: the result tables and the run-level files. The user
 guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md`.
 
 ## Conventions
@@ -23,6 +23,36 @@ guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md
 
 ## Stage ids
 
+### Experimental Forecast Windows
+
+An optional `sim.forecast` descriptor selects local pilot data, for example
+`{product: seasonal, run: '2026-10', start: '2026-11', len: 3}`. The run is a
+country catalogue ID. Forecast data is currently local-only; preparation starts
+with `t`. The worker resolves and validates the run manifest and immutable file
+identities. A policy section is allowed with a forecast. A shock-responsive
+transfer (`sp_type: shock`) then needs a weather trigger with local, ex-post, fixed
+payments and no dynamic targeting; other designs are rejected. It reads the mean
+weather of the window against the same months of the reference years and pays once
+per window. Any other policy applies identically in every target month. Each policy
+applies to every reference year. The annual tables of the policy arm carry the
+annual scenarios only.
+
+A forecast scenario is named `Seasonal forecast / <target window> (<run> run)`.
+Its `member` identifies a forecast ensemble member, not a climate model.
+In the `annual` table, its `sim_year` is the target-start-year anchor for one
+complete window per member, not an annual observation or a historical template
+year. Every household contributes in every target month at `weight / len`.
+Forecast summary rows describe target-window outcomes and member spread;
+annual adverse-year/return-period rows are not produced for forecast scenarios.
+Coefficient uncertainty is separate from ensemble-member spread. Forecast
+member probabilities are not calibrated and skill is not yet established.
+The worker validates publication hashes when it executes. The resolved spec
+carries the run's publication identity (`data_sha256`, `manifest_sha256`, file,
+members, data version), so replacing files under an existing run id changes
+`sim_id` and reruns the simulation target. A forecast run also writes the
+`forecast` table and the `placement`, `skill` and `season` sections of
+`summary`.
+
 12 hex characters, each a hash of the spec sections the stage depends on.
 
 | Id | Hash of | Keys the tables |
@@ -31,7 +61,7 @@ guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md
 | `wxvar_id` | `data_id`, one weather variable's reference period, temporal aggregation, transformation, and the historical years (not the binning) | `weather_stats` |
 | `weather_id` | `data_id`, the whole weather section (the seed only for K-means bins) | the survey-weather frame (not published) |
 | `fit_id` | `data_id`, weather section, model section, seed | `model_terms`, `model_fit`, `model_vcov` |
-| `sim_id` | `fit_id`, the simulation settings that change results, the poverty line of a non-`poor` outcome | `annual`, `summary`, `sim_weather` (baseline arm) |
+| `sim_id` | `fit_id`, the simulation settings that change results, the poverty line of a non-`poor` outcome | `annual`, `summary`, `sim_weather` (baseline arm), `forecast`, `enso_years` |
 | `policy_id` | `sim_id`, the policy section; `NA` is the baseline arm | policy arm of `annual` and `summary`; `decomposition`, `policy_measures` |
 | `run_id` | the whole spec, seed included | `runs` |
 
@@ -40,7 +70,7 @@ guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md
 ### variable_stats
 
 Key `data_id`. One row per scope (wave, `All`, pooled) x `var_group` x
-`variable` x `sample`. Builders: `variable_stats_table()` (`R/fct_step1_tables.R`).
+`variable` x `sample`. Builders: `variable_stats_table()` (`R/fct_step1_stat_tables.R`).
 
 | Column | Meaning | Source |
 |---|---|---|
@@ -199,7 +229,7 @@ Long form at the app defaults: outcome level, coefficient band p10-p90, ensemble
 band p10-p90 across climate models. Columns: `policy_id`, `scenario`, `metric`
 (`NA` for `incidence`), `section`, `measure`, `group`, `return_period` (`1:5`,
 `1:10`, `1:20`, `1:50`; `1:1` the median year, `4:5` ... `49:50` the favourable
-tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
+tail; levels at the Weibull rank `(n + 1) p`, quantile type 6), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 
 | `section` | `measure` / `group` | Meaning |
 |---|---|---|
@@ -209,6 +239,14 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `uncertainty` | `var_coef`, `var_resid`, `var_within`, `var_across` | Variance components: coefficient (for the stored view, a level; no residual part), residual draws (0 under `original`), weather year within models (under `resample` it also holds the year-to-year residual noise), between models. |
 | `headline` | `Expected change`, `Adverse weather years`, `Signal vs noise`, `Year-to-year range`, `Simulation years` / `historical`, `focus`, `difference`, `range`, `count` | Headline cards for the focus scenario (the first future scenario, else historical). `text` holds the displayed value on the `focus` row. |
 | `incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean effect of the scenario on each fixed baseline decile, in outcome units; `n` = households. |
+| `placement` | forecast scenarios only; `n_members`, `member_median`, `reference_median`, `difference_median`, `reference_adverse_1in10`, `share_worse_than_median`, `share_worse_than_1in10`, `median_member_return_period`, `median_member_beyond` (1 or 0: more adverse than every reference year), `median_member_p_adverse`, `median_member_n_worse` (reference years the median member is more adverse than; `n - 1` for a member between the two most adverse years), `n_beyond` | Where the forecast members fall in the same-window reference (see `forecast`). `n` = reference years. `reference_adverse_1in10` is the Weibull 1-in-10 level (quantile type 6) and is `NA`, with the share worse than it, for fewer than 9 reference years. Each is one row per metric. |
+| `skill` | forecast scenarios only; `skill_flag` / `group` = target month (`YYYY-MM`, prefixed by the variable when the model has several) | Hindcast skill flag of each target month in `text` (`none`, `weak`, `useful`), `estimate` = anomaly correlation, `n` = lead. One row of text ("not assessed") when the run has no skill table. `metric` is `NA`. |
+| `season` | forecast scenarios only; `training_month_share`, `training_month_expected` | Share of the model's training observations interviewed in the target months, and the share an even spread over the year would give. `metric` is `NA`. |
+| `policy_effect` | policy arm of forecast scenarios only; `effect_member_median`, `effect_reference_median`, `share_worse_baseline`, `share_worse_policy`, `reference_adverse_1in10` | Policy effect under the forecast; see the `forecast` table. `n` = members. |
+| `enso` | baseline arm, written with the ENSO tables; `mean` / `el_nino`, `neutral`, `la_nina`, `mixed`; `diff_neutral` / `el_nino`, `la_nina` | Annual series by the ENSO label of `enso_years`: mean of the year means over members, `n` = years, and the difference from Neutral (`NA` below three years on either side). The policy arm joins `annual` to `enso_years` on `sim_id` and `sim_year`. |
+| `enso` | forecast scenarios; `card_line` (`text`); `reference_adverse` / the outlook's phase, `reference_adverse_all` / `all` | The placement card's line, and the reference years at least as adverse as the median member (`estimate`) out of `n`, per metric. No `reference_adverse` rows below three years of the phase or for a mixed outlook. |
+| `enso` | forecast scenarios; `outlook_roni` (`text` = phase), `outlook_prob_el_nino`, `outlook_prob_la_nina`, `outlook_prob_neutral`, `outlook_basis` (`text` = the source, or `observed` for a later outlook) / `group` = target month (`YYYY-MM`) | The outlook of the target months. Shares of members are not calibrated. `metric` is `NA`. |
+| `shock_window` | policy arm of forecast scenarios with a shock-responsive transfer; `member_share`, `reference_share`, `exposed_member`, `exposed_reference`, `cost_median`, `cost_min`, `cost_max`, `cost_reference`, `leakage`, `false_positive`, `false_negative`, `loss_offset` and the same four with the suffix `_reference`, and for an anticipatory design `false_alarm_cost_share`, `false_alarm_cost_share_reference` and `breakeven_m` | Share of members and of reference years with payments, mean population share in triggered locations, the cost of the window (median, range across members, median reference year), and the targeting figures pooled over members or over reference years (`NA` when there is no loss event or no spending). `metric` is `NA`; `n` = members. |
 
 **Policy arm** sections start with `policy_`; stored for every metric:
 
@@ -222,6 +260,52 @@ tail), `estimate`, `lo`, `hi`, `n`, `text` (the app's displayed text).
 | `policy_headline` | card label / `card_<k>_value`, `card_<k>_note` | Headline cards; on `card_1_value`, `lo`, `hi` are the 95% interval of the effect. |
 | `policy_incidence` | `household_effect` / `decile_1` ... `decile_10` | Mean policy effect per baseline decile for the weather-year basis in `return_period` (`mean`, `adverse_5`, `adverse_10`, `adverse_20`); `metric` `NA`. |
 
+### forecast
+
+Key `sim_id` (and `policy_id` for the policy arm; `NA` for the baseline arm);
+written only when a run has a forecast scenario with a same-window reference. Long form: `scenario`, `metric`, `kind` (`member`: a forecast member;
+`reference`: one past year), `id` (the member, or `refyear_<year>`), `year` (the
+reference year; `NA` for members), `value` (the target-window aggregate:
+every baseline household in every target month at `weight / len`, the same
+model, residual rule and lag windows for members and reference years),
+`p_adverse` (members: the exceedance probability of the member among the
+reference years, Weibull positions `rank / (n + 1)` read off by interpolation),
+`return_period` (`1 / p_adverse`, `NA` unless the member is no more adverse than
+the second most adverse reference year, `p_adverse >= 2 / (n + 1)`) and
+`beyond` (`TRUE` when the member is more adverse than every reference year).
+The reference years are the years of
+`sim.hist_years`; a year without observed weather for every target and
+predictor month is left out. The share of members is an indicator, not a
+probability. The policy arm has the same rows with the policy applied; its
+`p_adverse` and `return_period` place each member in the policy arm's own
+reference. The `summary` table adds the section `policy_effect` for a policy
+arm: `effect_member_median` and `effect_reference_median` (the median change of
+the metric with the policy, over members and over reference years),
+`share_worse_baseline` and `share_worse_policy` (the share of members at or
+beyond the baseline 1-in-10 reference level without and with the policy, at that
+one fixed level) and `reference_adverse_1in10` (that level), with `n` = members.
+
+### enso_years
+
+Key `sim_id`, `sample` and `sim_year`; written only when the ENSO tables are in the
+data folder (`metadata/enso.csv`, optional `metadata/enso_forecast.csv`). The labels
+are annotation: they are built by the `enso_tables` target from the simulation
+tables, so a refreshed ENSO file rebuilds this table, the `enso` rows of `summary`
+and the manifest, and reruns no simulation. Neither file is part of
+`metadata_digest`; `manifest.json` records the version in `enso`
+(`enso_observed_sha256`, `enso_forecast_sha256`, hashes of the validated tables;
+`enso_last_cpc_month`; `enso_forecast_init_date`). A simulation run before this
+table existed has no rows until it reruns.
+
+| Column | Meaning |
+|---|---|
+| `sample` | `annual`: the weather years, weighted by the interview months; a climate scenario year carries the label of its template year. `target_months`: the reference years of a forecast, with equal weight on the target months. Members have no label. |
+| `sim_year` | The weather year; for `target_months` the year the window starts. |
+| `el_nino`, `neutral`, `la_nina` | Share of the exposure in each phase, unrounded. |
+| `roni_exp` | Exposure RONI. |
+| `label` | `el_nino`, `neutral`, `la_nina` (a share of at least 0.5) or `mixed`; `NA` when a lag leaves the table. |
+| `period` | The months of a `target_months` year (`Nov 1997 - Jan 1998`); `NA` for `annual`. |
+
 ### sim_weather
 
 Key `sim_id`. Long form: `scenario` (projection scenarios; the historical run is
@@ -229,7 +313,7 @@ the reference), `section`, `member`, `variable`, `statistic`, `value`, `text`.
 
 | `section` | `statistic` | Meaning |
 |---|---|---|
-| `scenario` | `period_start`, `period_end`; `n_models`, `n_models_requested` | The projection period; models that ran and models requested (they differ when a model lacks coverage; see `failures.parquet`). |
+| `scenario` | `period_start`, `period_end`; `n_models`, `n_models_requested`. For a forecast: `target_start`, `target_length_months`, `n_members` | The projection period; models that ran and models requested (they differ when a model lacks coverage; see `failures.parquet`). |
 | `members` | `member` | One row per climate-model member (`value` = 1). |
 | `support` | `n_reference`, `n_scenario`, `robust_lo`, `robust_hi`, `outside_n`, `outside_share`, `warning`, `n_members`, `max_member_share`; `reference_label`, `warning_rule`, `is_binned` (`text`) | The weather-support summary of the Diagnostics tab per variable: fitted-sample and simulated value counts, the 1%-99% support of the fitted sample, simulated values outside it (or in a bin the fitted sample never had), and `warning` = 1 when more than 5% are outside (the model extrapolates). |
 

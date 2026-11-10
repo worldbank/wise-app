@@ -2,8 +2,8 @@
 # and a small on-disk data tree (metadata, microdata, H3 and weather parquet)
 # that the batch runner can read like the real data folder.
 
-batch_fixture_variable_list <- function() {
-  tibble::tibble(
+batch_fixture_variable_list <- function(forecast = FALSE) {
+  out <- tibble::tibble(
     name = c("welfare", "hhsize", "urban", "electricity", "ttime_health", "tx", "pr"),
     label = c(
       "Welfare", "Household size", "Urban", "Electricity access", "Travel time to health",
@@ -24,6 +24,14 @@ batch_fixture_variable_list <- function() {
       name = "year", label = "Year", type = "numeric", units = "", id = NA_character_,
       outcome = 0, hazard = 0, ind = 0, hh = 0, firm = 0, area = 0, interact = 0, fe = 1
     ))
+  # The seasonal forecast prepares mean temperature `t` only; opt in so other tests keep their variable set.
+  if (forecast) {
+    out <- dplyr::bind_rows(out, tibble::tibble(
+      name = "t", label = "Mean temperature", type = "numeric", units = "degC", id = NA_character_,
+      outcome = 0, hazard = 1, ind = 0, hh = 0, firm = 0, area = 0, interact = 0, fe = 0
+    ))
+  }
+  out
 }
 
 batch_fixture_survey_list <- function(codes = "TST", years = c(2018, 2019)) {
@@ -107,17 +115,72 @@ batch_fixture_weather <- function(wave_years = c(2018, 2019), cal_years = 2016:2
   }))
 }
 
+# Add mean temperature `t` to the observed weather and write a tiny draft-2 seasonal forecast run
+# (init January 2021, 3 members, 6 leads, 12 observed context months) for the fixture cells, with the
+# manifest and catalogue the app reads. Needs the observed file written first.
+batch_fixture_forecast <- function(dir, weather_path, ints, init = as.Date("2021-01-01"), n_members = 3L,
+                                   n_leads = 6L) {
+  weather <- arrow::read_parquet(weather_path)
+  weather$t <- round(weather$tx - 2, 2)
+  arrow::write_parquet(weather, weather_path)
+  fc_dir <- file.path(dir, "hazard", "weather", "forecasts", "TST")
+  dir.create(fc_dir, recursive = TRUE, showWarnings = FALSE)
+  context <- seq(init, by = "-1 month", length.out = 13L)[-1L]
+  leads <- seq(init, by = "month", length.out = n_leads)
+  months <- c(rev(context), leads)
+  g <- expand.grid(member = seq_len(n_members) - 1L, h3 = ints, timestamp = months)
+  observed <- stats::setNames(weather$t, paste(weather$h3, weather$timestamp))
+  is_fc <- g$timestamp >= init
+  withr::with_seed(21L, {
+    shift <- stats::rnorm(n_members, 1, 0.3)
+    value <- ifelse(is_fc, 30 + shift[g$member + 1L] + stats::rnorm(nrow(g), 0, 0.3),
+      observed[paste(g$h3, g$timestamp)])
+  })
+  run <- data.frame(
+    member = as.integer(g$member), h3 = g$h3, timestamp = g$timestamp,
+    lead_month = as.integer(1L + (as.integer(format(g$timestamp, "%Y")) - as.integer(format(init, "%Y"))) * 12L +
+      as.integer(format(g$timestamp, "%m")) - as.integer(format(init, "%m"))),
+    source = ifelse(is_fc, "forecast", "era5land"), t = round(as.numeric(value), 3), stringsAsFactors = FALSE
+  )
+  run <- run[order(run$member, run$h3, run$timestamp), ]
+  stem <- "TST_c3s_ecmwf_seas51_20210101"
+  data_file <- file.path(fc_dir, paste0(stem, ".parquet"))
+  arrow::write_parquet(run, data_file)
+  sha <- function(f) digest::digest(file = f, algo = "sha256")
+  manifest <- list(
+    schema_version = "draft-2", status = "draft", experimental = TRUE, product = "seasonal", lead_unit = "month",
+    run_id = stem, model = "ecmwf_seas51", system = 51L, initialized_at = format(init), leads = seq_len(n_leads),
+    members = list(first = 0L, last = n_members - 1L), n_members = n_members,
+    valid_months = format(leads), variables = "t", units = list(t = "degrees_C"),
+    context_months = list(n = 12L, first = format(min(context)), last = format(max(context)), sources = list()),
+    h3 = list(resolution = 6L, type = "int64", mapping = "test"),
+    adjustment = "additive_mean_bias_only", observed_through = format(max(context)),
+    output_sha256 = stats::setNames(list(sha(data_file)), basename(data_file)), data_version = "test-fixture"
+  )
+  manifest_file <- file.path(fc_dir, paste0(stem, ".json"))
+  jsonlite::write_json(manifest, manifest_file, auto_unbox = TRUE)
+  utils::write.csv(data.frame(
+    id = "2021-01", product = "seasonal", lead_unit = "month", label = "January 2021", model = "ECMWF SEAS5",
+    init = format(init), released = "2021-01-06", next_release = "2021-02-06", n_members = n_members,
+    n_leads = n_leads, observed_through = format(max(context)), context_months = 12L,
+    context_source = "era5land", variables = "t", adjustment = "additive_mean_bias_only",
+    file = paste0("hazard/weather/forecasts/TST/", basename(data_file)), data_sha256 = sha(data_file),
+    manifest_sha256 = sha(manifest_file), status = "draft", data_version = "test-fixture"
+  ), file.path(fc_dir, "catalogue.csv"), row.names = FALSE)
+  invisible(NULL)
+}
+
 # Write the fixture data folder. Needs arrow and the DuckDB h3 extension
 # (the weather query joins on H3 cells); the caller skips when unavailable.
 # With `projections`, two climate models of CMIP6 weather are written too: the
 # historical file (2010-2014) and SSP3-7.0 (2015-2035), monthly, on the same
 # cells as the observed weather.
-batch_fixture_tree <- function(dir, years = c(2018, 2019), projections = FALSE) {
+batch_fixture_tree <- function(dir, years = c(2018, 2019), projections = FALSE, forecast = FALSE) {
   testthat::skip_if_not_installed("arrow")
   testthat::skip_if_not_installed("bit64")
   dir.create(file.path(dir, "metadata"), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(batch_fixture_survey_list(years = years), file.path(dir, "metadata", "survey_list.csv"), row.names = FALSE)
-  utils::write.csv(batch_fixture_variable_list(), file.path(dir, "metadata", "variable_list.csv"), row.names = FALSE)
+  utils::write.csv(batch_fixture_variable_list(forecast), file.path(dir, "metadata", "variable_list.csv"), row.names = FALSE)
   utils::write.csv(batch_fixture_cpi_ppp(), file.path(dir, "metadata", "cpi_ppp.csv"), row.names = FALSE)
 
   con <- DBI::dbConnect(duckdb::duckdb(), bigint = "integer64")
@@ -177,6 +240,7 @@ batch_fixture_tree <- function(dir, years = c(2018, 2019), projections = FALSE) 
   w_dir <- file.path(dir, "hazard", "weather", "historical", "TST")
   dir.create(w_dir, recursive = TRUE, showWarnings = FALSE)
   arrow::write_parquet(weather, file.path(w_dir, "TST_era5land.parquet"))
+  if (forecast) batch_fixture_forecast(dir, weather_path = file.path(w_dir, "TST_era5land.parquet"), ints = ints)
   if (projections) {
     p_dir <- file.path(dir, "hazard", "weather", "projections", "TST")
     dir.create(p_dir, recursive = TRUE, showWarnings = FALSE)

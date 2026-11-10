@@ -5,8 +5,8 @@ app_step: 1
 depends_on: [notation, data]
 symbols: [Y, y, z, pi, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#welfare-outcome
-code: [R/fct_outcome.R, R/fct_results.R, R/fct_spec_defaults.R, R/fct_step1_data.R, R/fct_policy_sim.R]
-verified_against: 8592a9d
+code: [R/fct_step1_outcome.R, R/fct_step1_results.R, R/fct_spec_defaults.R, R/fct_step1_data.R, R/fct_policy_sim.R]
+verified_against: 5b89f68
 ---
 
 # Outcomes and poverty lines
@@ -97,11 +97,11 @@ World Bank Poverty and Inequality Platform methodology for the welfare floor. Fu
 
 | Concept | Equation | Code |
 |---|---|---|
-| List of outcomes with the added poor outcome | 1 | `R/fct_outcome.R` `filter_outcome_vars()` |
-| Monetary outcome test | 1 | `R/fct_outcome.R` `is_monetary_outcome()` |
-| Log transform for continuous type | 2 | `R/fct_outcome.R` `outcome_transform()` |
-| Currency and model scale | (3.1) | `R/fct_results.R` `outcome_level_scale()`, `outcome_to_model_scale()`, `prepare_outcome_df()` |
-| Poor indicator and LCU line conversion | (4.1), (4.2) | `R/fct_results.R` `prepare_outcome_df()`, `.povline_to_ppp()`; `R/fct_step1_data.R` `wise_outcome_data()` |
-| Default lines | (5.1) | `R/fct_outcome.R` `default_lcu_poverty_line()`; `R/fct_spec_defaults.R` `wise_default_poverty_line()` |
+| List of outcomes with the added poor outcome | 1 | `R/fct_step1_outcome.R` `filter_outcome_vars()` |
+| Monetary outcome test | 1 | `R/fct_step1_outcome.R` `is_monetary_outcome()` |
+| Log transform for continuous type | 2 | `R/fct_step1_outcome.R` `outcome_transform()` |
+| Currency and model scale | (3.1) | `R/fct_step1_results.R` `outcome_level_scale()`, `outcome_to_model_scale()`, `prepare_outcome_df()` |
+| Poor indicator and LCU line conversion | (4.1), (4.2) | `R/fct_step1_results.R` `prepare_outcome_df()`, `.povline_to_ppp()`; `R/fct_step1_data.R` `wise_outcome_data()` |
+| Default lines | (5.1) | `R/fct_step1_outcome.R` `default_lcu_poverty_line()`; `R/fct_spec_defaults.R` `wise_default_poverty_line()` |
 | Weighted percentile | (5.1) | `R/fct_policy_sim.R` `.sp_welfare_quantile()` |
-| Direction | 6 | `R/fct_outcome.R` `outcome_direction()`, `build_selected_outcome()` |
+| Direction | 6 | `R/fct_step1_outcome.R` `outcome_direction()`, `build_selected_outcome()` |

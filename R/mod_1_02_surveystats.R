@@ -12,7 +12,7 @@ mod_1_02_surveystats_ui <- function(id) {
   # The `dt-wrap` column style lives in custom.css. It used to be built here
   # as a bare tags$style() that was evaluated and then thrown away - the
   # tagList below is what the function returns - so the rule never reached the
-  # page. It now also serves the weather stats tables (fct_weatherstats.R).
+  # page. It now also serves the weather stats tables (fct_step1_weatherstats.R).
   tagList(
     uiOutput(ns("survey_stats_button_ui"))
   )
@@ -25,6 +25,7 @@ mod_1_02_surveystats_ui <- function(id) {
 #' @param variable_list Reactive data frame of variable metadata.
 #' @param selected_surveys Reactive data frame of selected surveys (from mod_1_01_sample).
 #' @param cpi_ppp Reactive data frame of CPI/PPP deflators.
+#' @param enso Reactive `enso_load()` result; `NULL` without the ENSO tables.
 #' @param tabset_id Character id of the parent tabset panel to append the tab to.
 #' @param tabset_session Shiny session for the parent tabset. Defaults to the parent session.
 #' @param run_trigger Optional reactive trigger for a programmatic load.
@@ -39,6 +40,7 @@ mod_1_02_surveystats_server <- function(
   tabset_id,
   tabset_session = NULL,
   analysis_unit = NULL,
+  enso = shiny::reactive(NULL),
   run_trigger = shiny::reactive(NULL)
 ) {
   moduleServer(id, function(input, output, session) {
@@ -411,9 +413,15 @@ mod_1_02_surveystats_server <- function(
 
         if (!survey_tab_added()) {
           # Interview dates bar chart. Grouped columns keep wave totals directly
-          # comparable; the archived ggplot renderer remains available under
-          # dev/archive/static_plots/ for design comparisons.
+          # comparable.
           interview_date_chart <- function() {
+            en <- enso()
+            df <- survey_data()
+            # From the interview dates, not the month numbers of the chart, so each wave sits in its own year.
+            enso_months <- if (!is.null(en) && is.data.frame(df) && "timestamp" %in% names(df)) {
+              wave <- if ("countryyear" %in% names(df)) df$countryyear else paste0(df$economy, ", ", df$year)
+              enso_interview_months(en$observed, df$timestamp, wave)
+            }
             unit <- if (is.function(analysis_unit)) analysis_unit() else NULL
             unit_label <- switch(unit %||% "hh",
               ind = "Individuals",
@@ -425,7 +433,8 @@ mod_1_02_surveystats_server <- function(
               unit_label = unit_label,
               palette = "sequential",
               wave_labels = survey_wave_meta()$plot_labels,
-              height = "300px"
+              height = "300px",
+              enso_months = enso_months
             )
           }
 
@@ -433,6 +442,12 @@ mod_1_02_surveystats_server <- function(
             ch <- interview_date_chart()
             req(!is.null(ch))
             ch
+          })
+
+          # Legend of the ENSO marks on the interview chart (review/archive/enso.md, item 1). Absent without
+          # the ENSO tables.
+          output$enso_interviews <- shiny::renderUI({
+            if (is.null(enso())) NULL else enso_legend_ui()
           })
 
           wise_export_figure(
@@ -773,13 +788,19 @@ mod_1_02_surveystats_server <- function(
                         class = "mb-2",
                         info_popover(
                           title = "Timing of interviews",
-                          p("Monthly breakdown of interview waves.")
+                          p("Monthly breakdown of interview waves."),
+                          p(
+                            "Where ENSO data are available, bars in El Ni\u00f1o (\u25B2) or La Ni\u00f1a (\u25C6)",
+                            "months are marked, and the tooltip gives the RONI of the month. The index is relative",
+                            "Ni\u00f1o 3.4 (RONI). El Ni\u00f1o and La Ni\u00f1a months are those it flags."
+                          )
                         )
                       ),
                       wise_chart_output(ns("interview_date"),
                         "Bar chart of the distribution of interview dates across the selected surveys",
                         height = "300px"
-                      )
+                      ),
+                      shiny::uiOutput(ns("enso_interviews"))
                     )
                   ),
                   # Pairing a definite card height with a 100%-height map is what

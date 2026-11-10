@@ -413,6 +413,11 @@ mod_3_01_sp_server <- function(id,
       years <- length(unique(tbl$sim_year[is.finite(as.numeric(tbl[[var]]))]))
       supported <- if (identical(input$trigger_direction, "either")) years %/% 2L else years
       default <- max(2L, min(10L, supported))
+      # Nothing to seed when the default has not moved. Writing it anyway would overwrite a value restored by
+      # a configuration import that the server has not read back yet.
+      if (identical(default, last_rp_default)) {
+        return()
+      }
       current <- suppressWarnings(as.numeric(shiny::isolate(input$trigger_return_period_years)))[1L]
       if (is.na(current) || isTRUE(all.equal(current, last_rp_default))) {
         updateNumericInput(session, "trigger_return_period_years", value = default)

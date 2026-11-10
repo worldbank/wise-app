@@ -30,6 +30,7 @@ mod_1_05_weatherstats_ui <- function(id) {
 #'   `map` (location-to-cell mapping) from `mod_1_02_surveystats_server()`.
 #'   When present, values are merged onto H3 cells so overlapping survey
 #'   locations no longer stack translucent fills on top of each other.
+#' @param enso             Reactive `enso_load()` result; `NULL` without the ENSO tables.
 #' @param tabset_id        Character. `inputId` of the parent tabset panel.
 #' @param tabset_session   Shiny session for the parent tabset. Defaults to
 #'   `session$parent`.
@@ -45,6 +46,7 @@ mod_1_05_weatherstats_server <- function(
   hist_years = NULL,
   survey_data,
   cell_data = NULL,
+  enso = shiny::reactive(NULL),
   survey_version = reactive(0L),
   survey_data_generation = survey_version,
   tabset_id,
@@ -143,10 +145,15 @@ mod_1_05_weatherstats_server <- function(
     # Load and merge weather on button click ----
 
     weather_stats_event <- shiny::reactiveVal(NULL)
+    # The button is re-rendered whenever the weather selection changes, which
+    # resets its click count. The sequence keeps a repeated click distinct, so
+    # the reactiveVal fires.
+    wx_click_seq <- 0L
     shiny::observeEvent(input$weather_stats,
       {
         if (shiny::isTruthy(input$weather_stats)) {
-          weather_stats_event(list(source = "manual", value = input$weather_stats))
+          wx_click_seq <<- wx_click_seq + 1L
+          weather_stats_event(list(source = "manual", value = input$weather_stats, seq = wx_click_seq))
         }
       },
       ignoreInit = FALSE,
@@ -308,7 +315,7 @@ mod_1_05_weatherstats_server <- function(
 
           # UI-48: builder first, renderer second, so the export bundle and the
           # screen draw the same figure. Echarts builders (guidelines section 7) use
-          # the shared data preparation above them in fct_weatherstats.R.
+          # the shared data preparation above them in fct_step1_weatherstats.R.
           weather_dist_fig <- function(idx) {
             function() {
               swx <- req(wx_spec())
@@ -1376,6 +1383,17 @@ mod_1_05_weatherstats_server <- function(
                 selected = wxmap_month(),
                 label    = "Interview month"
               )
+            }
+          },
+          # ENSO phase of the wave and month on the maps. Absent without the ENSO tables.
+          {
+            en <- enso()
+            swd <- survey_weather()
+            key <- wxmap_wave()
+            if (!is.null(en) && !is.null(key) && is.data.frame(swd) && "timestamp" %in% names(swd)) {
+              wave <- paste(swd$code, as.character(swd$year), swd$survname, sep = "|")
+              m <- enso_interview_months(en$observed, swd$timestamp, wave)
+              enso_month_chip_ui(m[m$group == key, , drop = FALSE], wxmap_month() %||% "all")
             }
           }
         ),

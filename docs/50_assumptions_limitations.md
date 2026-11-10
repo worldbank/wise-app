@@ -2,11 +2,11 @@
 id: assumptions
 title: Assumptions and limitations in one place
 app_step: cross
-depends_on: [notation, framework, data, outcomes, weather-measures, model-specification, linear-model, rif-model, ml-models, model-results, simulation, climate-scenarios, metrics, uncertainty, policy-framework, policy-levers, social-protection, shock-sp, decomposition, cost-effectiveness]
+depends_on: [notation, framework, data, outcomes, weather-measures, model-specification, linear-model, rif-model, ml-models, model-results, simulation, climate-scenarios, seasonal-forecast, metrics, uncertainty, policy-framework, policy-levers, social-protection, shock-sp, decomposition, cost-effectiveness]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd#limitations
 code: []
-verified_against: 9881d96
+verified_against: 5b89f68
 ---
 
 # Assumptions and limitations in one place
@@ -52,6 +52,8 @@ The app produces three kinds of statements ([01_framework](01_framework.md)): a 
 | Climate change enters as a change in monthly weather, applied to the observed record | [01_framework](01_framework.md#assumptions) A5; [30_simulation](30_simulation.md#assumptions) A5; [31_climate_scenarios](31_climate_scenarios.md#assumptions) A1 to A3, A5 | Variance and day-to-day structure are those of the observed record. |
 | Equal weights for climate models | [31_climate_scenarios](31_climate_scenarios.md#assumptions) A4 | The spread across models is disagreement, not a probability. |
 | Survey weights are fixed; years are exchangeable; thresholds are meaningful for the outcome | [32_metrics](32_metrics.md#assumptions) A1 to A4 | Thirty years support a 1-in-10 return period with three years only. |
+| Mean-bias-adjusted forecast weather supports the fitted response, with equally weighted members | [34_seasonal_forecast](34_seasonal_forecast.md#assumptions) A1 to A5 | The experimental local pilot provides temperature and rainfall. Skill is not established; mean adjustment does not calibrate spread or probabilities. Target months have equal weight and form one state per member, not an annual return-period sample; a member is placed in the same-window reference years instead. The weather response is assumed to hold across seasons, and the cards warn when few training interviews fall in the target months. |
+| ENSO reaches the outcome only through the selected local weather; labels do not change results | [35_enso](35_enso.md#assumptions) A1 to A5 | Differences between labels leave out other ENSO channels and rest on few events. A flat result does not show that ENSO is harmless. |
 
 ## Uncertainty
 
@@ -91,6 +93,8 @@ Across the pages, the app does not model the following.
 - Behavioural responses to a transfer.
 - A policy arm for logistic regression, binary outcomes and machine-learning models.
 - A causal reading of any policy lever effect.
+- ENSO channels other than the selected local weather, and changes in ENSO under warming.
+- Calibrated seasonal forecast probabilities, proven seasonal forecast skill, or a transfer paid on the forecast itself. The local pilot is experimental DEV data; a shock-responsive transfer on a target window pays as if each member's weather happened, or, if anticipatory, on the share of members that pass the trigger.
 
 ## In the app
 
@@ -108,6 +112,6 @@ This page describes no code of its own. Each assumption is stated on the page na
 
 | Concept | Equation | Code |
 |---|---|---|
-| Weather-support diagnostic | | `R/fct_sim_diag.R` |
-| Calibration check against the survey | | `R/fct_sim_diag.R` |
+| Weather-support diagnostic | | `R/fct_step2_diagnostics.R` |
+| Calibration check against the survey | | `R/fct_step2_diagnostics.R` |
 | Levers that cannot act | | `R/fct_policy_sim.R` `.access_levers_unavailable()` |

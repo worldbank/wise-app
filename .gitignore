@@ -45,12 +45,13 @@ src/*.so
 src/*.dll
 # Uncompressed DuckDB extension binaries stay untracked; the .gz versions in
 # inst/duckdb_extensions/ are committed because Posit Connect loads them at
-# runtime through system.file() (R/fct_load_data.R).
+# runtime through system.file() (R/fct_data_load.R).
 *.duckdb_extension
 
 # Run outputs and test artifacts
 dev/outputs/
 dev/output/
+dev/fixtures/
 tests/e2e/out/
 tests/testthat/testthat-problems.rds
 _targets/
@@ -83,3 +84,6 @@ _targets/
 *.jpeg
 # App assets that must be committed (the page cannot render without them)
 !inst/app/www/*.png
+
+# Local slide decks
+presentations/

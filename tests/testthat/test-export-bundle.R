@@ -831,3 +831,25 @@ test_that("echarts PNG export removes its temporary page and _files dir (R2-SEC-
     expect_false(dir.exists(paste0(tools::file_path_sans_ext(seen), "_files")))
   }
 })
+
+test_that("the seasonal forecast inputs travel in an exported configuration", {
+  ids <- paste0("step2-weathersim-", c("fc_include", "fc_run", "fc_start", "fc_len"))
+  expect_true(all(.export_keep_input(ids)))
+  expect_false(.export_keep_input("step2-weathersim-forecast_toggle"))
+
+  sent <- list()
+  session <- list(
+    input = list(),
+    sendInputMessage = function(id, msg) sent[[id]] <<- msg$value
+  )
+  cfg <- list(inputs = list(
+    "step2-weathersim-fc_include" = TRUE, "step2-weathersim-fc_run" = "2026-10",
+    "step2-weathersim-fc_start" = "2027-01", "step2-weathersim-fc_len" = "3"
+  ))
+  res <- wise_config_apply(cfg, session, existing = ids)
+  expect_setequal(res$applied, ids)
+  expect_identical(sent[["step2-weathersim-fc_start"]], "2027-01")
+  # Controls that are not rendered yet (no forecast run) are queued for retry.
+  res <- wise_config_apply(cfg, session, existing = "step2-weathersim-fc_include")
+  expect_setequal(res$pending, setdiff(ids, "step2-weathersim-fc_include"))
+})

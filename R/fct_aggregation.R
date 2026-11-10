@@ -16,7 +16,7 @@
 # Internal:
 #   draw_residuals_vec
 #
-# resolve_band_q() is defined once, in fct_sim_compare.R (a duplicate here
+# resolve_band_q() is defined once, in fct_step2_compare.R (a duplicate here
 # with divergent "minmax" semantics was removed - DUP-01).
 #
 # The closed-form delta-method aggregator (aggregate_with_uncertainty_delta)
@@ -641,10 +641,6 @@ deviation_from_centre <- function(df,
   df |>
     mutate(value = sign * (value - ref))
 }
-
-# NOTE: plot_exceedance() and plot_hist_sim() had no active call sites and
-# were removed. They are superseded by the archived enhance_exceedance()
-# renderer in dev/archive/static_plots/sim_compare_static.R.
 
 # Shared aggregation helper ----
 

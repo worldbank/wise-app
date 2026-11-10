@@ -24,7 +24,22 @@ credentials or `.Renviron`.
 
 The version is in two places that must match: `Version:` in `DESCRIPTION` and
 `golem_version` in `inst/golem-config.yml` (`dev/agents_check.R` checks this).
+Edit both by hand: `usethis::use_version()` would touch only `DESCRIPTION`.
 After a bump, regenerate the manifest (section 3).
+
+Add the user-facing changes to `NEWS.md` under a heading `# wiseapp X.Y.Z`
+(newest first; sections per feature; no internal refactors beyond a short
+"Other" list). `NEWS.md` is not in the manifest bundle, so it needs no
+regeneration.
+
+On a feature branch, the bump and the `NEWS.md` entry may be committed with the
+work, but regenerate `manifest.json` only as the last step before the PR into
+`dev` (it is built from `HEAD`). `test-deploy-contract.R` fails until then.
+
+Tags: if the team tags releases, create an annotated tag `vX.Y.Z` locally on the
+commit that ships, after it is merged into the release branch and the manifest
+is committed. Never tag a feature branch. Pushing the tag or creating a GitHub
+Release needs the user's explicit go-ahead.
 
 ## 2. Readiness checks
 
@@ -35,11 +50,11 @@ Run with the tree quiet and committed (the manifest is built from `HEAD`):
    what you meant.
 3. `devtools::test()` (4 to 6 minutes, run in the background) and
    `devtools::check()`.
-4. `Rscript tests/e2e/smoke.R` (about 5 minutes; Chrome, `arrow` and the
+4. `Rscript tests/e2e/smoke.R` (about 2 minutes; Chrome, `arrow` and the
    DuckDB `h3` extension). `main` requires the `e2e-smoke` status check.
-5. Real-data parity per release, not run in CI: `dev/batch_parity_bfa.R`,
-   `dev/batch_parity_bfa_models.R`, `dev/batch_parity_bfa_sim.R`,
-   `dev/batch_parity_bfa_policy.R` (need `WISEAPP_DATA_PATH`, read in R).
+5. Real-data parity per release, not run in CI: `batch/parity/batch_parity_bfa.R`,
+   `batch/parity/batch_parity_bfa_models.R`, `batch/parity/batch_parity_bfa_sim.R`,
+   `batch/parity/batch_parity_bfa_policy.R` (need `WISEAPP_DATA_PATH`, read in R).
 6. A browser pass of the changed screens (skill `wise-ui-check`).
 7. `Rscript dev/docs_check.R` and `Rscript dev/agents_check.R`.
 
@@ -58,11 +73,11 @@ are not in the bundle, so changing them needs no regeneration.
 
 The bundled extensions (`inst/duckdb_extensions/`: `h3` and `httpfs`, as
 `.gz`) are built for one exact DuckDB version, and the app refuses a mismatch
-or a wrong checksum (`.duck_check_bundled_ext()` in `R/fct_load_data.R`). To
+or a wrong checksum (`.duck_check_bundled_ext()` in `R/fct_data_load.R`). To
 upgrade, change together:
 
 - `duckdb (== X)` in `DESCRIPTION`;
-- `.DUCKDB_BUNDLE_VERSION` and `.DUCKDB_BUNDLE_SHA256` in `R/fct_load_data.R`;
+- `.DUCKDB_BUNDLE_VERSION` and `.DUCKDB_BUNDLE_SHA256` in `R/fct_data_load.R`;
 - the two binaries, rebuilt for that version.
 
 How the binaries are built is not recorded in this repository: ask the user

@@ -862,7 +862,13 @@ mod_1_07_results_server <- function(id,
                   "dashed vertical line marks the sample mean and the rug shows",
                   "the observed weather values."
                 )
-              })
+              }),
+              shiny::p(paste(
+                "The model learns from the weather the surveys happened to see. If",
+                "the interviews fall mostly in El Ni\u00f1o or La Ni\u00f1a months, the",
+                "estimated response reflects that phase and may not carry over to",
+                "others. Check the interview timing on Survey stats."
+              ))
             ))
           )
         })

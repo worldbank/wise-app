@@ -24,7 +24,7 @@ Apply these throughout the work rather than treating them as a separate cleanup 
 
 Do not rework optimizations already implemented and verified:
 
-- Lazy DuckDB data loading and credential caching (`fct_load_data.R`)
+- Lazy DuckDB data loading and credential caching (`fct_data_load.R`)
 - LRU disk cache for weather parquet fetches, bit-identical verified (`PERF-13`)
 - RIF KDE hoisted out of the tau loop (`PERF-03`); fit objects slimmed post-fit
 - Conditional parallel LASSO with an empirically tuned threshold (`parallel_min_n = 20000`)
@@ -76,7 +76,7 @@ Complete before designing key-level parallelism. This should take hours, not day
 1. **Recover the prior parallel failure.** Inspect the introducing and reverting commits, deployment logs if retained, and ask the implementer. Classify the failure as OOM/cgroup kill, aggregate RSS growth, swap or memory pressure, excessive serialization, cache contention, worker failure, or negative speedup. Preserve the evidence in a short note.
 2. **Confirm the Posit Connect execution envelope.** Record per-process and application limits, whether limits apply to a process or its complete process tree, CPU entitlement, deployment replica count, expected concurrent active jobs, timeout/reaping behavior, and whether child processes are supported under the deployment configuration.
 3. **Confirm deployed package compatibility.** Verify the installed/locked Shiny, bslib, mirai, DuckDB, and related versions support the intended APIs on the production R version. Do not design against current online examples if the lockfile is older.
-4. **Trace the real Step 2 call graph.** Confirm whether `fct_rif_sim.R`, `fct_sim_diag.R`, weather retrieval, and DuckDB access execute for every key or only for selected modes.
+4. **Trace the real Step 2 call graph.** Confirm whether `fct_model_rif.R`, `fct_step2_diagnostics.R`, weather retrieval, and DuckDB access execute for every key or only for selected modes.
 5. **Identify representative workloads.** Choose at least a typical country and the largest supported country. Prefer sanitized real fixtures. Determine whether the batch scripts already exercise these workloads.
 
 **Exit criterion:** enough evidence to construct representative benchmarks and to say whether child-process parallelism is operationally possible. This phase may rule out Phase 5 without affecting the responsiveness track.
@@ -279,7 +279,7 @@ Keep this out of the critical path unless inspection shows it directly supplies 
 
 - Consolidate the six near-duplicate `batch/04_run_sim_*.R` scripts (`RED-06`) around the extracted compute API, preserving each script's observable behavior and deployment parameters.
 - Use batch execution as an optional low-risk test bed for bounded fan-out, but do not infer interactive Connect safety from batch infrastructure with different memory or concurrency limits.
-- Review `fct_policy_sim_compare.R` versus `fct_sim_compare.R` (`DUP-03`) for duplicated computation as well as duplicated code.
+- Review `fct_echart_builders.R` versus `fct_step2_compare.R` (`DUP-03`) for duplicated computation as well as duplicated code.
 - Before consolidating any candidate pair or script family, add characterization tests for outputs, warnings, errors, ordering, defaults, and side effects.
 - Consolidate behaviorally equivalent logic into small shared helpers while retaining meaningful wrappers such as policy- and simulation-specific entry points. Avoid a generic function dominated by `mode` branches.
 - Record intentional duplication when two implementations have different business semantics or are expected to evolve independently; not every textual duplicate should be removed.

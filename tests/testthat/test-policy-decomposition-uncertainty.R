@@ -73,7 +73,7 @@ test_that("policy decomposition derives a missing poor outcome", {
 })
 
 test_that("variance additivity: Var(total) == Var(main) + Var(res1) + Var(res2)", {
-  # Under the diagonal-Σ approximation documented in fct_policy_decompose.R,
+  # Under the diagonal-Σ approximation documented in fct_policy_decomp.R,
   # channels are independent and variances add exactly.
   fx <- make_ols_fixture()
   r  <- wiseapp::decompose_policy_effect(fx$svy_base, fx$svy_policy,
@@ -202,7 +202,7 @@ test_that("metric decomposition is kept separate from Step 3 plots", {
     main = -.01, repositioning = -.01, interaction = -.01, resilience = -.02,
     total = -.03, probability = .05, n_models = 2L, n_model_years = 60L,
     center_method = "equal_model_mean", ensemble_center = "equal_model_mean",
-    quantile_method = "rank_interp_n_p_plus_half", tie_method = "value_then_sim_year_ascending",
+    quantile_method = "weibull_rank_n_plus_1_p", tie_method = "value_then_sim_year_ascending",
     year_lo = 2001, year_hi = 2002, rank_lo = 1L, rank_hi = 2L, weight_lo = .5, weight_hi = .5)
   mechanisms <- data.frame(scenario = "SSP2-4.5", hazard = "temp", category = NA_character_,
     contrast = "continuous_coefficient_change", repositioning = .02, interaction = -.01,

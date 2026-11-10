@@ -184,7 +184,9 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
   baseline <- run$baseline_survey %||% "Selected baseline survey"
   total_runs <- run$total_runs %||% NA_integer_
   badge <- if (is.finite(total_runs)) {
-    paste(format(total_runs, big.mark = ","), "simulation years")
+    # Forecast members are target-window runs, not simulation years.
+    paste(format(total_runs, big.mark = ","),
+      if (any(vapply(scenarios, .step2_is_forecast_scenario, logical(1L)))) "simulation runs" else "simulation years")
   } else if (scenario_count == 0L) {
     "Historical only"
   } else {
@@ -196,7 +198,9 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     ssp <- parts[1] %||% key
     period <- if (length(parts) >= 2L) parts[2] else ""
     n <- suppressWarnings(as.numeric(saved_scenarios[[key]]$n_models %||% NA_real_))[1]
-    n_label <- if (is.finite(n)) paste(n, "models") else "model count unavailable"
+    n_label <- if (is.finite(n)) {
+      paste(n, if (.step2_is_forecast_scenario(key)) "members" else "models")
+    } else "model count unavailable"
     shiny::tags$span(
       class = "step2-summary-item",
       shiny::tags$span(
@@ -666,10 +670,11 @@ wise_chart_output <- function(chart_id, alt, ...) {
 #' @param ...          Flyout content, rendered below the header.
 #' @param toggle_label  Button label. Default "Configure".
 #' @param display_label Optional label rendered beside the button.
+#' @param toggle_icon  Font Awesome name of the button icon. Default "sliders".
 #'
 #' @noRd
 config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure",
-                                display_label = NULL) {
+                                display_label = NULL, toggle_icon = "sliders") {
   panel_id <- paste0(toggle_id, "_panel")
   shiny::tags$div(
     class = paste(
@@ -678,7 +683,7 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
     ),
     shiny::actionButton(
       toggle_id, toggle_label,
-      icon = shiny::icon("sliders"),
+      icon = shiny::icon(toggle_icon),
       class = "btn-outline-primary btn-sm config-flyout-toggle",
       style = "margin-bottom: 10px;",
       `aria-expanded` = "false",

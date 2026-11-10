@@ -2,7 +2,7 @@
 #
 # Measures the R-side builder cost old (ggplot/DT) vs new (echarts4r/reactable)
 # for representative migrated surfaces:
-#   - exceedance curves          (fct_sim_compare echart_exceedance vs
+#   - exceedance curves          (fct_step2_compare echart_exceedance vs
 #                                 enhance_exceedance)
 #   - decomposition decile bars  (echart_decomposition_channels_by_decile vs
 #                                 plot_decomposition_channels_by_decile)

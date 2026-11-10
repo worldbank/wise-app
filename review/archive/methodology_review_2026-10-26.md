@@ -32,7 +32,7 @@ that needs country/specification-specific checks.
 within cells are dropped. `docs/01_framework.md:59-63` likewise describes comparisons within area and round.
 However, the default is additive survey-year and administrative-area effects
 (`R/fct_spec_defaults.R:120`), combined with `+`, not interacted cell effects
-(`R/fct_fit_model.R:38-60`). Area-specific changes across rounds can identify coefficients and confound weather
+(`R/fct_model_fit.R:38-60`). Area-specific changes across rounds can identify coefficients and confound weather
 effects. A synthetic `fixest` probe estimates a coefficient of 1 for a regressor constant within every
 area-round cell but varying across those cells.
 
@@ -46,12 +46,12 @@ diagnostics and numerical parity checks. Add a small specification test distingu
 **Confirmed, high priority for RIF uncertainty.** `docs/22_model_rif.md:105` and
 `docs/33_uncertainty.md:100-104` say cross-quantile covariance is omitted and equations are independent.
 Yet adjacent quantile loadings are added in the same coefficient space
-(`R/fct_rif_sim.R:769-785`); aggregation then squares their sum
+(`R/fct_model_rif.R:769-785`); aggregation then squares their sum
 (`R/fct_aggregation_delta.R:179-189`). This introduces cross-quantile covariance through shared standardized
 coefficient shocks. With two scalar unit loadings at a midpoint, the actual variance is 1; independent quantile
 blocks give 0.5. Equation (6.1) describes the implemented blend but contradicts the accompanying independence claim.
 The existing interpolation test preserves this blend rather than validating independence
-(`tests/testthat/test-fct_rif_sim.R:17-50`).
+(`tests/testthat/test-fct_model_rif.R:17-50`).
 
 What the code implies is not a deliberate covariance model either. Every equation's deviation is
 $\beta_k - \hat\beta_k = L_k z$ with one shared standard-normal $z$, so $\mathrm{Cov}(\beta_k, \beta_l) = L_k L_l'$.
@@ -60,7 +60,7 @@ It applies across all nine equations, not only between neighbouring grid points:
 $\tau = 0.9$ also share $z$.
 
 Independence is not a better target. The nine RIF equations are fitted on the same sample with the same design
-(stacked multi-LHS `feols`, `R/fct_fit_model.R:185`), so adjacent quantile estimates are strongly positively
+(stacked multi-LHS `feols`, `R/fct_model_fit.R:185`), so adjacent quantile estimates are strongly positively
 correlated. Treating them as independent would probably make the bands for population aggregates too narrow.
 
 **Practical change, in order:**
@@ -84,9 +84,9 @@ non-adjacent quantiles. The fix moves Step 2 and Step 3 bands for the quantile m
 
 **Confirmed, high priority when climate coverage is incomplete.** `docs/31_climate_scenarios.md:61` promises every
 location-month and selected variable. The check instead sets `n_expected = max(n_rows)` among observed members
-(`R/fct_get_weather.R:2053-2070`). If all members lack the same key, they can all pass. Even equal counts do not
+(`R/fct_data_weather.R:2053-2070`). If all members lack the same key, they can all pass. Even equal counts do not
 establish equal key sets. The subsequent inner join can omit affected weather rows
-(`R/fct_get_weather.R:2144-2149`), potentially changing the population represented by a scenario.
+(`R/fct_data_weather.R:2144-2149`), potentially changing the population represented by a scenario.
 
 **Practical change:** construct the expected location-month keys independently from the requested locations and
 period; compare each member's keys and non-missing variables against that grid. Report excluded members and missing
@@ -102,8 +102,8 @@ weight-alias item below), so the first case only affects user-supplied unweighte
 to current data whenever weights are unequal.
 
 - **Cost-effectiveness without survey weights:** the poverty-rate/gap effect is an equal-row statistic when no
-  literal `weight` column exists (`R/fct_simulations.R:788-792`; `R/fct_aggregation.R:72-88`), but the represented
-  population for household analysis is the sum of household sizes (`R/fct_sp_effectiveness.R:206-219`). Multiplying
+  literal `weight` column exists (`R/fct_step2_pipeline.R:788-792`; `R/fct_aggregation.R:72-88`), but the represented
+  population for household analysis is the sum of household sizes (`R/fct_policy_sp_effectiveness.R:206-219`). Multiplying
   the former by the latter (`:329,362`; caller `R/fct_step3_tables.R:527-530`) does not count people consistently,
   contrary to `docs/45_cost_effectiveness.md:18,30-40`. In a source-only example with household sizes 1 and 9,
   baseline welfare 1 and 3, poverty line 2, and only the first household lifted, the reported count is 5 rather than
@@ -146,7 +146,7 @@ These are confirmed but lower priority than the findings above.
 - **Weather support is not fitted-sample support.** The historical-window benchmark is explicitly acknowledged in
   `docs/30_simulation.md:86-91`, so it is not an undocumented implementation error. However,
   `docs/50_assumptions_limitations.md:51` describes an estimation-sample check. The actual reference uses historical
-  weather at baseline locations/months (`R/fct_run_simulation.R:796-799`), not fitted observations. In a synthetic
+  weather at baseline locations/months (`R/fct_step2_run.R:796-799`), not fitted observations. In a synthetic
   example, estimation weather `{0,1}`, archive `{0,1,100}`, and scenario 50 produce no archive warning despite
   exceeding all fitted weather. Keep the archive comparison as context, label it accurately, and add a separate
   fitted-sample check if the result is to warn about regression extrapolation. A marginal check still does not
@@ -159,16 +159,16 @@ These are confirmed but lower priority than the findings above.
   an exact tie almost never happens, so fix it when the function is next changed.
 - **Equations lag the transfer correction:** `docs/44_decomposition.md:74-78` compounds cash through later
   exponential channels, but current code keeps the cash amount outside those exponents
-  (`R/fct_policy_metric_decompose.R:218-231,898-928`), consistent with Section 5 of that page. Rewrite Section 4
+  (`R/fct_policy_metric_decomp.R:218-231,898-928`), consistent with Section 5 of that page. Rewrite Section 4
   with separate non-cash log shift and level cash amount. This is a documentation defect, not evidence that DOC-11
   remains broken. Also correct the stale claim that RIF contrast SEs omit within-equation term covariances
-  (`docs/24_model_results.md:45`; full covariance is used in `R/fct_results.R:229-241`).
+  (`docs/24_model_results.md:45`; full covariance is used in `R/fct_step1_results.R:229-241`).
 - **Weight aliases:** `docs/10_data.md:80` promises that the first of `weight`, `hhweight`, `wgt`, `pw` is used by
   every weighted statistic in Steps 2 and 3, and `survey_weight_column()` (`R/fct_incidence.R:29-33`) implements that
   order. Several core consumers still read only a literal `weight` column: the Step 2 and 3 aggregation
-  (`R/fct_simulations.R:791`), the cost-effectiveness population (`R/fct_sp_effectiveness.R:213`), the sector shares
-  (`R/fct_policy_sim.R:235`) and `default_lcu_poverty_line()` (`R/fct_outcome.R:94`). `run_simulation()` resolves the
-  alias (`R/fct_run_simulation.R:532`) but uses it only in a warning. For a survey that has only `hhweight`, the
+  (`R/fct_step2_pipeline.R:791`), the cost-effectiveness population (`R/fct_policy_sp_effectiveness.R:213`), the sector shares
+  (`R/fct_policy_sim.R:235`) and `default_lcu_poverty_line()` (`R/fct_step1_outcome.R:94`). `run_simulation()` resolves the
+  alias (`R/fct_step2_run.R:532`) but uses it only in a warning. For a survey that has only `hhweight`, the
   headline metrics would be unweighted, while the dropped-share and decomposition paths would be weighted. The
   current harmonised data always carry a `weight` column (confirmed by the maintainer, 2026-10-26), so this is latent
   and low priority. Fix: rename the resolved alias to `weight` once, where the survey is loaded, and test an
@@ -191,7 +191,7 @@ justify adding complex estimators or new data requirements.
 
 One conditional concern is the currency of shock loss-share budgets: `docs/43_shock_responsive_sp.md:82-86` does not
 spell it out, while losses are converted to stored units and costs back to entry currency
-(`R/fct_sp_shock.R:1103-1109,1143-1154`). Unequal PPP factors *within the same payout cell* can break a naive
+(`R/fct_policy_sp_shock.R:1103-1109,1143-1154`). Unequal PPP factors *within the same payout cell* can break a naive
 entry-currency reading of the loss-share identity. This is not established as a defect in supported real inputs;
 PPP may be constant within each cell. State the currency convention and validate that invariant before changing
 the arithmetic. Whole-row weighted targeting can also be coarse with a dominant survey weight; report realized

@@ -13,6 +13,11 @@ name: R-CMD-check
 
 permissions: read-all
 
+# A new push to the same ref supersedes the run in flight.
+concurrency:
+  group: R-CMD-check-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   R-CMD-check:
     runs-on: ubuntu-latest

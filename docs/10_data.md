@@ -5,8 +5,8 @@ app_step: 0
 depends_on: [notation, framework]
 symbols: [i, l, t, mu, Y, omega]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
-code: [R/fct_surveystats.R, R/fct_step1_data.R, R/fct_loc_panel.R, R/fct_get_weather.R, R/fct_sample.R, R/fct_incidence.R, R/fct_weatherstats.R]
-verified_against: 72a2fdb
+code: [R/fct_step1_surveystats.R, R/fct_step1_data.R, R/fct_loc_panel.R, R/fct_data_weather.R, R/fct_step1_sample.R, R/fct_incidence.R, R/fct_step1_weatherstats.R]
+verified_against: 5b89f68
 ---
 
 # Data and spatial linking
@@ -15,13 +15,14 @@ verified_against: 72a2fdb
 
 ## Setup
 
-Three kinds of input are used.
+Four kinds of input are used.
 
 | Input | Content | Source |
 |---|---|---|
 | Survey microdata | Harmonised household, individual or firm records with welfare, characteristics, interview month and a location code tied to H3 cells | Global Monitoring Database [@worldbank2026], geocoded |
 | Observed weather | Monthly weather variables on a global grid, from 1950 | ERA5-Land reanalysis [@munozsabater2021], taken from the Copernicus climate atlas [@c3satlas2024] |
 | Climate projections | The same variables for up to 30 members of the CMIP6 ensemble [@eyring2016], for a historical baseline (1950 to 2014) and three emissions pathways (2015 to 2100) | Same atlas |
+| Seasonal forecasts (experimental) | Monthly temperature and rainfall for 51 members and six months, with the matching hindcasts | ECMWF SEAS5 from the Copernicus Climate Change Service [@c3sseasonal2018], adjusted to ERA5-Land in the data repository ([34_seasonal_forecast](34_seasonal_forecast.md)) |
 
 Three metadata tables describe the surveys, the variables and the price deflators. Their columns and the directory layout are defined in the data repository: <https://github.com/worldbank/wise-app-data>. This page does not copy them, so the two cannot drift apart.
 
@@ -99,6 +100,7 @@ The survey must carry a column named `weight`. The harmonised surveys always hav
 - Variables are harmonised but not always strictly comparable across surveys.
 - Households that moved, or interviews held away from the location, are not detected.
 - Missing deflators and missing weather months reduce the sample without any imputation.
+- The monthly ENSO index and its forecast are optional tables, read only to label results ([35_enso](35_enso.md)). Without them the results are the same and the labels are absent.
 - Known data limitations of the location link. Some survey location identifiers cannot be mapped to H3 cells, because the survey has no coordinates or shapefile for them. Some H3 cells have no weather, because they lie outside the coverage of ERA5-Land. Records in either case have no weather, are dropped at the merge and are counted in the reported number of dropped records. They are not imputed and not weighted up, so the sample no longer represents those locations. In the files of 72 surveys checked on 2026-10-26, about 3 % of the location identifiers in the survey microdata (3,766 of 137,144) had no row in the H3 files, and every location in the H3 files had at least one ERA5-Land cell.
 
 ## In the app
@@ -110,19 +112,19 @@ User guide: [Data](https://github.com/worldbank/wise-app-docs/blob/main/data.qmd
 
 ## References
 
-[@worldbank2026], [@munozsabater2021], [@c3satlas2024], [@eyring2016], [@schiavina2022], [@uber2018]. Full entries are in [references](references.md).
+[@worldbank2026], [@munozsabater2021], [@c3satlas2024], [@c3sseasonal2018], [@eyring2016], [@schiavina2022], [@uber2018]. Full entries are in [references](references.md).
 
 ## Implementation map
 
 | Concept | Equation | Code |
 |---|---|---|
-| Conversion to 2021 PPP | (1.1) | `R/fct_surveystats.R` `convert_lcu_to_ppp()`, `assign_data_level()` |
-| Bottom-coding | (1.2) in notation | `R/fct_surveystats.R` `bottom_code_welfare()` |
+| Conversion to 2021 PPP | (1.1) | `R/fct_step1_surveystats.R` `convert_lcu_to_ppp()`, `assign_data_level()` |
+| Bottom-coding | (1.2) in notation | `R/fct_step1_surveystats.R` `bottom_code_welfare()` |
 | Survey preparation order | (1.1) | `R/fct_step1_data.R` `prepare_survey_data()` |
 | Records without deflator | (1.1) | `R/fct_step1_data.R` `survey_n_no_deflator()` |
-| H3 resolution harmonisation | 2 | `R/fct_get_weather.R` `.harmonise_h3()` |
-| Population-weighted location weather | (3.1) | `R/fct_get_weather.R` `get_weather()` |
+| H3 resolution harmonisation | 2 | `R/fct_data_weather.R` `.harmonise_h3()` |
+| Population-weighted location weather | (3.1) | `R/fct_data_weather.R` `get_weather()` |
 | Location panel | (4.1) | `R/fct_loc_panel.R` `loc_panel()`; `R/fct_step1_data.R` `wise_location_panel()` |
-| Survey-weather merge | 5 | `R/fct_weatherstats.R` `merge_survey_weather()` |
+| Survey-weather merge | 5 | `R/fct_step1_weatherstats.R` `merge_survey_weather()` |
 | Weight column | 7 | `R/fct_incidence.R` `survey_weight_column()` |
-| Available surveys and files | 5 | `R/fct_sample.R` `build_survey_fnames()`, `build_selected_surveys()` |
+| Available surveys and files | 5 | `R/fct_step1_sample.R` `build_survey_fnames()`, `build_selected_surveys()` |

@@ -91,8 +91,8 @@ user, do not substitute other data).
    policy gain, by residual rule) and the ones it should not. Report absolute
    and relative change.
 5. Where real data cannot show the effect, use the fixture
-   (`.bench_small_step3_input()` in `dev/bench/bench_step3_helpers.R`) and say
-   so. For a release, `dev/batch_parity_bfa*.R` compare the batch tables with
+   (`.bench_small_step3_input()` in `dev/bench/lib/bench_step3_helpers.R`) and say
+   so. For a release, `batch/parity/batch_parity_bfa*.R` compare the batch tables with
    the module servers.
 
 Keep run outputs under `dev/outputs/` (git-ignored) or the scratchpad. Do not

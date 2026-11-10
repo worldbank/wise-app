@@ -237,7 +237,7 @@ mod_3_06_policy_sim_server <- function(id,
         invisible(NULL)
       }
 
-      problem <- .step3_run_prerequisite_error(mf, hs, sw, svy)
+      problem <- .step3_run_prerequisite_error(mf, hs, sw, svy, ss, sp_cfg)
       if (!is.null(problem)) {
         return(.fail(problem))
       }

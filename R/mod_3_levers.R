@@ -125,7 +125,7 @@ mod_3_levers_server <- function(input, output, session, slot, category,
                                 variable_list = reactive(NULL)) {
   ns <- session$ns
 
-  # REACT-08: shared coefficient decomposition (utils_mod_1_helpers.R).
+  # REACT-08: shared coefficient decomposition (utils_step1.R).
   coeffs <- model_coefficient_reactives(selected_model)$all
 
   registry <- reactive(policy_registry(variable_list()))

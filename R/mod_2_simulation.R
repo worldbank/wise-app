@@ -50,6 +50,7 @@ mod_2_simulation_ui <- function(id) {
 #' @param selected_surveys Reactive data frame from the survey list.
 #' @param survey_weather   Reactive data frame of merged survey-weather data.
 #' @param model_fit        Reactive list of fitted model objects.
+#' @param enso             Optional reactive: `enso_load()` result, `NULL` without the ENSO tables.
 #' @param run_trigger      Optional reactive trigger for a programmatic run.
 #' @param shared_aggregation_cache Optional shared session aggregation cache.
 #'
@@ -63,6 +64,7 @@ mod_2_simulation_server <- function(id,
                                     model_fit,
                                     stored_breaks = reactive(NULL),
                                      survey_version = reactive(0L),
+                                      enso = reactive(NULL),
                                       run_trigger = reactive(NULL),
                                       shared_aggregation_cache = NULL) {
   moduleServer(id, function(input, output, session) {
@@ -83,7 +85,8 @@ mod_2_simulation_server <- function(id,
       stored_breaks     = stored_breaks,
        survey_version    = survey_version,
        run_trigger       = run_trigger,
-      display_settings  = display_settings
+      display_settings  = display_settings,
+      enso              = enso
     )
 
     # 2. Results tab ----
@@ -93,6 +96,8 @@ mod_2_simulation_server <- function(id,
       saved_scenarios = s1$saved_scenarios,
       selected_hist   = s1$selected_hist,
       selected_weather = selected_weather,
+      survey_weather  = survey_weather,
+      enso            = enso,
       tabset_id       = "step2_output_tabs",
       tabset_session  = session,
        residuals       = s1$residuals,
@@ -114,6 +119,8 @@ mod_2_simulation_server <- function(id,
       selected_weather   = selected_weather,
       stored_breaks      = stored_breaks,
       timeseries_curves  = s2$timeseries_curves,
+      window_robustness  = s2$window_robustness,
+      enso_labels        = s2$enso_labels,
       tabset_id          = "step2_output_tabs",
       tabset_session     = session,
       stale              = s1$stale
@@ -128,6 +135,10 @@ mod_2_simulation_server <- function(id,
       residuals       = s1$residuals,
       propagate_all_covariate_uncertainty = s1$propagate_all_covariate_uncertainty,
       stale           = s1$stale,
+      enso_labels     = s2$enso_labels,
+      enso_window_labels = s2$enso_window_labels,
+      enso_forecast_marks = s2$enso_forecast_marks,
+      enso_relevance  = s2$enso_relevance,
       run_generation  = s1$run_generation,
       run_status      = s1$run_status
     )

@@ -265,3 +265,24 @@ test_that("adverse chart intervals share their scenario marker dodge", {
     base_lo = NA_real_, base_hi = NA_real_))
   expect_match(invalid_policy$x$opts$title[[1L]]$text, "No finite adverse", fixed = TRUE)
 })
+
+test_that("forecast-only chart draws the reference line at the target-month Historical mean", {
+  ref_line <- function(chart) {
+    s <- Filter(function(x) !is.null(x$markLine), chart$x$opts$series)[[1L]]$markLine
+    list(x = s$data[[1L]]$xAxis, label = s$label$formatter)
+  }
+  fc <- "Forecast (Nov 2026 - Apr 2027)"
+  win <- "Historical (Nov - Apr)"
+  only_fc <- data.frame(
+    scenario = rep(c("Historical", win, fc), each = 4L), value = c(1:4, 11:14, 21:24),
+    stringsAsFactors = FALSE
+  )
+  r <- ref_line(echart_step3_annual_distribution(only_fc))
+  expect_equal(r$x, 12.5)
+  expect_identical(r$label, paste(win, "mean"))
+
+  with_ssp <- rbind(only_fc, data.frame(scenario = "SSP2-4.5 / 2030-2040", value = 31:34))
+  r <- ref_line(echart_step3_annual_distribution(with_ssp))
+  expect_equal(r$x, 2.5)
+  expect_identical(r$label, "Historical mean")
+})

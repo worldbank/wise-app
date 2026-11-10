@@ -3,8 +3,8 @@
 Scope: the summary cards at the top of the Step 1, Step 2 and Step 3 Results tabs.
 
 - Step 1: `step1_headline_cards()` in `R/fct_step1_headline.R`
-- Step 2: `step2_headline_cards()` in `R/fct_sim_compare.R`
-- Step 3: `step3_headline_cards()` in `R/fct_policy_sim_compare.R`
+- Step 2: `step2_headline_cards()` in `R/fct_step2_compare.R`
+- Step 3: `step3_headline_cards()` in `R/fct_echart_builders.R`
 - Rendering: `headline_cards_ui()` in `R/utils_ui.R`; CSS `.headline-card*` in `inst/app/www/`
 - Metric direction/units: `R/fct_metric_registry.R`
 
@@ -31,15 +31,15 @@ Principles agreed so far:
 | # | Finding | Where |
 |---|---|---|
 | F1 | Metric direction (`lower_is_better` / `higher_is_better`) exists in the registry but the cards only use a binary "neutral" style. Nothing tells the reader whether a change is good or bad. | `fct_metric_registry.R`, `utils_ui.R` |
-| F2 | Step 2 has a coefficient-uncertainty band (`coef_lo`, `coef_hi`) that no card shows. Cards cover weather variability and model spread only, and model spread is evaluated at central coefficients. | `fct_sim_compare.R` |
-| F3 | Step 3 card 5 shows "100% positive" when the model range is above zero. For a poverty rate, positive means more poverty, so the label reads as good news when it is bad. | `fct_policy_sim_compare.R` |
-| F4 | Step 3 "Resilience effect" headline is the 1-in-20-year resilience subtotal (repositioning + interaction), but the headline does not say so, and the sign is not interpreted. In the sample screenshot, Main -4.48 + Resilience +0.23 = -4.25 on a poverty rate, so +0.23 means the policy makes outcomes more sensitive to bad weather, which the bare "+0.23 pp" does not convey. The card answers a core question (how much does the policy change sensitivity to weather?) and should be kept, with clearer framing. | `fct_policy_sim_compare.R` |
+| F2 | Step 2 has a coefficient-uncertainty band (`coef_lo`, `coef_hi`) that no card shows. Cards cover weather variability and model spread only, and model spread is evaluated at central coefficients. | `fct_step2_compare.R` |
+| F3 | Step 3 card 5 shows "100% positive" when the model range is above zero. For a poverty rate, positive means more poverty, so the label reads as good news when it is bad. | `fct_echart_builders.R` |
+| F4 | Step 3 "Resilience effect" headline is the 1-in-20-year resilience subtotal (repositioning + interaction), but the headline does not say so, and the sign is not interpreted. In the sample screenshot, Main -4.48 + Resilience +0.23 = -4.25 on a poverty rate, so +0.23 means the policy makes outcomes more sensitive to bad weather, which the bare "+0.23 pp" does not convey. The card answers a core question (how much does the policy change sensitivity to weather?) and should be kept, with clearer framing. | `fct_echart_builders.R` |
 | F5 | Step 1 "Spec robustness" compares specification 1 (no fixed effects) with specification 3 only. Specification 1 mixes in cross-sectional variation, so "Stable" says little about whether the effect survives fixed effects. | `fct_step1_headline.R` |
 | F6 | Step 1 RIF card says "poorest 10% vs richest 10%", but the RIF estimate is the effect on the 10th and 90th percentiles of the welfare distribution, not on the households currently at those ranks. | `fct_step1_headline.R` |
 | F7 | Step 1 effect card contrast is "+1 SD of X" or "highest vs lowest bin". Neither is in physical units, and bin cut-points are only in the popover. | `fct_step1_headline.R` |
-| F8 | Step 2 headline "41.23% vs 42.33%" wraps on two lines and makes the reader subtract. The difference is already computed but sits on the third line. Two decimals overstate precision. | `fct_sim_compare.R` |
+| F8 | Step 2 headline "41.23% vs 42.33%" wraps on two lines and makes the reader subtract. The difference is already computed but sits on the third line. Two decimals overstate precision. | `fct_step2_compare.R` |
 | F9 | Provenance occupies card space: Step 2 card 5, Step 3 card 5 ("Across 690 simulations", "4.9M household-years"), and "Sample & fit". | all three |
-| F10 | Step 3 reach shows "1,284,449.2 covered-household equivalents": a fractional household count and a long caveat. | `fct_policy_sim_compare.R` |
+| F10 | Step 3 reach shows "1,284,449.2 covered-household equivalents": a fractional household count and a long caveat. | `fct_echart_builders.R` |
 | F11 | Step 1 fit card reports Within R-squared. Simulations in Steps 2 and 3 predict welfare levels using the fixed effects, so within R-squared describes something the simulations do not rely on, and a low value reads as a bad model when it is normal for weather panels. | `fct_step1_headline.R` |
 | F12 | Card heights and wrapping are uneven across all three steps (label rows wrap, info icons drop to a second line). | CSS, `utils_ui.R` |
 
@@ -200,7 +200,7 @@ Phase 5 outcomes:
 - **Offset share (Step 3): done.** `step3_offset_share()`; shown on the Expected policy effect card only when climate worsens the metric and the policy improves it. Uses the Historical row of the paired summary as the no-policy historical baseline.
 - **Return-period shift and people affected (Step 2): done in Phase 3.**
 - **Binned non-linearity (Step 1): done as popover text** (largest bin, steady change across bins; linear and log outcomes only). Quadratic turning point done in Phase 4. No separate card, to keep four cards.
-- **Extrapolation check (Step 2): not duplicated.** It already exists as the weather-support check in the Diagnostics tab (`weather_support_summary()` in `R/fct_sim_diag.R`). It needs the resolved scenario weather, which is read lazily from file references and only when the Diagnostics outputs are visible. Recomputing it for a card would add file reads to every Results render, and putting it in the run would change the async worker payload. The Expected change popover now points to the Diagnostics check. Revisit if the support summary is added to the run output.
+- **Extrapolation check (Step 2): not duplicated.** It already exists as the weather-support check in the Diagnostics tab (`weather_support_summary()` in `R/fct_step2_diagnostics.R`). It needs the resolved scenario weather, which is read lazily from file references and only when the Diagnostics outputs are visible. Recomputing it for a card would add file reads to every Results render, and putting it in the run would change the async worker payload. The Expected change popover now points to the Diagnostics check. Revisit if the support summary is added to the run output.
 - **Baseline reproduction check (Step 2): done.** `step2_baseline_check()` aggregates the observed survey outcome (from `hist_sim$svy`, prepared with `prepare_outcome_df()` and exponentiated for log outcomes) with the same metric function, weights and poverty line as the simulation, and compares it with the mean simulated historical value. It is always stated in the Expected change popover, and flagged in the basis strip when the gap exceeds 2 pp (rates) or 10% (levels). Skipped when no observed outcome is available, for the binary `poor` outcome, and for LCU log outcomes without the PPP factor. The simulated value averages many weather years while the survey is one period, so small gaps are expected.
 - **Targeting / share of the poor reached (Step 3): decided against for the card.** Reasons as above; share of population reached stays on the Reach card and the Step 3 Diagnostics tab keeps the eligibility-vs-treatment detail.
 
@@ -256,7 +256,7 @@ Checked by search of `R/`, `inst/`, `dev/`, `tests/`, `AGENTS.md`, `README.md` a
 
 - The only programmatic consumers of the card structures are the three export tables: `step1_headline_summary` (`step1_headline_table()`), `climate_headline_summary` (`step2_headline_df()`) and `policy_headline_summary` (`step3_headline_df()`). Their row counts, labels, notes and some values changed as described above. The Step 3 export keeps expected effect in row 1, and the Step 2 export keeps the count/basis card, so the code that reads those rows by position still holds. The `climate_headline_summary` description was updated to match.
 - No JavaScript or other module reads card labels or positions. CSS selectors for the new classes live in `custom.css` only.
-- "Resilience effect" in `AGENTS.md` and `fct_policy_decompose.R` refers to the decomposition concept and remains valid.
+- "Resilience effect" in `AGENTS.md` and `fct_policy_decomp.R` refers to the decomposition concept and remains valid.
 - Tests that read cards were updated; the characterisation snapshot was re-accepted with only the headline-cards value changing.
 - The `spelling` package is not installed here, so `tests/spelling.R` has not been run.
 - Unrelated failures from another agent's removal of ggplot functions (`plot_step2_adverse_dot`, `enhance_exceedance`, `incidence_chart`, `plot_step3_adverse_dot`) are not part of this work.

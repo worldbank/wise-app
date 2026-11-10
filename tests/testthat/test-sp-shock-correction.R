@@ -860,6 +860,329 @@ test_that("spec checks cover the dynamic layers", {
   expect_null(.sp_shock_problem(utils::modifyList(ok, list(dyn_welfare = FALSE, dyn_welfare_pct = NA))))
 })
 
+# Seasonal forecast window ---------------------------------------------------
+
+# One pipeline of a two-month window: every household in November and December, each row at half the weight.
+# `temps` gives the weather of location 1 and location 2 in each month, as c(l1_nov, l1_dec, l2_nov, l2_dec).
+shk_window_pipe <- function(fx, sim_year, temps) {
+  n <- nrow(fx$base)
+  ids <- rep(seq_len(n), 2L)
+  tbl <- fx$base[ids, c("code", "year", "survname", "loc_id")]
+  tbl$int_month <- rep(c(11L, 12L), each = n)
+  tbl$timestamp <- as.Date(sprintf("%d-%02d-01", sim_year, tbl$int_month))
+  tbl$temp <- temps[(tbl$loc_id - 1L) * 2L + tbl$int_month - 10L]
+  tbl$rain <- 1
+  pipe <- list(y_point = rep(2, length(ids)), svy_row_id = ids, sim_year = rep(sim_year, length(ids)),
+    weight = fx$base$weight[ids] / 2, id_vec = ids)
+  pipe$weather_exposure <- c(list(status = "ok", table = tbl, row_index = seq_along(ids),
+    prediction_row_id = seq_along(ids)), pipe[c("svy_row_id", "sim_year", "weight", "id_vec")])
+  pipe
+}
+
+shk_window_scenario <- function(fx) {
+  list(
+    pipelines = list(member_0 = shk_window_pipe(fx, 2026L, c(30, 30, 1, 1)),
+      member_1 = shk_window_pipe(fx, 2026L, c(1, 1, 1, 1))),
+    reference_pipelines = stats::setNames(
+      lapply(1:6, function(i) shk_window_pipe(fx, 1990L + i, c(i, i, i, i) * 2)), paste0("refyear_", 1991:1996)
+    ),
+    forecast = list(len = 2L, forecast_months = as.Date(c("2026-11-01", "2026-12-01")))
+  )
+}
+
+shk_window_plan <- function(fx, scenario = shk_window_scenario(fx)) {
+  sp_shock_window_plan(scenario, fx$spec, fx$shock_policy[[SP_ELIGIBLE_COL]], fx$shock_policy, "hh",
+    is_log = FALSE, level_factor = rep(1, nrow(fx$base)), seed = 5L)
+}
+
+shk_eval <- function(plan, pipe) {
+  ex <- pipe$weather_exposure
+  state <- sp_shock_pipeline_state(plan, pipe, ex)
+  transfer <- sp_shock_pipeline_transfer(plan, pipe, ex, state)
+  list(state = state, transfer = transfer, rows = sp_shock_pipeline_rows(plan, pipe, ex, state, transfer))
+}
+
+test_that("a window trigger reads the mean of the target months, so its months fire together", {
+  fx <- shk_fixture()
+  # Location 1 passes 20 on the window mean, with a month below it; location 2 has a month above but not the mean.
+  pipe <- shk_window_pipe(fx, 2026L, c(30, 12, 25, 1))
+  out <- shk_eval(shk_window_plan(fx), pipe)
+  tbl <- pipe$weather_exposure$table
+  expect_true(all(out$state$exceeds[tbl$loc_id == 1L]))
+  expect_false(any(out$state$exceeds[tbl$loc_id == 2L]))
+})
+
+test_that("the national gate of a window reads each member's own population share", {
+  # Location 1 holds weights 1+3+...+11 = 36 of 78 (46 per cent) and is the only triggered location.
+  eval_scope <- function(scope, k, temps) {
+    fx <- shk_fixture(spec = shk_spec(payout_scope = scope, national_k_pct = k))
+    out <- shk_eval(shk_window_plan(fx), shk_window_pipe(fx, 2026L, temps))
+    c(list(fx = fx), out)
+  }
+  # Gate closed at k = 60: nobody is paid, though location 1 fires.
+  closed <- eval_scope("national_triggered", 60, c(30, 30, 1, 1))
+  expect_false(any(closed$state$in_scope))
+  expect_equal(sum(closed$transfer), 0)
+  expect_equal(unname(closed$state$share), 36 / 78)
+  # Gate open at k = 40: triggered locations are paid, the other is not.
+  open <- eval_scope("national_triggered", 40, c(30, 30, 1, 1))
+  expect_true(all(open$state$gate))
+  expect_identical(open$state$in_scope, open$state$exceeds)
+  expect_gt(sum(open$transfer), 0)
+  # All targeted households are paid once the gate is open, and none when the member does not trigger it.
+  all_open <- eval_scope("national_all", 40, c(30, 30, 1, 1))
+  expect_true(all(all_open$state$in_scope))
+  expect_gt(sum(all_open$transfer), sum(open$transfer))
+  quiet <- eval_scope("national_all", 40, c(1, 1, 1, 1))
+  expect_false(any(quiet$state$in_scope))
+  expect_equal(sum(quiet$transfer), 0)
+})
+
+test_that("a window scores members against the household's level in the same months of the reference years", {
+  fx <- shk_fixture()
+  plan <- shk_window_plan(fx)
+  # Reference years predict 2 for every household and month.
+  expect_equal(plan$reference, rep(2, nrow(fx$base)))
+  pipe <- shk_window_pipe(fx, 2026L, c(30, 30, 1, 1))
+  # Location 1 loses half its level and fires; location 2 keeps its level and does not.
+  pipe$y_point[fx$base$loc_id[pipe$svy_row_id] == 1L] <- 1
+  rows <- shk_eval(plan, pipe)$rows
+  cells <- attr(rows, "cells")
+  # One cell per location, not one per target month.
+  expect_equal(nrow(cells), 2L)
+  expect_equal(rows$pop_tp, 36)
+  expect_equal(rows$pop_tn, 42)
+  expect_equal(c(rows$pop_fp, rows$pop_fn), c(0, 0))
+  expect_gt(rows$loss_value, 0)
+  expect_gt(rows$paid_value, 0)
+})
+
+test_that("worst-affected locations of a window are paid or dropped with all their months", {
+  spec <- shk_spec(dyn_geo = "worst_share", dyn_geo_pct = 40)
+  fx <- shk_fixture(spec = spec)
+  many <- shk_window_scenario(fx)
+  many$reference_pipelines <- stats::setNames(
+    lapply(1:12, function(i) shk_window_pipe(fx, 1990L + i, rep(i, 4L) * 2)), paste0("refyear_", 1991:2002)
+  )
+  plan <- shk_window_plan(fx, many)
+  # Both locations fire; location 1 is deeper beyond the limit and holds 36 of 78: it takes 40 per cent alone.
+  pipe <- shk_window_pipe(fx, 2026L, c(30, 30, 25, 25))
+  scope <- shk_eval(plan, pipe)$state$in_scope
+  loc <- fx$base$loc_id[pipe$svy_row_id]
+  expect_true(all(scope[loc == 1L]))
+  expect_false(any(scope[loc == 2L]))
+  # With too few same-window years, the layer is refused with a message.
+  expect_error(shk_window_plan(fx), "at least 10 historical years", class = "sp_trigger_problem")
+})
+
+test_that("the predicted-welfare layer of a window reads the household's mean level over its months", {
+  spec <- shk_spec(dyn_welfare = TRUE, dyn_welfare_pct = 50, dyn_incl_error_pct = 0, dyn_excl_error_pct = 0)
+  fx <- shk_fixture(spec = spec)
+  plan <- shk_window_plan(fx)
+  pipe <- shk_window_pipe(fx, 2026L, c(30, 30, 30, 30))
+  # Location 1 households are at 1 in November and 5 in December: a mean of 3, above the cut-off of 2.
+  loc <- fx$base$loc_id[pipe$svy_row_id]
+  month <- rep(c(11L, 12L), each = nrow(fx$base))
+  pipe$y_point[loc == 1L] <- ifelse(month[loc == 1L] == 11L, 1, 5)
+  scope <- shk_eval(plan, pipe)$state$in_scope
+  expect_false(any(scope[loc == 1L]))
+  expect_true(all(scope[loc == 2L]))
+})
+
+test_that("an impact trigger of a window reads the loss of a location against its level in the same months", {
+  fx <- shk_fixture(spec = shk_spec(trigger_metric = "loss", trigger_level = "location",
+    trigger_variable = NA_character_, trigger_value = 10))
+  plan <- shk_window_plan(fx)
+  pipe <- shk_window_pipe(fx, 2026L, c(1, 1, 1, 1))
+  loc <- fx$base$loc_id[pipe$svy_row_id]
+  # Location 1 loses half its level in both months (a loss of 50 per cent); location 2 is at its level.
+  pipe$y_point[loc == 1L] <- 1
+  out <- shk_eval(plan, pipe)
+  expect_true(all(out$state$in_scope[loc == 1L]))
+  expect_false(any(out$state$in_scope[loc == 2L]))
+  expect_equal(out$rows$pop_tp, 36)
+  expect_equal(out$rows$pop_tn, 42)
+})
+
+test_that("a loss-linked budget of a window pays the window's share of the year", {
+  spec <- shk_spec(budget_rule = "loss_share", loss_share_pct = 50, transfer_amount_usd = 0)
+  fx <- shk_fixture(spec = spec)
+  plan <- shk_window_plan(fx)
+  pipe <- shk_window_pipe(fx, 2026L, c(30, 30, 1, 1))
+  loc <- fx$base$loc_id[pipe$svy_row_id]
+  pipe$y_point[loc == 1L] <- 1
+  ex <- pipe$weather_exposure
+  window <- sp_shock_pipeline_transfer(plan, pipe, ex)
+  expect_gt(sum(window), 0)
+  expect_equal(sum(window[loc == 2L]), 0)
+  # Two of twelve months: a sixth of the budget the same loss gets over a year.
+  year <- plan
+  year$window_len <- 12L
+  expect_equal(as.numeric(window), as.numeric(sp_shock_pipeline_transfer(year, pipe, ex)) * 2 / 12)
+})
+
+test_that("an anticipatory window pays on the ensemble, and each member's weather scores the payment", {
+  anticipatory <- function(share) {
+    fx <- shk_fixture(spec = shk_spec(transfer_timing = "anticipatory", forecast_member_share_pct = share,
+      effect_multiplier = 2))
+    scenario <- shk_window_scenario(fx)
+    # Two of three members pass the trigger in location 1 (66 per cent); the third is quiet everywhere.
+    scenario$pipelines$member_2 <- shk_window_pipe(fx, 2026L, c(30, 30, 1, 1))
+    list(fx = fx, scenario = scenario, plan = shk_window_plan(fx, scenario))
+  }
+  run <- anticipatory(50)
+  expect_equal(sort(unname(run$plan$ensemble$share)), c(0, 2 / 3))
+  expect_equal(sum(run$plan$ensemble$fire), 1)
+  loc <- function(pipe) run$fx$base$loc_id[pipe$svy_row_id]
+  hit <- shk_eval(run$plan, run$scenario$pipelines$member_0)
+  quiet <- shk_eval(run$plan, run$scenario$pipelines$member_1)
+  # The payment decision is the same for both members: location 1 is paid.
+  expect_identical(hit$state$in_scope, quiet$state$in_scope)
+  expect_true(all(hit$state$in_scope[loc(run$scenario$pipelines$member_0) == 1L]))
+  expect_false(any(hit$state$in_scope[loc(run$scenario$pipelines$member_0) == 2L]))
+  # Where the member's weather passes the trigger the payment is a hit, otherwise a false alarm.
+  expect_gt(hit$rows$hit_value, 0)
+  expect_equal(hit$rows$false_value, 0)
+  expect_equal(quiet$rows$hit_value, 0)
+  expect_gt(quiet$rows$false_value, 0)
+  expect_equal(quiet$rows$total_cost, hit$rows$total_cost)
+  expect_equal(max(hit$state$effect), 2)
+  expect_null(quiet$state$effect)
+  # The summary pools both: the false-alarm share is the false value over all payments.
+  fc <- list(members = rbind(hit$rows, quiet$rows), reference = quiet$rows)
+  s <- sp_shock_window_summary(fc)
+  expect_equal(s$false_alarm_cost_share, quiet$rows$false_value / (hit$rows$hit_value + quiet$rows$false_value))
+  expect_equal(s$false_alarm_cost_share, 0.5)
+  expect_equal(s$false_alarm_cost_share_reference, 1)
+  # A higher bar than the ensemble reaches pays nobody.
+  none <- anticipatory(80)
+  expect_equal(sum(none$plan$ensemble$fire), 0)
+  expect_false(any(shk_eval(none$plan, none$scenario$pipelines$member_0)$state$in_scope))
+})
+
+test_that("an anticipatory window refuses a run without members, and the share is checked", {
+  fx <- shk_fixture(spec = shk_spec(transfer_timing = "anticipatory"))
+  scenario <- shk_window_scenario(fx)
+  scenario$pipelines <- list()
+  expect_error(shk_window_plan(fx, scenario), "forecast members")
+  ok <- shk_spec(transfer_timing = "anticipatory")
+  expect_null(.sp_shock_problem(ok))
+  for (bad in list(0, -5, 101)) {
+    expect_match(.sp_shock_problem(utils::modifyList(ok, list(forecast_member_share_pct = bad))), "forecast members")
+  }
+})
+
+test_that("return-period thresholds of a window come from the same months of the historical years", {
+  fx <- shk_fixture(spec = shk_spec(trigger_type = "return_period", trigger_return_period_years = 3,
+    trigger_value = NA_real_))
+  plan <- shk_window_plan(fx)
+  # One record per survey round and location, over the six reference years: window means 2, 4, ..., 12.
+  tbl <- plan$thresholds$table
+  expect_identical(tbl$int_month, c(0L, 0L))
+  expect_identical(tbl$n_years, c(6L, 6L))
+  # 1 in 3 of 6 years: Weibull adverse rank 7 / 3 from the top, quantile type 6 at 2/3 (type 7 gave 8.67)
+  expect_equal(tbl$threshold, rep(stats::quantile(2 * 1:6, 2 / 3, names = FALSE, type = 6), 2L))
+  expect_equal(tbl$threshold, c(28 / 3, 28 / 3))
+  expect_identical(plan$window_len, 2L)
+  expect_error(sp_shock_window_plan(list(pipelines = list()), fx$spec, NULL, fx$shock_policy, "hh",
+    is_log = FALSE, level_factor = 1, seed = 5L), "same-window historical years")
+})
+
+test_that("a household is paid once for the window, as in one annual row", {
+  fx <- shk_fixture(spec = shk_spec(trigger_value = -1e9))
+  plan <- shk_window_plan(fx)
+  window <- shk_eval(plan, shk_window_pipe(fx, 2026L, c(1, 1, 1, 1)))
+  # The same households once each, with the full weight: the annual arithmetic.
+  n <- nrow(fx$base)
+  one <- list(y_point = rep(2, n), svy_row_id = seq_len(n), sim_year = rep(2026L, n), weight = fx$base$weight,
+    id_vec = seq_len(n))
+  once <- sp_shock_annual(plan$per_household, one, plan$cost_frame, NULL, plan$analysis_unit, plan$currency,
+    plan$admin_share)
+  expect_gt(once$total_cost, 0)
+  expect_equal(window$rows$total_cost, once$total_cost)
+  # The welfare effect is the same daily equivalent in each target month.
+  expect_equal(as.numeric(window$transfer[n + seq_len(n)]), as.numeric(window$transfer[seq_len(n)]))
+  # The cap bounds that one payment.
+  capped <- plan
+  capped$cap_transfer <- once$transfer_cost / 2
+  out <- shk_eval(capped, shk_window_pipe(fx, 2026L, c(1, 1, 1, 1)))
+  expect_equal(out$rows$transfer_cost, once$transfer_cost / 2)
+  expect_true(out$rows$cap_binds)
+})
+
+test_that("forecast payouts stay out of the annual shock tables and leave the annual scenarios as they were", {
+  fx <- shk_fixture()
+  label <- "Seasonal forecast / Nov 2026 - Dec 2026 (October 2026 run)"
+  ssp <- "SSP2-4.5 / 2030-2050"
+  annual <- list(pipelines = list(a = fx$pipeline))
+  hist <- list(pipeline = fx$pipeline, so = shk_so("none"),
+    shared_context = list(train_aug = data.frame(id = 1:12, .resid = 0)), residuals = "none")
+  run <- function(scenarios) apply_policy_delta_to_baseline(
+    fx$base, fx$shock_policy, fx$model, shk_so("none"), hist, scenarios,
+    decomp_context = fx$ctx_shock, run_identity = "annual-run", sp = fx$spec, analysis_unit = "hh", seed = 5L
+  )
+  alone <- run(stats::setNames(list(annual), ssp))
+  both <- run(stats::setNames(list(annual, shk_window_scenario(fx)), c(ssp, label)))
+  expect_identical(both$shock$rows, alone$shock$rows)
+  expect_identical(both$saved_scenarios[[ssp]]$pipelines$a$y_point, alone$saved_scenarios[[ssp]]$pipelines$a$y_point)
+  fc <- both$saved_scenarios[[label]]$shock_forecast
+  expect_identical(nrow(fc$members), 2L)
+  expect_identical(nrow(fc$reference), 6L)
+  # Member 0 passes 20 in location 1; member 1 nowhere. Reference years stay at or below a mean of 12.
+  expect_identical(fc$members$activated, c(TRUE, FALSE))
+  expect_false(any(fc$reference$activated))
+  s <- sp_shock_window_summary(fc)
+  expect_equal(s$member_share, 0.5)
+  expect_equal(s$reference_share, 0)
+  expect_equal(s$cost_range, range(fc$members$total_cost))
+  expect_gt(s$cost_range[[2L]], 0)
+  # No member loses welfare against the reference level, so all spending is in locations without a loss event.
+  expect_equal(s$leakage, 1)
+  expect_equal(s$false_positive, 36 / (36 + 42 + 78))
+  expect_true(is.na(s$false_negative))
+  expect_true(is.na(s$loss_offset))
+  expect_true(is.na(s$leakage_reference))
+  # The payment reaches the paid member's welfare, and not the other's.
+  pol <- both$saved_scenarios[[label]]$pipelines
+  base <- shk_window_scenario(fx)$pipelines
+  expect_gt(sum(pol$member_0$y_point - base$member_0$y_point), sum(pol$member_1$y_point - base$member_1$y_point))
+})
+
+test_that("the forecast cards report payouts for a shock-responsive transfer only", {
+  views <- list(
+    effect = list(member_median = 0.1, reference_median = 0.1, share_worse_baseline = 0.1, share_worse_policy = 0.1,
+      n_members = 2L, n_reference = 6L),
+    label = "Forecast (x)", reference_label = "Historical (x)"
+  )
+  metadata <- metric_metadata("mean", list(name = "welfare", type = "numeric"))
+  expect_length(.step3_window_cards(views, metadata), 3L)
+  rows <- function(activated, cost, exposed) data.frame(activated = activated, exposed_share = exposed, total_cost = cost)
+  shock <- list(members = rows(c(TRUE, FALSE), c(100, 0), 0.2),
+    reference = rows(c(FALSE, TRUE, FALSE, FALSE), c(0, 50, 0, 0), 0.1), currency = "PPP")
+  cards <- .step3_window_cards(views, metadata, shock)
+  expect_length(cards, 4L)
+  expect_identical(cards[[4L]]$label, "Population in triggered locations")
+  expect_identical(cards[[4L]]$value, "20%")
+  expect_match(cards[[4L]]$note, "against 10% in a historical year")
+  expect_match(cards[[4L]]$note, "50% of members and 25% of years")
+  expect_match(cards[[1L]]$info, "once per window")
+  # With loss figures, a targeting card follows.
+  rows <- function(...) data.frame(activated = TRUE, exposed_share = 0.2, total_cost = 100, ...)
+  shock <- list(
+    members = rows(pop_tp = 20, pop_fp = 10, pop_fn = 5, pop_tn = 65, spend_total = 100, spend_no_event = 25,
+      paid_value = 40, loss_value = 80),
+    reference = rows(pop_tp = 0, pop_fp = 0, pop_fn = 0, pop_tn = 100, spend_total = 0, spend_no_event = 0,
+      paid_value = 0, loss_value = 0),
+    currency = "PPP"
+  )
+  cards <- .step3_window_cards(views, metadata, shock)
+  expect_length(cards, 5L)
+  expect_identical(cards[[5L]]$label, "Payments to locations without a loss")
+  expect_identical(cards[[5L]]$value, "25%")
+  expect_match(cards[[5L]]$note, "Payments offset 50% of the modelled loss; missed 20%, false alarms 13%")
+  expect_match(cards[[5L]]$note, "n/a in the historical years")
+})
+
 # P2-5: impact-based triggers ----------------------------------------------
 
 shk_impact_spec <- function(metric = "loss", level = "national", ...) {
@@ -1061,7 +1384,8 @@ test_that("a threshold at the historical minimum gives a cell no adverse tail", 
   # The 1-in-5 level is 0, the historical minimum: it would fire every year
   expect_error(sp_trigger_thresholds(tbl, spec), "no adverse tail", class = "sp_trigger_problem")
   spec$trigger_return_period_years <- 20
-  expect_equal(sp_trigger_thresholds(tbl, spec)$table$threshold, 5.15)
+  # Weibull adverse rank 21 / 20 = 1.05 from the top: 5 + 0.95 * (8 - 5) (type 7 gave 5.15)
+  expect_equal(sp_trigger_thresholds(tbl, spec)$table$threshold, 7.85)
   # A continuous metric is unaffected
   tbl$.impact_metric <- seq(0.5, 10, by = 0.5)
   spec$trigger_return_period_years <- 5

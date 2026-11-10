@@ -5,8 +5,8 @@ app_step: 1
 depends_on: [notation, outcomes, model-specification, linear-model, rif-model]
 symbols: [beta, gamma, Sigma, tau, y, Z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#interpreting-the-results-tab
-code: [R/fct_step1_headline.R, R/fct_step1_model_tables.R, R/fct_results.R, R/fct_results_table2.R, R/mod_1_07_results.R, R/mod_1_08_modelfit.R]
-verified_against: 72a2fdb
+code: [R/fct_step1_headline.R, R/fct_step1_model_tables.R, R/fct_step1_results.R, R/fct_step1_results_table.R, R/mod_1_07_results.R, R/mod_1_08_modelfit.R]
+verified_against: 5b89f68
 ---
 
 # Reading the Step 1 results
@@ -136,12 +136,12 @@ User guide: [Interpreting the Results tab](https://github.com/worldbank/wise-app
 | Scale of the reported effect | 1 | `R/fct_step1_headline.R` `.s1_scale()`, `step1_fmt_effect()` |
 | Contrasts and moderator levels | (2.1) | `R/fct_step1_headline.R` `step1_scenarios()`, `.s1_fixest_scenarios()`, `.s1_rif_scenarios()` |
 | Logit translation | 1 | `R/fct_step1_headline.R` `.s1_to_pp()` |
-| Marginal effect curve | (3.1) | `R/fct_results.R` `echart_weather_effect_plot()` |
-| Combined standard error of quantile terms | 3 | `R/fct_results.R` `.rif_combined_se()` |
+| Marginal effect curve | (3.1) | `R/fct_step1_results.R` `echart_weather_effect_plot()` |
+| Combined standard error of quantile terms | 3 | `R/fct_step1_results.R` `.rif_combined_se()` |
 | Robustness verdict | (4.1) | `R/fct_step1_headline.R` `.s1_stability_card()` |
 | Heterogeneity across quantiles | 5 | `R/fct_step1_headline.R` `step1_rif_heterogeneity_p()` |
 | Turning point and bin pattern | (6.1) | `R/fct_step1_headline.R` `.s1_turning_point()`, `.s1_bin_pattern()` |
-| Fit statistics | (7.1) | `R/fct_results.R` `fit_stats_raw()`, `.fit_stat_values()`, `calc_fit_stats()` |
-| Importance | (7.2) | `R/fct_results.R` `importance_shares()`, `echart_importance()` |
-| Residual panels | 7 | `R/fct_results.R` `echart_residual_panels()` |
-| Regression tables and downloads | 4 | `R/fct_results_table2.R` `make_regtable_specs_df()`; `R/fct_step1_model_tables.R` `step1_model_tables()`, `model_terms_table()`, `model_fit_table()`, `model_vcov_table()` |
+| Fit statistics | (7.1) | `R/fct_step1_results.R` `fit_stats_raw()`, `.fit_stat_values()`, `calc_fit_stats()` |
+| Importance | (7.2) | `R/fct_step1_results.R` `importance_shares()`, `echart_importance()` |
+| Residual panels | 7 | `R/fct_step1_results.R` `echart_residual_panels()` |
+| Regression tables and downloads | 4 | `R/fct_step1_results_table.R` `make_regtable_specs_df()`; `R/fct_step1_model_tables.R` `step1_model_tables()`, `model_terms_table()`, `model_fit_table()`, `model_vcov_table()` |

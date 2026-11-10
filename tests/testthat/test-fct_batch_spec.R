@@ -409,9 +409,8 @@ test_that("the configuration input ids still exist in the module controls", {
   )) {
     expect_match(s21, paste0('ns("', id, '")'), fixed = TRUE)
   }
-  expect_match(s21, 'ns("fut_period_1")', fixed = TRUE)
-  expect_match(s21, 'ns("fut_period_2")', fixed = TRUE)
-  expect_match(s21, 'ns("fut_period_3")', fixed = TRUE)
+  # The three period sliders are built in one loop over `1:3`.
+  expect_match(s21, 'ns(paste0("fut_period_", i))', fixed = TRUE)
   prefixes <- c(
     "step1-sample-", "step1-outcome-", "step1-weather-", "step1-model-", "step2-weathersim-",
     "step3-sp-", "step3-infra-", "step3-digital-", "step3-labor-", "step3-education-",
@@ -438,8 +437,8 @@ test_that("the configuration input ids still exist in the module controls", {
     list("mod_3_01_sp.R", STEP3_SP_IDS), list("mod_3_04_labor.R", STEP3_LABOR_IDS)
   )) {
     code <- src(lever[[1L]])
-    # The panel tags of the social protection module live in fct_sp_ui.R.
-    if (identical(lever[[1L]], "mod_3_01_sp.R")) code <- paste(code, src("fct_sp_ui.R"))
+    # The panel tags of the social protection module live in fct_policy_sp_ui.R.
+    if (identical(lever[[1L]], "mod_3_01_sp.R")) code <- paste(code, src("fct_policy_sp_ui.R"))
     for (id in lever[[2L]]) {
       # An id is a literal control id or the stem of a built one (`<stem>_universal`).
       stem <- sub("_(universal|pct)$", "", id)
@@ -849,6 +848,58 @@ test_that("sim_id follows the fit and the simulation settings that change result
   # Scenarios are irrelevant without projection periods.
   hist <- function(ssps) ids(future_periods = list(), ssps = ssps)$sim_id
   expect_identical(hist("ssp2_4_5"), hist("ssp5_8_5"))
+})
+
+test_that("a replaced forecast publication under the same run id changes sim_id", {
+  with_identity <- function(sha) {
+    spec <- sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)))
+    spec$sim$forecast$identity <- list(data_sha256 = sha, manifest_sha256 = "m")
+    spec
+  }
+  expect_identical(wise_spec_ids(with_identity("a"))$sim_id, wise_spec_ids(with_identity("a"))$sim_id)
+  expect_false(identical(wise_spec_ids(with_identity("a"))$sim_id, wise_spec_ids(with_identity("b"))$sim_id))
+  expect_identical(wise_spec_ids(with_identity("a"))$fit_id, wise_spec_ids(with_identity("b"))$fit_id)
+})
+
+test_that("forecast specs are optional, canonical and distinct in sim_id", {
+  base <- sim_spec(list(future_periods = list(), ssps = list()))
+  forecast <- sim_spec(list(forecast = list(
+    product = "seasonal", run = "2026-10", start = "2026-11", len = 3
+  )))
+  expect_null(base$sim$forecast)
+  expect_identical(forecast$sim$forecast, list(
+    product = "seasonal", run = "2026-10", start = "2026-11", len = 3L
+  ))
+  expect_length(forecast$sim$future_periods, 1L)
+  expect_identical(forecast$sim$ssps, "ssp3_7_0")
+  expect_false(identical(wise_spec_ids(forecast)$fit_id, NA_character_))
+  expect_false(identical(wise_spec_ids(base)$sim_id, wise_spec_ids(forecast)$sim_id))
+  expect_identical(wise_spec_ids(forecast)$fit_id, wise_spec_ids(base)$fit_id)
+  combined <- sim_spec(list(
+    forecast = list(run = "2026-10", start = "2026-11", len = 3),
+    future_periods = list(c(2030, 2040)), ssps = c("ssp2_4_5", "ssp5_8_5")
+  ))
+  expect_identical(combined$sim$future_periods, list(c(2030L, 2040L)))
+  expect_identical(combined$sim$ssps, c("ssp2_4_5", "ssp5_8_5"))
+  effective <- .sim_effective(combined)
+  expect_identical(effective$future_periods, list(c(2030L, 2040L)))
+  expect_identical(effective$ssps, c("ssp2_4_5", "ssp5_8_5"))
+  expect_identical(effective$forecast$run, "2026-10")
+  # Step 3 runs with a forecast, a shock-responsive transfer in any design included.
+  expect_no_error(sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)),
+    policy = list(sp = list())))
+  expect_no_error(
+    sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)),
+      policy = list(sp = list(sp_type = "shock", trigger_variable = "tx", transfer_timing = "anticipatory")))
+  )
+})
+
+test_that("forecast settings add to effective sim identity", {
+  spec <- sim_spec(list(forecast = list(run = "2026-10", start = "2026-11", len = 3)))
+  expect_named(.sim_effective(spec)$forecast, c("product", "run", "start", "len"))
+  changed <- spec
+  changed$sim$forecast$run <- "2026-09"
+  expect_false(identical(wise_spec_ids(changed)$sim_id, wise_spec_ids(spec)$sim_id))
 })
 
 test_that("a grid crosses sim profiles and shares the fit across them", {

@@ -372,7 +372,7 @@ test_that(".results_pane_ui renders aggregation panel and results sections", {
   expect_match(html, "Violin", fixed = TRUE)
   expect_match(html, "Boxplot", fixed = TRUE)
   expect_match(html, "results3-adverse_dot_plot", fixed = TRUE)
-  expect_match(html, "Climate model spread", fixed = TRUE)
+  expect_match(html, "Ensemble spread", fixed = TRUE)
   expect_match(html, "Full ensemble spread", fixed = TRUE)
   expect_match(html, "results3-ensemble_band", fixed = TRUE)
   expect_match(html, "value=\"none\"", fixed = TRUE)

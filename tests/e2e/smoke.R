@@ -6,13 +6,15 @@
 # tests/testthat/helper-batch-fixture.R (written to a temp dir), so no private
 # data is needed. It lives outside tests/testthat on purpose: R CMD check and
 # testthat::test_local() do not run it; the CI job (e2e-smoke) is blocking.
+# Scope stays one annual path per step: forecast runs are checked on real data
+# with dev/ui_drive.R, not here.
 #
 # Usage (from the repo root):
 #   Rscript tests/e2e/smoke.R [path/to/axe.min.js]
 # Without an argument axe-core is downloaded from cdnjs (pinned version).
 # Set WISEAPP_AXE_FAIL=1 to fail on serious or critical violations. Needs
 # arrow, the DuckDB h3 extension (installed on first use), shinytest2 and Chrome.
-# Takes about 5 minutes.
+# Takes about 2 minutes once packages and the h3 extension are installed.
 
 stopifnot(file.exists("DESCRIPTION"), file.exists("app.R"))
 
@@ -40,6 +42,14 @@ tryCatch(
   batch_fixture_tree(data_dir, projections = TRUE),
   skip = function(e) stop("Could not build the fixture data folder: ", conditionMessage(e), call. = FALSE)
 )
+
+# ENSO tables, so the toggle, the marks and the comparison sections get scanned.
+enso_months <- seq(as.Date("1950-01-01"), as.Date("2025-12-01"), by = "month")
+enso_roni <- round(1.5 * sin(seq_along(enso_months) * 2 * pi / 40), 3)
+utils::write.csv(data.frame(
+  timestamp = enso_months, source = "cpc", roni = enso_roni,
+  phase = ifelse(enso_roni >= 0.5, "el_nino", ifelse(enso_roni <= -0.5, "la_nina", "neutral"))
+), file.path(data_dir, "metadata", "enso.csv"), row.names = FALSE)
 
 # The app subprocess reads R_ENVIRON_USER, which on a developer machine can set
 # WISEAPP_DATA_* to real data. Point it at a file with the fixture settings and
@@ -230,9 +240,6 @@ scan("step1-model-fit")
 
 # Step 2: conditionalPanel, run, results and diagnostics ----
 open_step("step2")
-# The settings block is itself behind a toggle (a conditionalPanel on its click count).
-click_js("[id$='weathersim-settings_toggle']")
-Sys.sleep(1)
 sel_parent <- "input[id$='include_coef_uncertainty']"
 check(isTRUE(app$get_js(sprintf("!!document.querySelector(\"%s\")", sel_parent))), "Step 2 coefficient-uncertainty checkbox renders")
 scan("step2-settings")
@@ -240,6 +247,9 @@ click_js("#step2-weathersim-run_sim")
 wait_for("document.body.innerText.includes('Step 2 (climate scenarios): complete')", "Step 2 simulation runs on the fixture")
 settle(2)
 open_tab("sim_tab")
+click_js("input[name$='results-enso_mark'][value='on']")
+settle(1)
+check(visible("#step2-results-enso_phase_table .rt-table"), "Step 2 ENSO comparison renders")
 scan("step2-results", "#step2-results-summary_threshold_table .rt-table")
 # conditionalPanel: the poverty-line input shows only for a poverty metric.
 sel_line <- "input[id$='results-pov_line']"
@@ -264,6 +274,11 @@ wait_for("document.body.innerText.includes('Step 3 (policy scenarios): complete'
 settle(2)
 for (v in c("results_tab", "diag_tab", "decomposition_tab", "cost_effectiveness_tab")) {
   open_tab(v)
+  if (v == "results_tab") {
+    click_js("input[name$='results3-enso_mark'][value='on']")
+    settle(1)
+    check(visible("#step3-results3-enso_policy_table .rt-table"), "Step 3 ENSO comparison renders")
+  }
   scan(
     paste0("step3-", sub("_tab$", "", v)),
     switch(v,

@@ -936,7 +936,7 @@ mod_1_06_model_server <- function(id,
       interactions <- unique(c(ixn_sel, all_locked))
 
       # Cluster-robust VCV at the survey-location panel level. Matches
-      # COEF_VCOV_SPEC (~loc_id_panel) in fct_simulations.R so that the SEs
+      # COEF_VCOV_SPEC (~loc_id_panel) in fct_step2_pipeline.R so that the SEs
       # displayed in Step 1 and the coefficient uncertainty propagated in
       # Step 2 come from one sampling distribution. loc_id_panel is only
       # joined when the H3 files loaded successfully in Survey stats -

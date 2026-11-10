@@ -6,7 +6,7 @@ depends_on: [notation]
 symbols: []
 guide: https://github.com/worldbank/wise-app-docs/blob/main/index.qmd
 code: []
-verified_against: 8592a9d
+verified_against: 5b89f68
 ---
 
 # References
@@ -26,6 +26,7 @@ verified_against: 8592a9d
 | `eyring2016` | guide | [10_data](10_data.md), [31_climate_scenarios](31_climate_scenarios.md) |
 | `munozsabater2021` | guide | [10_data](10_data.md), [12_weather_measures](12_weather_measures.md) |
 | `c3satlas2024` | guide | [10_data](10_data.md), [31_climate_scenarios](31_climate_scenarios.md) |
+| `c3sseasonal2018` | new | [10_data](10_data.md), [34_seasonal_forecast](34_seasonal_forecast.md) |
 | `schiavina2022` | guide | [10_data](10_data.md) |
 | `uber2018` | guide | [10_data](10_data.md) |
 | `worldbank2026` | guide | [10_data](10_data.md) |
@@ -124,6 +125,13 @@ The guide's `burke2015` is not cited in this folder.
   title  = {Gridded Dataset Underpinning the Copernicus Interactive Climate Atlas},
   year   = {2024},
   doi    = {10.24381/cds.h35hb680}
+}
+
+@misc{c3sseasonal2018,
+  author = {{Copernicus Climate Change Service, Climate Data Store}},
+  title  = {Seasonal Forecast Monthly Statistics on Single Levels},
+  year   = {2018},
+  doi    = {10.24381/cds.68dd14c3}
 }
 
 @article{eyring2016,

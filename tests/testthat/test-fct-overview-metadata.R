@@ -177,7 +177,8 @@ test_that("metadata backpressure retries stop when the request is retired", {
       logical(1)
     )]
     if (length(name) != 1L) {
-      return(NULL)
+      # Files the mock does not hold (the optional ENSO tables) are not found.
+      return(httr2::response(status_code = 404L, url = req$url))
     }
     httr2::response(body = charToRaw(csv[[name]]), url = req$url)
   }
@@ -250,13 +251,48 @@ test_that("local Overview metadata loads as one validated bundle", {
 
   expect_named(
     metadata,
-    c("survey_list", "variable_list", "cpi_ppp", "pov_lines")
+    c("survey_list", "variable_list", "cpi_ppp", "pov_lines", "enso")
   )
+  expect_null(metadata$enso)
   expect_equal(metadata$survey_list$code, "TST")
   expect_true("loc_id_panel" %in% metadata$variable_list$name)
   expect_false("loc_id" %in% metadata$variable_list$name)
   expect_equal(metadata$cpi_ppp$ppp2021, 1)
   expect_equal(metadata$pov_lines$ln, c(3, 4.2, 8.3))
+})
+
+
+test_that("the ENSO tables ride along in the bundle and never fail it", {
+  path <- tempfile("wiseapp-overview-")
+  dir.create(path, recursive = TRUE)
+  withr::defer(unlink(path, recursive = TRUE, force = TRUE))
+  withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "1")
+  .overview_fixture(path)
+  params <- list(type = "local", path = path)
+
+  file.copy(
+    file.path(testthat::test_path("fixtures", "enso", "metadata"), c("enso.csv", "enso_forecast.csv")),
+    file.path(path, "metadata")
+  )
+  with_enso <- load_overview_metadata(params)
+  expect_equal(nrow(with_enso$enso$observed), 51L)
+  expect_s3_class(with_enso$enso$forecast, "data.frame")
+
+  # A malformed file leaves the bundle valid, with no ENSO element value (D6).
+  writeLines("timestamp,roni\n1950-01-01,0.1", file.path(path, "metadata", "enso.csv"))
+  expect_no_condition(broken <- load_overview_metadata(params))
+  expect_null(broken$enso)
+  expect_equal(broken$survey_list, with_enso$survey_list)
+})
+
+
+test_that("the local cache signature covers the ENSO files", {
+  path <- tempfile("wiseapp-overview-")
+  dir.create(file.path(path, "metadata"), recursive = TRUE)
+  withr::defer(unlink(path, recursive = TRUE, force = TRUE))
+  sig <- .overview_metadata_local_signatures(list(type = "local", path = path))
+  expect_true(all(c("observed", "forecast") %in% names(sig)))
+  expect_false(sig$observed$exists)
 })
 
 
@@ -454,18 +490,19 @@ test_that("remote metadata cache avoids repeat requests and can be disabled", {
   params <- .overview_databricks_params(
     workspace = "https://cache-workspace.cloud.databricks.com"
   )
+  # One token request, then the three required files and the two optional ENSO files.
   load_overview_metadata(params)
-  expect_equal(requests, 4L)
+  expect_equal(requests, 6L)
 
   load_overview_metadata(params)
-  expect_equal(requests, 4L)
+  expect_equal(requests, 6L)
 
   load_overview_metadata(params, force_refresh = TRUE)
-  expect_equal(requests, 7L)
+  expect_equal(requests, 11L)
 
   withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "1")
   load_overview_metadata(params)
-  expect_equal(requests, 10L)
+  expect_equal(requests, 16L)
 
   withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "0")
   .reset_overview_metadata_cache()
@@ -473,7 +510,7 @@ test_that("remote metadata cache avoids repeat requests and can be disabled", {
   key <- .overview_metadata_cache_key(params)
   .overview_metadata_cache[[key]]$created_at <- as.numeric(Sys.time()) - 901
   load_overview_metadata(params)
-  expect_equal(requests, 16L)
+  expect_equal(requests, 26L)
 
   .reset_overview_metadata_cache()
   load_overview_metadata(params)
@@ -482,7 +519,7 @@ test_that("remote metadata cache avoids repeat requests and can be disabled", {
     client_secret = "different-secret"
   )
   load_overview_metadata(different_credentials)
-  expect_equal(requests, 23L)
+  expect_equal(requests, 37L)
 })
 
 
@@ -566,8 +603,9 @@ test_that("metadata bundle loads in a real mirai worker from verbatim params", {
 
   expect_named(
     metadata,
-    c("survey_list", "variable_list", "cpi_ppp", "pov_lines")
+    c("survey_list", "variable_list", "cpi_ppp", "pov_lines", "enso")
   )
+  expect_null(metadata$enso)
   expect_equal(metadata$survey_list$code, "TST")
   expect_true("loc_id_panel" %in% metadata$variable_list$name)
   expect_equal(metadata$pov_lines$ln, c(3, 4.2, 8.3))

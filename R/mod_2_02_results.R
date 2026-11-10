@@ -1,3 +1,31 @@
+# Wording of the ENSO section (review/archive/enso.md, "Wording to carry").
+.ENSO_NOTE_LABELS <- paste(
+  "Labels describe the ENSO state of the months that enter the model for each household. A simulated year is a",
+  "composite, not a real year: it is El Ni\u00f1o or La Ni\u00f1a exposure when at least half of that exposure",
+  "falls in the phase, and Mixed otherwise. The index is relative Ni\u00f1o 3.4 (RONI), which flags fewer El",
+  "Ni\u00f1o months than the traditional ONI in recent decades."
+)
+.ENSO_NOTE_MODEL <- paste(
+  "Differences reflect only the selected weather variables and months, through the fitted response. Prices,",
+  "markets, fisheries, health, floods and other ENSO channels are not modelled, and a small difference does not",
+  "mean ENSO has a small welfare effect. The response is learned mostly from local differences, so it may",
+  "understate a widespread shock."
+)
+.ENSO_NOTE_FEW <- paste(
+  "Few events fall in a window and they differ from each other; past events are not a forecast. A phase is",
+  "compared with Neutral only when both have at least three years. A longer historical window adds more events, and",
+  "also moves the baseline."
+)
+.ENSO_NOTE_WINDOW <- paste(
+  "A forecast window adds the Historical row of its target months: the same months of each historical year, labelled",
+  "by the ENSO state of those months. Forecast members have no label of their own; the placement card compares them",
+  "with the El Ni\u00f1o or La Ni\u00f1a years of the outlook's phase."
+)
+.ENSO_NOTE_SCENARIO <- paste(
+  "Climate scenarios keep the observed ENSO sequence of their template years; changes in ENSO under warming are",
+  "not represented."
+)
+
 #' Results tab content UI (inserted into the Results tabPanel once).
 #' @noRd
 .results_content_ui <- function(ns, so, weather_var = NULL) {
@@ -154,7 +182,9 @@
     ),
 
     # 2. Headline cards ----
-    shiny::uiOutput(ns("headline_cards_ui")),
+    .step2_annual_group_header(ns, "Annual: climate scenarios against Historical"),
+    .step2_annual_panel(ns, shiny::uiOutput(ns("headline_cards_ui"))),
+    .step2_window_panel(ns, shiny::uiOutput(ns("headline_cards_window_ui"))),
     # Section 1: Central outcomes & weather-year variation ----
     shiny::h4(
       sec1_heading,
@@ -177,7 +207,14 @@
     shiny::div(
       class = "results-section-card",
       shiny::div(
-        style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+        style = paste0(
+          "display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; ",
+          "gap: 8px 16px; margin-bottom: 8px;"
+        ),
+        shiny::conditionalPanel(
+          condition = paste0("output['", ns("has_enso"), "']"),
+          enso_mark_toggle_ui(ns)
+        ),
         pill_toggle(
           ns("annual_distribution_type"),
           label    = NULL,
@@ -187,19 +224,57 @@
           layout   = "horizontal"
         )
       ),
+      shiny::uiOutput(ns("enso_legend")),
       wise_chart_output(
         ns("annual_distribution_plot"),
-        "Distribution of annual aggregates across simulated weather years by climate scenario",
+        "Distribution of annual aggregates across simulated weather years by climate scenario and forecast",
         height = "470px"
       ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 18px; margin-bottom: 0;",
-        paste0(
+      .step2_section_note(
+        ns,
+        annual = paste0(
           "Each dot is one simulated weather-year annual aggregate for the fixed baseline population. ",
           "The selected violin or boxplot summarizes the distribution; open circles mark scenario means. ",
           "This captures weather-year variability, not household inequality."
-        )
+        ),
+        forecast = paste0(
+          "Each dot is one outcome for the fixed baseline population. Historical (annual) and the climate scenarios ",
+          "have one dot per weather year, with each household in its interview month. The target-month Historical ",
+          "has one dot per historical year, with observed weather for those months, and the Forecast one per member. ",
+          "Compare the Forecast with Historical for the same months. The gap between the two Historical series is ",
+          "the effect of weather in the target months rather than the interview months; the seasonal welfare level ",
+          "of households stays fixed. The dashed line is the annual Historical mean, or the target-month Historical mean when only a forecast is shown; open circles mark means. ",
+          .STEP2_DIFFERENCE_NOTE
+        ),
+        style = "margin-top: 18px; margin-bottom: 0;"
+      ),
+      shiny::uiOutput(ns("enso_mark_note"))
+    ),
+
+
+    # Section 1b: ENSO exposure years (item 3 of review/archive/enso.md) ----
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("has_enso_table"), "']"),
+      shiny::h4(
+        "How do outcomes compare in El Ni\u00f1o and La Ni\u00f1a years?",
+        info_popover(
+          title = "ENSO exposure years",
+          shiny::p(.ENSO_NOTE_LABELS),
+          shiny::p(.ENSO_NOTE_FEW),
+          shiny::p(.ENSO_NOTE_SCENARIO),
+          shiny::p(.ENSO_NOTE_WINDOW),
+          shiny::p(.ENSO_NOTE_MODEL)
+        ),
+        style = "font-size: 1.05rem; font-weight: 700; color: #173042; margin-top: 24px; margin-bottom: 8px;"
+      ),
+      shiny::div(
+        class = "results-section-card",
+        shiny::div(
+          style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
+          wise_reactable_csv_button(ns("enso_phase_table"), "enso_exposure_years")
+        ),
+        reactable::reactableOutput(ns("enso_phase_table")),
+        shiny::uiOutput(ns("enso_sentence"))
       )
     ),
 
@@ -227,7 +302,7 @@
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
         pill_toggle(
           ns("ensemble_band"),
-          label = "Climate model spread",
+          label = "Ensemble spread",
           choices = c(
             "None" = "none",
             "Full ensemble spread" = "minmax",
@@ -241,17 +316,24 @@
       ),
       wise_chart_output(
         ns("adverse_dot_plot"),
-        "Expected and adverse-year outcomes with climate-model ensemble spread",
+        "Expected and adverse-year outcomes with climate-model and forecast-member spread",
         height = "380px"
       ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-        paste0(
+      .step2_section_note(
+        ns,
+        annual = paste0(
           "Points are equal-weight means across climate models of each model's expected and adverse-year values. ",
           "Adverse tail direction is mapped automatically according to the selected outcome metric. ",
           "Horizontal bars show inter-model ensemble spread across climate projections."
-        )
+        ),
+        forecast = paste0(
+          "Scenario points are equal-weight means across climate models. Historical points for the target months are ",
+          "the outcomes reached or exceeded in the adverse direction in about one historical year in five, ten or ",
+          "twenty. The Forecast row shows the median member; compare it with Historical for the same months. The ",
+          "Ensemble spread control adds the band across climate models and across members. The member spread is not ",
+          "a calibrated probability. ", .STEP2_DIFFERENCE_NOTE
+        ),
+        style = "margin-top: 8px; margin-bottom: 0;"
       )
     ),
 
@@ -279,7 +361,7 @@
         style = "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;",
         pill_toggle(
           inputId = ns("exceedance_model_spread"),
-          label = "Climate model spread",
+          label = "Ensemble spread",
           choices = c(
             "None"                 = "none",
             "Full ensemble spread" = "minmax",
@@ -293,19 +375,26 @@
       ),
       wise_chart_output(
         ns("exceedance_plot"),
-        "Exceedance probability curves across simulated climate scenarios",
+        "Exceedance probability curves across simulated climate scenarios, with the forecast position",
         height = "400px"
       ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-        paste0(
+      .step2_section_note(
+        ns,
+        annual = paste0(
           "Read each curve as the annual probability of reaching an outcome level in the adverse direction: ",
           "lower outcomes for higher-is-better measures and higher outcomes for lower-is-better measures. ",
           "Coloured lines show the across-model median; shaded ribbons show climate-model disagreement for each ",
           "future baseline and policy series. Return-period guides and ticks are limited to the available simulated ",
           "years per climate model; unsupported periods are not extrapolated."
-        )
+        ),
+        forecast = paste0(
+          "Read each curve as the probability of reaching an outcome level in the adverse direction. The dashed curve ",
+          "is Historical for the target months. The vertical line and dot mark where the median forecast member falls ",
+          "on that curve only: the historical return period it lines up with. The Ensemble spread control shades ",
+          "where the members of that band fall, and the climate-model ribbons. The member spread is not a calibrated ",
+          "probability and skill is not established. ", .STEP2_DIFFERENCE_NOTE
+        ),
+        style = "margin-top: 8px; margin-bottom: 0;"
       )
     ),
 
@@ -338,14 +427,20 @@
         )
       ),
       reactable::reactableOutput(ns("summary_threshold_table")),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-          paste0(
-            "Adverse point estimates use the selected metric's baseline annual quantile within each model and an ",
-            "equal-model mean across SSP models; this differs from distribution-curve medians. Bounds are existing ",
-            "diagnostics, not uncertainty estimates for the equal-model mean."
-          )
+      .step2_section_note(
+        ns,
+        annual = paste0(
+          "Adverse point estimates use the selected metric's baseline annual quantile within each model and an ",
+          "equal-model mean across SSP models; this differs from distribution-curve medians. Bounds are existing ",
+          "diagnostics, not uncertainty estimates for the equal-model mean."
+        ),
+        forecast = paste0(
+          "Annual rows use each model's baseline annual quantile; bounds are diagnostics, not uncertainty estimates ",
+          "for the equal-model mean. Target-month Historical rows are quantiles across historical years. Forecast ",
+          "rows are the same quantiles across members: shares of members, not calibrated probabilities. Bounds of ",
+          "both are coefficient uncertainty only."
+        ),
+        style = "margin-top: 8px; margin-bottom: 0;"
       )
     ),
 
@@ -389,22 +484,71 @@
         "Standard deviation of outcome by uncertainty source",
         height = "300px"
       ),
-      shiny::tags$p(
-        class = "text-muted small",
-        style = "margin-top: 8px; margin-bottom: 0;",
-        paste0(
+      .step2_section_note(
+        ns,
+        annual = paste0(
           "Bars are standard deviations in outcome units, not confidence intervals. ",
           "Inter-annual variability is the within-model standard deviation across simulated weather years; ",
           "inter-model spread is the standard deviation of model means across climate models; ",
           "coefficient uncertainty is the analytic delta-method SE from the fitted model covariance ",
           "for the selected view (level or difference from the historical mean or median); ",
           "residual draws, when the \"resample\" rule is on, are shown separately."
-        )
+        ),
+        forecast = paste0(
+          "Bars are standard deviations in outcome units, not confidence intervals. For the target-month Historical ",
+          "the inter-annual bar is the spread across historical years. For the forecast, the member spread takes the ",
+          "place of the inter-model spread; one target window has no year-to-year spread. Coefficient uncertainty is ",
+          "the analytic delta-method SE from the fitted model covariance."
+        ),
+        style = "margin-top: 8px; margin-bottom: 0;"
       )
     )
   )
 }
 
+#' Show `tag` only when the run has a seasonal forecast with its same-window historical years
+#' @noRd
+.step2_window_panel <- function(ns, ...) {
+  shiny::conditionalPanel(condition = paste0("output['", ns("has_window"), "']"), ...)
+}
+
+#' Show `tag` unless the run is forecast-only (no climate scenario, so the annual cards would only
+#' repeat Historical)
+#' @noRd
+.step2_annual_panel <- function(ns, ...) {
+  shiny::conditionalPanel(condition = paste0("!output['", ns("forecast_only"), "']"), ...)
+}
+
+#' Group header of the annual cards: shown only with a forecast window next to climate scenarios
+#' @noRd
+.step2_annual_group_header <- function(ns, text) {
+  shiny::conditionalPanel(
+    condition = paste0("output['", ns("has_window"), "'] && !output['", ns("forecast_only"), "']"),
+    shiny::div(
+      style = paste0(
+        "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
+        "letter-spacing: 0.03em; margin: 4px 0 6px;"
+      ),
+      text
+    )
+  )
+}
+
+# Target-month series have their own baseline, so the difference views show no gap between the Historical series.
+.STEP2_DIFFERENCE_NOTE <- paste(
+  "In a difference view each Historical series is its own baseline: both sit at zero and the gap between them is",
+  "not shown."
+)
+
+#' Note of one Results section: `annual` alone, or `forecast` when the charts carry the target-month series
+#' @noRd
+.step2_section_note <- function(ns, annual, forecast, style) {
+  note <- function(text) shiny::tags$p(class = "text-muted small", style = style, text)
+  shiny::tagList(
+    shiny::conditionalPanel(condition = paste0("!output['", ns("has_window"), "']"), note(annual)),
+    .step2_window_panel(ns, note(forecast))
+  )
+}
 
 #' Placeholder rows for scenarios still computing (provisional mode only)
 #'
@@ -486,6 +630,7 @@ length.wise_lazy_aggregation_method_list <- function(x) 1L
 #' @param selected_hist   Reactive one-row data frame from weathersim.
 #' @param selected_weather Reactive data frame of selected weather variables.
 #' @param tabset_id       Character id of the parent tabset panel.
+#' @param enso            Reactive `enso_load()` result; `NULL` without the ENSO tables.
 #' @param tabset_session  Shiny session for the tabset.
 #' @param live_run        Reactive; NULL or the streaming-run list from
 #'   mod_2_01 (see review/step2_live_run_contract.md). Drives the provisional
@@ -501,6 +646,8 @@ mod_2_02_results_server <- function(id,
                                     saved_scenarios,
                                     selected_hist,
                                     selected_weather = NULL,
+                                    survey_weather = reactive(NULL),
+                                    enso = reactive(NULL),
                                     tabset_id,
                                     tabset_session = NULL,
                                      residuals = reactive("original"),
@@ -750,7 +897,6 @@ mod_2_02_results_server <- function(id,
       }
       if (!is.null(saved_scenarios)) saved_scenarios() else list()
     }
-
     # Observed-survey calibration of the simulated historical baseline
     # (committed results only; the placeholder frame carries no survey).
     baseline_check_rv <- reactive({
@@ -791,6 +937,91 @@ mod_2_02_results_server <- function(id,
         if (!is.null(selected_weather)) selected_weather() else NULL
       )
     })
+
+
+    # Forecast window: the forecast members against Historical for the same target months, shown as further series
+    # of each chart (committed results with a forecast that carries its same-window historical years).
+    .has_window <- reactive({
+      if (.is_provisional()) return(FALSE)
+      sc <- if (!is.null(saved_scenarios)) saved_scenarios() else list()
+      any(vapply(sc %||% list(), function(s) length(s$reference_pipelines) > 0L, logical(1L)))
+    })
+    output$has_window <- shiny::reactive(.has_window())
+    outputOptions(output, "has_window", suspendWhenHidden = FALSE)
+
+    # Forecast only (no climate scenario): the annual cards would only repeat Historical, so they are hidden.
+    .forecast_only <- reactive({
+      if (!isTRUE(.has_window())) return(FALSE)
+      sc <- saved_scenarios()
+      all(vapply(sc %||% list(), function(s) length(s$reference_pipelines) > 0L, logical(1L)))
+    })
+    output$forecast_only <- shiny::reactive(.forecast_only())
+    outputOptions(output, "forecast_only", suspendWhenHidden = FALSE)
+
+    # Historical target-month and member tables of the first forecast scenario, for the selected metric.
+    window_series_rv <- reactive({
+      req(.has_window())
+      sc <- saved_scenarios()
+      hs <- hist_sim()
+      has_ref <- vapply(sc, function(s) length(s$reference_pipelines) > 0L, logical(1L))
+      req(hs$so)
+      label <- names(sc)[has_ref][[1L]]
+      step2_window_series(
+        sc[[label]], label, .selected_method(), hs$so, hs$residuals %||% "original",
+        skip_coef = isTRUE(skip_coef_draws()), pov_line = pov_line_val() %||% step2_default_pov_line(hs$so),
+        bandwidth_p0 = bandwidth_p0(), seed = .step2_run_seed(hs)
+      )
+    })
+    window_placement_rv <- reactive({
+      w <- window_series_rv()
+      req(w)
+      pl <- step2_window_placement(w, .selected_method(), hist_sim()$so)
+      # The ENSO line is optional (D6): a failure here must not cost the placement card.
+      pl$enso <- tryCatch(
+        if (!is.null(enso())) {
+          enso_placement_text(
+            enso(), saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, pl,
+            enso_window_labels_rv(), w$months_label
+          )
+        },
+        error = function(e) NULL
+      )
+      pl
+    })
+    window_views_rv <- reactive({
+      w <- window_series_rv()
+      req(w)
+      deviation <- input$cmp_deviation %||% "none"
+      step2_window_views(
+        w, .selected_method(), hist_sim()$so, deviation = deviation,
+        scenario = saved_scenarios()[[w$scenario_label]],
+        placement = if (identical(deviation, "none")) tryCatch(window_placement_rv(), error = function(e) NULL),
+        hist_sim = hist_sim(),
+        metadata = step2_card_metadata(hist_sim(), .selected_method(), pov_line_val(), weight_key()),
+        # One spread control per section: the climate-model spread of the scenarios, the member spread here.
+        band_adverse = .band_q_or_null(input$ensemble_band),
+        band_exceedance = .band_q_or_null(input$exceedance_model_spread)
+      )
+    })
+    .band_q_or_null <- function(key) {
+      if (identical(key %||% "none", "none")) NULL else resolve_band_q(key)
+    }
+    .window_relabel <- function(x) .step2_window_relabel(x, window_series_rv()$reference_label)
+    # The views of the target months, `NULL` without a forecast: the charts then stay annual only.
+    .window_views_or_null <- function() {
+      if (isTRUE(.has_window())) tryCatch(window_views_rv(), error = function(e) NULL)
+    }
+    # Annual rows of a chart with its target-month rows `part` of the window views.
+    .with_window <- function(annual, part) {
+      wv <- .window_views_or_null()
+      if (is.null(wv)) return(annual)
+      .step2_window_merge(annual, wv[[part]], window_series_rv()$reference_label)
+    }
+    # Names the annual Historical series once the target-month one sits next to it.
+    .annual_relabel <- function(x) {
+      if (is.null(.window_views_or_null())) return(x)
+      .step2_annual_relabel(x, level = identical(input$cmp_deviation %||% "none", "none"))
+    }
 
     headline_cards_data_rv <- reactive({
       req(headline_bands_rv())
@@ -841,7 +1072,7 @@ mod_2_02_results_server <- function(id,
     # Lazy delta-method aggregation ----
     # Replaces the eager compute_hist_agg / compute_scenario_agg path. Returns
     # the same nested list shape (weighted/unweighted -> method -> tibble) so
-    # downstream consumers in fct_sim_compare.R see a compatible schema.
+    # downstream consumers in fct_step2_compare.R see a compatible schema.
     agg_methods <- reactive({
       req(hist_sim())
       so <- results_source()$so
@@ -1115,14 +1346,18 @@ mod_2_02_results_server <- function(id,
       results_source()$hist_agg(method)
     })
 
+    # The climate scenarios only: a forecast member is not an annual weather sample (see the window views).
     scenario_agg_rv <- reactive({
       src <- results_source()
       req(src, !is.null(src$scenario_names))
+      method <- .selected_method()
       if (length(src$scenario_names) == 0L) {
         return(NULL)
       }
-      method <- .selected_method()
-      src$scn_agg(method)
+      out <- src$scn_agg(method)
+      if (is.null(out)) return(NULL)
+      out <- out[!.step2_is_forecast_scenario(names(out))]
+      if (length(out)) out else NULL
     })
 
     # Reactive computations (carried over from mod_2_06) ----
@@ -1239,7 +1474,8 @@ mod_2_02_results_server <- function(id,
 
     # Landed scenario names only; pending ones are handled by placeholders.
     selected_scenario_names <- reactive({
-      results_source()$scenario_names %||% character(0)
+      nm <- results_source()$scenario_names %||% character(0)
+      nm[!.step2_is_forecast_scenario(nm)]
     })
 
     agg_hist <- reactive({
@@ -1272,7 +1508,7 @@ mod_2_02_results_server <- function(id,
     #   - inter-annual (within-model spread of value_all across years)
     #   - inter-model  (across-model spread of model means; future only)
 
-    # Helpers are now defined in R/fct_uncertainty_helpers.R as package-internal
+    # Helpers are now defined in R/fct_uncertainty.R as package-internal
     # functions so Module 3 can call the same code path. Aliases keep the
     # existing inline call sites below readable.
     .by_model_matrix <- function(tbl) {
@@ -1327,6 +1563,66 @@ mod_2_02_results_server <- function(id,
     timeseries_curves_rv <- reactive(build_timeseries_curves(TRUE))
     annual_distribution_curves_rv <- reactive(build_timeseries_curves(FALSE))
 
+    # ENSO labels of the simulated years (D1: a label on results, never an input) ----
+    # NULL without the tables, before a committed run, or when the fitted window leaves the
+    # record. SSP rows carry the label of their template year, so one table serves all series.
+    enso_labels_rv <- reactive({
+      en <- enso()
+      hs <- hist_sim()
+      if (is.null(en) || is.null(hs) || .is_provisional() || is.null(hs$baseline_months)) return(NULL)
+      curves <- tryCatch(annual_distribution_curves_rv(), error = function(e) NULL)
+      if (is.null(curves) || !"sim_year" %in% names(curves)) return(NULL)
+      lab <- enso_year_labels(
+        en$observed, sort(unique(curves$sim_year)), hs$baseline_months,
+        enso_window(hs$sim_summary$weather)
+      )
+      if (all(is.na(lab$label))) NULL else lab
+    })
+    # Labels of the reference years of the forecast target months (D3); members have none.
+    enso_window_labels_rv <- reactive({
+      en <- enso()
+      hs <- hist_sim()
+      if (is.null(en) || is.null(hs) || !isTRUE(.has_window())) return(NULL)
+      sc <- saved_scenarios()
+      has_ref <- vapply(sc, function(s) length(s$reference_pipelines) > 0L, logical(1L))
+      lab <- enso_window_labels(en$observed, sc[has_ref][[1L]]$forecast, enso_window(hs$sim_summary$weather))
+      if (all(is.na(lab$label))) NULL else lab
+    })
+    # How closely the fitted sample's weather follows ENSO (a sentence; NULL without labels or weather).
+    enso_relevance_rv <- reactive({
+      lab <- enso_labels_rv()
+      hs <- hist_sim()
+      sw <- if (!is.null(selected_weather)) selected_weather() else NULL
+      svy <- survey_weather()
+      if (is.null(lab) || is.null(hs$weather_raw) || is.null(svy) || is.null(sw) || !"name" %in% names(sw)) {
+        return(NULL)
+      }
+      tryCatch({
+        weather <- .filter_hist_weather(hs$weather_raw, svy)
+        tbl <- enso_weather_relevance(weather[weather$cal_year %in% lab$sim_year, , drop = FALSE], lab, sw$name)
+        label_map <- if ("label" %in% names(sw)) stats::setNames(as.character(sw$label), as.character(sw$name))
+        enso_relevance_sentences(tbl, label_map)
+      }, error = function(e) NULL)
+    })
+    # ENSO outlook of the forecast target months, the mark of the forecast members (D4); NULL without one.
+    enso_forecast_marks_rv <- reactive({
+      en <- enso()
+      if (is.null(en) || !isTRUE(.has_window())) return(NULL)
+      w <- window_series_rv()
+      tryCatch(
+        enso_forecast_marks(en, saved_scenarios()[[w$scenario_label]]$forecast, hist_sim()$forecast_run, w$months_label),
+        error = function(e) NULL
+      )
+    })
+    output$has_enso <- shiny::reactive(!is.null(enso_labels_rv()))
+    outputOptions(output, "has_enso", suspendWhenHidden = FALSE)
+    .enso_marking <- reactive(identical(input$enso_mark, "on") && !is.null(enso_labels_rv()))
+
+    output$enso_legend <- shiny::renderUI(if (.enso_marking()) enso_legend_ui())
+    output$enso_mark_note <- shiny::renderUI({
+      if (.enso_marking()) enso_mark_note_ui(!is.null(enso_forecast_marks_rv()))
+    })
+
     # variance_breakdown_rv: one row per scenario, three components ----
     # Aggregates the per-(sim_year) var_within / var_across columns to scalars
     # and re-computes var_coef from the per-(model, year) SD list-column.
@@ -1337,7 +1633,8 @@ mod_2_02_results_server <- function(id,
 
     # exceedance_curves_rv: per (scenario, model) ECDF rows ----
     # One row per (scenario, model, rank). welfare_val is sorted in the adverse
-    # tail direction; exceed_prob is (rank - 0.5)/n_pts limited to <= 0.50 AEP.
+    # tail direction; exceed_prob is the Weibull rank/(n + 1) limited to <= 0.50 AEP
+    # (rp_exceedance_rows()).
     exceedance_curves_rv <- reactive({
       req(hist_agg_rv())
       hist_ref <- hist_ref_val()
@@ -1355,54 +1652,7 @@ mod_2_02_results_server <- function(id,
         if (is.null(mm)) {
           return(NULL)
         }
-        vals <- mm$vals
-        sds <- mm$sds
-        n_yrs <- ncol(vals)
-        if (n_yrs == 0L) {
-          return(NULL)
-        }
-
-        do.call(dplyr::bind_rows, lapply(seq_len(nrow(vals)), function(i) {
-          v <- vals[i, ]
-          s <- sds[i, ]
-          ok <- is.finite(v)
-          if (!any(ok)) {
-            return(NULL)
-          }
-          v <- v[ok]
-          s <- s[ok]
-          n_pts <- length(v)
-
-          # Adverse tail direction:
-          # If adverse_tail == "low" (welfare/consumption): smaller is worse -> ascending.
-          # If adverse_tail == "high" (poverty): larger is worse -> descending.
-          ord <- if (identical(adverse_tail, "high")) {
-            order(v, decreasing = TRUE)
-          } else {
-            order(v, decreasing = FALSE)
-          }
-          v_ord <- v[ord]
-          s_ord <- if (length(s) == length(ord)) s[ord] else rep(0, length(ord))
-          # Hazen plotting positions, (rank - 0.5) / n: the same convention as
-          # the threshold table's rank_interp(), so "1 in 10" agrees in both.
-          probs <- (seq_along(ord) - 0.5) / n_pts
-
-          # Limit strictly to adverse tail: 0.50 AEP or less
-          keep <- probs <= 0.50
-          if (!any(keep)) {
-            return(NULL)
-          }
-
-          tibble::tibble(
-            scenario      = scenario_label,
-            model_id      = mm$model_ids[[i]],
-            rank          = seq_along(ord)[keep],
-            welfare_val   = v_ord[keep] - hist_ref,
-            coef_sd       = s_ord[keep],
-            exceed_prob   = probs[keep],
-            is_historical = is_hist
-          )
-        }))
+        rp_exceedance_rows(mm, scenario_label, adverse_tail, hist_ref, is_hist)
       }
 
       rows <- list(one_scenario(
@@ -1412,7 +1662,9 @@ mod_2_02_results_server <- function(id,
       sa <- scenario_agg_rv()
       if (!is.null(sa) && length(sa) > 0L) {
         for (dk in names(sa)) {
-          if (!dk %in% selected_scenario_names()) next
+          # A forecast target window is not an annual weather sample, so it has no exceedance curve.
+          # A forecast is drawn on the target-month curve of its own group (window views).
+          if (!dk %in% selected_scenario_names() || .step2_is_forecast_scenario(dk)) next
           rows[[length(rows) + 1L]] <- one_scenario(
             .apply_contrast_sd(sa[[dk]][[wk]][[method]], hist_F_agg_ref()),
             dk, FALSE
@@ -1494,8 +1746,15 @@ mod_2_02_results_server <- function(id,
 
     annual_distribution_chart <- function() {
       req(annual_distribution_curves_rv())
-      echart_annual_distribution(
-        annual_distribution_curves_rv(),
+      curves <- annual_distribution_curves_rv()
+      if (.enso_marking()) curves <- enso_attach_labels(curves, enso_labels_rv())
+      curves <- .with_window(curves, "curves")
+      if (.enso_marking() && !is.null(.window_views_or_null())) {
+        curves <- enso_attach_window_labels(curves, enso_window_labels_rv(), window_series_rv()$reference_label)
+        curves <- enso_attach_forecast_labels(curves, enso_forecast_marks_rv(), window_series_rv()$label)
+      }
+      e <- echart_annual_distribution(
+        curves,
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -1503,8 +1762,10 @@ mod_2_02_results_server <- function(id,
         ),
         plot_type = input$annual_distribution_type %||% "violin",
         height = "470px",
-        pending = results_source()$pending_names
+        pending = results_source()$pending_names,
+        enso_marks = .enso_marking()
       )
+      .annual_relabel(e)
     }
     # Streaming renders: while provisional, keep the existing ECharts instance
     # (dispose = FALSE) when only new scenario data arrived, so ECharts animates
@@ -1512,7 +1773,7 @@ mod_2_02_results_server <- function(id,
     # of run, mode or display control, or the last pending scenario landing,
     # forces a full redraw because setOption() merging cannot remove series.
     .SMOOTH_CONTROLS <- c(
-      "cmp_agg_method", "cmp_deviation", "annual_distribution_type",
+      "cmp_agg_method", "cmp_deviation", "annual_distribution_type", "enso_mark",
       "ensemble_band", "exceedance_model_spread"
     )
     smooth_state <- new.env(parent = emptyenv())
@@ -1532,6 +1793,106 @@ mod_2_02_results_server <- function(id,
       ch
     }
 
+    # ENSO phase table and sentence (item 3) ----
+    # Annual series (not with a forecast alone, whose annual rows only repeat Historical) and, with a forecast, the
+    # Historical series of its target months.
+    enso_table_rv <- reactive({
+      lab <- enso_labels_rv()
+      annual <- if (!is.null(lab) && !isTRUE(.forecast_only())) annual_distribution_curves_rv()
+      wl <- enso_window_labels_rv()
+      wv <- if (!is.null(wl)) .window_views_or_null()
+      window <- if (!is.null(wv$curves)) {
+        h <- wv$curves[as.character(wv$curves$scenario) == "Historical" & is.finite(wv$curves$value), , drop = FALSE]
+        list(
+          values = data.frame(series = window_series_rv()$reference_label, sim_year = h$sim_year, value = h$value),
+          labels = wl
+        )
+      }
+      tbl <- enso_series_table(annual, lab, window = window)
+      req(tbl)
+      tbl
+    })
+    output$has_enso_table <- shiny::reactive(!is.null(tryCatch(enso_table_rv(), error = function(e) NULL)))
+    outputOptions(output, "has_enso_table", suspendWhenHidden = FALSE)
+    output$enso_phase_table <- reactable::renderReactable({
+      tbl <- enso_table_rv()
+      req(tbl)
+      x_label <- metric_axis_label(.selected_method(), results_source()$so, input$cmp_deviation %||% "none")
+      enso_phase_reactable(tbl, scale = if (nzchar(.wise_result_rate_unit(x_label))) 100 else 1)
+    })
+    wise_export_table(
+      key = "enso_exposure_years",
+      label = "Outcomes by ENSO exposure",
+      step = 2L,
+      fun = .committed_only(function() {
+        tbl <- enso_table_rv()
+        req(tbl)
+        annotate_visualization_export(
+          as.data.frame(tbl),
+          .selected_method(),
+          results_source()$so,
+          observation_unit = "annual aggregate for fixed survey population, averaged over climate models by year",
+          aggregation_order = "weighted household aggregate by model and weather year; years labelled by ENSO exposure",
+          uncertainty = "none: counts and means of the simulated years"
+        )
+      }),
+      description = paste(
+        "Years and mean outcome by El Ni\u00f1o, Neutral, La Ni\u00f1a and Mixed exposure, with the difference from",
+        "Neutral. Labels describe the ENSO state of the months that enter the model; they are not inputs."
+      )
+    )
+    wise_export_table(
+      key = "enso_year_labels",
+      label = "ENSO label of each weather year",
+      step = 2L,
+      fun = .committed_only(function() {
+        lab <- enso_labels_rv()
+        req(lab)
+        as.data.frame(enso_year_table(lab, enso_window_labels_rv()))
+      }),
+      description = paste(
+        "Exposure shares, exposure RONI and label of each simulated weather year, and of each reference year of",
+        "the forecast target months. Climate scenarios carry the label of their template year; forecast members",
+        "have none. Labels are not inputs."
+      )
+    )
+    wise_export_table(
+      key = "enso_forecast_outlook",
+      label = "ENSO outlook of the forecast target months",
+      step = 2L,
+      fun = .committed_only(function() {
+        req(.has_window())
+        tbl <- enso_outlook_table(window_placement_rv()$enso)
+        req(tbl)
+        cbind(metric = .selected_method(), as.data.frame(tbl))
+      }),
+      description = paste(
+        "RONI, phase and shares of members of each target month, with the median member against the reference",
+        "years of the outlook's phase, for the selected metric. Shares of members are not calibrated."
+      )
+    )
+    output$enso_sentence <- shiny::renderUI({
+      tbl <- enso_table_rv()
+      lab <- enso_labels_rv()
+      x_label <- metric_axis_label(.selected_method(), results_source()$so, input$cmp_deviation %||% "none")
+      headline <- enso_phase_sentence(
+        tbl, tbl$series[[1L]], scale = if (nzchar(.wise_result_rate_unit(x_label))) 100 else 1
+      )
+      curves <- annual_distribution_curves_rv()
+      hist <- curves[curves$scenario == "Historical" & is.finite(curves$value), , drop = FALSE]
+      adverse <- if (!is.null(lab) && !isTRUE(.forecast_only()) && nrow(hist)) {
+        yearly <- stats::aggregate(value ~ sim_year, data = hist, FUN = mean)
+        enso_adverse_sentence(
+          lab, yearly, tryCatch(metric_metadata(.selected_method(), results_source()$so)$adverse_tail,
+            error = function(e) "low")
+        )
+      }
+      shiny::tags$p(
+        style = "margin: 12px 0 0;",
+        paste(c(headline, adverse, enso_relevance_rv()), collapse = " ")
+      )
+    })
+
     output$annual_distribution_plot <- echarts4r::renderEcharts4r({
       ch <- annual_distribution_chart()
       req(!is.null(ch))
@@ -1541,7 +1902,9 @@ mod_2_02_results_server <- function(id,
     incidence_data_rv <- reactive({
       # Committed only: needs full pipelines and the survey.
       req(!.is_provisional(), hist_sim(), saved_scenarios(), shiny::isolate(input$cmp_agg_method))
-      step2_incidence_all(hist_sim(), saved_scenarios(), selected_scenario_names())
+      # Annual scenarios in either scope: incidence compares annual pipelines with the historical one.
+      nm <- results_source()$scenario_names %||% character(0)
+      step2_incidence_all(hist_sim(), saved_scenarios(), nm[!.step2_is_forecast_scenario(nm)])
     })
 
     # Distributional incidence table: raw values; the CSV button for it
@@ -1568,6 +1931,15 @@ mod_2_02_results_server <- function(id,
     annual_distribution_export <- function() {
       curves <- annual_distribution_curves_rv()
       req(curves)
+      # With a forecast, the target-month rows follow (Historical for the same months and the members).
+      wv <- .window_views_or_null()
+      if (!is.null(wv$curves) && nrow(wv$curves)) {
+        curves$group <- "Annual"
+        curves <- .annual_relabel(curves)
+        win <- .window_relabel(wv$curves)
+        win$group <- paste("Target months:", window_series_rv()$months_label)
+        curves <- dplyr::bind_rows(curves, win)
+      }
       annotate_visualization_export(
         curves,
         .selected_method(),
@@ -1601,22 +1973,36 @@ mod_2_02_results_server <- function(id,
       if (is.null(tbl) || !nrow(tbl) || !"Estimate" %in% names(tbl)) {
         return(NULL)
       }
-      step2_threshold_df(
+      df <- step2_threshold_df(
         tbl, .selected_method(),
         tryCatch(results_source()$so, error = function(e) NULL),
         tryCatch(results_source()$sim_summary, error = function(e) NULL)
       )
+      # The target-month rows follow: each series is one sample, so its pooled and ensemble rows repeat the
+      # coefficient and central rows.
+      wv <- .window_views_or_null()
+      if (is.null(wv)) return(df)
+      df <- .annual_relabel(df)
+      wdf <- if (!is.null(wv$threshold) && nrow(wv$threshold)) {
+        step2_threshold_df(wv$threshold, .selected_method(), tryCatch(results_source()$so, error = function(e) NULL))
+      }
+      if (!is.data.frame(wdf) || !"Estimate" %in% names(wdf)) return(df)
+      wdf <- .window_relabel(wdf[!grepl("^(Pooled|Ensemble) ", wdf$Estimate), , drop = FALSE])
+      if (!is.data.frame(df)) return(wdf)
+      # Return periods the annual rows do not resolve (51 members reach 1-in-50) stay out of the shared table.
+      dplyr::bind_rows(df, wdf[, intersect(names(df), names(wdf)), drop = FALSE])
     }
 
     uncertainty_chart <- function() {
       req(variance_breakdown_rv())
-      echart_variance_contribution(
-        variance_breakdown_rv(), height = "300px",
+      e <- echart_variance_contribution(
+        .with_window(variance_breakdown_rv(), "variance"), height = "300px",
         percent = identical(metric_metadata(
           .selected_method(), results_source()$so
         )$format, "percent"),
         reference = input$cmp_deviation %||% "none"
       )
+      .annual_relabel(e)
     }
     output$uncertainty_sources_plot <- echarts4r::renderEcharts4r({
       ch <- uncertainty_chart()
@@ -1648,8 +2034,8 @@ mod_2_02_results_server <- function(id,
     })
     adverse_dot_chart <- function() {
       req(adverse_dot_data_rv())
-      echart_step2_adverse_dot(
-        adverse_dot_data_rv(),
+      e <- echart_step2_adverse_dot(
+        .with_window(adverse_dot_data_rv(), "dots"),
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -1658,6 +2044,7 @@ mod_2_02_results_server <- function(id,
         height = "380px",
         pending = results_source()$pending_names
       )
+      .annual_relabel(e)
     }
     output$adverse_dot_plot <- echarts4r::renderEcharts4r({
       ch <- adverse_dot_chart()
@@ -1719,8 +2106,11 @@ mod_2_02_results_server <- function(id,
       } else {
         resolve_band_q(sel_spread)
       }
-      echart_exceedance(
-        curves_tbl = curves,
+      wv <- .window_views_or_null()
+      # The target-month curve spans the whole probability range: a forecast better than the median year stays on it.
+      p_max <- if (is.null(wv)) 0.55 else 0.99
+      e <- echart_exceedance(
+        curves_tbl = .with_window(curves, "exceedance"),
         x_label = metric_axis_label(
           .selected_method(),
           results_source()$so,
@@ -1730,8 +2120,11 @@ mod_2_02_results_server <- function(id,
         logit_x = TRUE,
         band_q = NULL,
         ensemble_band_q = ens_q,
-        height = "400px"
+        height = "400px",
+        p_max = p_max
       )
+      if (!is.null(wv)) e <- .step2_window_exceedance_overlay(e, wv$position, x_max = p_max)
+      .annual_relabel(e)
     }
     wise_export_figure(
       key = "climate_exceedance_curve",
@@ -1751,6 +2144,35 @@ mod_2_02_results_server <- function(id,
       .smooth_echart(ch, "exceedance_plot")
     })
 
+
+    output$headline_cards_window_ui <- renderUI({
+      req(.has_window())
+      wv <- window_views_rv()
+      req(wv$cards)
+      shiny::tagList(
+        shiny::div(
+          style = paste0(
+            "font-size: 0.85rem; font-weight: 700; color: #526575; text-transform: uppercase; ",
+            "letter-spacing: 0.03em; margin: 14px 0 6px;"
+          ),
+          paste0(window_series_rv()$months_label, ": the seasonal forecast against Historical for the same months")
+        ),
+        headline_cards_ui(wv$cards)
+      )
+    })
+    wise_export_table(
+      key = "forecast_window_headline_summary",
+      label = "Seasonal forecast headline summary cards",
+      step = 2L,
+      fun = .committed_only(function() {
+        if (!isTRUE(.has_window())) return(data.frame())
+        step2_headline_df(window_views_rv()$cards)
+      }),
+      description = paste(
+        "Headline cards of the forecast target months: the forecast members against Historical for the same",
+        "months."
+      )
+    )
 
     # observeEvent handlers ----
 
@@ -2035,6 +2457,7 @@ mod_2_02_results_server <- function(id,
     # Return API ----
     ts_committed <- new.env(parent = emptyenv())
     ts_committed$value <- NULL
+    ts_committed$window <- NULL
     # timeseries_curves bundles everything the Diagnostics tab needs to render
     # the per-model trajectories plot (the plot lives there now): the
     # per-(scenario, model, sim_year) table, the x-axis label, and the
@@ -2044,6 +2467,25 @@ mod_2_02_results_server <- function(id,
       results_tab_added = results_tab_added,
       aggregation_cache = aggregation_cache,
       derived_results_frame = derived_results_frame_rv,
+      enso_labels = enso_labels_rv,
+      enso_window_labels = enso_window_labels_rv,
+      enso_forecast_marks = enso_forecast_marks_rv,
+      enso_relevance = enso_relevance_rv,
+      # Forecast-window points of the Diagnostics robustness chart; NULL without a window. Like
+      # timeseries_curves, the last committed value stands while a run streams.
+      window_robustness = reactive({
+        if (.is_provisional()) {
+          return(ts_committed$window)
+        }
+        out <- if (isTRUE(.has_window())) {
+          tryCatch(
+            step2_window_robustness_data(window_series_rv(), input$cmp_deviation %||% "none"),
+            error = function(e) NULL
+          )
+        }
+        ts_committed$window <- out
+        out
+      }),
       timeseries_curves = reactive({
         # Diagnostics is never driven by provisional data: while a run
         # streams, return the last committed value (no dependency on the

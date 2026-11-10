@@ -800,7 +800,11 @@ step3_batch_tables <- function(run, hs, ss, svy, levers, skip_coef, analysis_uni
   }
   pol_out <- run$pol_out
   base_hs <- run$baseline_out
-  base_ss <- run$baseline_scenarios_out
+  # A forecast window is not an annual sample: the annual tables read the annual scenarios only, and the
+  # forecast scenarios get their own policy rows (step3_forecast_batch_tables()).
+  base_ss_all <- run$baseline_scenarios_out
+  pol_ss_all <- pol_out$saved_scenarios %||% list()
+  base_ss <- .step3_annual_scenarios(base_ss_all)
   so <- hs$so
   hist_label <- hs$hist_label %||% "Historical"
   scenarios <- names(base_ss)
@@ -815,7 +819,7 @@ step3_batch_tables <- function(run, hs, ss, svy, levers, skip_coef, analysis_uni
   pol_hs$so <- pol_hs$so %||% so
   pol_hs$residuals <- pol_hs$residuals %||% base_hs$residuals
   pol_hs$seed <- .step2_run_seed(base_hs)
-  pol_ss <- pol_out$saved_scenarios %||% list()
+  pol_ss <- .step3_annual_scenarios(pol_ss_all)
   agg_b <- step2_run_aggregates(base_hs, base_ss, skip_coef, pov_line)
   agg_p <- step2_run_aggregates(pol_hs, pol_ss, skip_coef, pov_line)
 
@@ -997,14 +1001,22 @@ step3_batch_tables <- function(run, hs, ss, svy, levers, skip_coef, analysis_uni
     }
     x
   }
+  fc <- tryCatch(
+    step3_forecast_batch_tables(base_hs, base_ss_all, pol_hs, pol_ss_all, agg_b$methods, pov_line),
+    error = function(e) {
+      partial <<- c(partial, paste("forecast policy rows:", wise_user_error(e, "batch forecast policy")))
+      NULL
+    }
+  )
   list(
     status = status,
-    tables = lapply(list(
+    tables = lapply(Filter(Negate(is.null), list(
       annual = annual,
-      summary = dplyr::bind_rows(summaries),
+      summary = dplyr::bind_rows(summaries, fc$summary),
       decomposition = dplyr::bind_rows(decomps),
-      policy_measures = dplyr::bind_rows(measures)
-    ), plain),
+      policy_measures = dplyr::bind_rows(measures),
+      forecast = fc$forecast
+    )), plain),
     partial = partial
   )
 }

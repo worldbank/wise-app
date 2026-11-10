@@ -5,8 +5,8 @@ app_step: 3
 depends_on: [notation, policy-framework, outcomes, metrics]
 symbols: [Y, omega, z, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#social-protection-cash-transfers
-code: [R/fct_policy_sim.R, R/fct_step3_input.R, R/fct_sp_effectiveness.R, R/fct_policy_metric_decompose.R, R/fct_aggregation_delta.R, R/mod_3_01_sp.R]
-verified_against: 3f4fc5f
+code: [R/fct_policy_sim.R, R/fct_step3_input.R, R/fct_policy_sp_effectiveness.R, R/fct_policy_metric_decomp.R, R/fct_aggregation_delta.R, R/mod_3_01_sp.R]
+verified_against: 5b89f68
 ---
 
 # Regular cash transfers: targeting, amount, cost and reach
@@ -117,6 +117,7 @@ Coverage is the share of the poor who receive a transfer. Leakage is the share o
 - Delivery failures other than the stated inclusion and exclusion errors.
 - A transfer that depends on household size by a schedule. The amount is the same for all eligible households, and is shared by size only when it is per household.
 - Tax or financing effects of the programme.
+- Timing of a regular transfer within a seasonal forecast window. It is a static change with the same amount in every target month; a shock-responsive transfer on a forecast window is described in [43_shock_responsive_sp](43_shock_responsive_sp.md) and [34_seasonal_forecast](34_seasonal_forecast.md), Section 5.
 
 ## In the app
 
@@ -139,7 +140,7 @@ None beyond [40_policy_framework](40_policy_framework.md). Full entries are in [
 | Amount from a welfare percentile | Section 3 | `R/fct_step3_input.R` `wise_sp_resolve_amount()`, `wise_sp_config()` |
 | Transfer written to the survey | (3.1) | `R/fct_policy_sim.R` `apply_policy_to_svy()` |
 | Programme cost | (4.1) | `R/fct_policy_sim.R` `.sp_transfer_totals()`, `.sp_transfer_totals_values()` |
-| Effect on predicted welfare | (5.1), (5.2) | `R/fct_policy_metric_decompose.R` `.policy_annual_channel_block()`; `R/fct_policy_decompose.R` `.compute_rif_channels()` |
-| Transfer added after the residual | (5.2) | `R/fct_policy_metric_decompose.R` `.apply_policy_annual_pipeline()` (`sp_level`, `sp_log`), `.policy_metric_pipeline()`; `R/fct_aggregation_delta.R` `.aggregation_prepare_pipeline()`, `gradient_for_method()` |
-| Coverage, leakage, adequacy, errors | (6.1) | `R/fct_sp_effectiveness.R` `sp_effectiveness()` |
+| Effect on predicted welfare | (5.1), (5.2) | `R/fct_policy_metric_decomp.R` `.policy_annual_channel_block()`; `R/fct_policy_decomp.R` `.compute_rif_channels()` |
+| Transfer added after the residual | (5.2) | `R/fct_policy_metric_decomp.R` `.apply_policy_annual_pipeline()` (`sp_level`, `sp_log`), `.policy_metric_pipeline()`; `R/fct_aggregation_delta.R` `.aggregation_prepare_pipeline()`, `gradient_for_method()` |
+| Coverage, leakage, adequacy, errors | (6.1) | `R/fct_policy_sp_effectiveness.R` `sp_effectiveness()` |
 | Preview of reach and cost | Section 6 | `R/fct_policy_sim.R` `.sp_scenario_reach()` |

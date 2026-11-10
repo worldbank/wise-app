@@ -56,15 +56,15 @@ line of `NA`.
    the coefficient variance, and the method branch of the delta function.
    Without a gradient, remove `coefficient` from the registry `uncertainty`
    field so the app does not show a band it cannot compute.
-5. **Views**: labels in `R/fct_sim_compare.R` (the label `switch`),
-   `R/fct_policy_sim_compare.R` (the method vector of the policy comparison),
+5. **Views**: labels in `R/fct_step2_compare.R` (the label `switch`),
+   `R/fct_echart_builders.R` (the method vector of the policy comparison),
    the Step 2 metric picker in `R/mod_2_02_results.R`, and
    `R/fct_step2_tables.R`, `R/fct_step3_tables.R` for batch tables. Poverty
-   specific code (`R/fct_sp_effectiveness.R`, `R/mod_3_10_cost_effectiveness.R`)
+   specific code (`R/fct_policy_sp_effectiveness.R`, `R/mod_3_10_cost_effectiveness.R`)
    reads `headcount_ratio` on purpose; leave it unless the metric belongs there.
-6. **Decomposition**: the metric states in `R/fct_policy_metric_decompose.R`
+6. **Decomposition**: the metric states in `R/fct_policy_metric_decomp.R`
    must reconcile for the new metric (the "all metrics" test); the RIF engine
-   has its own path (`R/fct_rif_sim.R`).
+   has its own path (`R/fct_model_rif.R`).
 7. **Docs**: a section in `docs/32_metrics.md` (equation, interpretation,
    Implementation map), `docs/33_uncertainty.md` if the uncertainty differs,
    `verified_against`, then `Rscript dev/docs_index.R` and
@@ -82,7 +82,7 @@ complete.
   (`test-fct_aggregation.R`).
 - Delta method: the analytic standard error matches a Monte Carlo
   (`test-fct_aggregation_delta.R`, the "SE matches MC" pattern).
-- Decomposition: the metric appears in `test-fct-policy-metric-decompose.R`
+- Decomposition: the metric appears in `test-fct_policy_metric_decomp.R`
   and reconciles.
 - Equivalence: all old metrics unchanged (the characterization tests,
   `test-w3-a-aggregation-characterization.R`).

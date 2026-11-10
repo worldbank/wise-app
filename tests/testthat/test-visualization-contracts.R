@@ -181,8 +181,9 @@ test_that("return-period interpolation selects the adverse tail", {
   sds <- matrix(0, nrow = 1, ncol = 20)
   high <- wiseapp:::by_model_rp_matrix(vals, sds, c(`1:20` = 0.05), "high")$rp[1, 1]
   low <- wiseapp:::by_model_rp_matrix(vals, sds, c(`1:20` = 0.05), "low")$rp[1, 1]
-  expect_equal(high, 19.5)
-  expect_equal(low, 1.5)
+  # 20 years at p = 0.05: Weibull adverse rank 21 * 0.05 = 1.05 from the adverse end
+  expect_equal(high, 19.95)
+  expect_equal(low, 1.05)
 })
 
 test_that("paired effects are zero for identical baseline and policy tables", {
@@ -295,8 +296,9 @@ test_that("adverse threshold interpolation follows metric tail direction", {
   low  <- wiseapp:::by_model_rp_matrix(vals, sds, rp, adverse_tail = "low")$rp[1, 1]
 
   expect_gt(high, low)
-  expect_equal(high, 19.5)
-  expect_equal(low, 1.5)
+  # Weibull adverse rank 21 * 0.05 = 1.05 (was 1.5 with Hazen)
+  expect_equal(high, 19.95)
+  expect_equal(low, 1.05)
 })
 
 test_that("step2 adverse dot data extracts supported periods and ensemble bounds", {

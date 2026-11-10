@@ -34,7 +34,7 @@ What does not exist:
 
 - No cost input for the infrastructure, digital, labour or education levers. Those levers change covariates (for example electricity access or travel time to health); the app has no unit cost for them.
 - No administration cost. A parallel plan (`review/archive/sp_shock_responsive_plan.md`, task P0-2 in `review/archive/sp_shock_responsive_tasks.md`) adds an admin cost markup as a share of total cost.
-- No cost-effectiveness metrics. The same parallel plan lists them as task P0-5 (coverage of the poor, leakage, adequacy, poverty effect per cost) in a new `R/fct_sp_effectiveness.R`, shown in the Diagnostics tab. This note builds on P0-5 rather than duplicating it.
+- No cost-effectiveness metrics. The same parallel plan lists them as task P0-5 (coverage of the poor, leakage, adequacy, poverty effect per cost) in a new `R/fct_policy_sp_effectiveness.R`, shown in the Diagnostics tab. This note builds on P0-5 rather than duplicating it.
 - The model is a static annual accounting model: the transfer is added to every household-year in every weather draw, so cost is the same every year in a regular program. That changes if the shock-responsive transfer is built.
 
 ## 3. Scope and non-goals
@@ -116,7 +116,7 @@ Figures worth building (echarts, consistent with the rest of Step 3):
 
 ## 7. Engine design
 
-- New pure functions in `R/fct_sp_effectiveness.R` (already named in P0-5): inputs are the baseline and policy frames, the weights and household size, the analysis unit, the poverty line, the cost vector and the effect (with its interval). No Shiny dependency, one tested implementation, reused by the Diagnostics table, the Results section, the cards later and the exports.
+- New pure functions in `R/fct_policy_sp_effectiveness.R` (already named in P0-5): inputs are the baseline and policy frames, the weights and household size, the analysis unit, the poverty line, the cost vector and the effect (with its interval). No Shiny dependency, one tested implementation, reused by the Diagnostics table, the Results section, the cards later and the exports.
 - Compute once per policy run, inside the diagnostics snapshot (`.policy_diagnostics_snapshot()`), because the static metrics depend only on the two frames; the effect-dependent metrics join in the Results layer, where the effect reactives live.
 - Currency: cost is entered in the outcome's currency (`sp$currency`), while the stored welfare is 2021 PPP; the transfer column is already on the welfare scale. Compute ratios on the PPP scale and show cost in the entry currency beside it. The LCU handling (R2-BUG-04) must be correct first, as the parallel plan notes.
 - Accept the cost as a per-(climate member, year) vector, not a scalar, even though a regular program produces a constant vector. This lets the shock-responsive engine plug in without changing the metric functions.
@@ -138,7 +138,7 @@ Build order: P0-2 (admin cost) and P0-5 (static metrics) first, then this plan's
 | Phase | Work | Depends on | Size |
 |---|---|---|---|
 | 0 | Confirm the cost arithmetic against `.sp_transfer_totals()` with a hand calculation; confirm R2-BUG-04 status; decide net vs gross people lifted (section 10) | none | S |
-| 1 | `R/fct_sp_effectiveness.R`: cost block and targeting block; tests against hand calculations on a small survey (weights, household size, missing poverty line) | P0-2 (admin cost) | M |
+| 1 | `R/fct_policy_sp_effectiveness.R`: cost block and targeting block; tests against hand calculations on a small survey (weights, household size, missing poverty line) | P0-2 (admin cost) | M |
 | 2 | Diagnostics section: metric table and assumptions, export registration | Phase 1 | S |
 | 3 | Effect-per-cost metrics with intervals (average and adverse year), "not applicable" and "not bounded" handling | Phase 1; `coef_sd`; decomposition tail effect | M |
 | 4 | Dedicated tab: compact table and the three figures, scope statement; stale-state handling like the other Step 3 outputs | Phases 2 and 3 | M |

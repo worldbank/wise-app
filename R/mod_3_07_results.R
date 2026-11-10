@@ -14,6 +14,12 @@
 #' @param selected_policies        Reactive selected policy scenario keys.
 #' @param sim_run_id               Reactive trigger; tabs appended once
 #'   this is > 0.
+#' @param enso_labels             Reactive ENSO labels of the Step 2 weather years (`enso_year_labels()`),
+#'   or `NULL`; marks the draws of the annual distribution on request.
+#' @param enso_window_labels      Reactive ENSO labels of the forecast reference years (`enso_window_labels()`),
+#'   or `NULL`; marks the Historical draws of the target months with the same toggle.
+#' @param enso_forecast_marks     Reactive outlook mark of the forecast members (`enso_forecast_marks()`), or `NULL`.
+#' @param enso_relevance          Reactive sentence on how closely the weather follows ENSO, or `NULL`.
 #' @param tabset_id                Char id of the parent tabset.
 #' @param tabset_session           Shiny session for the parent tabset.
 #'
@@ -42,7 +48,11 @@ mod_3_07_results_server <- function(id,
                                     policy_svy = reactive(NULL),
                                     aggregation_cache = NULL,
                                      analysis_unit = reactive(NULL),
-                                     annual_channels = reactive(NULL)) {
+                                     annual_channels = reactive(NULL),
+                                     enso_labels = reactive(NULL),
+                                     enso_window_labels = reactive(NULL),
+                                     enso_forecast_marks = reactive(NULL),
+                                     enso_relevance = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     session$userData$wise_step3_stale <- stale
@@ -81,7 +91,11 @@ mod_3_07_results_server <- function(id,
       policy_svy = policy_svy,
       aggregation_cache = aggregation_cache,
       analysis_unit = analysis_unit,
-      annual_channels = annual_channels
+      annual_channels = annual_channels,
+      enso_labels = enso_labels,
+      enso_window_labels = enso_window_labels,
+      enso_forecast_marks = enso_forecast_marks,
+      enso_relevance = enso_relevance
     )
 
     observeEvent(sim_run_id(),

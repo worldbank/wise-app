@@ -32,6 +32,7 @@ app_server <- function(input, output, session) {
     survey_list = overview_api$survey_list,
     variable_list = overview_api$variable_list,
     cpi_ppp = overview_api$cpi_ppp,
+    enso = overview_api$enso,
     run_trigger = run_step1_trigger,
     load_survey_trigger = load_survey_trigger,
     load_weather_trigger = load_weather_trigger
@@ -50,6 +51,7 @@ app_server <- function(input, output, session) {
     model_fit         = step1_api$model_fit,
     stored_breaks     = step1_api$stored_breaks,
     survey_version    = step1_api$survey_version,
+    enso              = overview_api$enso,
      run_trigger       = run_step2_trigger,
      shared_aggregation_cache = aggregation_cache
   )
@@ -74,6 +76,10 @@ app_server <- function(input, output, session) {
     residuals = step2_api$residuals,
     survey_version = step1_api$survey_version,
     sim_stale = step2_api$stale,
+    enso_labels = step2_api$enso_labels,
+    enso_window_labels = step2_api$enso_window_labels,
+    enso_forecast_marks = step2_api$enso_forecast_marks,
+    enso_relevance = step2_api$enso_relevance,
      run_trigger = run_step3_trigger,
      shared_aggregation_cache = aggregation_cache
   )
@@ -176,10 +182,10 @@ app_server <- function(input, output, session) {
         error = function(e) NULL
       ),
       connection_params = cp,
-      extra = list(stale = tryCatch(
+      extra = c(list(stale = tryCatch(
         isTRUE(step2_api$stale()),
         error = function(e) NA
-      ))
+      )), enso_provenance(overview_api$enso()))
       ),
       step3 = wise_provenance(3L, tryCatch(step3_api$policy_hist_sim(),
         error = function(e) NULL

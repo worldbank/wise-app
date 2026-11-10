@@ -5,8 +5,8 @@ app_step: 2
 depends_on: [notation, model-specification, linear-model, rif-model, simulation, metrics]
 symbols: [Sigma, L, F, h, T, Y, omega, z]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#sources-of-uncertainty-in-simulations
-code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_simulations.R, R/fct_results.R, R/fct_rif_sim.R, R/fct_step2_tables.R, R/fct_sim_compare.R, R/fct_uncertainty_helpers.R]
-verified_against: f62a72b
+code: [R/fct_aggregation_delta.R, R/fct_aggregation.R, R/fct_step2_pipeline.R, R/fct_step1_results.R, R/fct_model_rif.R, R/fct_step2_tables.R, R/fct_step2_compare.R, R/fct_uncertainty.R]
+verified_against: 469c000
 ---
 
 # Uncertainty propagation
@@ -119,7 +119,7 @@ $$\sigma^2_{\text{within}} = \frac1M\sum_m\big(\mathrm{Var}_{\text{coef}}^{m} + 
 
 This is the law of total variance. The analytic pooled band is $\bar T \pm z_q\ \sigma_{\text{pool}}$, and the empirical model band takes quantiles of the member values. With one member, $\sigma^2_{\text{across}}=0$.
 
-In the return-period table, the pooled standard deviation combines the median coefficient SD across members at the return period with the variance across members of the return-period value ([32_metrics](32_metrics.md)). Inter-annual variation is already inside each annual value and is not added again.
+In the return-period table, the pooled standard deviation combines the median coefficient SD across members at the return period with the variance across members of the return-period value, read at the Weibull rank of Eq. (4.1) ([32_metrics](32_metrics.md)). Inter-annual variation is already inside each annual value and is not added again.
 
 ### 8. Paired contrasts
 
@@ -181,20 +181,20 @@ User guide: [Sources of uncertainty](https://github.com/worldbank/wise-app-docs/
 
 | Concept | Equation | Code |
 |---|---|---|
-| Covariance factor | 1 | `R/fct_simulations.R` `compute_chol_vcov()`, `COEF_VCOV_SPEC` |
-| Factor loading | (1.1) | `R/fct_simulations.R` `compute_factor_loading()` |
-| Anchored loading | (1.2) | `R/fct_simulations.R` `.anchor_design_shift()`, `step2_add_residual_key()` |
-| Logistic link factor | 2 | `R/fct_simulations.R` `.logit_link_derivative()` |
+| Covariance factor | 1 | `R/fct_step2_pipeline.R` `compute_chol_vcov()`, `COEF_VCOV_SPEC` |
+| Factor loading | (1.1) | `R/fct_step2_pipeline.R` `compute_factor_loading()` |
+| Anchored loading | (1.2) | `R/fct_step2_pipeline.R` `.anchor_design_shift()`, `step2_add_residual_key()` |
+| Logistic link factor | 2 | `R/fct_step2_pipeline.R` `.logit_link_derivative()` |
 | Delta-method aggregation | (2.1) | `R/fct_aggregation_delta.R` `aggregate_with_uncertainty_delta()` |
 | Gradients | 3 | `R/fct_aggregation_delta.R` `gradient_for_method()` |
-| Bands | 4 | `R/fct_aggregation_delta.R` `apply_band_transform()`; `R/fct_sim_compare.R` `resolve_band_q()` |
+| Bands | 4 | `R/fct_aggregation_delta.R` `apply_band_transform()`; `R/fct_step2_compare.R` `resolve_band_q()` |
 | Residual draws | (2.1) | `R/fct_aggregation.R` `draw_residuals_vec()`, `.residual_lookup()` |
 | Poverty-rate residual variance | 2 | `R/fct_aggregation_delta.R` `.headcount_resid_variance()` |
-| Active scope and block factor | 5 | `R/fct_results.R` `attach_active_mask()`, `build_active_coef_mask()`, `detect_modified_cols()` |
-| Joint covariance of the quantile equations | (6.1) | `R/fct_simulations.R` `compute_rif_joint_vcov()`; stored by `R/fct_fit_model.R` `fit_model()` |
-| Joint factor of the active block | 6 | `R/fct_simulations.R` `rif_joint_factor()` |
-| Quantile-model loading | (6.2) | `R/fct_rif_sim.R` `interpolate_F_loading()` |
+| Active scope and block factor | 5 | `R/fct_step1_results.R` `attach_active_mask()`, `build_active_coef_mask()`, `detect_modified_cols()` |
+| Joint covariance of the quantile equations | (6.1) | `R/fct_step2_pipeline.R` `compute_rif_joint_vcov()`; stored by `R/fct_model_fit.R` `fit_model()` |
+| Joint factor of the active block | 6 | `R/fct_step2_pipeline.R` `rif_joint_factor()` |
+| Quantile-model loading | (6.2) | `R/fct_model_rif.R` `interpolate_F_loading()` |
 | Pooling members | (7.1) | `R/fct_aggregation.R` `combine_ensemble_results()` |
-| Per-model matrices | 7 | `R/fct_uncertainty_helpers.R` `by_model_matrix()` |
-| Paired contrasts | (8.1) | `R/fct_step2_tables.R` `step2_hist_f_ref()`, `step2_contrast_sd()`; `R/fct_sim_compare.R` `step2_delta_ci()`, `paired_effect_summary()` |
+| Per-model matrices | 7 | `R/fct_uncertainty.R` `by_model_matrix()` |
+| Paired contrasts | (8.1) | `R/fct_step2_tables.R` `step2_hist_f_ref()`, `step2_contrast_sd()`; `R/fct_step2_compare.R` `step2_delta_ci()`, `paired_effect_summary()` |
 | Variance breakdown | 7 | `R/fct_step2_tables.R` `step2_variance_breakdown()` |

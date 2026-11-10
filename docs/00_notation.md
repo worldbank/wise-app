@@ -5,8 +5,8 @@ app_step: cross
 depends_on: []
 symbols: [i, l, g, t, r, mu, s, m, v, tau, Y, y, pi, omega, z, W, M, X, D, beta, theta, gamma, delta, alpha, lambda, epsilon, Sigma, L, F_hat, q_tau, T, Delta]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step1.qmd#high-dimensional-fixed-effects-demeaning
-code: [R/fct_results.R, R/fct_outcome.R, R/fct_surveystats.R, R/fct_spec_defaults.R, R/fct_incidence.R, R/fct_simulations.R, R/fct_aggregation.R, R/fct_rif_sim.R, R/fct_loc_panel.R, R/utils_math.R]
-verified_against: 8592a9d
+code: [R/fct_step1_results.R, R/fct_step1_outcome.R, R/fct_step1_surveystats.R, R/fct_spec_defaults.R, R/fct_incidence.R, R/fct_step2_pipeline.R, R/fct_aggregation.R, R/fct_model_rif.R, R/fct_loc_panel.R, R/utils_math.R]
+verified_against: 5b89f68
 ---
 
 # Notation and conventions
@@ -149,13 +149,13 @@ Full entries are in [references](references.md). Used here: the World Bank Pover
 
 | Concept | Equation | Code |
 |---|---|---|
-| Conversion to local currency and model scale | (1.1), (1.3) | `R/fct_results.R` `outcome_level_scale()`, `outcome_to_model_scale()`, `prepare_outcome_df()` |
-| Bottom-coding at 0.28 | (1.2) | `R/fct_surveystats.R` `bottom_code_welfare()`; constant `WISEAPP_WELFARE_FLOOR` in `R/fct_spec_defaults.R` |
-| Log transform rule (numeric outcomes are logged) | (1.3) | `R/fct_outcome.R` `outcome_transform()` |
+| Conversion to local currency and model scale | (1.1), (1.3) | `R/fct_step1_results.R` `outcome_level_scale()`, `outcome_to_model_scale()`, `prepare_outcome_df()` |
+| Bottom-coding at 0.28 | (1.2) | `R/fct_step1_surveystats.R` `bottom_code_welfare()`; constant `WISEAPP_WELFARE_FLOOR` in `R/fct_spec_defaults.R` |
+| Log transform rule (numeric outcomes are logged) | (1.3) | `R/fct_step1_outcome.R` `outcome_transform()` |
 | Survey weight column | weights | `R/fct_incidence.R` `survey_weight_column()` |
 | Location panel | cluster | `R/fct_loc_panel.R` `loc_panel()` |
-| Coefficient covariance and Cholesky factor | $\hat\Sigma$, $L$ | `R/fct_simulations.R` `compute_chol_vcov()` |
+| Coefficient covariance and Cholesky factor | $\hat\Sigma$, $L$ | `R/fct_step2_pipeline.R` `compute_chol_vcov()` |
 | Aggregate statistic of welfare | (3.1) | `R/fct_aggregation.R` `resolve_agg_fn()` |
-| Quantile position clipped to the grid | (4.1) | `R/fct_rif_sim.R` `predict_rif()` |
-| Historical simulation dates (month by year) | $r$, $\mu$ | `R/fct_simulations.R` `build_hist_sim_dates()` |
+| Quantile position clipped to the grid | (4.1) | `R/fct_model_rif.R` `predict_rif()` |
+| Historical simulation dates (month by year) | $r$, $\mu$ | `R/fct_step2_pipeline.R` `build_hist_sim_dates()` |
 | Default seed | reproducibility | `R/utils_math.R` `WISEAPP_DEFAULT_SEED` |

@@ -34,11 +34,11 @@ _(filled per batch below)_
 
 - `NAMESPACE`: removed unused `importFrom(golem, activate_js)`.
 - `R/app_ui.R`: 2-space indent, straight quotes, removed stale `activate_js` import.
-- `R/fct_aggregation.R`, `R/fct_loc_panel.R`, `R/fct_predict_outcomes.R`:
+- `R/fct_aggregation.R`, `R/fct_loc_panel.R`, `R/fct_model_predict.R`:
   removed redundant `library(dplyr)` from roxygen examples; file banner → `# Title ----`.
-- `R/fct_aggregation_delta.R`, `R/fct_run_simulation.R`, `R/fct_get_weather.R`:
+- `R/fct_aggregation_delta.R`, `R/fct_step2_run.R`, `R/fct_data_weather.R`:
   file banner → `# Title ----`.
-- `R/fct_simulations.R`: `coef`/`vcov`/`model.matrix` → `stats::` qualified.
+- `R/fct_step2_pipeline.R`: `coef`/`vcov`/`model.matrix` → `stats::` qualified.
 - `R/mod_3_08_diagnostics.R`: `moduleServer`/`tagList` → `shiny::` qualified.
 
 ### Batch 1 — section banners (commit `9b1558f`)
@@ -73,10 +73,10 @@ _(filled per batch below)_
     commented conditionalPanel opener, commented anticipatory/ex-post
     block, and dead section 6 (delivery) + section 7 (revenue) stubs.
 - Qualified 10 collision-prone calls: `stats::median` (4 sites:
-  `fct_aggregation.R` x2, `fct_policy_sim_compare.R`,
+  `fct_aggregation.R` x2, `fct_echart_builders.R`,
   `mod_3_09_decomposition.R`) and `stats::quantile` (6 sites:
-  `fct_get_weather.R`, `fct_outcome.R`, `fct_policy_sim.R`,
-  `fct_sim_compare.R` x2, `mod_3_01_sp.R`).
+  `fct_data_weather.R`, `fct_step1_outcome.R`, `fct_policy_sim.R`,
+  `fct_step2_compare.R` x2, `mod_3_01_sp.R`).
 - All edits verified expression-identical (modulo namespace prefixes)
   against HEAD; full test suite green.
 
@@ -137,17 +137,17 @@ _(updated per batch)_
   `grDevices`, `grid` (base-recommended, runtime-safe) and `tidyselect`
   (transitive via dplyr). Adding them to `Imports:` is a DESCRIPTION
   change and needs user approval per the safety protocol.
-- Console logging policy: `message()` diagnostics in `fct_simulations.R`,
-  `fct_rif_sim.R`, `fct_fit_model.R`, `fct_get_weather.R`,
-  `fct_results.R`, `fct_run_simulation.R`, `fct_policy_sim.R`,
-  `fct_outcome.R`, `mod_2_01_weathersim.R`, `mod_0_overview.R` kept —
+- Console logging policy: `message()` diagnostics in `fct_step2_pipeline.R`,
+  `fct_model_rif.R`, `fct_model_fit.R`, `fct_data_weather.R`,
+  `fct_step1_results.R`, `fct_step2_run.R`, `fct_policy_sim.R`,
+  `fct_step1_outcome.R`, `mod_2_01_weathersim.R`, `mod_0_overview.R` kept —
   they are behavior-visible logging; removing them is a policy decision.
 - `mod_1_08_modelfit.R` `cat()` inside `renderPrint` is intended UI
   output — kept.
 - `R/mod_2_simulation.R` retains tabs + CRLF/mixed line endings; excluded
   from the styler batch to avoid whole-file line-ending churn.
 - Styler quote normalization touched string literals in
-  `fct_weather_pipeline.R`, `mod_1_02_surveystats.R`, `mod_2_01_weathersim.R`
+  `fct_step1_weather_card.R`, `mod_1_02_surveystats.R`, `mod_2_01_weathersim.R`
   (verified value-preserving).
 - `devtools::check()` has pre-existing test-phase failures (missing `furrr`,
   source-relative paths, export-contract assertions) unrelated to hygiene.

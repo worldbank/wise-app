@@ -34,9 +34,9 @@ no reactive logic. If a cleanup might, it is not hygiene: flag it.
 
 ## Protected areas: whitespace and comments only
 
-- Numerics: `fct_run_simulation.R`, `fct_step2_compute.R`,
-  `fct_policy_decompose.R`, `fct_policy_metric_decompose.R`,
-  `fct_decomposition_summary.R`.
+- Numerics: `fct_step2_run.R`, `fct_step2_compute.R`,
+  `fct_policy_decomp.R`, `fct_policy_metric_decomp.R`,
+  `fct_decomp_summary.R`.
 - Async: `fct_step2_async.R` and anything serialized to mirai workers.
   Functions, globals and arguments can be captured by name, so "unused"
   cannot be proven by reading.

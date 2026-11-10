@@ -119,6 +119,10 @@ mod_3_scenario_server <- function(id,
                                   residuals = reactive("original"),
                                   survey_version = reactive(0L),
                                   sim_stale = reactive(FALSE),
+                                  enso_labels = reactive(NULL),
+                                  enso_window_labels = reactive(NULL),
+                                  enso_forecast_marks = reactive(NULL),
+                                  enso_relevance = reactive(NULL),
                                   run_trigger = reactive(NULL),
                                   shared_aggregation_cache = NULL) {
   moduleServer(id, function(input, output, session) {
@@ -219,10 +223,14 @@ mod_3_scenario_server <- function(id,
     # request. Initial action-button registration (0) is inert, and a request
     # is consumed once so clearing it cannot replay the run.
     policy_run_event <- shiny::reactiveVal(NULL)
+    # The button is re-rendered after each run, which resets its click count to
+    # 0. The sequence keeps a repeated click distinct, so the reactiveVal fires.
+    policy_click_seq <- 0L
     shiny::observeEvent(input$run_policy_sim,
       {
         if (shiny::isTruthy(input$run_policy_sim)) {
-          policy_run_event(list(source = "manual", value = input$run_policy_sim))
+          policy_click_seq <<- policy_click_seq + 1L
+          policy_run_event(list(source = "manual", value = input$run_policy_sim, seq = policy_click_seq))
         }
       },
       ignoreInit = FALSE,
@@ -288,7 +296,11 @@ mod_3_scenario_server <- function(id,
       baseline_svy = s6$baseline_svy,
       policy_svy = s6$policy_svy,
       aggregation_cache = shared_aggregation_cache,
-      analysis_unit = analysis_unit
+      analysis_unit = analysis_unit,
+      enso_labels = enso_labels,
+      enso_window_labels = enso_window_labels,
+      enso_forecast_marks = enso_forecast_marks,
+      enso_relevance = enso_relevance
     )
 
     # Diagnostics tab: before/after variable analysis ----

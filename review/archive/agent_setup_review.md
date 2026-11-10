@@ -65,6 +65,6 @@ Decision (user, 2026-10-26): one shared skills folder in the repo, described in 
 
 ## 5. Other recommendations
 
-- Large files (`fct_policy_sim_compare.R` 3,436 lines, `fct_results.R` 3,368, `fct_sim_compare.R` 2,756) are read in chunks by agents. Splitting is a refactor, not proposed; keep section headers current.
+- Large files (`fct_echart_builders.R` 3,436 lines, `fct_step1_results.R` 3,368, `fct_step2_compare.R` 2,756) are read in chunks by agents. Splitting is a refactor, not proposed; keep section headers current.
 - Implemented (R12): a tracked `.claude/settings.json` allowlist for common checks and app automation. `ui_drive.R` is deliberately included to run and drive the app; it is not read-only. Permission behavior still needs confirmation in Claude Code after workspace trust.
 - Deferred: further version-equality CI enforcement (user decision, 2026-10-26); the existing equality check remains unchanged. Optional guards for `RoxygenNote` and no `%>%` in executable `R/` code are also not implemented.

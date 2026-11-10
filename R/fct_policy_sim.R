@@ -1,6 +1,7 @@
-# Policy scenario discovery and diagnostics ----
-# Pure functions for policy scenario variable discovery and diagnostics.
-# Stateless and testable without Shiny.
+# Policy lever application and scenario diagnostics ----
+# Pure functions that detect which levers moved, apply them to the survey
+# (apply_policy_to_svy(), apply_policy_delta_to_baseline()) and summarise the
+# scenario. Stateless and testable without Shiny.
 
 
 #' Internal column name holding the per-household SP cash-transfer amount
@@ -1543,7 +1544,7 @@ apply_policy_to_svy <- function(svy,
 
     # Social protection: add per-recipient transfer as SP_TRANSFER_COL column.
     # welfare is the regression outcome (not a covariate), so we tag the
-    # transfer amount here; run_sim_pipeline() (fct_simulations.R) reads the
+    # transfer amount here; run_sim_pipeline() (fct_step2_pipeline.R) reads the
     # column post-prediction and adds it to y_point on the level scale
     # (re-logged when so$transform == "log") so the boost flows into
     # aggregate_with_uncertainty_delta() and matches the decomposition's delta_sp.
@@ -1735,28 +1736,76 @@ apply_policy_delta_to_baseline <- function(svy_baseline,
     if (is.null(s) || is.null(s$pipelines)) {
       stop("Missing saved scenario prediction pipelines.", call. = FALSE)
     }
+    # A forecast window has its own shock plan; its rows stay out of the annual tables.
+    is_forecast <- .step2_is_forecast_scenario(names(saved_scenarios_baseline)[i])
+    channels <- annual_channels
+    if (is_forecast && !is.null(annual_channels$shock)) {
+      channels <- .sp_window_channels(annual_channels, sp_shock_window_plan(
+        s, sp, svy_policy[[SP_ELIGIBLE_COL]], svy_policy, analysis_unit,
+        is_log = identical(so$transform %||% "", "log"),
+        level_factor = outcome_level_scale(rep(1, nrow(svy_policy)), so, .outcome_ppp(svy_policy)),
+        seed = seed
+      ))
+    }
+    window_rows <- list()
+    window_cells <- list()
+    window_reach <- list()
     # Members of one scenario share timestamps: rebuild exposure tables with
     # one cached timestamp decomposition per scenario.
     exposure_cache <- new.env(parent = emptyenv())
     pipes_new <- lapply(seq_along(s$pipelines), function(j) {
       result <- .apply_policy_annual_pipeline(
-        s$pipelines[[j]], annual_channels, run_identity,
-        scenario = names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
+        s$pipelines[[j]], channels, run_identity,
+        # A forecast window is not an annual sample: no annual decomposition rows for it.
+        scenario = if (is_forecast) NULL else names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
         member = names(s$pipelines)[j] %||% paste0("Member ", j),
         year_range = s$year_range %||% c(NA_integer_, NA_integer_),
         chunk_size = chunk_size, owner = s, exposure_cache = exposure_cache
       )
       parts[[length(parts) + 1L]] <<- result$compact
-      shock_parts[[length(shock_parts) + 1L]] <<- result$shock
-      shock_cell_parts[[length(shock_cell_parts) + 1L]] <<- result$shock_cells
-      shock_reach <<- .sp_shock_reach_add(
-        shock_reach, names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
-        result$shock_reach, n_svy_policy
-      )
+      if (is_forecast) {
+        window_rows[[length(window_rows) + 1L]] <<- result$shock
+      } else {
+        shock_parts[[length(shock_parts) + 1L]] <<- result$shock
+      }
+      if (is_forecast) {
+        # Window cell and reach data stay with the window, out of the annual rescoring and reach tables
+        window_cells[[length(window_cells) + 1L]] <<- result$shock_cells
+        window_reach <<- .sp_shock_reach_add(window_reach, "window", result$shock_reach, n_svy_policy)
+      } else {
+        shock_cell_parts[[length(shock_cell_parts) + 1L]] <<- result$shock_cells
+        shock_reach <<- .sp_shock_reach_add(
+          shock_reach, names(saved_scenarios_baseline)[i] %||% paste0("Scenario ", i),
+          result$shock_reach, n_svy_policy
+        )
+      }
       result$pipeline
     })
     names(pipes_new) <- names(s$pipelines)
     s$pipelines <- pipes_new
+    # The same-window reference years get the same policy, so the policy effect is comparable with the
+    # forecast's. They enter no decomposition table.
+    if (length(s$reference_pipelines)) {
+      reference <- Map(function(p, nm) {
+        .apply_policy_annual_pipeline(
+          p, channels, run_identity, scenario = NULL, member = nm,
+          year_range = s$year_range %||% c(NA_integer_, NA_integer_),
+          chunk_size = chunk_size, owner = s, exposure_cache = exposure_cache
+        )
+      }, s$reference_pipelines, names(s$reference_pipelines))
+      s$reference_pipelines <- lapply(reference, `[[`, "pipeline")
+      if (length(window_rows)) {
+        s$shock_forecast <- list(
+          members = do.call(rbind, window_rows),
+          reference = do.call(rbind, lapply(reference, `[[`, "shock")),
+          cells = if (any(!vapply(window_cells, is.null, logical(1)))) {
+            do.call(rbind, c(Filter(Negate(is.null), window_cells), list(make.row.names = FALSE)))
+          },
+          reach = window_reach[["window"]],
+          currency = sp$currency %||% "PPP"
+        )
+      }
+    }
     s$policy_correction_version <- annual_channels$correction_version
     s
   })

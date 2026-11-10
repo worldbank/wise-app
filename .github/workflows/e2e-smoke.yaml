@@ -16,6 +16,11 @@ name: e2e-smoke
 
 permissions: read-all
 
+# A new push to the same ref supersedes the run in flight.
+concurrency:
+  group: e2e-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   e2e-smoke:
     runs-on: ubuntu-latest

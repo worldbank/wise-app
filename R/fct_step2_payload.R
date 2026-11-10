@@ -70,12 +70,13 @@ STEP2_PREPARED_WEATHER_CACHE_VERSION <- "v2"
                                                     perturbation_method,
                                                     stored_breaks, epsilon = 0.001,
                                                     weather_source = "era5land",
-                                                    proj_source = "cmip6") {
+                                                    proj_source = "cmip6",
+                                                    forecast = NULL) {
   survey_cols <- intersect(
     c("code", "year", "survname", "loc_id", "int_month", "timestamp"),
     names(survey_data)
   )
-  list(
+  signature <- list(
     schema = 1L,
     cache_version = STEP2_PREPARED_WEATHER_CACHE_VERSION,
     weather_source_version = WISEAPP_WX_CACHE_VERSION,
@@ -102,8 +103,9 @@ STEP2_PREPARED_WEATHER_CACHE_VERSION <- "v2"
     # P2-4: Step 2 frames carry a continuous companion for binned variables, so
     # a cache written before that cannot be served
     keep_continuous = TRUE
-  ) |>
-    digest::digest(algo = "sha256")
+  )
+  if (!is.null(forecast)) signature$forecast <- forecast
+  digest::digest(signature, algo = "sha256")
 }
 
 .step2_prepared_weather_cache_create <- function(signature, root = NULL) {
@@ -630,6 +632,12 @@ step2_pipeline_context <- function(pipe, shared_context = NULL) {
   }
   pipe$train_aug <- NULL
   pipe$id_col <- NULL
+  if (!is.null(pipe$forecast_metadata)) {
+    forecast_metadata <- pipe$forecast_metadata
+    pipe$forecast_metadata <- NULL
+    pipe$forecast_run <- forecast_metadata$forecast_run
+    pipe$forecast_member <- forecast_metadata$forecast_member
+  }
   pipe
 }
 
@@ -658,6 +666,7 @@ compact_step2_result <- function(result,
   result$new_scenarios <- lapply(result$new_scenarios %||% list(), function(s) {
     s$shared_context <- context
     s$pipelines <- lapply(s$pipelines %||% list(), .compact_pipeline)
+    if (length(s$reference_pipelines)) s$reference_pipelines <- lapply(s$reference_pipelines, .compact_pipeline)
     s
   })
   result$payload_mode <- "compact"
@@ -708,6 +717,7 @@ step2_share_constants <- function(result) {
   if (!is.null(result$new_scenarios)) {
     result$new_scenarios <- lapply(result$new_scenarios, function(s) {
       if (is.list(s) && is.list(s$pipelines)) s$pipelines <- lapply(s$pipelines, share_pipe)
+      if (is.list(s) && length(s$reference_pipelines)) s$reference_pipelines <- lapply(s$reference_pipelines, share_pipe)
       s
     })
   }
@@ -740,6 +750,7 @@ step2_unshare_constants <- function(result) {
   if (!is.null(result$new_scenarios)) {
     result$new_scenarios <- lapply(result$new_scenarios, function(s) {
       if (is.list(s) && is.list(s$pipelines)) s$pipelines <- lapply(s$pipelines, unshare_pipe)
+      if (is.list(s) && length(s$reference_pipelines)) s$reference_pipelines <- lapply(s$reference_pipelines, unshare_pipe)
       s
     })
   }

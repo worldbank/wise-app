@@ -5,8 +5,8 @@ app_step: 3
 depends_on: [notation, policy-framework, linear-model, rif-model, metrics, social-protection]
 symbols: [y, W, D, Delta, tau, beta, gamma, delta, T]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step3.qmd#interpreting-the-decomposition-tab
-code: [R/fct_policy_decompose.R, R/fct_policy_metric_decompose.R, R/fct_decomposition_summary.R, R/fct_policy_sim.R]
-verified_against: f62a72b
+code: [R/fct_policy_decomp.R, R/fct_policy_metric_decomp.R, R/fct_decomp_summary.R, R/fct_policy_sim.R]
+verified_against: 469c000
 ---
 
 # Decomposition of the policy effect into direct and resilience channels
@@ -95,7 +95,7 @@ The resilience effect is the sum of the repositioning and the interaction contri
 
 **Summaries.** For each scenario, each contribution is averaged over the years of a member and then over the members with equal weight, as in Section 3 of [32_metrics](32_metrics.md). A model-year with a missing state is left out of the expected value, and the number of years left out is reported.
 
-**Adverse years.** The decomposition can also be read in a bad year of the baseline. For return period $1/p$, the years of each member are ranked by the baseline value of the metric, and the baseline value in the adverse year is found by rank interpolation, Eq. (4.1) in [32_metrics](32_metrics.md), between two years $r_{\text{lo}}$ and $r_{\text{hi}}$ with weights $1-\theta$ and $\theta$. Every state is read at the same two years with the same weights:
+**Adverse years.** The decomposition can also be read in a bad year of the baseline. For return period $1/p$, the years of each member are ranked by the baseline value of the metric, and the baseline value in the adverse year is found by rank interpolation at the Weibull rank, Eq. (4.1) in [32_metrics](32_metrics.md), between two years $r_{\text{lo}}$ and $r_{\text{hi}}$ with weights $1-\theta$ and $\theta$. Every state is read at the same two years with the same weights:
 
 $$T_k^{\text{adverse}} = (1-\theta)\ T_k^{(r_{\text{lo}})} + \theta\ T_k^{(r_{\text{hi}})} \qquad \text{(5.3)}$$
 
@@ -131,6 +131,7 @@ For each weather variable (and each bin of a binned variable), the app summarise
 - A complete derivative of the nonlinear model: only the repositioning and interaction channels are included, and not every nonlinear term.
 - For the average poverty metric, which uses only positive welfare, the households counted can differ across states. The population is not a fixed eligible subpopulation.
 - The effect of a policy on the position of a household in the weather-year distribution of a scenario: positions are fixed from the baseline survey.
+- Seasonal forecast windows. The decomposition reads the annual scenarios only; the forecast window shows the policy effect without a split into channels ([34_seasonal_forecast](34_seasonal_forecast.md), Section 5).
 
 ## In the app
 
@@ -147,17 +148,17 @@ User guide: [Interpreting the Decomposition tab](https://github.com/worldbank/wi
 
 | Concept | Equation | Code |
 |---|---|---|
-| Channel kernel, quantile model | (1.1), (2.1), (3.1), (3.2) | `R/fct_policy_decompose.R` `.compute_rif_channels()` |
-| Channel kernel, linear model | (1.1), (3.2) | `R/fct_policy_decompose.R` `.decompose_ols()` |
-| Household decomposition entry point | (3.3) | `R/fct_policy_decompose.R` `decompose_policy_effect()`, `.build_decomposition_context()` |
-| Covariate changes | (1.1) | `R/fct_policy_decompose.R` `.compute_policy_deltas()` |
+| Channel kernel, quantile model | (1.1), (2.1), (3.1), (3.2) | `R/fct_policy_decomp.R` `.compute_rif_channels()` |
+| Channel kernel, linear model | (1.1), (3.2) | `R/fct_policy_decomp.R` `.decompose_ols()` |
+| Household decomposition entry point | (3.3) | `R/fct_policy_decomp.R` `decompose_policy_effect()`, `.build_decomposition_context()` |
+| Covariate changes | (1.1) | `R/fct_policy_decomp.R` `.compute_policy_deltas()` |
 | Matching variables to terms | (1.1) | `R/fct_policy_sim.R` `.policy_lever_terms()` |
-| Channels per prediction row | (1.2), Setup, (3.3) | `R/fct_policy_metric_decompose.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()` |
-| Outcome-unit channels | (4.1) | `R/fct_policy_metric_decompose.R` `.policy_level_channels()` |
-| Cumulative states and contributions | (5.1), (5.2) | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()`, `.policy_metric_contributions()` |
-| Summary across years and members | Section 5 | `R/fct_policy_metric_decompose.R` `.policy_metric_summary()`, `.policy_metric_decomposition()` |
-| Adverse-year read | (5.3) | `R/fct_policy_metric_decompose.R` `.policy_metric_tails()` |
-| Decile groups | Section 5 | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()`; `R/fct_decomposition_summary.R` `.decomposition_outcome_deciles()` |
-| Mechanism diagnostics | Section 6 | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()` |
-| Outcome-unit summary of channels | (4.1) | `R/fct_decomposition_summary.R` `.decomposition_outcome_channels()`, `.decomposition_outcome_summary()` |
-| Check that states end at the policy arm | (5.2) | `R/fct_policy_metric_decompose.R` `.policy_metric_pipeline()` |
+| Channels per prediction row | (1.2), Setup, (3.3) | `R/fct_policy_metric_decomp.R` `.prepare_policy_annual_channels()`, `.policy_annual_channel_block()` |
+| Outcome-unit channels | (4.1) | `R/fct_policy_metric_decomp.R` `.policy_level_channels()` |
+| Cumulative states and contributions | (5.1), (5.2) | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()`, `.policy_metric_contributions()` |
+| Summary across years and members | Section 5 | `R/fct_policy_metric_decomp.R` `.policy_metric_summary()`, `.policy_metric_decomposition()` |
+| Adverse-year read | (5.3) | `R/fct_policy_metric_decomp.R` `.policy_metric_tails()` |
+| Decile groups | Section 5 | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()`; `R/fct_decomp_summary.R` `.decomposition_outcome_deciles()` |
+| Mechanism diagnostics | Section 6 | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()` |
+| Outcome-unit summary of channels | (4.1) | `R/fct_decomp_summary.R` `.decomposition_outcome_channels()`, `.decomposition_outcome_summary()` |
+| Check that states end at the policy arm | (5.2) | `R/fct_policy_metric_decomp.R` `.policy_metric_pipeline()` |

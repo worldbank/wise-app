@@ -159,6 +159,16 @@ it: `Rscript dev/ui_drive.R open <url>`.
   data source." once metadata loads. Local data comes from `WISEAPP_DATA_PATH`
   (`.Renviron`). If it never connects, check that the variable is set without
   printing `.Renviron`, and read the app log.
+- **A run without an optional data file** (for example the ENSO tables): build a
+  data tree of symlinks to every top-level entry of the real data root, with
+  a real `metadata` folder that links each file except the one to leave out
+  (read the root from R, `Sys.getenv("WISEAPP_DATA_PATH")`; never open
+  `.Renviron`). Start the app with `R_ENVIRON_USER` pointing at a file with
+  `WISEAPP_DATA_PATH=<tree>`, `WISEAPP_DATA_SOURCE=local`, and both `R_LIBS` and
+  `R_LIBS_USER` set to your library paths. With only `R_LIBS` the app picked an
+  older `RcppParallel` from `~/Library/R` and failed on `qs2`. The Step 1 to
+  Step 2 flow takes about 3 minutes; a small check (the Step 1 survey stats
+  text) is enough for an element that only reads that file.
 - **Without private data:** `tests/e2e/smoke.R` builds a small fixture data
   folder (`batch_fixture_tree(dir, projections = TRUE)` from
   `tests/testthat/helper-batch-fixture.R`, after `pkgload::load_all()`; economy

@@ -22,6 +22,36 @@
   }
 }
 
+# Projection period presets of the Climate projections flyout. The three slider inputs
+# `fut_period_1..3` stay the settings (config import, run signature); the preset pills and the custom slider
+# are a view on them.
+.STEP2_PERIOD_PRESETS <- list(
+  "2025-2035" = c(2025L, 2035L), "2030-2050" = c(2030L, 2050L), "2040-2060" = c(2040L, 2060L)
+)
+
+# Slider values (up to 3) of a pill selection: the selected presets in order, then the custom period.
+# Unused slots are the empty period c(2015, 2015).
+.step2_period_slots <- function(selected, custom) {
+  per <- unname(.STEP2_PERIOD_PRESETS[intersect(names(.STEP2_PERIOD_PRESETS), selected)])
+  if ("custom" %in% selected) per <- c(per, list(as.integer(custom[1:2])))
+  per <- utils::head(per, 3L)
+  c(per, rep(list(c(2015L, 2015L)), 3L - length(per)))
+}
+
+# Pill selection implied by slider values: preset pills for periods that match a preset, "custom" (with its
+# period) for the first one that does not.
+.step2_period_selection <- function(slots) {
+  per <- Filter(Negate(is.null), lapply(slots, .step2_valid_future_period))
+  hit <- vapply(per, function(p) {
+    any(vapply(.STEP2_PERIOD_PRESETS, function(q) identical(p, q), logical(1)))
+  }, logical(1))
+  presets <- names(.STEP2_PERIOD_PRESETS)[vapply(
+    .STEP2_PERIOD_PRESETS, function(q) any(vapply(per, identical, logical(1), q)), logical(1)
+  )]
+  custom <- if (any(!hit)) per[!hit][[1L]]
+  list(selected = c(presets, if (!is.null(custom)) "custom"), custom = custom)
+}
+
 # Baseline survey ----
 
 .step2_filter_baseline_surveys <- function(selected_surveys,
@@ -262,12 +292,13 @@ step2_hist_label <- function(hist_years) {
 #' @param stored_breaks Bin breaks stored at weather load.
 #' @param slim Give the run the slim model copy (the worker snapshot). The
 #'   live fit stays untouched either way.
+#' @param forecast Optional verified run metadata, target start and window length.
 #' @return A named list; see `.step2_compute_required`.
 #' @noRd
 wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
                              residuals = "original", coef_uncertainty = TRUE,
                              propagate_all = FALSE, stored_breaks = NULL,
-                             slim = TRUE) {
+                             slim = TRUE, forecast = NULL) {
   periods <- Filter(Negate(is.null), lapply(periods, .step2_valid_future_period))
   has_future <- length(ssps) > 0L && length(periods) > 0L
   is_rif <- identical(mf$engine %||% "fixest", "rif")
@@ -300,6 +331,7 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
     taus = if (is_rif) mf$taus else NULL,
     weather_cols = if (is_rif) mf$weather_terms else NULL
   )
+  if (!is.null(forecast)) out$forecast <- forecast
   attr(out, "residual_match") <- residual_match
   out
 }
@@ -320,12 +352,20 @@ wise_step2_input <- function(sw, so, svy, ss, mf, cp, hist_years, periods, ssps,
 #' @param residuals_requested The rule the user asked for, or `NULL`.
 #' @param residuals_effective The rule the run used (`input$residuals` of
 #'   `wise_step2_input()`, which forces "none" for RIF), or `NULL`.
-#' @return `result`, with the two fields set on `hist_sim_result`.
+#' @param baseline_months Share of the baseline weight in each interview month
+#'   (`enso_baseline_months()`), or `NULL`. Kept beside `sim_summary`, not in it: only the ENSO
+#'   labels of the Results read it, and Step 3 does not copy it (D1 of `review/archive/enso.md`).
+#' @param forecast_run `init` and `model_id` of the forecast run, or `NULL`. Beside `sim_summary`
+#'   for the same reason: only the ENSO outlook of the Results reads it.
+#' @return `result`, with the fields set on `hist_sim_result`.
 #' @noRd
 wise_step2_annotate <- function(result, sw, hist_years, baseline_label,
                                 baseline_dropped = NULL, residual_match = NULL,
-                                residuals_requested = NULL, residuals_effective = NULL) {
+                                residuals_requested = NULL, residuals_effective = NULL,
+                                baseline_months = NULL, forecast_run = NULL) {
   result$hist_sim_result$hist_label <- step2_hist_label(hist_years)
+  result$hist_sim_result$baseline_months <- baseline_months
+  result$hist_sim_result$forecast_run <- forecast_run
   result$hist_sim_result$sim_summary <- list(
     weather = sw,
     historical_years = unlist(hist_years, use.names = FALSE),

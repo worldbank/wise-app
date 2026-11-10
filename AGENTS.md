@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for coding agents (Claude Code, Kilo, Codex and others) working in this repository. This file holds the rules and a map; the detail lives in the files it points to. Read those only when the task needs them.
+Guidance for coding agents working in this repository. This file holds the rules and a map; the detail lives in the files it points to. Read those only when the task needs them.
 
 ## What this is
 
@@ -10,7 +10,7 @@ Guidance for coding agents (Claude Code, Kilo, Codex and others) working in this
 
 - **Git:** work on `dev` or a branch off it (`origin` is `worldbank/wise-app`). Do not push, deploy or upload without an explicit go-ahead.
 - **Secrets and data:** never open or print `.Renviron` or credentials. Real data is at `WISEAPP_DATA_PATH`; read it from R (`Sys.getenv("WISEAPP_DATA_PATH")`), because the shell does not load `.Renviron`. The sibling repo `wise-app-data` is data-prep code only, with no produced datasets.
-- **Pinned tools:** `devtools::document()` only with roxygen2 7.3.3 (`RoxygenNote`; 8.x rewrites `NAMESPACE`). the DuckDB engine version must equal `.DUCKDB_BUNDLE_VERSION` (`R/fct_load_data.R`); the bundled extensions are built for it.
+- **Pinned tools:** `devtools::document()` only with roxygen2 7.3.3 (`RoxygenNote`; 8.x rewrites `NAMESPACE`). the DuckDB engine version must equal `.DUCKDB_BUNDLE_VERSION` (`R/fct_data_load.R`); the bundled extensions are built for it.
 - **Version:** `DESCRIPTION` and `inst/golem-config.yml` must match; regenerate `manifest.json` after.
 - **Protected areas** (numerics, async code, contract surface; list in `review/code_hygiene.md`): change only deliberately, with tests that cover the change.
 - **`year` type contract:** do not unify the type of `year` across stages without parity runs on every engine (CR-CQ-07, see `ARCHITECTURE.md`).
@@ -44,13 +44,11 @@ Install dependencies with `pak::local_install_deps()` or from `DESCRIPTION` `Imp
 | `docs/` | Methods pages (equations, assumptions); index `docs/README.md`. Each ends with an Implementation map and records `verified_against` |
 | `batch/` | Batch runs (`targets`): `batch/README.md`, table reference `batch/docs/tables.md` |
 | `review/` | Standards, open items and plans; index in `review/README.md`. Actionable maintenance by category and item lifecycle: `review/TRACKING.md`; finished work in `review/archive/` |
-| `dev/` | `run_dev.R`, `00_make_manifest.R` (Connect manifest), `ui_drive.R` (headless-Chrome driver), `docs_check.R` / `docs_index.R`, `agents_check.R` (paths, functions and sizes named in these instructions; run in CI), parity scripts `batch_parity_bfa*.R`, benchmarks in `dev/bench/` |
+| `dev/` | `run_dev.R`, `00_make_manifest.R` (Connect manifest), `ui_drive.R` (headless-Chrome driver), `docs_check.R` / `docs_index.R`, `agents_check.R` (paths, functions and sizes named in these instructions; run in CI), `parity_enso.R`, forecast fixture tools in `dev/forecast/`, benchmarks in `dev/bench/`; index in `dev/README.md` |
+| `batch/parity/` | Real-data parity scripts `batch_parity_bfa*.R` (batch tables against the app), run per release |
+| `roadmap/` | Working plans for features in flight (state, decisions, what remains); index in `roadmap/README.md`. Backlog is in GitHub issues |
 | `tests/testthat/` | Unit tests; `tests/e2e/smoke.R` browser smoke with axe-core |
 | `.agents/skills/` | Skills, the one shared copy (see Skills) |
-
-## Pipeline
-
-Step 0 Overview, Step 1 Modelling, Step 2 Simulation, Step 3 Policy scenarios; data flows forward. Map of the code by step: `ARCHITECTURE.md`. Methods: `docs/README.md`.
 
 ## After you change X, also do Y
 
@@ -64,12 +62,12 @@ Step 0 Overview, Step 1 Modelling, Step 2 Simulation, Step 3 Policy scenarios; d
 | UI (modules, CSS, charts, maps) | Check in the running app (skill `wise-ui-check`); `tests/e2e/smoke.R` for larger changes |
 | Performance | Skill `wise-benchmark` |
 | `R/`, `inst/` or dependencies, before a deploy | `Rscript dev/00_make_manifest.R`; settings in `DEPLOYMENT.md` |
-| DuckDB version | Rebuild `inst/duckdb_extensions/`, update the `DESCRIPTION` minimum, the version constant and the SHA-256 values in `R/fct_load_data.R` together (`DEPLOYMENT.md`) |
+| DuckDB version | Rebuild `inst/duckdb_extensions/`, update the `DESCRIPTION` minimum, the version constant and the SHA-256 values in `R/fct_data_load.R` together (`DEPLOYMENT.md`) |
 | A review finding | Close it per the Working rules in `review/TRACKING.md` |
 
 ## Skills
 
-Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If your tool does not load skills from there, read the `SKILL.md` before doing that kind of task. To make a tool load them, link or copy the folder into the tool's own skills folder (not tracked by git); Claude Code, from the repo root: `ln -s ../.agents/skills .claude/skills` (`.claude/skills` is git-ignored). Edit skills only in `.agents/skills/`. Setup for other tools: README, "Agent skills".
+Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If your tool does not load skills from there, read the `SKILL.md` before doing that kind of task. Setup guidance is in `README.md`, "Agent skills". Edit skills only in `.agents/skills/`.
 
 | Skill | Use when |
 |---|---|
@@ -89,7 +87,6 @@ Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If y
 - Run from the source tree, as CI does. The environment is pinned by `tests/testthat/setup-env.R` (caches in a temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R`; do not rely on the developer's `.Renviron`.
 - New tests go in `test-<R file>.R`. A fixture builder moves into a `helper-*.R` file only when two or more test files use it.
 - Not covered by R tests: MapLibre rendering, `conditionalPanel` visibility, `update*Input()` on config import and the real Step 0 to 3 flow. Check them with `dev/ui_drive.R` (skill `wise-ui-check`).
-- Coverage, browser smoke and batch test details: `ARCHITECTURE.md`, Testing details.
 
 ## Keeping these instructions current
 
