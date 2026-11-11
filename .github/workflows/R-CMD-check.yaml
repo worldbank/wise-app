@@ -65,8 +65,12 @@ jobs:
           args: 'c("--no-manual", "--as-cran", "--no-tests")'
           build_args: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
 
+      # Test files run in parallel (Config/testthat/parallel in DESCRIPTION); the
+      # public-repo runner has 4 vCPUs.
       - name: Tests
         shell: Rscript {0}
+        env:
+          TESTTHAT_CPUS: "4"
         run: |
           options(testthat.progress.max_fails = 1000)
           testthat::test_local(stop_on_failure = TRUE)

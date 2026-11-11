@@ -75,5 +75,6 @@ Suggests:
     xgboost,
     yaml
 Config/testthat/edition: 3
+Config/testthat/parallel: true
 URL: https://github.com/worldbank/wise-app
 BugReports: https://github.com/worldbank/wise-app/issues
