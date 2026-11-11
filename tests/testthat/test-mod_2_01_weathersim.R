@@ -254,7 +254,8 @@ mock_forecast_run <- function() {
   list(
     id = "2026-10", product = "seasonal", lead_unit = "month", label = "October 2026", model = "ECMWF SEAS5",
     init = as.Date("2026-10-01"), released = as.Date("2026-10-06"), next_release = as.Date("2026-11-06"),
-    observed_through = as.Date("2025-12-01"), n_members = 51L, n_leads = 6L
+    observed_through = as.Date("2025-12-01"), n_members = 51L, n_leads = 6L,
+    variables = c("t", "r")
   )
 }
 
@@ -302,7 +303,7 @@ test_that("with a catalogue run the window clamps and joins the summary", {
   })
 })
 
-test_that("a local catalogue drives real forecast selection and versioned signatures", {
+test_that("a catalogue drives real forecast selection and versioned signatures", {
   run <- mock_forecast_run()
   run$experimental <- TRUE
   run$status <- "draft"

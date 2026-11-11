@@ -11,13 +11,13 @@ verified_against: 469c000
 
 # Seasonal forecast scenario
 
-> **Status:** thirty-three countries have monthly runs. The October 2026 run is a draft for DEV testing, and runs from November 2026 are published by the data pipeline. The app reads adjusted forecast weather from the data root. Skill differs by season, lead and variable, so the app reports the flags. Draft runs are not offered on Posit Connect.  Step 3 applies static policies to forecast windows, and a shock-responsive transfer with ex-post payments, with the national gate and the targeting layers read per member (Section 5).
+> **Status:** thirty-three countries have monthly runs, published by the data pipeline from the November 2026 initialization. The app reads adjusted forecast weather from the data root. Skill differs by season, lead and variable, so the app reports the flags. Step 3 applies static policies to forecast windows, and a shock-responsive transfer with ex-post payments, with the national gate and the targeting layers read per member (Section 5).
 
 > A seasonal forecast is one more weather state, next to the historical record and the climate scenarios. It describes one dated target window, for example November to January, by the members of a forecast ensemble. The fitted model, the residual treatment and the metrics are the ones used for every other scenario.
 
 ## Setup
 
-The forecast comes from a seasonal prediction system run once a month, ECMWF SEAS5 (system 51) from the Copernicus Climate Change Service [@c3sseasonal2018]. Each run gives monthly values for the next six months for every **member** $m$ of an ensemble (51 members for ECMWF SEAS5). The forecast covers monthly mean temperature (`t`) and rainfall (`r`) for one country. Symbols are in [00_notation](00_notation.md): $\ell$ location, $\mu$ calendar month, $v$ weather variable, $m$ member.
+The forecast comes from a seasonal prediction system run once a month, ECMWF SEAS5 (system 51) from the Copernicus Climate Change Service [@c3sseasonal2018]. Each run gives monthly values for the next six months for every **member** $m$ of an ensemble (51 members for ECMWF SEAS5). The forecast covers, for one country, the variables its run file publishes: monthly mean temperature (`t`), rainfall (`r`), and minimum and maximum temperature (`tn`, `tx`). Symbols are in [00_notation](00_notation.md): $\ell$ location, $\mu$ calendar month, $v$ weather variable, $m$ member.
 
 The question the scenario answers is conditional: what does the fitted model imply for the target window if weather in each location follows member $m$, holding the survey's other characteristics fixed? It is not a forecast of welfare or poverty.
 
@@ -77,7 +77,7 @@ The band across members shows how much the forecast weather moves the model's ou
 
 ## Limitations and what is not modelled
 
-- The forecast provides monthly mean 2 m temperature (`t`) and rainfall (`r`). Minimum and maximum temperature (`tn`, `tx`) could be supported after their retrieval, adjustment and validation are added. Models using variables outside the prepared data cannot use the current forecast. Rainfall skill is weak or absent at most leads, so a model with rainfall is flagged by its worst variable. The latest observed context months can be preliminary (ERA5-Land-T, source `era5land_t`) for both variables. Daily extremes, soil moisture and drought indices remain outside the monthly pilot's scope.
+- The forecast provides the variables its run file publishes: monthly mean 2 m temperature (`t`), rainfall (`r`), and minimum and maximum temperature (`tn`, `tx`). A model uses any of them that its fitted weather needs; a model that needs a variable the run does not carry (for example `tx35`) cannot use the forecast, and the app says which variable is missing. A newly published variable needs no change in the app, but its observed ERA5-Land counterpart must exist for the same-window reference. Models using variables outside the prepared data cannot use the current forecast. Rainfall skill is weak or absent at most leads, so a model with rainfall is flagged by its worst variable. The latest observed context months can be preliminary (ERA5-Land-T, source `era5land_t`) for both variables. Daily extremes, soil moisture and drought indices remain outside the monthly pilot's scope.
 - One forecast system. No weighting or blending of systems.
 - Skill is unproven for most seasons and leads at a single start month. A real-time check over starts since 2017, pooled over start months and country means only, found no mean offset in temperature and a lower error than the recent climate (`wise-app-data`, `dev/forecast_adjustment_test.md`, Section 5). A season-level backtest is still needed before any season is shown without a warning.
 - Welfare responses are conditional on the fitted model; no adaptation within the target window.
@@ -106,7 +106,7 @@ User guide: [wise-app-docs](https://github.com/worldbank/wise-app-docs).
 | Forecast controls, window and lag text | 2 | `R/fct_step2_forecast.R` `.step2_forecast_window()`, `.step2_forecast_lag_text()` |
 | Reach-back of the fitted predictors | 2 | `R/fct_step2_forecast.R` `.step2_forecast_lag()` |
 | Predictor-month availability and allowed starts | 2 | `R/fct_step2_forecast.R` `.step2_forecast_months()`, `.step2_forecast_starts()` |
-| Variables the forecast provides | 1 | `R/fct_step2_forecast.R` `.step2_forecast_unsupported()`, `.STEP2_FORECAST_VARS` |
+| Variables the forecast provides | 1 | `R/fct_step2_forecast.R` `.step2_forecast_unsupported()` (the selected run's variables); `R/fct_forecast_catalogue.R` variable names |
 | Forecast scenario name and run signature | 3 | `R/fct_step2_forecast.R` `.step2_forecast_display_key()`, `.step2_forecast_signature()` |
 | Local run discovery and publication identity | 1 | `R/fct_forecast_catalogue.R` `.forecast_catalogue_runs()` |
 | Same-window reference weather (`refyear_<year>` frames) | 4 | `R/fct_forecast_weather.R` `.get_forecast_weather(reference_years = )` |

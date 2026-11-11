@@ -104,7 +104,7 @@ mod_2_01_weathersim_ui <- function(id) {
     ),
 
     # Seasonal forecast flyout ----
-    # Local experimental forecast runs. Shown only for a country with a forecast catalogue (or a catalogue
+    # Seasonal forecast runs. Shown only for a country with a forecast catalogue (or a catalogue
     # error, so it is not silently hidden).
     shiny::conditionalPanel(
       condition = paste0("output['", ns("forecast_available"), "']"),
@@ -554,7 +554,7 @@ mod_2_01_weathersim_server <- function(id,
       runs <- forecast_runs()
       if (!is.null(forecast_catalogue_error())) return(forecast_catalogue_error())
       .step2_forecast_block_reason(
-        runs, .step2_forecast_unsupported(forecast_weather_names()), forecast_months()
+        runs, .step2_forecast_unsupported(forecast_weather_names(), forecast_run()), forecast_months()
       )
     })
 
@@ -717,7 +717,7 @@ mod_2_01_weathersim_server <- function(id,
     output$forecast_info_ui <- shiny::renderUI({
       run <- forecast_run()
       wx <- unique(forecast_weather_names())
-      bad <- .step2_forecast_unsupported(wx)
+      bad <- .step2_forecast_unsupported(wx, run)
       info_popover(
         title = "Seasonal forecast", placement = "bottom",
         shiny::p(

@@ -56,8 +56,10 @@ test_that("the lag sentence names observed and forecast months before the window
 
 test_that("the forecast is blocked with a reason when it cannot be used", {
   expect_match(.step2_forecast_block_reason(NULL, character(0)), "No seasonal forecast")
-  expect_identical(.step2_forecast_unsupported(c("t", "tn", "tx", "r", "tx35", "t")),
-    c("tn", "tx", "tx35"))
+  run_vars <- list(variables = c("t", "r", "tn", "tx"))
+  expect_identical(.step2_forecast_unsupported(c("t", "tn", "tx", "r", "tx35", "t"), run_vars), "tx35")
+  expect_identical(.step2_forecast_unsupported(c("t", "r"), list(variables = "t")), "r")
+  expect_identical(.step2_forecast_unsupported(c("t", "tn")), c("t", "tn"))
   expect_match(
     .step2_forecast_block_reason(list(run), "tx35"), "uses tx35", fixed = TRUE
   )

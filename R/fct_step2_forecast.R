@@ -3,9 +3,6 @@
 # Local forecast runs come from the validated country catalogue
 # (`.forecast_catalogue_runs()`).
 
-# Initial data-preparation scope, not a permanent limit on forecast variables.
-.STEP2_FORECAST_VARS <- c("t", "r")
-
 # Months of context shown either side of the forecast months on the strip.
 .STEP2_FORECAST_BEFORE <- 2L
 .STEP2_FORECAST_AFTER <- 0L
@@ -170,11 +167,12 @@
   paste0(if (length(parts)) paste0("Lagged predictors also use ", paste(parts, collapse = " and "), "."), more)
 }
 
-#' Weather variables of the fitted model that the forecast does not provide
+#' Weather variables of the fitted model that the selected forecast run does not provide
 #' @param weather_names Character vector of selected weather variable names.
+#' @param run One element of `.step2_forecast_runs()`, or NULL when there is no run.
 #' @noRd
-.step2_forecast_unsupported <- function(weather_names) {
-  setdiff(unique(as.character(weather_names)), .STEP2_FORECAST_VARS)
+.step2_forecast_unsupported <- function(weather_names, run = NULL) {
+  setdiff(unique(as.character(weather_names)), as.character(run$variables %||% character(0)))
 }
 
 #' Why the forecast cannot be used, or NULL when it can
@@ -188,7 +186,7 @@
   if (length(unsupported)) {
     return(paste0(
       "Not available for this model: it uses ", paste(unsupported, collapse = ", "),
-      ", which the current forecast data preparation does not provide. Refit without ",
+      ", which the selected forecast run does not provide. Refit without ",
       if (length(unsupported) == 1L) "it" else "them", " in Step 1 to enable."
     ))
   }

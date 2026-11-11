@@ -25,10 +25,10 @@ guide is `batch/README.md`; the design is `review/archive/batch_pipeline_plan.md
 
 ### Experimental Forecast Windows
 
-An optional `sim.forecast` descriptor selects local pilot data, for example
+An optional `sim.forecast` descriptor selects pilot data, for example
 `{product: seasonal, run: '2026-10', start: '2026-11', len: 3}`. The run is a
-country catalogue ID. Forecast data is currently local-only; preparation starts
-with `t`. The worker resolves and validates the run manifest and immutable file
+country catalogue ID. Forecast variables are the ones the
+run file declares. The worker resolves and validates the run manifest and immutable file
 identities. A policy section is allowed with a forecast. A shock-responsive
 transfer (`sp_type: shock`) then needs a weather trigger with local, ex-post, fixed
 payments and no dynamic targeting; other designs are rejected. It reads the mean

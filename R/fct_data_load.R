@@ -588,7 +588,9 @@ collect_deterministic <- function(data, keys = NULL) {
   switch(format,
     parquet = sprintf("read_parquet(%s%s)", path_sql, union_arg),
     csv     = sprintf("read_csv_auto(%s%s)", path_sql, union_arg),
-    stop("load_data(): Unsupported format '", format, "'. Use 'parquet' or 'csv'.")
+    text    = sprintf("read_text(%s)", path_sql),
+    blob    = sprintf("read_blob(%s)", path_sql),
+    stop("load_data(): Unsupported format '", format, "'. Use 'parquet', 'csv', 'text' or 'blob'.")
   )
 }
 

@@ -39,6 +39,8 @@ make_forecast_weather_fixture <- function() {
     t = as.numeric(format(history_months, "%Y")) + as.integer(format(history_months, "%m")) / 100,
     check.names = FALSE
   )
+  # tn is t plus 10 degrees, so a model on tn must give the same deviations as one on t.
+  historical$tn <- historical$t + 10
   arrow::write_parquet(
     historical,
     file.path(root, "hazard", "weather", "historical", "TST", "TST_era5land.parquet")
@@ -63,8 +65,9 @@ make_forecast_weather_fixture <- function() {
   forecast$t <- ifelse(is_forecast,
     30 + forecast$member * 10 + match(forecast$timestamp, forecast_months),
     as.numeric(format(forecast$timestamp, "%Y")) + as.integer(format(forecast$timestamp, "%m")) / 100)
+  forecast$tn <- forecast$t + 10
   forecast <- forecast[order(forecast$member, forecast$timestamp),
-    c("member", "h3", "timestamp", "lead_month", "source", "t")]
+    c("member", "h3", "timestamp", "lead_month", "source", "t", "tn")]
   forecast_path <- "hazard/weather/forecasts/TST/run.parquet"
   arrow::write_parquet(forecast, file.path(root, forecast_path))
 
@@ -235,4 +238,17 @@ test_that("reference years are not built when none are requested", {
     fx$run, start = "2024-01", len = 1L
   )
   expect_length(attr(result, "forecast_reference"), 0L)
+})
+
+test_that("the forecast uses any variable the run provides, not only t and r", {
+  fx <- make_forecast_weather_fixture()
+  fx$selected_weather <- rbind(fx$selected_weather, transform(fx$selected_weather, name = "tn"))
+  fx$run$variables <- c("t", "tn")
+  result <- .get_forecast_weather(
+    fx$survey_data, fx$selected_surveys, fx$selected_weather, fx$connection_params,
+    fx$run, start = "2024-01", len = 3L
+  )
+  expect_equal(result$member_0$tn, result$member_0$t)
+  expect_equal(result$member_1$tn, result$member_1$t)
+  expect_equal(result$member_1$t, c(44, 45, 46) - c(2005.51, 2005.52, 2005.53))
 })
