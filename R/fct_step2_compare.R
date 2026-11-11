@@ -1951,7 +1951,7 @@ model_robustness_data <- function(ts_tbl, band_q = c(lo = 0.10, hi = 0.90)) {
 #' Interactive pointrange (Step 2 Results point-range chart)
 #'
 #' echarts renderer for the Step 2 Results surface. Reuses the data
-#' preparation in [.pointrange_prep()].
+#' preparation in `.pointrange_prep()`.
 #' Nested bands are drawn as floating bar pairs (transparent base + coloured
 #' segment) and the central estimate as an open scatter marker, matching the
 #' Static linerange widths: ensemble 6pt -> barWidth 14, annual 3.5pt -> 8,
@@ -1961,7 +1961,7 @@ model_robustness_data <- function(ts_tbl, band_q = c(lo = 0.10, hi = 0.90)) {
 #' when a `source` column is present.
 #'
 #' @return An `echarts4r` widget (never NULL; empty states return
-#'   [echart_blank()] with the corresponding empty-state message).
+#'   `echart_blank()` with the corresponding empty-state message).
 #' @noRd
 echart_pointrange_climate <- function(bands_tbl,
                                       x_label = "",
