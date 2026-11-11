@@ -656,14 +656,21 @@ mod_2_01_weathersim_server <- function(id,
     shiny::outputOptions(output, "forecast_strip_ui", suspendWhenHidden = FALSE)
     shiny::outputOptions(output, "forecast_body_ui", suspendWhenHidden = FALSE)
 
+    # The run's skill table is read once per run and connection, not on every change of the window.
+    forecast_skill_table <- reactive({
+      run <- forecast_run()
+      if (is.null(run)) return(NULL)
+      tryCatch(.forecast_skill_table(connection_params(), run), error = function(e) NULL)
+    })
+
     # One line: the target months and their lead, then the skill note when skill is missing or weak.
     output$forecast_readout_ui <- shiny::renderUI({
       w <- forecast_window()
       if (!forecast_on() || is.null(w)) return(NULL)
       lead <- if (w$lead_from == w$lead_to) w$lead_from else paste0(w$lead_from, "\u2013", w$lead_to)
       skill <- tryCatch(
-        .forecast_skill_for_window(
-          connection_params(), forecast_run(), w$start, w$idx[[2L]] - w$idx[[1L]] + 1L,
+        .forecast_skill_summary(
+          forecast_skill_table(), forecast_run(), w$start, w$idx[[2L]] - w$idx[[1L]] + 1L,
           variables = forecast_weather_names()
         ),
         error = function(e) NULL
