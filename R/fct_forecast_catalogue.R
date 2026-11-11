@@ -82,10 +82,21 @@
   } else {
     rep(as.character(manifest$adjustment), length(manifest$variables))
   }
-  if (!length(manifest_adjustments) || anyNA(manifest_adjustments) ||
-      !all(manifest_adjustments %in% .FORECAST_ADJUSTMENTS)) {
+  if (!length(manifest_adjustments) || anyNA(manifest_adjustments)) {
     stop("Seasonal forecast must declare a supported adjustment.", call. = FALSE)
   }
+  # Variables with an adjustment this app does not know (for example a newly published derived variable) are
+  # left out of the run on both sides, so a newer publisher does not block the variables that are supported.
+  manifest_supported <- manifest_adjustments %in% .FORECAST_ADJUSTMENTS
+  if (!any(manifest_supported)) {
+    stop("Seasonal forecast must declare a supported adjustment.", call. = FALSE)
+  }
+  run_variables <- strsplit(run$variables, ";", fixed = TRUE)[[1L]]
+  run_adjustments <- strsplit(run$adjustment, ";", fixed = TRUE)[[1L]]
+  if (length(run_variables) != length(run_adjustments)) {
+    stop("Seasonal forecast catalogue and manifest disagree.", call. = FALSE)
+  }
+  run_supported <- run_adjustments %in% .FORECAST_ADJUSTMENTS
   for (field in c("init", "released", "next_release", "observed_through")) {
     run[[field]] <- as.Date(run[[field]], format = "%Y-%m-%d")
     if (is.na(run[[field]])) stop("Invalid seasonal forecast date.", call. = FALSE)
@@ -99,7 +110,6 @@
     stop("Invalid seasonal forecast member range.", call. = FALSE)
   }
   members <- seq.int(member_bounds[1L], member_bounds[2L])
-  run$variables <- strsplit(run$variables, ";", fixed = TRUE)[[1L]]
   # The manifest carries `context_months` as a count or as list(n, first, last, sources).
   manifest_context_n <- if (is.list(manifest$context_months)) manifest$context_months$n else manifest$context_months
   if (!identical(manifest$product, run$product) || !identical(manifest$lead_unit, run$lead_unit) ||
@@ -109,8 +119,9 @@
       length(manifest$model) != 1L || !nzchar(manifest$model) ||
       length(manifest$run_id) != 1L || !startsWith(manifest$run_id, paste0(code, "_")) ||
       !length(manifest$variables) || !all(grepl(.FORECAST_VARIABLE_NAME, manifest$variables)) ||
-      anyDuplicated(manifest$variables) || !identical(run$variables, as.character(manifest$variables)) ||
-      !identical(run$adjustment, paste(manifest_adjustments, collapse = ";")) ||
+      anyDuplicated(manifest$variables) ||
+      !identical(run_variables[run_supported], as.character(manifest$variables)[manifest_supported]) ||
+      !identical(run_adjustments[run_supported], unname(manifest_adjustments[manifest_supported])) ||
       !identical(manifest$h3$type, "int64") || !identical(as.integer(manifest$h3$resolution), 6L) ||
       is.na(run$n_members) || run$n_members < 1L || is.na(run$n_leads) || run$n_leads < 1L ||
       !identical(as.integer(manifest$n_members), run$n_members) || length(members) != run$n_members ||
@@ -122,7 +133,9 @@
       !identical(run$observed_through, .step2_month_add(run$init, -1L))) {
     stop("Seasonal forecast catalogue and manifest disagree.", call. = FALSE)
   }
-  checksum <- manifest$output_sha256[[basename(run$file)]]
+  run$variables <- run_variables[run_supported]
+  run$adjustment <- paste(run_adjustments[run_supported], collapse = ";")
+  checksum <-manifest$output_sha256[[basename(run$file)]]
   if (length(checksum) != 1L || !identical(checksum, run$data_sha256)) {
     stop("Seasonal forecast data checksum does not match its manifest.", call. = FALSE)
   }

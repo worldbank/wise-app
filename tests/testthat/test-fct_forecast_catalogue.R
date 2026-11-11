@@ -150,11 +150,43 @@ test_that("a run with one adjustment per variable is accepted and the adjustment
   expect_identical(runs[["2026-10"]]$variables, c("t", "r"))
   expect_identical(runs[["2026-10"]]$adjustment, "additive_mean_bias_only;ratio")
 
-  manifest$adjustments$r <- "unknown_rule"
+  # A manifest that disagrees with the catalogue on a supported variable is rejected.
+  manifest$adjustments$r <- "additive_mean_bias_only"
   jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
   cat_rows$manifest_sha256[hit] <- digest::digest(file = manifest_path, algo = "sha256")
   utils::write.csv(cat_rows, fx$catalogue, row.names = FALSE)
-  expect_match(attr(.forecast_catalogue_runs(fx$cp, "BFA"), "skipped")$reason, "supported adjustment")
+  expect_match(attr(.forecast_catalogue_runs(fx$cp, "BFA"), "skipped")$reason, "disagree")
+})
+
+test_that("variables with an adjustment the app does not know are left out, not a reason to reject the run", {
+  fx <- make_forecast_catalogue_fixture()
+  data <- file.path(fx$root, fx$entries[[2L]]$file)
+  manifest_path <- sub("parquet$", "json", data)
+  manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = TRUE)
+  hit <- utils::read.csv(fx$catalogue, colClasses = "character")$id == "2026-10"
+  publish <- function(variables, adjustments, cat_variables, cat_adjustments) {
+    manifest$variables <- variables
+    manifest$adjustments <- as.list(adjustments)
+    jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
+    cat_rows <- utils::read.csv(fx$catalogue, colClasses = "character")
+    cat_rows$variables[hit] <- cat_variables
+    cat_rows$adjustment[hit] <- cat_adjustments
+    cat_rows$manifest_sha256[hit] <- digest::digest(file = manifest_path, algo = "sha256")
+    utils::write.csv(cat_rows, fx$catalogue, row.names = FALSE)
+    .forecast_catalogue_runs(fx$cp, "BFA")
+  }
+  adj <- c(t = "additive_mean_bias_only", r = "ratio", spei6 = "derived_adjusted_inputs_glo_1971_2010")
+  # The manifest carries a derived variable the catalogue row does not list.
+  runs <- publish(names(adj), adj, "t;r", "additive_mean_bias_only;ratio")
+  expect_identical(runs[["2026-10"]]$variables, c("t", "r"))
+  expect_identical(runs[["2026-10"]]$adjustment, "additive_mean_bias_only;ratio")
+  # Both list it: it is still left out of the run.
+  runs <- publish(names(adj), adj, "t;r;spei6", paste(adj, collapse = ";"))
+  expect_identical(runs[["2026-10"]]$variables, c("t", "r"))
+  expect_identical(runs[["2026-10"]]$adjustment, "additive_mean_bias_only;ratio")
+  # No supported variable at all.
+  runs <- publish("spei6", adj["spei6"], "spei6", adj[["spei6"]])
+  expect_match(attr(runs, "skipped")$reason, "supported adjustment")
 })
 
 test_that("draft runs are offered on Posit Connect like on any server", {
