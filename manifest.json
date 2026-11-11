@@ -3464,7 +3464,7 @@
       "checksum": "b544c98e7d55c33a6c62b5c905878c65"
     },
     "DESCRIPTION": {
-      "checksum": "d1782cf3ae439fb0fe6249ed808724b5"
+      "checksum": "503e7a72e12a9e2b132f61bc92c695ff"
     },
     "inst/app/_brand.yml": {
       "checksum": "66580c59f1e8321f5a6ab4dc5565cd0a"
@@ -3572,10 +3572,10 @@
       "checksum": "b9998b4ee3699c9389744a7528c84685"
     },
     "R/fct_data_load.R": {
-      "checksum": "13a1bad316b6165c3e6f053b38e92956"
+      "checksum": "d2f56c7ff46b2296579a708650f95f53"
     },
     "R/fct_data_weather.R": {
-      "checksum": "a58227a120066ce00fca355f8833e8f3"
+      "checksum": "e0451d11d57dadf90c93eadeac8d5439"
     },
     "R/fct_decomp_compact.R": {
       "checksum": "17fc71e4407cbab7aea40be9517055ac"
@@ -3593,7 +3593,7 @@
       "checksum": "abeb77f963d6b8e6de3f46ca983b6d87"
     },
     "R/fct_forecast_catalogue.R": {
-      "checksum": "94f13ec20d5c88d18f7c607c65f32e8d"
+      "checksum": "d8a65aba9fc94e99619aa1124ad3649e"
     },
     "R/fct_forecast_placement.R": {
       "checksum": "d697b8f3a75ed51bb6e7461ec21cae94"
@@ -3605,7 +3605,7 @@
       "checksum": "c8872f5c320e89831c7d181674bc01e2"
     },
     "R/fct_forecast_weather.R": {
-      "checksum": "13eb52d29186734ecb6b5a2829e1f056"
+      "checksum": "b58a787706b46c249a8a302a94256dff"
     },
     "R/fct_forecast_window.R": {
       "checksum": "0d522cbc24f9b7a6cf25dd03f3d761f5"
@@ -3722,7 +3722,7 @@
       "checksum": "ac90957d2f328dbadd58a7e25d96fa1c"
     },
     "R/fct_step2_compare.R": {
-      "checksum": "276f1a1833fe42c161f3d9ad5f3cf660"
+      "checksum": "6e0aefca2855d9cfa4821e0228e394cd"
     },
     "R/fct_step2_compute.R": {
       "checksum": "f43a6a22b6f41bf6c2fb830cb1682566"
@@ -3731,7 +3731,7 @@
       "checksum": "a81b4d899dad231525f0536af0ec4d6f"
     },
     "R/fct_step2_forecast.R": {
-      "checksum": "a5d336250d31aefd39fc5a189a2e7f5d"
+      "checksum": "98b2c91b280528d5ef538f096e66a745"
     },
     "R/fct_step2_input.R": {
       "checksum": "f3b995f9d34ecc21dc1c0b7c7a2b7671"
@@ -3794,7 +3794,7 @@
       "checksum": "0a14ba062c33ed2b516911efbe29cfb1"
     },
     "R/mod_2_01_weathersim.R": {
-      "checksum": "48f1ebd9947b283f200dbb7b045612ed"
+      "checksum": "27f8caf8bc97f9fa012299e50bc3706b"
     },
     "R/mod_2_02_results.R": {
       "checksum": "f2594bd5bfa618ca91626fb6b5393f52"
