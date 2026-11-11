@@ -191,7 +191,7 @@ STEP2_PREPARED_WEATHER_CACHE_VERSION <- "v2"
   }
   frames <- tryCatch(lapply(manifest$keys, function(key) {
     path <- file.path(cache$target, paste0(digest::digest(key, algo = "sha256"), ".rds"))
-    value <- readRDS(path)
+    value <- suppressWarnings(readRDS(path))
     if (!is.data.frame(value)) stop("invalid prepared weather cache entry", call. = FALSE)
     value
   }), error = function(e) NULL)

@@ -131,7 +131,7 @@ test_that("a run stops when the forecast model predictions are missing", {
     start = "2026-12", len = 1L)
   historical <- data.frame(code = "TST", year = 2020L, survname = "SRV", loc_id = "L1",
     timestamp = as.POSIXct(c("2020-06-01", "2020-07-01"), tz = "UTC"), t = c(1, 2))
-  member <- transform(historical, timestamp = as.POSIXct(c("2026-12-01", "2026-12-01"), tz = "UTC"))
+  member <- transform(historical[1L, ], timestamp = as.POSIXct("2026-12-01", tz = "UTC"))
   loader <- function(weather_consumer = NULL, ...) {
     weather_consumer("historical", historical, NULL)
     weather_consumer("member_0", member, list(forecast = TRUE, forecast_member = 0L, member_index = 1L,

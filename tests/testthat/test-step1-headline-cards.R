@@ -17,7 +17,7 @@
     name = "temp", label = "Temperature", units = "°C",
     cont_binned = "Continuous", stringsAsFactors = FALSE
   )
-  mf <- fit_model(df, so, sw, sm)
+  mf <- suppressWarnings(fit_model(df, so, sw, sm))
   snap <- list(model = sm, outcome = so, weather = sw)
   list(mf = mf, snap = snap)
 }

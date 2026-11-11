@@ -24,7 +24,7 @@ library(testthat)
   so <- list(name = "welfare", type = "numeric")
   sw <- data.frame(name = "temp", cont_binned = "Continuous",
                    stringsAsFactors = FALSE)
-  mf <- fit_model(df, so, sw, sm)
+  mf <- suppressWarnings(fit_model(df, so, sw, sm))
   list(mf = mf, snap = list(model = sm))
 }
 

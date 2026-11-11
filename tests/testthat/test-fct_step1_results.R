@@ -129,7 +129,7 @@ test_that("R2-BUG-19: RIF coefplot combines polynomial SEs with their covariance
   sw <- data.frame(name = "temp", cont_binned = "Continuous",
                    stringsAsFactors = FALSE)
   sw$polynomial <- list("2")
-  mf <- fit_model(df, list(name = "welfare", type = "numeric"), sw, sm)
+  mf <- suppressWarnings(fit_model(df, list(name = "welfare", type = "numeric"), sw, sm))
 
   ch <- echart_make_coefplot(
     mf$fit1, mf$fit2, mf$fit3, "temp", character(0),

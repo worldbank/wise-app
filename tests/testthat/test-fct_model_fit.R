@@ -25,7 +25,7 @@ test_that("RIF is computed on the complete-case estimation sample (CR-BUG-03)", 
     hh_covariates = "ctrl"
   )
 
-  mf <- fit_model(df, so, sw, sm)
+  mf <- suppressWarnings(fit_model(df, so, sw, sm))
   td <- mf$train_data
   expect_false(anyNA(td$ctrl))
   expect_lt(nrow(td), n)

@@ -50,7 +50,8 @@ core_fit <- function(fx, type = "Linear regression", covs = list(hh = "hhsize"),
     type, character(0), c("year", "gaul1_code"), "User-defined", covs,
     cluster = "loc_id_panel"
   )
-  wise_fit(fx$sw, NULL, outcome, swx, sm, fx$vl, seed)
+  # Small fixtures can fall back to independent RIF equations; the fallback is recorded on the fit.
+  suppressWarnings(wise_fit(fx$sw, NULL, outcome, swx, sm, fx$vl, seed))
 }
 
 # The Results module on the same inputs, after one fit; `fun` gets the module's

@@ -13,7 +13,7 @@ test_rif_moderated_fixture <- function() {
   )
   sw <- data.frame(name = "temp", cont_binned = "Continuous",
                    stringsAsFactors = FALSE)
-  mf <- fit_model(df, list(name = "welfare", type = "numeric"), sw, sm)
+  mf <- suppressWarnings(fit_model(df, list(name = "welfare", type = "numeric"), sw, sm))
   sub <- mf$fit3[[which(mf$taus == 0.5)]]
   t <- c("temp", "temp:urban")
   V <- .fixest_vcov(sub)[t, t]
