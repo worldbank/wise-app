@@ -8,7 +8,15 @@
   "n_members", "n_leads", "observed_through", "context_months", "context_source", "variables",
   "adjustment", "file", "data_sha256", "manifest_sha256", "status", "data_version"
 )
-.FORECAST_ADJUSTMENTS <- c("additive_mean_bias_only", "mean_variance_scaled", "ratio")
+.FORECAST_ADJUSTMENTS <- c(
+  "additive_mean_bias_only", "mean_variance_scaled", "ratio", "derived_adjusted_inputs_glo_1971_2010"
+)
+# A derived variable (spei6) is computed by the pipeline from the adjusted inputs on the scale of its historical
+# series. The manifest records the method in a block named after the variable; the variable is kept only when
+# that block matches the method the app was checked against (wise-app-data R/forecast_spei6.R).
+.FORECAST_DERIVED_IDENTITY <- list(
+  derived_adjusted_inputs_glo_1971_2010 = list(engine_version = 1L, calibration = c("1971-01-01", "2010-12-01"))
+)
 # Variable names a run file may carry: lower-case column names. A model can use a run only for the variables the
 # run lists (`.step2_forecast_unsupported()`), so a newly published variable needs no change here.
 .FORECAST_VARIABLE_NAME <- "^[a-z][a-z0-9_]*$"
@@ -87,7 +95,11 @@
   }
   # Variables with an adjustment this app does not know (for example a newly published derived variable) are
   # left out of the run on both sides, so a newer publisher does not block the variables that are supported.
-  manifest_supported <- manifest_adjustments %in% .FORECAST_ADJUSTMENTS
+  # A derived variable whose identity block is absent or different is left out the same way.
+  manifest_known <- manifest_adjustments %in% .FORECAST_ADJUSTMENTS
+  manifest_supported <- manifest_known & mapply(.forecast_derived_identity_ok, as.character(manifest$variables),
+    manifest_adjustments, MoreArgs = list(manifest = manifest), USE.NAMES = FALSE)
+  identity_dropped <- as.character(manifest$variables)[manifest_known & !manifest_supported]
   if (!any(manifest_supported)) {
     stop("Seasonal forecast must declare a supported adjustment.", call. = FALSE)
   }
@@ -96,7 +108,7 @@
   if (length(run_variables) != length(run_adjustments)) {
     stop("Seasonal forecast catalogue and manifest disagree.", call. = FALSE)
   }
-  run_supported <- run_adjustments %in% .FORECAST_ADJUSTMENTS
+  run_supported <- run_adjustments %in% .FORECAST_ADJUSTMENTS & !run_variables %in% identity_dropped
   for (field in c("init", "released", "next_release", "observed_through")) {
     run[[field]] <- as.Date(run[[field]], format = "%Y-%m-%d")
     if (is.na(run[[field]])) stop("Invalid seasonal forecast date.", call. = FALSE)
@@ -169,6 +181,16 @@
   run$run_id <- manifest$run_id
   run$experimental <- isTRUE(manifest$experimental)
   run
+}
+
+# TRUE unless `adjustment` names a derived method and the manifest's block for `variable` does not match it.
+.forecast_derived_identity_ok <- function(manifest, variable, adjustment) {
+  expected <- .FORECAST_DERIVED_IDENTITY[[adjustment]]
+  if (is.null(expected)) return(TRUE)
+  block <- manifest[[variable]]
+  is.list(block) && identical(as.character(block$method), adjustment) &&
+    identical(suppressWarnings(as.integer(block$engine_version)), expected$engine_version) &&
+    identical(as.character(block$calibration), expected$calibration)
 }
 
 # Forecast files: local and remote ----

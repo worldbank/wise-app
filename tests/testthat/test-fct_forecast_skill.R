@@ -59,6 +59,19 @@ test_that("a table with several variables is read per variable; the worst flag l
   expect_false("variable" %in% names(t_only$months))
 })
 
+test_that("persistence-assisted rows add a caveat to the reading", {
+  tbl <- transform(skill_fixture()[1:4, ], variable = "spei6", window = 1L,
+    persistence_assisted = c(TRUE, TRUE, FALSE, FALSE))
+  expect_match(.forecast_skill_summary(tbl, run, "2026-10", 2L)$text, "partly reflects persistence\\.$")
+  expect_no_match(.forecast_skill_summary(tbl, run, "2026-12", 2L)$text, "persistence")
+  # A window row that is assisted carries the caveat even when its months are not.
+  win <- transform(tbl[3, ], window = 2L, persistence_assisted = TRUE)
+  expect_match(.forecast_skill_summary(rbind(tbl, win), run, "2026-12", 2L)$text, "partly reflects persistence\\.$")
+  # NA for other variables, as the pipeline writes it.
+  plain <- transform(tbl, persistence_assisted = NA)
+  expect_no_match(.forecast_skill_summary(plain, run, "2026-10", 2L)$text, "persistence")
+})
+
 test_that("a window row sets the flag of a multi-month window; the months stay in the table", {
   win <- transform(skill_fixture()[2, ], lead_month = 2L, window = 3L, skill_flag = "useful")
   tbl <- rbind(transform(skill_fixture()[1:4, ], window = 1L), win)

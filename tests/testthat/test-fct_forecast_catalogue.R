@@ -164,9 +164,10 @@ test_that("variables with an adjustment the app does not know are left out, not 
   manifest_path <- sub("parquet$", "json", data)
   manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = TRUE)
   hit <- utils::read.csv(fx$catalogue, colClasses = "character")$id == "2026-10"
-  publish <- function(variables, adjustments, cat_variables, cat_adjustments) {
+  publish <- function(variables, adjustments, cat_variables, cat_adjustments, spei6 = NULL) {
     manifest$variables <- variables
     manifest$adjustments <- as.list(adjustments)
+    manifest$spei6 <- spei6
     jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
     cat_rows <- utils::read.csv(fx$catalogue, colClasses = "character")
     cat_rows$variables[hit] <- cat_variables
@@ -175,18 +176,51 @@ test_that("variables with an adjustment the app does not know are left out, not 
     utils::write.csv(cat_rows, fx$catalogue, row.names = FALSE)
     .forecast_catalogue_runs(fx$cp, "BFA")
   }
-  adj <- c(t = "additive_mean_bias_only", r = "ratio", spei6 = "derived_adjusted_inputs_glo_1971_2010")
+  adj <- c(t = "additive_mean_bias_only", r = "ratio", q_new = "derived_unknown_method")
   # The manifest carries a derived variable the catalogue row does not list.
   runs <- publish(names(adj), adj, "t;r", "additive_mean_bias_only;ratio")
   expect_identical(runs[["2026-10"]]$variables, c("t", "r"))
   expect_identical(runs[["2026-10"]]$adjustment, "additive_mean_bias_only;ratio")
   # Both list it: it is still left out of the run.
-  runs <- publish(names(adj), adj, "t;r;spei6", paste(adj, collapse = ";"))
+  runs <- publish(names(adj), adj, "t;r;q_new", paste(adj, collapse = ";"))
   expect_identical(runs[["2026-10"]]$variables, c("t", "r"))
   expect_identical(runs[["2026-10"]]$adjustment, "additive_mean_bias_only;ratio")
   # No supported variable at all.
-  runs <- publish("spei6", adj["spei6"], "spei6", adj[["spei6"]])
+  runs <- publish("q_new", adj["q_new"], "q_new", adj[["q_new"]])
   expect_match(attr(runs, "skipped")$reason, "supported adjustment")
+})
+
+test_that("spei6 is kept only when its manifest block matches the derived method the app accepts", {
+  fx <- make_forecast_catalogue_fixture()
+  data <- file.path(fx$root, fx$entries[[2L]]$file)
+  manifest_path <- sub("parquet$", "json", data)
+  manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = TRUE)
+  hit <- utils::read.csv(fx$catalogue, colClasses = "character")$id == "2026-10"
+  adj <- c(t = "additive_mean_bias_only", spei6 = "derived_adjusted_inputs_glo_1971_2010")
+  publish <- function(spei6) {
+    manifest$variables <- names(adj)
+    manifest$adjustments <- as.list(adj)
+    manifest$spei6 <- spei6
+    jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
+    cat_rows <- utils::read.csv(fx$catalogue, colClasses = "character")
+    cat_rows$variables[hit] <- "t;spei6"
+    cat_rows$adjustment[hit] <- paste(adj, collapse = ";")
+    cat_rows$manifest_sha256[hit] <- digest::digest(file = manifest_path, algo = "sha256")
+    utils::write.csv(cat_rows, fx$catalogue, row.names = FALSE)
+    .forecast_catalogue_runs(fx$cp, "BFA")[["2026-10"]]
+  }
+  block <- list(method = adj[["spei6"]], engine_version = 1L, calibration = c("1971-01-01", "2010-12-01"))
+  run <- publish(block)
+  expect_identical(run$variables, c("t", "spei6"))
+  expect_identical(run$adjustment, paste(adj, collapse = ";"))
+  # An absent block, another engine version or another calibration period drops spei6 only.
+  for (bad in list(NULL, utils::modifyList(block, list(engine_version = 2L)),
+                   utils::modifyList(block, list(calibration = c("1981-01-01", "2010-12-01"))),
+                   utils::modifyList(block, list(method = "other")))) {
+    run <- publish(bad)
+    expect_identical(run$variables, "t")
+    expect_identical(run$adjustment, "additive_mean_bias_only")
+  }
 })
 
 test_that("draft runs are offered on Posit Connect like on any server", {

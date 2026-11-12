@@ -71,6 +71,14 @@
   whole <- skill[windows == as.integer(len) & as.integer(skill$lead_month) == lead[1L], , drop = FALSE]
   skill <- skill[windows == 1L, , drop = FALSE]
   hit <- match(lead, as.integer(skill$lead_month))
+  # Rows of an index built over past months (spei6) whose inputs are partly observed; the column is absent or
+  # NA for other variables.
+  assisted <- function(rows) "persistence_assisted" %in% names(rows) && any(rows$persistence_assisted %in% TRUE)
+  persistence <- if (assisted(whole) || assisted(skill[hit[!is.na(hit)], , drop = FALSE])) {
+    " Part of the index's six-month input is observed, so this skill partly reflects persistence."
+  } else {
+    ""
+  }
   col <- function(name) if (name %in% names(skill)) as.numeric(skill[[name]])[hit] else rep(NA_real_, length(hit))
   months <- data.frame(
     month = targets, lead_month = lead, skill_flag = as.character(skill$skill_flag)[hit],
@@ -94,9 +102,9 @@
   if (as.integer(len) > 1L && nrow(whole) == 1L) {
     flag <- as.character(whole$skill_flag)
     return(list(assessed = TRUE, flag = flag, months = months,
-      text = paste0("Hindcast skill of the window mean is ", flag, ". By month: ", text)))
+      text = paste0("Hindcast skill of the window mean is ", flag, ". By month: ", text, persistence)))
   }
-  list(assessed = TRUE, flag = worst, months = months, text = text)
+  list(assessed = TRUE, flag = worst, months = months, text = paste0(text, persistence))
 }
 
 #' Skill summary for a selected window, reading the run's table
