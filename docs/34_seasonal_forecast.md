@@ -6,7 +6,7 @@ depends_on: [notation, data, weather-measures, simulation]
 symbols: [l, mu, m, v, s, W, x]
 guide: https://github.com/worldbank/wise-app-docs
 code: [R/fct_step2_forecast.R, R/mod_2_01_weathersim.R, R/fct_forecast_catalogue.R, R/fct_forecast_weather.R, R/fct_forecast_placement.R, R/fct_forecast_window.R, R/fct_forecast_skill.R, R/fct_step2_run.R]
-verified_against: 32a350e
+verified_against: 06cc175
 ---
 
 # Seasonal forecast scenario

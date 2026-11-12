@@ -376,7 +376,7 @@ pages:
       - "Step 2 > Results: with a forecast, each chart and the return-period table carry both sets of series: \"Historical (annual)\" and the climate scenarios, and \"Historical (Nov - Jan)\" and the forecast. A forecast-only run shows the same charts without scenario rows. The headline cards stay in two groups, annual and target months. The cards of the target months show the placement, the shift against the historical spread of the same months and the member range. With the ENSO tables, the placement card in the level view adds the ENSO outlook of the target months (35_enso, Section 4)."
     guide: "https://github.com/worldbank/wise-app-docs"
     code: ["R/fct_step2_forecast.R", "R/mod_2_01_weathersim.R", "R/fct_forecast_catalogue.R", "R/fct_forecast_weather.R", "R/fct_forecast_placement.R", "R/fct_forecast_window.R", "R/fct_forecast_skill.R", "R/fct_step2_run.R"]
-    verified_against: "32a350e"
+    verified_against: "06cc175"
   - id: "enso"
     file: "35_enso.md"
     title: "ENSO labels on results"
