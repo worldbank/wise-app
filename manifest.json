@@ -3593,7 +3593,7 @@
       "checksum": "abeb77f963d6b8e6de3f46ca983b6d87"
     },
     "R/fct_forecast_catalogue.R": {
-      "checksum": "4e0af2e1b588d3d2befeccfb01d41723"
+      "checksum": "0826b2efbb6edac93dc70d74d27d9231"
     },
     "R/fct_forecast_placement.R": {
       "checksum": "d697b8f3a75ed51bb6e7461ec21cae94"
@@ -3602,7 +3602,7 @@
       "checksum": "125be654e94bf38b06b7671e9d82f405"
     },
     "R/fct_forecast_skill.R": {
-      "checksum": "c8872f5c320e89831c7d181674bc01e2"
+      "checksum": "22e946bf00ab21c633c4611dc409aa7b"
     },
     "R/fct_forecast_weather.R": {
       "checksum": "b58a787706b46c249a8a302a94256dff"
