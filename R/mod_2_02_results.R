@@ -392,7 +392,7 @@
           "is Historical for the target months. The vertical line and dot mark where the median forecast member falls ",
           "on that curve only: the historical return period it lines up with. The Ensemble spread control shades ",
           "where the members of that band fall, and the climate-model ribbons. The member spread is not a calibrated ",
-          "probability and skill is not established. ", .STEP2_DIFFERENCE_NOTE
+          "probability, and skill differs by season, lead and variable. ", .STEP2_DIFFERENCE_NOTE
         ),
         style = "margin-top: 8px; margin-bottom: 0;"
       )

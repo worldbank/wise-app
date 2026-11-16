@@ -896,7 +896,7 @@ step2_headline_cards <- function(bands,
   card1$change_ci_native <- if (!is.null(ci_1)) c(ci_1$lo, ci_1$hi) else c(NA_real_, NA_real_)
   card1$change_display <- if (has_future) display_value(change_1, change = TRUE) else ""
   if (forecast_focus) card1$info <- paste(card1$info,
-    "Forecast skill has not been established for this pilot.")
+    "Forecast skill differs by season, lead and variable; read the skill flags.")
   if (has_future && !forecast_focus) card1$status <- headline_status(change_1, direction, display = card1$change_display)
   if (nzchar(card1$change_display)) {
     card1$note <- paste(card1$note, paste("Difference:", card1$change_display), sep = " \u00b7 ")
@@ -1109,7 +1109,7 @@ step2_headline_cards <- function(bands,
           "Coefficient uncertainty is separate: ", display_value(focus$coef_lo), " to ",
           display_value(focus$coef_hi), "."
         ),
-      "Forecast skill has not been established for this pilot."
+      "Forecast skill differs by season, lead and variable; read the skill flags."
     ) else paste(
       "Share of CMIP6 climate models whose average change for the focus scenario has the",
       "same sign as the ensemble change; 80% or more is flagged as robust. The second line",
@@ -1147,7 +1147,7 @@ step2_headline_cards <- function(bands,
     card3$snr_native <- NA_real_
     card3$info <- paste(
       card3$info,
-      "Forecast skill has not been established for this pilot."
+      "Forecast skill differs by season, lead and variable; read the skill flags."
     )
   }
   # Window scope: the comparator is the same-window reference, so the shift and the member spread are read
@@ -1172,7 +1172,7 @@ step2_headline_cards <- function(bands,
       "deviation of that outcome across historical years (a shift well below 1\u00d7 is hard to tell apart from an",
       "ordinary year). The second line compares the spread across members with that year-to-year spread: below",
       "1\u00d7 the members are more concentrated than past years. Neither is a calibrated probability, and",
-      "forecast skill has not been established for this pilot."
+      "forecast skill differs by season, lead and variable; read the skill flags."
     )
     card3$value_native <- snr
     card3$snr_native <- snr
@@ -1286,7 +1286,7 @@ step2_headline_cards <- function(bands,
   if (forecast_focus) {
     card_range$info <- paste(
       card_range$info,
-      "Forecast skill has not been established for this pilot."
+      "Forecast skill differs by season, lead and variable; read the skill flags."
     )
   }
   if (forecast_focus) card_range$value_range_native <- focus_range
