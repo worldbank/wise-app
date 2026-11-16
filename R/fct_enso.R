@@ -565,9 +565,9 @@ enso_attach_window_labels <- function(tbl, labels, reference_label) {
 enso_attach_forecast_labels <- function(tbl, marks, member_label) {
   if (is.null(marks) || is.null(member_label)) return(tbl)
   rows <- which(tbl$scenario == member_label)
-  if (is.null(tbl$enso_text)) tbl$enso_text <- NA_character_
-  if (is.null(tbl$enso_label)) tbl$enso_label <- NA_character_
-  if (is.null(tbl$enso_roni)) tbl$enso_roni <- NA_real_
+  if (!"enso_text" %in% names(tbl)) tbl$enso_text <- NA_character_
+  if (!"enso_label" %in% names(tbl)) tbl$enso_label <- NA_character_
+  if (!"enso_roni" %in% names(tbl)) tbl$enso_roni <- NA_real_
   tbl$enso_label[rows] <- marks$phase
   tbl$enso_roni[rows] <- marks$roni
   tbl$enso_text[rows] <- marks$text
