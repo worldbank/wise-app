@@ -4,7 +4,7 @@ title: ENSO labels on results
 app_step: 2
 depends_on: [notation, data, simulation, climate-scenarios, seasonal-forecast]
 symbols: [mu, r, m]
-guide: https://github.com/worldbank/wise-app-docs
+guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#enso-labels
 code: [R/fct_enso.R, R/fct_forecast_window.R, R/fct_forecast_placement.R, R/fct_step0_overview_metadata.R, R/fct_batch_targets.R, R/mod_2_02_results.R, R/fct_echart_builders.R]
 verified_against: 8639eb2
 ---
@@ -15,7 +15,7 @@ verified_against: 8639eb2
 
 ## Setup
 
-Two optional tables describe ENSO. The first gives, for each month from 1950, the relative Niño 3.4 index (RONI) and a phase: El Niño, La Niña or neutral. Its months come from observations and then, for the latest months, from a forecast. The second gives, for the latest forecast initialisation, the RONI, the phase and the share of members in each phase by system and month, with a multi-model row. If either table is missing or malformed, its ENSO elements disappear without an error.
+Two optional tables describe ENSO. The first gives, for each month from 1950, the relative Niño 3.4 index (RONI) [@lheureux2024] and a phase: El Niño, La Niña or neutral. Its months come from observations and then, for the latest months, from a forecast. The second gives, for the latest forecast initialisation, the RONI, the phase and the share of members in each phase by system and month, with a multi-model row. If either table is missing or malformed, its ENSO elements disappear without an error.
 
 Symbols are in [00_notation](00_notation.md): $r$ simulation year, $\mu$ calendar month, $m$ forecast member.
 
@@ -94,7 +94,8 @@ Few events fall in a window, and they differ from each other. Past events are no
 
 ## In the app
 
-- Step 1 > Survey stats: a sentence under the timing of interviews gives the share of households interviewed in each phase and the highest RONI at an interview.
+- Step 1 > Survey stats: on the timing of interviews, bars in El Niño months carry a triangle and bars in La Niña months a diamond, with the RONI of the month in the tooltip and a legend under the chart.
+- Step 1 > Weather stats: a chip beside the interview-month picker of the maps gives the phase and RONI of the selected month, or the count of El Niño and La Niña months of the wave.
 - Step 2 and Step 3 > Results: the toggle ENSO phase marks draws on the distribution chart, for the annual series, for Historical of the target months and, with a forecast, for the members (the outlook phase of the target months, one state for all members). The note below the chart says how years and forecast months are classified.
 - Step 2 > forecast flyout: each month of the strip carries a symbol for El Niño or La Niña, with the phase, RONI and source in its tooltip (the observed record for past months, the outlook of the run for forecast months).
 - Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label, and a closing sentence gives how closely the weather follows ENSO. Step 3 adds the policy effect.
@@ -104,7 +105,7 @@ Few events fall in a window, and they differ from each other. Past events are no
 
 ## References
 
-None yet.
+[@lheureux2024]. Full entries are in [references](references.md).
 
 ## Implementation map
 

@@ -285,9 +285,10 @@
         tags$p(
           "With a seasonal forecast the climate scenarios follow these rules. The forecast and Historical for the",
           "same months read the mean weather of the target months against the same months of the historical",
-          "years, and pay once per window. They need ex-post payments. The impact trigger, the loss-linked",
-          "budget, the national gate and the targeting layers read each member's own weather, and ranking",
-          "locations needs at least 10 historical years for the same months."
+          "years, and pay once per window. Payments are ex post, or, \"On a forecast\", made where at least the",
+          "set share of members pass the trigger; the detection and false-alarm rates then do not apply. The",
+          "impact trigger, the loss-linked budget, the national gate and the targeting layers read each",
+          "member's own weather, and ranking locations needs at least 10 historical years for the same months."
         )
       )
     ),

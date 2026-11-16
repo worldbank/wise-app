@@ -28,6 +28,7 @@ verified_against: 5b89f68
 | `c3satlas2024` | guide | [10_data](10_data.md), [31_climate_scenarios](31_climate_scenarios.md) |
 | `c3sseasonal2018` | new | [10_data](10_data.md), [34_seasonal_forecast](34_seasonal_forecast.md) |
 | `schiavina2022` | guide | [10_data](10_data.md) |
+| `lheureux2024` | guide | [35_enso](35_enso.md) |
 | `uber2018` | guide | [10_data](10_data.md) |
 | `worldbank2026` | guide | [10_data](10_data.md) |
 | `foster1984` | new | [32_metrics](32_metrics.md) |
@@ -161,6 +162,17 @@ The guide's `burke2015` is not cited in this folder.
   title  = {GHS-POP R2022A - GHS Population Grid Multitemporal (1975--2030)},
   year   = {2022},
   doi    = {10.2905/D83C0D50-00A9-4A23-9023-EFF10426AA37}
+}
+
+@article{lheureux2024,
+  author  = {L'Heureux, Michelle L. and Tippett, Michael K. and Wheeler, Matthew C. and Nguyen, Hanh and Narsey, Sugata and Johnson, Nathaniel and Hu, Zeng-Zhen and Watkins, Andrew B. and Lucas, Chris and Ganter, Catherine and Becker, Emily and Wang, Wanqiu and Di Liberto, Tom},
+  title   = {A Relative Sea Surface Temperature Index for Classifying {ENSO} Events in a Changing Climate},
+  journal = {Journal of Climate},
+  year    = {2024},
+  volume  = {37},
+  number  = {4},
+  pages   = {1197--1211},
+  doi     = {10.1175/JCLI-D-23-0406.1}
 }
 ```
 
