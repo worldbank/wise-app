@@ -39,6 +39,8 @@ For a target month $t$, each lagged predictor of the fitted model uses the same 
 
 Every target month must lie in the forecast horizon, and every month its fitted predictors need must lie in the run's observed context or forecast months. A multi-month window is available only when all its target months pass this check. There is no gap fill or climatology substitution. With an October 2026 run and 12 context months, every lag up to 12 permits November to March. Both the controls and the weather builder enforce this rule.
 
+The weather builder requires every member, month and predictor for each survey location that has observed weather. A location with no observed value of any selected variable lies outside the land coverage of the weather data, for example a coastal location whose ERA5-Land cells are all missing. The run file omits such cells, and Step 2 already drops their households from the baseline, so the builder neither requires nor builds them, for the members or for the same-window reference. A location with observed weather but no forecast row stops the run.
+
 ### 3. One state per member
 
 Each member gives one complete weather state for the target window. Everything after the weather step runs as for a climate scenario. Results are first aggregated within a member and then summarised across members. The spread across members is weather uncertainty; it is kept apart from the uncertainty in the estimated coefficients.

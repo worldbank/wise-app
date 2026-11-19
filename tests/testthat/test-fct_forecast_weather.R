@@ -202,6 +202,46 @@ test_that("a run file with a missing member month or missing value stops the run
   ), "coverage is incomplete")
 })
 
+test_that("a location outside the land coverage of the weather data is not required, and still counts when it has data", {
+  fx <- make_forecast_weather_fixture()
+  root <- fx$connection_params$path
+  con <- DBI::dbConnect(duckdb::duckdb(), bigint = "integer64")
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  DBI::dbExecute(con, "LOAD h3")
+  nb <- DBI::dbGetQuery(con, paste(
+    "SELECT h3_h3_to_string(n) AS text, n AS value FROM",
+    "(SELECT UNNEST(h3_grid_ring(h3_string_to_h3('85283473fffffff'), 1)) AS n) LIMIT 1"
+  ))
+  # L2 sits on a cell whose observed weather is all NA (a coastal ERA5-Land cell); the run file omits it.
+  map_path <- file.path(root, "microdata", "h3", "TST", "TST_2020_SRV_lsms_h3.parquet")
+  map <- arrow::read_parquet(map_path)
+  arrow::write_parquet(rbind(map, transform(map, h3 = nb$text, loc_id = "L2")), map_path)
+  hist_path <- file.path(root, "hazard", "weather", "historical", "TST", "TST_era5land.parquet")
+  hist <- arrow::read_parquet(hist_path)
+  hist_nb <- transform(hist, t = NA_real_, tn = NA_real_)
+  hist_nb$h3 <- nb$value
+  arrow::write_parquet(rbind(hist, hist_nb), hist_path)
+  svy <- rbind(fx$survey_data, transform(fx$survey_data, loc_id = "L2"))
+
+  result <- .get_forecast_weather(
+    svy, fx$selected_surveys, fx$selected_weather, fx$connection_params,
+    fx$run, start = "2024-01", len = 3L, reference_years = 2020L
+  )
+  expect_equal(unique(result$member_0$loc_id), "L1")
+  expect_equal(nrow(result$member_1), 3L)
+  expect_named(attr(result, "forecast_reference"), "refyear_2020") # not skipped for the NA location
+  expect_equal(unique(attr(result, "forecast_reference")$refyear_2020$loc_id), "L1")
+
+  # With observed weather, the same location is required and its missing forecast rows stop the run.
+  hist_nb$t <- hist$t
+  hist_nb$tn <- hist$tn
+  arrow::write_parquet(rbind(hist, hist_nb), hist_path)
+  expect_error(.get_forecast_weather(
+    svy, fx$selected_surveys, fx$selected_weather, fx$connection_params,
+    fx$run, start = "2024-01", len = 3L
+  ), "missing for selected locations")
+})
+
 test_that("the same-window reference rebuilds the target months from observed weather per year", {
   fx <- make_forecast_weather_fixture()
   result <- .get_forecast_weather(

@@ -189,15 +189,30 @@
       )
   }
   # Materialised once; every later query (coverage, window, observed roll) reads these tables.
-  monthly <- .pop_weighted(forecast_h3$weather, forecast_h3$h3_slim, "member") |>
-    dplyr::compute(name = tmp_name("monthly"), temporary = TRUE)
-  observed_loc <- .pop_weighted(observed_h3$weather, observed_h3$h3_slim, character()) |>
+  loc_keys <- c("code", "year", "survname", "loc_id")
+  observed_all <- .pop_weighted(observed_h3$weather, observed_h3$h3_slim, character()) |>
+    dplyr::compute(name = tmp_name("observed_all"), temporary = TRUE)
+  # A location with no observed value of any selected variable lies outside the land coverage of the weather
+  # data (coastal ERA5-Land cells are all NA). The run file omits such cells and Step 2 drops their households
+  # (`step2_baseline_complete()`), so only locations with observed weather are required or built.
+  covered <- observed_all |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(loc_keys))) |>
+    dplyr::summarise(.n_obs = sum(dplyr::if_else(dplyr::if_any(dplyr::all_of(vars), ~ !is.na(.x)), 1L, 0L),
+      na.rm = TRUE), .groups = "drop") |>
+    dplyr::filter(.data$.n_obs > 0L) |>
+    dplyr::select(dplyr::all_of(loc_keys)) |>
+    dplyr::compute(name = tmp_name("covered"), temporary = TRUE)
+  observed_loc <- observed_all |>
+    dplyr::semi_join(covered, by = loc_keys) |>
     dplyr::compute(name = tmp_name("observed"), temporary = TRUE)
+  monthly <- .pop_weighted(forecast_h3$weather, forecast_h3$h3_slim, "member") |>
+    dplyr::semi_join(covered, by = loc_keys) |>
+    dplyr::compute(name = tmp_name("monthly"), temporary = TRUE)
 
   # The pipeline guarantees the run file's grid; check only what the survey locations need: every
-  # member present for every location and needed month, once, with no missing predictor.
-  n_locations <- h3_slim |> dplyr::distinct(code, year, survname, loc_id) |> dplyr::count() |>
-    dplyr::pull("n") |> as.numeric()
+  # member present for every location with observed weather and every needed month, once, with no
+  # missing predictor.
+  n_locations <- covered |> dplyr::count() |> dplyr::pull("n") |> as.numeric()
   if (!n_locations) {
     stop("Forecast has no location rows matching the selected surveys.", call. = FALSE)
   }
