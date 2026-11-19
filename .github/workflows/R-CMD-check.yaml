@@ -18,8 +18,11 @@ concurrency:
   group: R-CMD-check-${{ github.ref }}
   cancel-in-progress: true
 
+# A pull request from dev skips its jobs: the push run on dev already checks the same
+# commit and reports the same check names (a skipped job counts as passed).
 jobs:
   R-CMD-check:
+    if: github.event_name == 'push' || github.head_ref != 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -76,6 +79,7 @@ jobs:
           testthat::test_local(stop_on_failure = TRUE)
 
   lintr:
+    if: github.event_name == 'push' || github.head_ref != 'dev'
     runs-on: ubuntu-latest
     # Informational only until the existing findings are worked down.
     continue-on-error: true
@@ -95,6 +99,7 @@ jobs:
         run: lintr::lint_package()
 
   agents-check:
+    if: github.event_name == 'push' || github.head_ref != 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

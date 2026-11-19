@@ -21,8 +21,11 @@ concurrency:
   group: e2e-smoke-${{ github.ref }}
   cancel-in-progress: true
 
+# A pull request from dev skips the job: the push run on dev already checks the same
+# commit and reports the same check name (a skipped job counts as passed).
 jobs:
   e2e-smoke:
+    if: github.event_name == 'push' || github.head_ref != 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
