@@ -2118,7 +2118,22 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
           wise_reactable_csv_button(ns("enso_policy_table"), "policy_enso_exposure_years")
         ),
         reactable::reactableOutput(ns("enso_policy_table")),
-        shiny::uiOutput(ns("enso_policy_sentence"))
+        shiny::uiOutput(ns("enso_policy_sentence")),
+        shiny::conditionalPanel(
+          condition = paste0("output['", ns("has_enso_roni"), "']"),
+          shiny::h5(
+            "Policy effect against exposure RONI",
+            style = "font-size: 0.95rem; font-weight: 700; color: #173042; margin: 20px 0 4px;"
+          ),
+          shiny::uiOutput(ns("enso_roni_key")),
+          wise_chart_output(
+            ns("enso_roni_plot"),
+            "Policy effect of each weather year against its exposure RONI, with a descriptive fit line",
+            height = "380px"
+          ),
+          shiny::uiOutput(ns("enso_roni_stats")),
+          shiny::tags$p(style = "margin: 8px 0 0; font-size: 0.85rem;", .ENSO_RONI_EFFECT_NOTE)
+        )
       )
     ),
 
@@ -3256,12 +3271,13 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
   output$enso_mark_note <- shiny::renderUI(if (enso_marking()) enso_mark_note_ui(!is.null(enso_forecast_marks())))
   # Annual series (not with a forecast alone, whose annual rows only repeat Historical) and, with a forecast, the
   # Historical series of its target months.
-  enso_policy_rv <- reactive({
-    lab <- enso_labels()
-    annual <- if (!is.null(lab) && !isTRUE(.forecast_only())) dplyr::bind_rows(paired_effect_data())
+  enso_annual_paired_rv <- reactive({
+    if (!is.null(enso_labels()) && !isTRUE(.forecast_only())) dplyr::bind_rows(paired_effect_data())
+  })
+  enso_window_paired_rv <- reactive({
     wl <- enso_window_labels()
     wv <- if (!is.null(wl)) .wv()
-    window <- if (!is.null(wv)) {
+    if (!is.null(wv)) {
       b <- window_baseline_rv()$historical
       p <- window_policy_rv()$historical
       list(
@@ -3272,7 +3288,9 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
         labels = wl
       )
     }
-    tbl <- enso_policy_table(annual, lab, window = window)
+  })
+  enso_policy_rv <- reactive({
+    tbl <- enso_policy_table(enso_annual_paired_rv(), enso_labels(), window = enso_window_paired_rv())
     req(tbl)
     tbl
   })
@@ -3294,6 +3312,40 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     shiny::tags$p(
       style = "margin: 12px 0 0;",
       paste(c(s, enso_relevance()), collapse = " ")
+    )
+  })
+  # Policy effect against continuous exposure RONI (roadmap/enso_predictor.md, A4): same series and labels as
+  # the policy table; forecast members never enter.
+  enso_roni_rv <- reactive({
+    tryCatch(
+      enso_roni_effect_table(enso_annual_paired_rv(), enso_labels(), window = enso_window_paired_rv()),
+      error = function(e) NULL
+    )
+  })
+  enso_roni_y_label <- reactive({
+    spec <- metric_metadata(aggregation_method(), baseline_hist_sim()$so)
+    unit <- spec$change_unit
+    paste0("Policy effect on ", spec$label, if (!is.null(unit) && nzchar(unit)) paste0(" (", unit, ")"))
+  })
+  output$has_enso_roni <- shiny::reactive(!is.null(enso_roni_rv()))
+  outputOptions(output, "has_enso_roni", suspendWhenHidden = FALSE)
+  output$enso_roni_plot <- echarts4r::renderEcharts4r({
+    tbl <- enso_roni_rv()
+    req(tbl)
+    echart_enso_roni(tbl, y_label = enso_roni_y_label(), value_name = "Policy effect")
+  })
+  outputOptions(output, "enso_roni_plot", suspendWhenHidden = TRUE)
+  output$enso_roni_key <- shiny::renderUI(enso_roni_key_ui())
+  output$enso_roni_stats <- shiny::renderUI({
+    st <- enso_roni_stats(enso_roni_rv())
+    req(st)
+    unit <- .wise_result_rate_unit(enso_roni_y_label())
+    lines <- lapply(st$series, function(s) {
+      enso_roni_stats_text(st, s, scale = if (nzchar(unit)) 100 else 1, unit = unit)
+    })
+    shiny::tags$p(
+      style = "margin: 8px 0 0;",
+      lapply(Filter(Negate(is.null), lines), function(l) shiny::tagList(l, shiny::tags$br()))
     )
   })
   annual_distribution_chart <- function() {
@@ -3567,6 +3619,25 @@ step3_adverse_dot_data <- function(threshold_tbl, method = "mean", so = NULL) {
     description = paste(
       "Years, mean baseline, mean policy and policy effect by El Ni\u00f1o, Neutral, La Ni\u00f1a and Mixed exposure.",
       "Labels describe the ENSO state of the months that enter the model; they are not inputs."
+    )
+  )
+  wise_export_table(
+    key = "policy_enso_roni_diagnostic",
+    label = "Policy effect against exposure RONI",
+    step = 3L,
+    fun = function() {
+      tbl <- enso_roni_rv()
+      req(tbl)
+      annotate_visualization_export(
+        as.data.frame(tbl), aggregation_method(), baseline_hist_sim()$so,
+        observation_unit = "annual policy effect for fixed survey population, averaged over climate models by year",
+        aggregation_order = "policy minus baseline on matched model-weather-year draws; joined to exposure RONI",
+        uncertainty = "none: one value per simulated year", context = metric_context()
+      )
+    },
+    description = paste(
+      "Policy effect (value) and exposure RONI of each simulated weather year, by series. Descriptive; ENSO is not",
+      "a model input and this is not an estimated ENSO effect."
     )
   )
   wise_export_table(

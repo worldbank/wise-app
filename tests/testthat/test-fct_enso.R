@@ -439,6 +439,175 @@ test_that("the series table adds the same-months Historical row of a window, and
   expect_null(enso_series_table(NULL, NULL))
 })
 
+test_that("the RONI table joins annual series to annual labels and the window series to window labels only", {
+  lab <- enso_labels_fixture()
+  wlab <- transform(lab, roni_exp = roni_exp + 10, label = "neutral") # distinct, to expose a cross-join
+  d <- expand.grid(model_id = c("a", "b"), sim_year = 2001:2010,
+    scenario = c("Historical", "SSP3-7.0 / 2025-2035", "Forecast (Nov - Jan)", "Historical (Nov - Jan)"),
+    stringsAsFactors = FALSE)
+  d$value <- ifelse(d$model_id == "a", 1, 3) + d$sim_year # the model mean is sim_year + 2
+  window <- list(
+    values = data.frame(series = "Historical (Nov - Jan)", sim_year = 2001:2010, value = 5),
+    labels = wlab
+  )
+  out <- enso_roni_table(d, lab, window = window)
+  expect_named(out, c("series", "sim_year", "value", "roni_exp", "label"))
+  expect_equal(unique(out$series), c("Historical", "SSP3-7.0 / 2025-2035", "Historical (Nov - Jan)"))
+  expect_false(any(grepl("Forecast", out$series)))
+  h <- out[out$series == "Historical", ]
+  expect_equal(h$value, 2003:2012) # models averaged, one row per year
+  expect_equal(h$roni_exp, lab$roni_exp)
+  s <- out[out$series == "SSP3-7.0 / 2025-2035", ]
+  expect_equal(s$roni_exp, lab$roni_exp) # template-year labels, separate series
+  w <- out[out$series == "Historical (Nov - Jan)", ]
+  expect_equal(w$roni_exp, wlab$roni_exp)
+  expect_equal(w$value, rep(5, 10)) # from the window values, not the annual curves
+  expect_true(all(w$label == "neutral"))
+  # Window alone, and years without a label are dropped
+  alone <- enso_roni_table(NULL, NULL, window = window)
+  expect_equal(unique(alone$series), "Historical (Nov - Jan)")
+  lab$roni_exp[1] <- NA
+  expect_equal(nrow(enso_roni_table(d[d$scenario == "Historical", ], lab)), 9L)
+})
+
+test_that("the RONI table is NULL without usable input", {
+  lab <- enso_labels_fixture()
+  d <- data.frame(scenario = "Historical", sim_year = 2001:2010, value = 1)
+  expect_null(enso_roni_table(NULL, NULL))
+  expect_null(enso_roni_table(d, NULL))
+  expect_null(enso_roni_table(NULL, lab))
+  expect_null(enso_roni_table(d[0, ], lab))
+  expect_null(enso_roni_table(transform(d, scenario = "Forecast (Nov - Jan)"), lab))
+  expect_null(enso_roni_stats(NULL))
+})
+
+test_that("RONI statistics are descriptive: rho, slope, n and range per series", {
+  tbl <- tibble::tibble(
+    series = rep(c("A", "B", "C"), each = 4), sim_year = rep(1:4, 3),
+    roni_exp = rep(c(-1, 0, 1, 2), 3), label = "neutral",
+    value = c(1, 3, 5, 7, 7, 5, 3, 1, 1, 1, 1, 1)
+  )
+  st <- enso_roni_stats(tbl)
+  expect_named(st, c("series", "n", "roni_min", "roni_max", "flat", "rho", "slope"))
+  expect_equal(st$flat, c(FALSE, FALSE, TRUE))
+  expect_equal(st$series, c("A", "B", "C"))
+  expect_equal(st$n, rep(4L, 3))
+  expect_equal(c(st$roni_min[1], st$roni_max[1]), c(-1, 2))
+  expect_equal(st$rho[1:2], c(1, -1))
+  expect_equal(st$slope[1:2], c(2, -2))
+  expect_true(is.na(st$rho[3]) && is.na(st$slope[3])) # no variation in the outcome
+  few <- enso_roni_stats(tbl[1:2, ])
+  expect_equal(few$n, 2L)
+  expect_true(is.na(few$rho))
+  expect_match(
+    enso_roni_stats_text(st, "A"),
+    "^A: Spearman rho 1.00, slope \\+2.000 per RONI unit, 4 years, RONI -1.00 to 2.00\\.$"
+  )
+  expect_match(enso_roni_stats_text(st, "C"), "^C: the value is the same in every year \\(4 years\\)")
+  expect_null(enso_roni_stats_text(st, "Z"))
+  expect_null(enso_roni_stats_text(enso_roni_stats(tbl[9:10, ]), "C")) # too few years to say
+})
+
+test_that("RONI statistics treat floating-point noise around a constant as flat", {
+  # A uniform policy effect: equal up to the last digits, as on BFA with a fixed transfer
+  tbl <- tibble::tibble(
+    series = "H", sim_year = 1:6, roni_exp = c(-1, -0.5, 0, 0.5, 1, 1.5), label = "neutral",
+    value = 0.0024707995173 + c(1, -2, 3, 0, -1, 2) * 1e-17
+  )
+  st <- enso_roni_stats(tbl)
+  expect_true(st$flat)
+  expect_true(is.na(st$rho) && is.na(st$slope))
+  # A small real variation is not flat
+  tbl$value <- 0.0024707995173 * (1 + c(1, -2, 3, 0, -1, 2) * 1e-4)
+  expect_false(enso_roni_stats(tbl)$flat)
+  # All zero is flat
+  tbl$value <- 0
+  expect_true(enso_roni_stats(tbl)$flat)
+})
+
+test_that("the RONI note states what the diagnostic is not", {
+  expect_match(.ENSO_RONI_NOTE, "not a model input")
+  expect_match(.ENSO_RONI_NOTE, "not an independently estimated ENSO effect")
+  expect_match(.ENSO_RONI_NOTE, "flat result does not mean")
+  expect_match(.ENSO_RONI_NOTE, "not independent evidence")
+})
+
+test_that("the RONI chart has a scatter and a fit line per series sharing one legend name", {
+  tbl <- tibble::tibble(
+    series = rep(c("Historical", "SSP3-7.0 / 2025-2035"), each = 4), sim_year = rep(1:4, 2),
+    roni_exp = rep(c(-1, 0, 1, 2), 2), label = rep(c("la_nina", "neutral", "el_nino", "el_nino"), 2),
+    value = c(1, 3, 5, 7, 2, 4, 6, 8)
+  )
+  e <- echart_enso_roni(tbl, "Mean welfare")
+  types <- vapply(e$x$opts$series, function(s) s$type, character(1))
+  nms <- vapply(e$x$opts$series, function(s) s$name, character(1))
+  expect_equal(types, rep(c("scatter", "line"), 2))
+  expect_equal(nms, rep(c("Historical", "SSP3-7.0 / 2025-2035"), each = 2))
+  pt <- e$x$opts$series[[1]]$data[[1]]
+  expect_equal(pt$itemStyle$color, unname(ENSO_PHASE_COLOURS[["la_nina"]]))
+  expect_equal(pt$value[[1]], -1)
+  fit <- e$x$opts$series[[2]]$data
+  expect_equal(c(fit[[1]][[2]], fit[[2]][[2]]), c(1, 7))
+  expect_s3_class(echart_enso_roni(NULL), "echarts4r")
+  expect_match(as.character(e$x$opts$tooltip$formatter), "\"Outcome\"", fixed = TRUE)
+  eff <- echart_enso_roni(tbl, "Policy effect on Poverty rate (pp)", value_name = "Policy effect")
+  expect_match(as.character(eff$x$opts$tooltip$formatter), "\"Policy effect\"", fixed = TRUE)
+  expect_match(as.character(eff$x$opts$tooltip$formatter), "\" pp\"", fixed = TRUE)
+  expect_match(as.character(eff$x$opts$yAxis$axisLabel$formatter), "maximumFractionDigits:3", fixed = TRUE)
+  expect_null(e$x$opts$yAxis$axisLabel$formatter) # not a rate: plain numbers
+  # A flat series is drawn at its mean, without a fit line
+  tbl$value[1:4] <- 0.0024707995173 + c(1, -2, 3, 0) * 1e-17
+  flat <- echart_enso_roni(tbl, "Mean welfare")
+  expect_equal(vapply(flat$x$opts$series, function(s) s$type, character(1)), c("scatter", "scatter", "line"))
+  ys <- vapply(flat$x$opts$series[[1]]$data, function(p) p$value[[2]], numeric(1))
+  expect_equal(length(unique(ys)), 1L)
+})
+
+test_that("the Step 3 RONI table carries the policy effect, with the series and labels of the policy table", {
+  lab <- enso_labels_fixture()
+  wlab <- transform(lab, roni_exp = roni_exp + 10, label = "neutral")
+  paired <- expand.grid(model_id = c("a", "b"), sim_year = 2001:2010,
+    scenario = c("Historical", "SSP3-7.0 / 2025-2035", "Forecast (Nov - Jan)"), stringsAsFactors = FALSE)
+  paired$baseline <- 100
+  paired$effect <- ifelse(paired$model_id == "a", 1, 3) * paired$sim_year / 1000 # model mean 2 * sim_year / 1000
+  paired$policy <- paired$baseline + paired$effect
+  window <- list(
+    paired = data.frame(scenario = "Historical (Nov - Jan)", sim_year = 2001:2010, baseline = 50, policy = 49,
+      effect = -1),
+    labels = wlab
+  )
+  out <- enso_roni_effect_table(paired, lab, window = window)
+  expect_named(out, c("series", "sim_year", "value", "roni_exp", "label"))
+  expect_equal(unique(out$series), c("Historical", "SSP3-7.0 / 2025-2035", "Historical (Nov - Jan)"))
+  h <- out[out$series == "Historical", ]
+  expect_equal(h$value, 2 * (2001:2010) / 1000) # the effect, averaged over models; not the levels
+  expect_equal(h$roni_exp, lab$roni_exp)
+  w <- out[out$series == "Historical (Nov - Jan)", ]
+  expect_equal(w$value, rep(-1, 10))
+  expect_equal(w$roni_exp, wlab$roni_exp)
+  # The same rows as the policy table: identical years per series and label
+  pol <- enso_policy_table(paired, lab, window = window)
+  n_roni <- stats::aggregate(sim_year ~ series + label, data = out, FUN = length)
+  m <- merge(n_roni, pol[c("series", "label", "n")], by = c("series", "label"))
+  expect_equal(nrow(m), nrow(n_roni))
+  expect_equal(m$sim_year, m$n)
+  # Missing parts
+  expect_null(enso_roni_effect_table(NULL, NULL))
+  expect_null(enso_roni_effect_table(paired[0, ], lab))
+  expect_null(enso_roni_effect_table(paired, NULL))
+  expect_equal(unique(enso_roni_effect_table(NULL, NULL, window = window)$series), "Historical (Nov - Jan)")
+})
+
+test_that("the Step 3 RONI note states what the diagnostic is not, and the key lists every label", {
+  expect_match(.ENSO_RONI_EFFECT_NOTE, "not a model input")
+  expect_match(.ENSO_RONI_EFFECT_NOTE, "not an independently\\s+estimated ENSO effect")
+  expect_match(.ENSO_RONI_EFFECT_NOTE, "flat by construction")
+  expect_match(.ENSO_RONI_EFFECT_NOTE, "not independent evidence")
+  key <- as.character(enso_roni_key_ui())
+  for (k in ENSO_LABEL_LEVELS) expect_match(key, enso_label_text(k), fixed = TRUE)
+  expect_match(key, "least squares")
+})
+
 test_that("the phase sentence names the differences from Neutral, and is absent without a comparison", {
   lab <- enso_labels_fixture()
   tbl <- enso_series_table(data.frame(scenario = "Historical", sim_year = 2001:2010, value = c(1, 1, 1, 4, 4, 4, 7, 7, 0, 0)), lab)

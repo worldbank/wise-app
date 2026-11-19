@@ -391,6 +391,7 @@ pages:
       - "6. Weather support by label"
       - "7. How closely the weather follows ENSO"
       - "8. Table versions"
+      - "9. Outcome against exposure RONI"
     equations:
       - {tag: "(1.1)", section: "1. Label of a simulation year"}
       - {tag: "(1.2)", section: "1. Label of a simulation year"}
@@ -401,12 +402,14 @@ pages:
       - "Step 2 and Step 3 > Results: the toggle ENSO phase marks draws on the distribution chart, for the annual series, for Historical of the target months and, with a forecast, for the members (the outlook phase of the target months, one state for all members). The note below the chart says how years and forecast months are classified."
       - "Step 2 > forecast flyout: each month of the strip carries a symbol for El Niño or La Niña, with the phase, RONI and source in its tooltip (the observed record for past months, the outlook of the run for forecast months)."
       - "Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label, and a closing sentence gives how closely the weather follows ENSO. Step 3 adds the policy effect."
+      - "Step 2 > Results: below the table of the ENSO exposure years, a chart of the outcome against the exposure RONI, with a line of statistics per series and a note on how to read it. The block is hidden when no series has labels. The data are in the export \"Outcome against exposure RONI\"."
+      - "Step 3 > Results: below the policy comparison by ENSO exposure, the same chart for the policy effect, in the export \"Policy effect against exposure RONI\"."
       - "Step 2 > Results: with a forecast, the placement card of the target months gives the outlook and the comparison, in the level view."
       - "Step 2 > Diagnostics: bands on the weather-year trajectories, and a line on weather support by label."
       - "Export: the labels, the comparison tables and the outlook; the run record gives the table versions."
     guide: "https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#enso-labels"
-    code: ["R/fct_enso.R", "R/fct_forecast_window.R", "R/fct_forecast_placement.R", "R/fct_step0_overview_metadata.R", "R/fct_batch_targets.R", "R/mod_2_02_results.R", "R/fct_echart_builders.R"]
-    verified_against: "8639eb2"
+    code: ["R/fct_enso.R", "R/fct_forecast_window.R", "R/fct_forecast_placement.R", "R/fct_step0_overview_metadata.R", "R/fct_batch_targets.R", "R/mod_2_02_results.R", "R/fct_echart_builders.R", "R/fct_step2_compare.R"]
+    verified_against: "e9281ab"
   - id: "policy-framework"
     file: "40_policy_framework.md"
     title: "Policy scenarios as a change to the simulated population"

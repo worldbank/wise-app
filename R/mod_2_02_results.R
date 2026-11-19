@@ -274,7 +274,22 @@
           wise_reactable_csv_button(ns("enso_phase_table"), "enso_exposure_years")
         ),
         reactable::reactableOutput(ns("enso_phase_table")),
-        shiny::uiOutput(ns("enso_sentence"))
+        shiny::uiOutput(ns("enso_sentence")),
+        shiny::conditionalPanel(
+          condition = paste0("output['", ns("has_enso_roni"), "']"),
+          shiny::h5(
+            "Outcome against exposure RONI",
+            style = "font-size: 0.95rem; font-weight: 700; color: #173042; margin: 20px 0 4px;"
+          ),
+          shiny::uiOutput(ns("enso_roni_key")),
+          wise_chart_output(
+            ns("enso_roni_plot"),
+            "Simulated outcome of each weather year against its exposure RONI, with a descriptive fit line",
+            height = "380px"
+          ),
+          shiny::uiOutput(ns("enso_roni_stats")),
+          shiny::tags$p(style = "margin: 8px 0 0; font-size: 0.85rem;", .ENSO_RONI_NOTE)
+        )
       )
     ),
 
@@ -1869,6 +1884,70 @@ mod_2_02_results_server <- function(id,
       description = paste(
         "RONI, phase and shares of members of each target month, with the median member against the reference",
         "years of the outlook's phase, for the selected metric. Shares of members are not calibrated."
+      )
+    )
+    # Outcome against continuous exposure RONI (A4 diagnostic). Same series and labels as the phase table;
+    # forecast members never enter.
+    enso_roni_rv <- reactive({
+      tryCatch({
+        lab <- enso_labels_rv()
+        annual <- if (!is.null(lab) && !isTRUE(.forecast_only())) annual_distribution_curves_rv()
+        wl <- enso_window_labels_rv()
+        wv <- if (!is.null(wl)) .window_views_or_null()
+        window <- if (!is.null(wv$curves)) {
+          h <- wv$curves[as.character(wv$curves$scenario) == "Historical" & is.finite(wv$curves$value), , drop = FALSE]
+          list(
+            values = data.frame(series = window_series_rv()$reference_label, sim_year = h$sim_year, value = h$value),
+            labels = wl
+          )
+        }
+        enso_roni_table(annual, lab, window = window)
+      }, error = function(e) NULL)
+    })
+    .enso_roni_y_label <- function() {
+      metric_axis_label(.selected_method(), results_source()$so, input$cmp_deviation %||% "none")
+    }
+    output$has_enso_roni <- shiny::reactive(!is.null(enso_roni_rv()))
+    outputOptions(output, "has_enso_roni", suspendWhenHidden = FALSE)
+    output$enso_roni_plot <- echarts4r::renderEcharts4r({
+      tbl <- enso_roni_rv()
+      req(tbl)
+      echart_enso_roni(tbl, y_label = .enso_roni_y_label())
+    })
+    outputOptions(output, "enso_roni_plot", suspendWhenHidden = TRUE)
+    output$enso_roni_key <- shiny::renderUI(enso_roni_key_ui())
+    output$enso_roni_stats <- shiny::renderUI({
+      st <- enso_roni_stats(enso_roni_rv())
+      req(st)
+      x_label <- .enso_roni_y_label()
+      unit <- .wise_result_rate_unit(x_label)
+      lines <- lapply(st$series, function(s) {
+        enso_roni_stats_text(st, s, scale = if (nzchar(unit)) 100 else 1, unit = unit)
+      })
+      shiny::tags$p(
+        style = "margin: 8px 0 0;",
+        lapply(Filter(Negate(is.null), lines), function(l) shiny::tagList(l, shiny::tags$br()))
+      )
+    })
+    wise_export_table(
+      key = "enso_roni_diagnostic",
+      label = "Outcome against exposure RONI",
+      step = 2L,
+      fun = .committed_only(function() {
+        tbl <- enso_roni_rv()
+        req(tbl)
+        annotate_visualization_export(
+          as.data.frame(tbl),
+          .selected_method(),
+          results_source()$so,
+          observation_unit = "annual aggregate for fixed survey population, averaged over climate models by year",
+          aggregation_order = "weighted household aggregate by model and weather year; joined to exposure RONI",
+          uncertainty = "none: one value per simulated year"
+        )
+      }),
+      description = paste(
+        "Outcome and exposure RONI of each simulated weather year, by series. Descriptive; ENSO is not a model",
+        "input and this is not an estimated ENSO effect."
       )
     )
     output$enso_sentence <- shiny::renderUI({

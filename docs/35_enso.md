@@ -5,8 +5,8 @@ app_step: 2
 depends_on: [notation, data, simulation, climate-scenarios, seasonal-forecast]
 symbols: [mu, r, m]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#enso-labels
-code: [R/fct_enso.R, R/fct_forecast_window.R, R/fct_forecast_placement.R, R/fct_step0_overview_metadata.R, R/fct_batch_targets.R, R/mod_2_02_results.R, R/fct_echart_builders.R]
-verified_against: 8639eb2
+code: [R/fct_enso.R, R/fct_forecast_window.R, R/fct_forecast_placement.R, R/fct_step0_overview_metadata.R, R/fct_batch_targets.R, R/mod_2_02_results.R, R/fct_echart_builders.R, R/fct_step2_compare.R]
+verified_against: e9281ab
 ---
 
 # ENSO labels on results
@@ -67,6 +67,18 @@ A flat comparison by label has two possible causes: ENSO barely reaches this wea
 
 The history of the monthly table is not frozen, so an exported or batch result records the version of the ENSO tables: a hash of each table, the last month of the observed source and the forecast initialisation. This record is not part of any run signature, and a refreshed table neither invalidates a run nor reruns a batch simulation.
 
+### 9. Outcome against exposure RONI
+
+The comparison by label coarsens the exposure into three classes. A descriptive diagnostic shows it continuously: one point per simulation year, with the exposure RONI of (1.2) on the horizontal axis and the simulated outcome of the selected metric on the vertical axis. Each point is coloured by the label of its year, and a least squares line is drawn per series.
+
+The series are those of Section 5, each averaged over its climate models by simulation year. An annual series, including a climate scenario, is joined only to the annual labels. Historical of the target months is joined only to the labels of the target months (Section 3), so the two kinds of series never share a label. A scenario series reuses the ENSO sequence of its template years (A4), so it repeats the historical exposure with shifted weather and is not independent evidence. Forecast members have no label and never enter. A year without a finite exposure RONI or outcome is dropped.
+
+For each series the page gives the number of years, the range of the exposure RONI, the Spearman rank correlation $\rho$ of the outcome with the exposure RONI, and the ordinary least squares slope of the outcome on it, per unit of RONI. Both are `NA` below three years or when either variable does not vary. No p-value or confidence interval is given: the years are few and serially correlated.
+
+The diagnostic shows how the outcome simulated from local weather moves with ENSO exposure in the historical record. ENSO is not a model input, so the slope is not an independently estimated ENSO effect, and a flat result does not mean that ENSO has no effect on welfare. It adds no input and changes no simulated output: decisions D1, D7 and D8 are unchanged.
+
+Step 3 shows the same diagnostic for the policy effect: the value of each year is the policy outcome minus the baseline outcome on the same climate model and simulation year, averaged over climate models by year. The series, labels and filters are those of the policy comparison by label, so each series and label count the same years as that table. The effect varies between years only where the outcome or the policy responds to the weather non-linearly, for example a poverty rate near the line or an outcome modelled in logarithms. When the policy shifts every year by the same amount, for example a fixed transfer with the mean of an outcome modelled in levels, the line is flat by construction and says nothing about ENSO.
+
 ## Interpretation
 
 Labels describe the ENSO state of the months that enter the model for each household. Differences between labels reflect only the selected weather variables and months, through the fitted response. A small difference does not mean that ENSO has a small welfare effect.
@@ -99,6 +111,8 @@ Few events fall in a window, and they differ from each other. Past events are no
 - Step 2 and Step 3 > Results: the toggle ENSO phase marks draws on the distribution chart, for the annual series, for Historical of the target months and, with a forecast, for the members (the outlook phase of the target months, one state for all members). The note below the chart says how years and forecast months are classified.
 - Step 2 > forecast flyout: each month of the strip carries a symbol for El Niño or La Niña, with the phase, RONI and source in its tooltip (the observed record for past months, the outlook of the run for forecast months).
 - Step 2 > Results: the section on El Niño and La Niña years compares outcomes by label, and a closing sentence gives how closely the weather follows ENSO. Step 3 adds the policy effect.
+- Step 2 > Results: below the table of the ENSO exposure years, a chart of the outcome against the exposure RONI, with a line of statistics per series and a note on how to read it. The block is hidden when no series has labels. The data are in the export "Outcome against exposure RONI".
+- Step 3 > Results: below the policy comparison by ENSO exposure, the same chart for the policy effect, in the export "Policy effect against exposure RONI".
 - Step 2 > Results: with a forecast, the placement card of the target months gives the outlook and the comparison, in the level view.
 - Step 2 > Diagnostics: bands on the weather-year trajectories, and a line on weather support by label.
 - Export: the labels, the comparison tables and the outlook; the run record gives the table versions.
@@ -121,6 +135,9 @@ Few events fall in a window, and they differ from each other. Past events are no
 | Comparison by label | | `R/fct_enso.R` `enso_phase_summary()`, `enso_series_table()`, `enso_policy_table()` |
 | Weather support by label | | `R/fct_enso.R` `weather_support_by_phase()` |
 | How closely the weather follows ENSO | 7 | `R/fct_enso.R` `enso_weather_relevance()`, `enso_relevance_sentences()` |
+| Outcome against exposure RONI: data, statistics and text | 9 | `R/fct_enso.R` `enso_roni_table()`, `enso_roni_stats()`, `enso_roni_stats_text()`, `ENSO_PHASE_COLOURS`, `.ENSO_RONI_NOTE` |
+| Outcome against exposure RONI: chart and card block | 9 | `R/fct_step2_compare.R` `echart_enso_roni()`; `R/fct_enso.R` `enso_roni_key_ui()`; `R/mod_2_02_results.R` `enso_roni_rv` |
+| Policy effect against exposure RONI (Step 3) | 9 | `R/fct_enso.R` `enso_roni_effect_table()`, `.ENSO_RONI_EFFECT_NOTE`; `R/fct_echart_builders.R` `enso_roni_rv` |
 | Phase marks on the forecast flyout strip | | `R/fct_enso.R` `enso_strip_marks()`; `R/fct_step2_forecast.R` `forecast_strip_input()` |
 | Forecast members on the distribution chart | | `R/fct_enso.R` `enso_forecast_marks()`, `enso_attach_forecast_labels()` |
 | Table versions and exported tables | | `R/fct_enso.R` `enso_provenance()`, `enso_year_table()`, `enso_outlook_table()` |

@@ -694,6 +694,174 @@ enso_phase_reactable <- function(tbl, scale = 1, digits = 3L) {
   )
 }
 
+# Continuous RONI diagnostic (roadmap/enso_predictor.md, A4) ----
+
+# Point colours of the RONI chart by year label: the existing marks for El Nino and La Nina.
+ENSO_PHASE_COLOURS <- c(
+  el_nino = ENSO_MARKS$el_nino$color, neutral = "#5B6B79", la_nina = ENSO_MARKS$la_nina$color,
+  mixed = "#C9D1D8"
+)
+
+.ENSO_RONI_NOTE <- paste(
+  "Each point is one simulated weather year: its exposure RONI against the outcome simulated from local weather",
+  "only. ENSO is not a model input, so this shows how the outcome moves with ENSO exposure through the weather",
+  "that accompanied it in the historical record. It is not an independently estimated ENSO effect, and a flat",
+  "result does not mean ENSO has no effect on welfare. Years are serially correlated and few, so the fit line",
+  "and statistics are descriptive. A climate-scenario series reuses the historical ENSO sequence of its template",
+  "years and is not independent evidence."
+)
+
+#' Outcome against continuous exposure RONI, one row per simulated year and series
+#'
+#' Each annual series is averaged over its climate models by simulation year (a year counts once) and
+#' joined to the annual labels only; the Historical series of the forecast target months joins the window
+#' labels only. Climate scenarios keep the labels of their template years and stay separate series.
+#' Forecast-like series never enter: members have no historical ENSO observation (D3).
+#'
+#' @param curves Data frame with `scenario`, `sim_year`, `value` (and optionally `model_id`), or `NULL`.
+#' @param labels Tibble from `enso_year_labels()` for the annual series, or `NULL`.
+#' @param window `NULL`, or a list as for `enso_series_table()`: `values` (`series`, `sim_year`, `value`)
+#'   and `labels` (tibble from `enso_window_labels()`).
+#' @return Tibble: `series`, `sim_year`, `value`, `roni_exp`, `label`; `NULL` without rows.
+#' @noRd
+enso_roni_table <- function(curves, labels, window = NULL) {
+  join <- function(values, lab) {
+    d <- merge(values, lab[c("sim_year", "roni_exp", "label")], by = "sim_year")
+    d <- d[is.finite(d$roni_exp) & is.finite(d$value), c("series", "sim_year", "value", "roni_exp", "label")]
+    tibble::as_tibble(d[order(d$sim_year), , drop = FALSE])
+  }
+  out <- NULL
+  if (!is.null(curves) && !is.null(labels)) {
+    curves <- curves[!.step2_is_forecast_like(curves$scenario) & is.finite(curves$value), , drop = FALSE]
+    if (nrow(curves)) { # aggregate() fails on no rows
+      yearly <- stats::aggregate(value ~ scenario + sim_year, data = curves, FUN = mean)
+      values <- data.frame(
+        series = as.character(yearly$scenario), sim_year = yearly$sim_year, value = yearly$value,
+        stringsAsFactors = FALSE
+      )
+      parts <- lapply(.step2_scenario_order(unique(values$series)), function(s) {
+        join(values[values$series == s, , drop = FALSE], labels)
+      })
+      out <- do.call(rbind, parts)
+    }
+  }
+  if (!is.null(window) && !is.null(window$labels) && nrow(window$values)) {
+    values <- data.frame(
+      series = as.character(window$values$series), sim_year = window$values$sim_year,
+      value = window$values$value, stringsAsFactors = FALSE
+    )
+    out <- rbind(out, join(values, window$labels))
+  }
+  if (is.null(out) || !nrow(out)) NULL else out
+}
+
+#' Colour key of the RONI chart: one dot per year label, and the fit lines
+#' @noRd
+enso_roni_key_ui <- function() {
+  shiny::tags$p(
+    style = "margin: 0 0 4px; font-size: 0.85rem;",
+    lapply(ENSO_LABEL_LEVELS, function(k) {
+      shiny::tags$span(
+        style = "margin-right: 12px; white-space: nowrap;",
+        shiny::tags$span(style = paste0("color:", ENSO_PHASE_COLOURS[[k]], ";"), "\u25cf"),
+        paste0(" ", enso_label_text(k))
+      )
+    }),
+    "Dashed lines are least squares fits."
+  )
+}
+
+.ENSO_RONI_EFFECT_NOTE <- paste(
+  "Each point is one simulated weather year: its exposure RONI against the policy effect (policy minus baseline",
+  "on the same model and weather year). ENSO is not a model input, so this shows how the effect moves with ENSO",
+  "exposure through the weather that accompanied it in the historical record. It is not an independently",
+  "estimated ENSO effect. When the policy shifts the outcome of every year by the same amount, for example a",
+  "fixed transfer with the mean of an outcome modelled in levels, the line is flat by construction. Years are",
+  "serially correlated and few, so the fit line and statistics are descriptive. A climate-scenario series reuses",
+  "the historical ENSO sequence of its template years and is not independent evidence."
+)
+
+#' Policy effect against continuous exposure RONI, one row per simulated year and series
+#'
+#' The Step 3 counterpart of `enso_roni_table()`: the value of each year is the policy effect. Inputs have
+#' the shape of `enso_policy_table()`, and the same series and labels enter.
+#'
+#' @param paired Data frame with `scenario`, `sim_year`, `effect` (and optionally `model_id`), or `NULL`.
+#' @param labels Tibble from `enso_year_labels()` for the annual series, or `NULL`.
+#' @param window `NULL`, or a list: `paired` (`scenario`, `sim_year`, `effect`) and `labels` (tibble from
+#'   `enso_window_labels()`).
+#' @return Tibble as from `enso_roni_table()`, with the effect in `value`; `NULL` without rows.
+#' @noRd
+enso_roni_effect_table <- function(paired, labels, window = NULL) {
+  curves <- if (!is.null(paired) && nrow(paired)) {
+    data.frame(
+      scenario = as.character(paired$scenario), sim_year = paired$sim_year, value = paired$effect,
+      stringsAsFactors = FALSE
+    )
+  }
+  w <- if (!is.null(window) && !is.null(window$paired) && nrow(window$paired)) {
+    list(
+      values = data.frame(
+        series = as.character(window$paired$scenario), sim_year = window$paired$sim_year,
+        value = window$paired$effect, stringsAsFactors = FALSE
+      ),
+      labels = window$labels
+    )
+  }
+  enso_roni_table(curves, labels, window = w)
+}
+
+# TRUE when the spread of `v` is within rounding of its size (all zero included).
+.enso_roni_flat <- function(v) diff(range(v)) <= sqrt(.Machine$double.eps) * max(abs(v))
+
+#' Descriptive statistics of the RONI diagnostic, one row per series
+#'
+#' Spearman rank correlation and the ordinary least squares slope of the outcome on exposure RONI. No
+#' p-values: the years are few and serially correlated. `rho` and `slope` are `NA` below three years or
+#' without variation in either variable. A value whose spread is within rounding of its size counts as
+#' constant (`flat`): a uniform policy effect differs between years only in the last digits, and a rank
+#' correlation of that noise means nothing.
+#'
+#' @param tbl Tibble from `enso_roni_table()`.
+#' @return Tibble: `series`, `n`, `roni_min`, `roni_max`, `flat`, `rho`, `slope`; `NULL` without rows.
+#' @noRd
+enso_roni_stats <- function(tbl) {
+  if (is.null(tbl) || !nrow(tbl)) return(NULL)
+  rows <- lapply(unique(as.character(tbl$series)), function(s) {
+    d <- tbl[tbl$series == s, , drop = FALSE]
+    flat <- .enso_roni_flat(d$value)
+    ok <- nrow(d) >= 3L && stats::sd(d$roni_exp) > 0 && !flat
+    tibble::tibble(
+      series = s, n = nrow(d), roni_min = min(d$roni_exp), roni_max = max(d$roni_exp), flat = flat,
+      rho = if (ok) stats::cor(d$roni_exp, d$value, method = "spearman") else NA_real_,
+      slope = if (ok) unname(stats::coef(stats::lm(value ~ roni_exp, data = d))[[2L]]) else NA_real_
+    )
+  })
+  do.call(rbind, rows)
+}
+
+#' One line of statistics of the RONI diagnostic for one series
+#'
+#' @param stats Tibble from `enso_roni_stats()`.
+#' @param series Series to describe.
+#' @param scale,digits As for `enso_phase_reactable()`; the slope is scaled, rho is not.
+#' @param unit Unit text appended to the slope ("" or "%" or " pp").
+#' @return Text, or `NULL` when the series is absent or has no `rho` for another reason than a constant value.
+#' @noRd
+enso_roni_stats_text <- function(stats, series, scale = 1, digits = 3L, unit = "") {
+  d <- stats[stats$series == series, , drop = FALSE]
+  if (nrow(d) && d$flat && d$n >= 3L) {
+    return(sprintf("%s: the value is the same in every year (%d years), so it does not move with ENSO exposure.",
+      series, d$n))
+  }
+  if (!nrow(d) || is.na(d$rho)) return(NULL)
+  sprintf(
+    "%s: Spearman rho %s, slope %s%s per RONI unit, %d years, RONI %s to %s.",
+    series, formatC(d$rho, digits = 2L, format = "f"), .enso_fmt(d$slope, scale, digits, sign = TRUE), unit,
+    d$n, formatC(d$roni_min, digits = 2L, format = "f"), formatC(d$roni_max, digits = 2L, format = "f")
+  )
+}
+
 #' Sentence on how many of the most adverse years are El Nino years (item 3)
 #'
 #' Looks at the `k` most adverse years of one series, about a fifth of its years and at least

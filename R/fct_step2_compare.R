@@ -2762,6 +2762,104 @@ echart_model_robustness <- function(tbl, x_label = "Expected annual outcome",
   wise_echart_theme(e)
 }
 
+# ---- echart_enso_roni --------------------------------------------------------
+
+#' Outcome against continuous exposure RONI
+#'
+#' Descriptive scatter (roadmap/enso_predictor.md, A4): exposure RONI on x, the simulated outcome on y, one
+#' point per simulated weather year coloured by its ENSO label, plus an ordinary least squares fit line per
+#' series. A scatter and its fit line share a series name, so one legend entry toggles both.
+#' @param tbl Tibble from `enso_roni_table()`.
+#' @param y_label Outcome-axis title; its unit decides percent display, as in the other Step 2 charts.
+#' @param value_name Name of the value in the tooltip ("Policy effect" in Step 3).
+#' @noRd
+echart_enso_roni <- function(tbl, y_label = "Expected annual outcome", height = "380px", value_name = "Outcome") {
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(echart_blank("The RONI diagnostic is unavailable.", height = height))
+  }
+  cats <- .step2_scenario_order(unique(as.character(tbl$series)))
+  colour_of <- function(s) {
+    if (identical(s, "Historical") || .step2_is_window_reference(s)) return(.wise_history)
+    ssp <- .normalise_ssp(s)
+    if (ssp %in% names(.ssp_colours)) unname(.ssp_colours[[ssp]]) else .wise_slate
+  }
+  symbols <- rep_len(c("circle", "rect", "roundRect", "pin"), length(cats))
+  series <- list()
+  for (i in seq_along(cats)) {
+    d <- tbl[as.character(tbl$series) == cats[[i]], , drop = FALSE]
+    flat <- .enso_roni_flat(d$value)
+    if (flat) d$value <- mean(d$value) # rounding noise only; drawn as it is, a constant fills the axis
+    col <- colour_of(cats[[i]])
+    series[[length(series) + 1L]] <- list(
+      name = cats[[i]], type = "scatter", symbol = symbols[[i]], symbolSize = 9, z = 2,
+      itemStyle = list(color = col, opacity = 0.9),
+      data = lapply(seq_len(nrow(d)), function(j) {
+        list(
+          value = list(d$roni_exp[[j]], d$value[[j]]), scenario = cats[[i]], year = d$sim_year[[j]],
+          label = enso_label_text(d$label[[j]]),
+          itemStyle = list(
+            color = unname(ENSO_PHASE_COLOURS[[d$label[[j]]]]), opacity = 0.9,
+            borderColor = .wise_support, borderWidth = 0.8
+          )
+        )
+      })
+    )
+    if (nrow(d) >= 3L && stats::sd(d$roni_exp) > 0 && !flat) {
+      fit <- stats::lm(value ~ roni_exp, data = d)
+      xs <- range(d$roni_exp)
+      series[[length(series) + 1L]] <- list(
+        name = cats[[i]], type = "line", showSymbol = FALSE, silent = TRUE, z = 1,
+        lineStyle = list(color = col, width = 2, type = "dashed"), itemStyle = list(color = col),
+        tooltip = list(show = FALSE),
+        data = list(
+          list(xs[[1L]], unname(stats::predict(fit, data.frame(roni_exp = xs[[1L]])))),
+          list(xs[[2L]], unname(stats::predict(fit, data.frame(roni_exp = xs[[2L]]))))
+        )
+      )
+    }
+  }
+  e <- .e_step2_base(height)
+  e$x$opts$xAxis <- list(
+    type = "value", scale = TRUE, name = "Exposure RONI", nameLocation = "middle", nameGap = 30,
+    nameMoveOverlap = FALSE, nameTextStyle = wise_eaxis_name(), axisLabel = wise_eaxis_label(),
+    splitLine = wise_esplit_line(), axisLine = list(lineStyle = list(color = .wise_grid))
+  )
+  # Own rate formatter: a Step 3 effect spans hundredths of a point, which one decimal folds into one tick label.
+  unit <- .wise_result_rate_unit(y_label)
+  y_axis_label <- if (nzchar(unit)) {
+    wise_eaxis_label(formatter = htmlwidgets::JS(sprintf(
+      "function(v){return ((v*100)||0).toLocaleString('en-US',{maximumFractionDigits:3})+%s;}",
+      jsonlite::toJSON(unit, auto_unbox = TRUE)
+    )))
+  } else {
+    wise_eaxis_label()
+  }
+  e$x$opts$yAxis <- list(
+    type = "value", scale = TRUE, name = y_label, nameLocation = "end", nameTextStyle = wise_eyaxis_name(),
+    axisLabel = y_axis_label, splitLine = wise_esplit_line(),
+    axisLine = list(lineStyle = list(color = .wise_grid))
+  )
+  e$x$opts$series <- series
+  e$x$opts$legend <- modifyList(
+    list(top = 4, left = "center", orient = "horizontal", data = as.list(cats)), wise_elegend_style()
+  )
+  e$x$opts$tooltip <- list(trigger = "item", confine = TRUE,
+    formatter = htmlwidgets::JS(sprintf("function(p) {
+      var d = p.data || {};
+      if (!d.scenario) return '';
+      function esc(s) { return String(s).replace(/[&<>\"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]; }); }
+      var percent = %s, v = p.value[1];
+      return '<b>' + esc(d.scenario) + '</b><br>Weather year ' + esc(d.year) + ': ' + esc(d.label) +
+        ' exposure<br>RONI: <b>' + p.value[0].toFixed(2) + '</b><br>' + esc(%s) + ': <b>' +
+        (percent ? v*100 : v).toLocaleString('en-US', {maximumFractionDigits: percent ? 2 : 3}) + %s + '</b>';
+    }", tolower(as.character(nzchar(.wise_result_rate_unit(y_label)))),
+      jsonlite::toJSON(value_name, auto_unbox = TRUE),
+      jsonlite::toJSON(.wise_result_rate_unit(y_label), auto_unbox = TRUE))))
+  e$x$opts$grid <- list(containLabel = TRUE, left = 8, right = 24, top = 56, bottom = 54)
+  wise_echart_theme(e)
+}
+
 # ---- echart_exceedance -------------------------------------------------------
 
 #' Interactive exceedance probability curve
