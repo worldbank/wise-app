@@ -6,9 +6,11 @@
 #
 # Blocking: a failure fails the job, and `main` requires it as a status check.
 # The script fails on serious or critical axe violations (WISEAPP_AXE_FAIL=1).
+# main is not run on push: changes reach it by pull request, already checked on dev or by the
+# pull_request run, so a run on the merge commit repeats the same check.
 on:
   push:
-    branches: [main, dev]
+    branches: [dev]
   pull_request:
     branches: [main, dev]
 

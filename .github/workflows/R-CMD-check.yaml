@@ -3,9 +3,11 @@
 # Dependencies come from DESCRIPTION only (Imports, Depends, LinkingTo and the
 # declared Suggests), so a package used in R/ but missing from DESCRIPTION
 # fails here instead of on Posit Connect. Benchmarks are not run on shared CI.
+# main is not run on push: changes reach it by pull request, already checked on dev or by the
+# pull_request run, so a run on the merge commit repeats the same check.
 on:
   push:
-    branches: [main, dev]
+    branches: [dev]
   pull_request:
     branches: [main, dev]
 
