@@ -181,7 +181,11 @@ test_that("cancelling the active Step 2 job interrupts the running task", {
   root <- withr::local_tempdir()
   control <- file.path(root, "control")
   dir.create(control, recursive = TRUE)
-  task <- mirai::mirai(Sys.sleep(60), .compute = "default")
+  # Cancel only once the daemon runs the task: stop_mirai() sent before evaluation starts is lost and the
+  # sleep runs in full, which a slow CI runner hit (the next task then missed the 20-second wait).
+  running <- file.path(root, "running")
+  task <- mirai::mirai({ file.create(running); Sys.sleep(60) }, running = running, .compute = "default")
+  expect_true(wait_for(function() file.exists(running), timeout = 30))
   job <- list2env(list(
     id = "cancel-live", session_id = "s", generation = 1L, status = "running",
     control_dir = control, lock_file = file.path(control, "publication.lock"),
