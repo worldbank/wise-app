@@ -6,7 +6,7 @@ depends_on: [notation, data, simulation, climate-scenarios, seasonal-forecast]
 symbols: [mu, r, m]
 guide: https://github.com/worldbank/wise-app-docs/blob/main/step2.qmd#enso-labels
 code: [R/fct_enso.R, R/fct_forecast_window.R, R/fct_forecast_placement.R, R/fct_step0_overview_metadata.R, R/fct_batch_targets.R, R/mod_2_02_results.R, R/fct_echart_builders.R, R/fct_step2_compare.R]
-verified_against: e9281ab
+verified_against: 58f8bed
 ---
 
 # ENSO labels on results

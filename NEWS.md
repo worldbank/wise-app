@@ -7,12 +7,14 @@
 * Step 3 runs levers and transfers on forecast members, including every shock-responsive design: weather and impact triggers, the national gate, dynamic targeting, loss-linked budgets, and ex-post or anticipatory payments. A window is paid once and scored against each household's level in the same months of the historical years. An anticipatory transfer pays a location when a chosen share of members pass its trigger (`forecast_member_share_pct`, default 50). Step 3 adds cards for leakage, missed and false-alarm rates, loss offset and, for anticipatory payments, the cost paid before no event. These are indicators: the member spread is not calibrated.
 * Batch runs add the `forecast` table and the `placement`, `skill`, `season`, `policy_effect` and `shock_window` summary sections (the latter with leakage, rate and anticipatory figures).
 * Fixed repeated clicks on Run in Steps 2 and 3 being dropped.
+* Fixed a forecast run stopping with "Forecast predictor months are missing for selected locations." when survey locations lie outside the land coverage of the weather data (coastal VNM locations). Such locations have no weather, and Step 2 already leaves out their households.
 
 ## ENSO
 
 * Years are labelled by El Niño, La Niña, Neutral or Mixed exposure (RONI) and marked in Steps 1 to 3, Diagnostics, the forecast flyout, exports and batch tables.
 * A simulated year combines interview months and lags, so it is classified by exposure, not calendar year: the phase covering at least half of the exposed months, otherwise Mixed. Climate scenario years take the label of their template year; forecast members get one outlook for the run.
 * Steps 2 and 3 add an ENSO phase toggle (off by default) and an ENSO section; Step 3 adds a policy comparison by phase.
+* A descriptive chart plots each simulated year against its continuous exposure RONI: the outcome in Step 2, the policy effect in Step 3, with a fit line and statistics per series and a CSV export.
 * ENSO is annotation only and does not enter estimation or simulation. Without the ENSO tables, every ENSO element is hidden.
 
 ## Other
