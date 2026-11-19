@@ -1,7 +1,10 @@
-# Server-side LaTeX rendering via {katex}. All math in the app is static, so
-# rendered HTML is cached per R process. KaTeX CSS + fonts are bundled at
+# Server-side LaTeX rendering. All math in the app is static, so the HTML is
+# pre-rendered by {katex} (a Suggests, needs V8) into inst/math_cache.json via
+# dev/make_math_cache.R and looked up at runtime; {katex} is only a fallback
+# for strings missing from the file. The KaTeX CSS is bundled at
 # inst/app/www/katex/ and auto-linked by golem::bundle_resources() - no
-# htmlDependency wiring needed. This replaces client-side MathJax, which
+# htmlDependency wiring needed. The KaTeX font files its @font-face rules name
+# are not bundled, so math renders in a fallback serif font. This replaces client-side MathJax, which
 # failed to render on some Windows setups.
 
 .katex_cache <- new.env(parent = emptyenv())
@@ -31,7 +34,7 @@ wise_seed <- function(seed = WISEAPP_DEFAULT_SEED, ...) {
   )
   derived <- strtoi(substr(hash, 1L, 7L), base = 16L)
   as.integer((as.double(derived) + abs(as.double(seed))) %%
-               (.Machine$integer.max - 1L) + 1L)
+    (.Machine$integer.max - 1L) + 1L)
 }
 
 #' Select deterministic fallback values from a reference vector
@@ -45,7 +48,9 @@ wise_seed <- function(seed = WISEAPP_DEFAULT_SEED, ...) {
 #' @noRd
 deterministic_values_by_key <- function(values, keys,
                                         seed = WISEAPP_DEFAULT_SEED) {
-  if (length(values) == 0L) return(values)
+  if (length(values) == 0L) {
+    return(values)
+  }
   keys <- as.character(keys)
   keys[is.na(keys)] <- paste0("<NA>", which(is.na(keys)))
   unique_keys <- unique(keys)
@@ -60,14 +65,32 @@ deterministic_values_by_key <- function(values, keys,
 #' @param display Use display (block) mode. Default FALSE = inline.
 #' @noRd
 wise_math <- function(tex, display = FALSE) {
+  if (is.null(.katex_cache[[".loaded"]])) .math_cache_load()
   key <- paste0(as.integer(display), "\r", tex)
   out <- .katex_cache[[key]]
   if (is.null(out)) {
+    if (!requireNamespace("katex", quietly = TRUE)) {
+      stop(
+        "No pre-rendered HTML for math string '", tex, "'; install {katex} and run ",
+        "dev/make_math_cache.R.",
+        call. = FALSE
+      )
+    }
     out <- as.character(
-      katex::katex_html(tex, displayMode = display, include_css = FALSE))
+      katex::katex_html(tex, displayMode = display, include_css = FALSE)
+    )
     .katex_cache[[key]] <- out
   }
   htmltools::HTML(out)
+}
+
+# Fill the cache from inst/math_cache.json (written by dev/make_math_cache.R).
+.math_cache_load <- function() {
+  path <- system.file("math_cache.json", package = "wiseapp")
+  if (nzchar(path)) {
+    list2env(as.list(jsonlite::fromJSON(path)), envir = .katex_cache)
+  }
+  assign(".loaded", TRUE, envir = .katex_cache)
 }
 
 #' Welfare-function equation block (replaces equation.md / equation2.md)
@@ -76,12 +99,15 @@ wise_math <- function(tex, display = FALSE) {
 #' @noRd
 welfare_equation_ui <- function(predicted = FALSE) {
   y_tex <- if (predicted) "\\widehat{Y_{ijt}}" else "Y_{ijt}"
-  eq    <- paste0(y_tex, " = f(W_{jf(t)}, X_{ijt}, E_{jt}) + \\epsilon_{ijt}")
-  y_txt <- if (predicted) ": predicted outcome of individual/household "
-           else ": outcome of individual/household "
+  eq <- paste0(y_tex, " = f(W_{jf(t)}, X_{ijt}, E_{jt}) + \\epsilon_{ijt}")
+  y_txt <- if (predicted) {
+    ": predicted outcome of individual/household "
+  } else {
+    ": outcome of individual/household "
+  }
 
   htmltools::tagList(
-    shiny::h5(if (predicted) "Predicted welfare" else "Welfare function"),
+    shiny::h2(class = "h5", if (predicted) "Predicted welfare" else "Welfare function"),
     shiny::tags$div(class = "wise-equation", wise_math(eq, display = TRUE)),
     shiny::tags$ul(
       shiny::tags$li(

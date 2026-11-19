@@ -61,6 +61,32 @@ test_that("delta-method mean matches MC SE within 5%", {
   expect_lt(abs(se_delta - se_mc) / se_mc, 0.05)
 })
 
+test_that("point-estimate fast path returns exact values without uncertainty work", {
+  pipe <- make_pipeline(N = 80, K = 3)
+  pipe$train_aug <- data.frame(.resid = stats::rnorm(80))
+  pipe$sim_year <- rep(c(2030L, 2031L), each = 40L)
+
+  for (method in c("mean", "median", "total", "headcount_ratio", "gap",
+                   "fgt2", "gini", "prosperity_gap", "avg_poverty")) {
+    pov <- if (method %in% c("headcount_ratio", "gap", "fgt2")) 3 else NULL
+    fast <- aggregate_pipeline_per_year(
+      pipe, method = method, weighted = TRUE, pov_line = pov,
+      residuals = "none", skip_coef = TRUE, is_log = TRUE
+    )
+    oracle <- lapply(seq_along(fast), function(i) {
+      idx <- pipe$sim_year == fast[[i]]$sim_year
+      mu <- exp(pipe$y_point[idx])
+      x <- aggregate_point_estimate(mu, method, pipe$weights[idx], pov)
+      x$sim_year <- fast[[i]]$sim_year
+      x$n_na_dropped <- 0L
+      x$n_na_weight_dropped <- 0L
+      x
+    })
+    expect_identical(fast, oracle, info = method)
+    expect_true(all(vapply(fast, function(x) is.null(x$F_agg), logical(1))))
+  }
+})
+
 test_that("delta-method total matches MC SE within 5%", {
   pipe <- make_pipeline()
   res <- wiseapp:::aggregate_with_uncertainty_delta(
@@ -125,8 +151,8 @@ test_that("delta-method headcount with smoothing returns finite SE", {
 
 test_that("avg_poverty SE matches MC for the days-needed-to-earn-$1 metric", {
   # avg_poverty is mean(1 / welfare) over valid rows — "days needed to earn
-  # $1" — not the conditional mean among the poor (method_uncertainty.md
-  # §3.7). Gradient: h_i = -1/(n_ok * mu_i) unweighted and
+  # $1" — not the conditional mean among the poor (docs/33_uncertainty.md
+  # section 3). Gradient: h_i = -1/(n_ok * mu_i) unweighted and
   # -w_i / (W_ok * mu_i) weighted; strictly negative for every valid
   # household because raising welfare lowers days-to-$1, zero otherwise.
   pipe <- make_pipeline()
@@ -195,7 +221,8 @@ test_that("prosperity_gap gradient matches MC and exact formula", {
 test_that("all smooth delta-method gradients match finite differences (unweighted)", {
   # h_i = (dT/dw_i) * w_i, so a small relative welfare perturbation
   # dw_i/w_i = eps must move the point estimate by h_i * eps. Excluded:
-  # median (piecewise-constant estimate — Hampel IF is not FD-visible) and
+  # median (piecewise-constant estimate; the gradient is the smoothed-quantile
+  # derivative, validated against Monte Carlo below) and
   # headcount_ratio (discontinuous estimate; the gradient is defined on the
   # kernel-smoothed surrogate, validated separately below).
   pipe  <- make_pipeline()
@@ -279,6 +306,136 @@ test_that("kernel-smoothed headcount_ratio gradient matches finite differences",
   expect_near_fd(T1 - T0, h[idx] * eps, tol = 1e-4, info = "headcount_ratio")
 })
 
+test_that("median delta-method SD matches Monte Carlo (R2-BUG-03)", {
+  # The Hampel-IF gradient gave ratios of ~0 (intercept-like loading) and
+  # ~0.25 (correlated loading); the smoothed-quantile derivative gives ~1.
+  set.seed(3)
+  N <- 4000
+  y <- stats::rnorm(N, log(3), 0.6)
+  w <- stats::runif(N, 0.5, 2)
+  cases <- list(
+    intercept  = matrix(0.05, N, 1),
+    correlated = cbind(0.03 + 0.02 * (y - mean(y)), stats::rnorm(N, 0, 0.02)),
+    mixed      = cbind(rep(0.04, N), stats::rnorm(N, 0, 0.05),
+                       stats::rnorm(N, 0, 0.05))
+  )
+  for (nm in names(cases)) {
+    pipe <- list(y_point = y, F_loading = cases[[nm]])
+    res <- wiseapp:::aggregate_with_uncertainty_delta(
+      y_point = y, F_loading = pipe$F_loading, method = "median",
+      weights = w, residuals = "none"
+    )
+    ratio <- sqrt(res$var_coef) / mc_se(pipe, "median", weights = w, S = 1000)
+    expect_gt(ratio, 0.9, label = paste(nm, "ratio"))
+    expect_lt(ratio, 1.1, label = paste(nm, "ratio"))
+  }
+
+  # Common log shift: gradients sum to ~ m (median moves by m * delta).
+  h <- wiseapp:::gradient_for_method(
+    method = "median", mu = exp(y), weights = w, pov_line = NULL,
+    value_pt = wiseapp:::resolve_agg_fn("median")(exp(y), w, NULL)
+  )
+  m <- wiseapp:::resolve_agg_fn("median")(exp(y), w, NULL)
+  expect_lt(abs(sum(h) / m - 1), 0.02)
+})
+
+
+test_that("one non-finite row is dropped and counted, not zeroing variance (R2-BUG-02)", {
+  pipe <- make_pipeline()
+  run <- function(y, F, w, method) {
+    pov <- if (method == "headcount_ratio") 3 else NULL
+    wiseapp:::aggregate_with_uncertainty_delta(
+      y_point = y, F_loading = F, method = method, weights = w,
+      pov_line = pov, residuals = "none"
+    )
+  }
+  for (method in c("mean", "median", "gini", "headcount_ratio")) {
+    clean <- run(pipe$y_point, pipe$F_loading, pipe$weights, method)
+    expect_identical(clean$n_coef_dropped, 0L)
+
+    F_na <- pipe$F_loading; F_na[17L, 2L] <- NA
+    w_na <- pipe$weights;   w_na[17L] <- NA
+    y_na <- pipe$y_point;   y_na[17L] <- NA
+    cases <- list(
+      F_row  = run(pipe$y_point, F_na, pipe$weights, method),
+      y      = run(y_na, pipe$F_loading, pipe$weights, method)
+    )
+    # An NA weight makes most point estimates NA (resolver behaviour, out of
+    # scope here); the mean gradient does not depend on the point estimate.
+    if (method == "mean") {
+      cases$weight <- run(pipe$y_point, pipe$F_loading, w_na, method)
+    }
+    for (nm in names(cases)) {
+      res <- cases[[nm]]
+      info <- paste(method, nm)
+      expect_identical(res$n_coef_dropped, 1L, info = info)
+      expect_gt(res$var_coef, 0)
+      expect_lt(abs(res$var_coef / clean$var_coef - 1), 0.01, label = info)
+    }
+  }
+})
+
+test_that("NA household-year predictions are counted per year (R2-BUG-28)", {
+  pipe <- make_pipeline(N = 60, K = 3)
+  pipe$weight <- pipe$weights
+  pipe$sim_year <- rep(c(2030L, 2031L, 2032L), each = 20L)
+  pipe$y_point[c(3L, 5L, 45L)] <- NA
+  clean <- pipe
+  clean$y_point[c(3L, 5L, 45L)] <- log(3)
+
+  expect_message(
+    single <- aggregate_pipeline_per_year(pipe, "mean", residuals = "none"),
+    "3 NA household-year prediction\\(s\\) excluded .*2030: 2, 2032: 1"
+  )
+  expect_identical(vapply(single, `[[`, integer(1), "n_na_dropped"),
+                   c(2L, 0L, 1L))
+  multi <- suppressMessages(aggregate_pipeline_per_year_multi(
+    pipe, c("mean", "gini"), residuals = "none"
+  ))
+  expect_identical(vapply(multi$gini, `[[`, integer(1), "n_na_dropped"),
+                   c(2L, 0L, 1L))
+  # Report only: the rows used are unchanged (NA rows still excluded).
+  expect_identical(single[[2]]$value,
+                   aggregate_pipeline_per_year(clean, "mean",
+                                               residuals = "none")[[2]]$value)
+  expect_silent(aggregate_pipeline_per_year(clean, "mean", residuals = "none"))
+})
+
+test_that("rows with an NA survey weight are dropped and counted", {
+  pipe <- make_pipeline(N = 60, K = 3)
+  pipe$weight <- pipe$weights
+  pipe$sim_year <- rep(c(2030L, 2031L, 2032L), each = 20L)
+  pipe$weight[c(2L, 25L, 26L)] <- NA
+  clean <- pipe
+  keep <- !is.na(pipe$weight)
+  clean$y_point <- pipe$y_point[keep]
+  clean$weight <- pipe$weight[keep]
+  clean$sim_year <- pipe$sim_year[keep]
+  clean$F_loading <- pipe$F_loading[keep, , drop = FALSE]
+  clean$weights <- NULL
+
+  for (m in c("mean", "median", "headcount_ratio")) {
+    pov <- if (m == "headcount_ratio") 3 else NULL
+    res <- suppressMessages(
+      aggregate_pipeline_per_year(pipe, m, pov_line = pov, residuals = "none")
+    )
+    ref <- aggregate_pipeline_per_year(clean, m, pov_line = pov,
+      residuals = "none")
+    info <- paste("method", m)
+    expect_false(anyNA(vapply(res, `[[`, numeric(1), "value")), label = info)
+    expect_equal(vapply(res, `[[`, numeric(1), "value"),
+      vapply(ref, `[[`, numeric(1), "value"), label = info)
+    expect_equal(vapply(res, `[[`, numeric(1), "var_coef"),
+      vapply(ref, `[[`, numeric(1), "var_coef"), label = info)
+  }
+  expect_message(
+    res <- aggregate_pipeline_per_year(pipe, "mean", residuals = "none"),
+    "3 row\\(s\\) with a missing survey weight excluded .*2030: 1, 2031: 2"
+  )
+  expect_identical(vapply(res, `[[`, integer(1), "n_na_weight_dropped"),
+                   c(1L, 2L, 0L))
+  expect_identical(vapply(res, `[[`, integer(1), "n_na_dropped"), c(0L, 0L, 0L))
+})
 
 test_that("F_loading = NULL gives zero coefficient variance", {
   pipe <- make_pipeline()
@@ -322,4 +479,85 @@ test_that("combine_ensemble_results: pooled SE matches mean(var) + var(values)",
   vc   <- vapply(members, `[[`, numeric(1), "var_coef")
   expected_var <- mean(vc) + stats::var(vals)
   expect_equal(comb$var_pool, expected_var, tolerance = 1e-10)
+})
+
+test_that("level outcomes: delta SE matches MC SE for every method", {
+  # Level (non-log) outcome: welfare = y, so the gradient wrt y is dT/dw
+  # without the extra mu factor used on the log scale. Before the fix every
+  # method was off by roughly the welfare level (~3x here).
+  set.seed(3)
+  N <- 4000
+  y <- pmax(stats::rnorm(N, 3, 1), 1.5)
+  pipe <- list(
+    y_point = y,
+    F_loading = cbind(rep(0.1, N), stats::rnorm(N, 0, 0.1),
+                      stats::rnorm(N, 0, 0.1)),
+    weights = stats::runif(N, 0.5, 2)
+  )
+  methods <- c("mean", "median", "total", "headcount_ratio", "gap", "fgt2",
+               "gini", "prosperity_gap", "avg_poverty")
+  for (m in methods) {
+    res <- wiseapp:::aggregate_with_uncertainty_delta(
+      y_point = pipe$y_point, F_loading = pipe$F_loading, method = m,
+      weights = pipe$weights, pov_line = 3.0, residuals = "none",
+      is_log = FALSE
+    )
+    se_mc <- mc_se(pipe, m, weights = pipe$weights, pov_line = 3.0,
+                   is_log = FALSE, S = 1000)
+    ratio <- sqrt(res$var_coef) / se_mc
+    expect_true(abs(ratio - 1) < 0.10, info = sprintf("%s ratio=%.3f", m, ratio))
+  }
+})
+
+test_that("level outcomes: unweighted gradients have one entry per row", {
+  # Unweighted total on the level scale used to return a scalar gradient,
+  # which made the F' h product non-conformable.
+  set.seed(4)
+  N <- 50
+  mu <- pmax(stats::rnorm(N, 3, 1), 1.5)
+  F_loading <- matrix(stats::rnorm(N * 2, 0, 0.1), N, 2)
+  for (m in c("mean", "total", "median", "gap", "fgt2", "headcount_ratio",
+              "gini", "prosperity_gap", "avg_poverty")) {
+    res <- wiseapp:::aggregate_with_uncertainty_delta(
+      y_point = mu, F_loading = F_loading, method = m,
+      weights = NULL, pov_line = 3.0, residuals = "none", is_log = FALSE
+    )
+    expect_true(is.finite(res$var_coef), info = m)
+  }
+})
+
+
+# F9: closed-form residual variance of the poverty rate under "resample" ----
+
+test_that("the poverty-rate residual variance matches a Monte Carlo over residual draws", {
+  set.seed(5)
+  n <- 300
+  y <- stats::rnorm(n, log(4), 0.6)
+  w <- stats::runif(n, 1, 3)
+  resid <- stats::rnorm(500, 0, 0.55)
+  z <- 3
+  closed <- .headcount_resid_variance(y, w, z, resid)
+  wt <- w / sum(w)
+  draws <- replicate(3000, sum(wt * (exp(y + sample(resid, n, replace = TRUE)) < z)))
+  expect_equal(closed, stats::var(draws), tolerance = 0.1)
+  # The aggregator uses it for "resample" and leaves the other rules alone.
+  train_aug <- data.frame(.resid = resid)
+  F <- matrix(0, n, 1)
+  res <- aggregate_with_uncertainty_delta(
+    y, F, "headcount_ratio", weights = w, pov_line = z, residuals = "resample",
+    train_aug = train_aug, id_col = NULL
+  )
+  expect_equal(res$var_resid, closed)
+  # A transfer added after the residual lowers the room below the line.
+  sp <- rep(1, n)
+  with_sp <- .headcount_resid_variance(y, w, z, resid, TRUE, sp, sp_log = rep(0, n))
+  expect_false(isTRUE(all.equal(with_sp, closed)))
+})
+
+test_that("the poverty-rate residual variance counts a tie at the cut-off as not poor", {
+  # Prediction 0 on the log scale, line 1, residuals {0, 1}: welfare is 1 or e,
+  # never below the line, so no draw is poor and the variance is 0 (it was 0.25).
+  expect_equal(.headcount_resid_variance(0, 1, 1, c(0, 1)), 0)
+  # Residuals {-1, 0}: only -1 is poor (p = 0.5), a tie at 0 is not.
+  expect_equal(.headcount_resid_variance(0, 1, 1, c(-1, 0)), 0.25)
 })

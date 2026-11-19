@@ -53,10 +53,11 @@ test_that("access predicates recognise universal and negative changes", {
 
 test_that("labor activity reads only labor fields", {
   expect_true(has_labor_change(list(sector_services = 3)))
+  # Sector targets are NULL until moved from the observed share (R2-BUG-05).
   expect_false(has_labor_change(list(
     employment_change_pp = 0,
-    sector_manufacturing = 0,
-    sector_services = 0
+    sector_manufacturing = NULL,
+    sector_services = NULL
   )))
   expect_false(has_labor_change(list(elec_access_change_pct = 5)))
   expect_false(has_labor_change(list(employment_change_pp = NA_real_)))
@@ -125,4 +126,18 @@ test_that("a changed scenario changes the survey and is active", {
   )
   expect_true(.scenario_has_effect(svy, modified))
   expect_match(card_text(sp_scenario = sp_on), "1 policy", fixed = TRUE)
+})
+
+
+test_that("the Step 3 summary shows the SP amount in the entry currency", {
+  # R2-BUG-04: an LCU amount must not be labelled with a dollar sign.
+  lcu <- utils::modifyList(sp_on, list(transfer_amount_usd = 1200, currency = "LCU"))
+  expect_match(card_text(sp_scenario = lcu), "LCU 1,200/payment", fixed = TRUE)
+  expect_no_match(card_text(sp_scenario = lcu), "$1,200", fixed = TRUE)
+
+  ppp <- utils::modifyList(sp_on, list(transfer_amount_usd = 1200, currency = "PPP"))
+  expect_match(card_text(sp_scenario = ppp), "$1,200/payment", fixed = TRUE)
+  # Scenarios that predate the field stay in dollars.
+  expect_match(card_text(sp_scenario = utils::modifyList(sp_on, list(
+    transfer_amount_usd = 1200))), "$1,200/payment", fixed = TRUE)
 })

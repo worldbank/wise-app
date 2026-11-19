@@ -16,21 +16,28 @@ info_popover <- function(..., title = NULL, docs = FALSE, placement = "right") {
   if (isTRUE(docs)) {
     body <- htmltools::tagList(
       body,
-      shiny::tags$p(class = "text-muted small mb-0",
-                    "See documentation for details.")
+      shiny::tags$p(
+        class = "text-muted small mb-0",
+        "See documentation for details."
+      )
     )
   }
   bslib::popover(
     trigger = shiny::tags$span(
       class = "wise-info-icon", tabindex = "0", role = "button",
-      `aria-label` = "More information",
+      # R2-A11Y-05: a titled popover names its topic.
+      `aria-label` = if (is.character(title) && length(title) == 1L) {
+        paste0("More information: ", title)
+      } else {
+        "More information"
+      },
       shiny::icon("circle-info")
     ),
     body, title = title, placement = placement
   )
 }
 
-# ---- Inline "no data" warning --------------------------------------------------
+# Inline "no data" warning ----
 
 #' Amber inline warning with an exclamation icon, shown when a selection
 #' has no data (e.g. no variables found for the current level of analysis).
@@ -45,7 +52,7 @@ no_data_warning <- function(...) {
   )
 }
 
-# ---- Selection summary card ----------------------------------------------------
+# Selection summary card ----
 # Thin "what is loaded" card at the top of the stats tabs (Survey, Outcome,
 # Weather, Model). Head: uppercase title + right-aligned badge; body: one row
 # per item with a bold name, muted sub-label and small pills.
@@ -148,17 +155,23 @@ selection_summary_card <- function(title, rows, badge = NULL, info = NULL,
 #'
 #' @noRd
 simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
-                                    selected_hist = NULL,
-                                    selected_weather = NULL) {
-  if (is.null(hist_sim) || is.null(hist_sim$so)) return(NULL)
+                                    selected_hist = NULL) {
+  if (is.null(hist_sim) || is.null(hist_sim$so)) {
+    return(NULL)
+  }
 
   run <- hist_sim$sim_summary %||% list()
 
-  hist_years <- run$historical_years %||% tryCatch({
-    if (!is.null(selected_hist) && "year_range" %in% names(selected_hist))
-      unlist(selected_hist$year_range[[1]], use.names = FALSE)
-    else numeric(0)
-  }, error = function(e) numeric(0))
+  hist_years <- run$historical_years %||% tryCatch(
+    {
+      if (!is.null(selected_hist) && "year_range" %in% names(selected_hist)) {
+        unlist(selected_hist$year_range[[1]], use.names = FALSE)
+      } else {
+        numeric(0)
+      }
+    },
+    error = function(e) numeric(0)
+  )
   hist_period <- if (length(hist_years) >= 2L) {
     paste0(hist_years[1], "-", hist_years[2])
   } else {
@@ -171,7 +184,9 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
   baseline <- run$baseline_survey %||% "Selected baseline survey"
   total_runs <- run$total_runs %||% NA_integer_
   badge <- if (is.finite(total_runs)) {
-    paste(format(total_runs, big.mark = ","), "simulation years")
+    # Forecast members are target-window runs, not simulation years.
+    paste(format(total_runs, big.mark = ","),
+      if (any(vapply(scenarios, .step2_is_forecast_scenario, logical(1L)))) "simulation runs" else "simulation years")
   } else if (scenario_count == 0L) {
     "Historical only"
   } else {
@@ -183,15 +198,18 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
     ssp <- parts[1] %||% key
     period <- if (length(parts) >= 2L) parts[2] else ""
     n <- suppressWarnings(as.numeric(saved_scenarios[[key]]$n_models %||% NA_real_))[1]
-    n_label <- if (is.finite(n)) paste(n, "models") else "model count unavailable"
+    n_label <- if (is.finite(n)) {
+      paste(n, if (.step2_is_forecast_scenario(key)) "members" else "models")
+    } else "model count unavailable"
     shiny::tags$span(
       class = "step2-summary-item",
       shiny::tags$span(
         class = "step2-summary-label step2-summary-scenario-label",
         ssp
       ),
-      if (nzchar(period))
-        shiny::tags$span(class = "step2-summary-value", period),
+      if (nzchar(period)) {
+        shiny::tags$span(class = "step2-summary-value", period)
+      },
       shiny::tags$span(class = "selection-card-pill", n_label)
     )
   })
@@ -203,7 +221,9 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
       )
     )
   }
-  separator <- shiny::tags$span(class = "step2-summary-separator", "·")
+  separator <- shiny::tags$span(class = "step2-summary-separator", "\u00b7")
+  left_out <- step2_dropped_note(run$baseline_dropped)
+  rule_note <- step2_residual_rule_note(run)
   summary_row <- c(
     scenario_items,
     list(separator),
@@ -221,7 +241,27 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
         shiny::tags$span(class = "step2-summary-label", "Baseline survey"),
         shiny::tags$span(class = "selection-card-pill", baseline)
       )
-    )
+    ),
+    if (!is.null(left_out)) {
+      list(
+        separator,
+        shiny::tags$span(
+          class = "step2-summary-item",
+          shiny::tags$span(class = "step2-summary-label", "Left out"),
+          shiny::tags$span(class = "step2-summary-value", left_out)
+        )
+      )
+    },
+    if (!is.null(rule_note)) {
+      list(
+        separator,
+        shiny::tags$span(
+          class = "step2-summary-item",
+          shiny::tags$span(class = "step2-summary-label", "Residuals applied"),
+          shiny::tags$span(class = "step2-summary-value", rule_note)
+        )
+      )
+    }
   )
 
   selection_summary_card(
@@ -234,53 +274,200 @@ simulation_summary_card <- function(hist_sim, saved_scenarios = list(),
   )
 }
 
-headline_cards_ui <- function(cards) {
-  if (is.null(cards) || !length(cards)) return(NULL)
-  shiny::tags$div(
-    class = "headline-cards",
-    lapply(cards, function(card) {
-      shiny::tags$div(
-        class = paste("headline-card", card$class %||% ""),
-        shiny::tags$div(
-          class = "headline-card-label",
-          card$label %||% "Result",
-          if (!is.null(card$info) && nzchar(card$info))
-            info_popover(shiny::p(card$info))
-        ),
-        shiny::tags$div(class = "headline-card-value", card$value %||% "Unavailable"),
-        if (!is.null(card$note_html)) {
-          shiny::tags$div(class = "headline-card-note", card$note_html)
-        } else if (!is.null(card$note) && nzchar(card$note)) {
-          shiny::tags$div(class = "headline-card-note", card$note)
-        }
-      )
-    })
+#' Direction-aware status flag for a headline card
+#'
+#' Maps a signed change, the metric's direction (`lower_is_better` /
+#' `higher_is_better`, from the metric registry) and an optional significance
+#' verdict to a card flag. Colour kind comes from direction; the text is
+#' "Significant" / "Not significant" when a verdict is supplied, otherwise
+#' "Favourable" / "Adverse". Returns NULL when there is nothing to flag.
+#' @param change Numeric scalar, signed change in the metric's own units.
+#' @param direction Character scalar metric direction.
+#' @param significant Logical scalar or NA: is the change significant at 95%?
+#' @param display Optional rendered text of the change; when it shows only zeros
+#'   no flag is returned.
+#' @return NULL or `list(kind, text)` with kind in favourable / adverse /
+#'   uncertain / neutral.
+#' @noRd
+headline_status <- function(change = NA_real_, direction = NULL,
+                            significant = NA, display = NULL) {
+  change <- suppressWarnings(as.numeric(change))[1L]
+  # A change that renders as zero (for example "-0.00") carries no direction.
+  if (!is.null(display) && length(display) == 1L) {
+    num <- regmatches(display, regexpr("[0-9][0-9,]*\\.?[0-9]*", display))
+    if (length(num) && !grepl("[1-9]", num)) {
+      return(NULL)
+    }
+  }
+  sig <- if (length(significant) && !is.na(significant[1L])) {
+    isTRUE(significant[1L])
+  } else {
+    NA
+  }
+  if (!is.na(sig) && !sig) {
+    return(list(kind = "uncertain", text = "Not significant"))
+  }
+  sign_dir <- switch(as.character(direction %||% "")[1L],
+    higher_is_better = 1,
+    lower_is_better = -1,
+    0
   )
+  kind <- if (!is.finite(change) || change == 0 || sign_dir == 0) {
+    "neutral"
+  } else if (change * sign_dir > 0) {
+    "favourable"
+  } else {
+    "adverse"
+  }
+  text <- if (isTRUE(sig)) {
+    "Significant"
+  } else {
+    switch(kind, favourable = "Favourable", adverse = "Adverse", NULL)
+  }
+  if (is.null(text)) {
+    return(NULL)
+  }
+  list(kind = kind, text = text)
+}
+
+#' Headline cards plus an optional one-line basis strip
+#'
+#' Cards flagged `basis_only` are not drawn as cards: their `basis_text` (and
+#' the `basis_text` of any other card) is collected into a compact strip
+#' beneath the row, with the card's `info` popover kept on the strip. A card
+#' may carry `status = list(kind, text)` (see `headline_status()`), drawn as a
+#' flag under the headline and used to colour the card's top border.
+#' @noRd
+headline_cards_ui <- function(cards) {
+  if (is.null(cards) || !length(cards)) {
+    return(NULL)
+  }
+  is_basis <- vapply(cards, function(c) isTRUE(c$basis_only), logical(1L))
+  shown <- cards[!is_basis]
+  basis_cards <- Filter(function(c) {
+    !is.null(c$basis_text) && nzchar(c$basis_text)
+  }, cards)
+  strip <- if (length(basis_cards)) {
+    shiny::tags$div(
+      class = "headline-basis",
+      lapply(basis_cards, function(c) {
+        shiny::tags$span(
+          class = "headline-basis-item", c$basis_text,
+          if (isTRUE(c$basis_only) && !is.null(c$info) && nzchar(c$info)) {
+            info_popover(shiny::p(c$info))
+          }
+        )
+      })
+    )
+  }
+  shiny::tagList(
+    shiny::tags$div(
+      class = "headline-cards",
+      lapply(shown, function(card) {
+        st <- card$status
+        shiny::tags$div(
+          class = paste(
+            "headline-card", card$class %||% "",
+            if (!is.null(st$kind)) paste0("status-", st$kind) else ""
+          ),
+          shiny::tags$div(
+            class = "headline-card-label",
+            shiny::tags$span(card$label %||% "Result"),
+            if (!is.null(card$info) && nzchar(card$info)) {
+              info_popover(shiny::p(card$info))
+            }
+          ),
+          shiny::tags$div(class = "headline-card-value", card$value %||% "Unavailable"),
+          if (!is.null(st$text) && nzchar(st$text)) {
+            shiny::tags$div(
+              class = paste("headline-card-flag", paste0("flag-", st$kind %||% "neutral")),
+              st$text
+            )
+          },
+          if (!is.null(card$note_html)) {
+            shiny::tags$div(class = "headline-card-note", card$note_html)
+          } else if (!is.null(card$note) && nzchar(card$note)) {
+            shiny::tags$div(class = "headline-card-note", card$note)
+          }
+        )
+      })
+    ),
+    strip
+  )
+}
+
+#' "about 120K more poor" / "about 2.1K fewer poor" from a rate change
+#'
+#' @param change Change in a headcount ratio (fraction scale).
+#' @param pop Weighted population (people) the ratio refers to.
+#' @return NULL when either input is unusable or the change rounds to zero
+#'   people, otherwise a short phrase.
+#' @noRd
+poor_change_text <- function(change, pop) {
+  change <- suppressWarnings(as.numeric(change))[1L]
+  pop <- suppressWarnings(as.numeric(pop))[1L]
+  if (!is.finite(change) || !is.finite(pop) || pop <= 0) {
+    return(NULL)
+  }
+  people <- change * pop
+  if (round(abs(people)) < 1) {
+    return(NULL)
+  }
+  paste0(
+    "\u2248 ", fmt_compact_count(abs(people)),
+    if (people >= 0) " more poor" else " fewer poor"
+  )
+}
+
+#' Compact count: 1.3M / 450.0K / 920
+#' @noRd
+fmt_compact_count <- function(x) {
+  x <- suppressWarnings(as.numeric(x))[1L]
+  if (!is.finite(x)) return("Unavailable")
+  if (x >= 1e6) {
+    paste0(fmt_num(x / 1e6, 1), "M")
+  } else if (x >= 1e3) {
+    paste0(fmt_num(x / 1e3, 1), "K")
+  } else {
+    fmt_num(round(x), 0)
+  }
+}
+
+format_prediction_count <- function(count, analysis_unit = NULL) {
+  count <- suppressWarnings(as.numeric(count))[1L]
+  if (!length(count) || !is.finite(count)) return("Unavailable")
+  value <- if (count >= 1e9) {
+    paste0(formatC(count / 1e9, format = "f", digits = 1), "B")
+  } else if (count >= 1e6) {
+    paste0(formatC(count / 1e6, format = "f", digits = 1), "M")
+  } else if (count >= 1e3) {
+    paste0(formatC(count / 1e3, format = "f", digits = 1), "K")
+  } else {
+    format(round(count), big.mark = ",", scientific = FALSE)
+  }
+  unit <- switch(as.character(analysis_unit %||% "")[1L],
+    hh = "household-years", ind = "individual-years", firm = "firm-years",
+    if (!is.null(analysis_unit) && nzchar(as.character(analysis_unit)[1L])) {
+      paste0(as.character(analysis_unit)[1L], "-years")
+    } else {
+      "observation-years"
+    }
+  )
+  paste(value, unit)
 }
 
 #' Compact summary of the selected Step 3 policy scenarios
 #'
 #' @noRd
 policy_summary_card <- function(selected_policies = NULL,
-                                baseline_hist_sim = NULL,
-                                policy_saved_scenarios = list(),
-                                selected_weather = NULL,
                                 sp_scenario = NULL,
-                                policy_scenarios = list(),
                                 infra_scenario = NULL,
                                 digital_scenario = NULL,
                                 labor_scenario = NULL,
                                 education_scenario = NULL) {
   policies <- selected_policies %||% character(0)
   policies <- policies[!is.na(policies) & nzchar(policies)]
-  labels <- vapply(policies, function(key) {
-    def <- POLICY_DEFINITIONS[[key]]
-    if (!is.null(def) && !is.null(def$label) && nzchar(def$label)) {
-      as.character(def$label)
-    } else {
-      key
-    }
-  }, character(1))
+  labels <- policy_label(policies)
 
   deref <- function(x) {
     if (is.function(x)) x <- tryCatch(x(), error = function(e) NULL)
@@ -293,24 +480,33 @@ policy_summary_card <- function(selected_policies = NULL,
   education <- deref(education_scenario)
 
   sp_label <- if (has_sp_change(sp)) {
+    sp_sign <- .sp_currency_prefix(sp$currency)
     amount <- if (isTRUE(sp$transfer_amount_usd > 0)) {
-      paste0("$", format(sp$transfer_amount_usd, trim = TRUE, big.mark = ","), "/payment")
+      paste0(
+        sp_sign, format(round(sp$transfer_amount_usd, 2), trim = TRUE, big.mark = ","), "/payment",
+        if (identical(sp$transfer_amount_mode, "pctile")) paste0(" (P", sp$transfer_pctile, ")")
+      )
     } else {
-      paste0("$", format(sp$budget_fixed, trim = TRUE, big.mark = ","), " budget")
+      paste0(sp_sign, format(sp$budget_fixed, trim = TRUE, big.mark = ","), " budget")
     }
     payments <- if (is.finite(sp$transfer_n_payments %||% NA_integer_)) {
       paste0(" x ", sp$transfer_n_payments, "/year")
-    } else ""
+    } else {
+      ""
+    }
     targeting <- sp$targeting %||% "universal"
     paste("Social protection", amount, payments, "-", targeting)
-  } else NULL
+  } else {
+    NULL
+  }
   active <- c(
     sp_label,
-    if (has_infra_change(infra)) "Infrastructure",
-    if (has_digital_change(digital)) "Digital inclusion",
+    if (has_infra_change(infra)) .access_active_labels(infra, "Infrastructure"),
+    if (has_digital_change(digital)) .access_active_labels(digital, "Digital inclusion"),
     if (has_labor_change(labor)) "Labor market",
-    if (has_education_change(education)) "Education"
+    if (has_education_change(education)) .access_active_labels(education, "Education")
   )
+  active <- unique(active)
   configured_count <- length(active)
   policy_pills <- if (configured_count > 0L) active else "None"
   rows <- list(list(
@@ -326,13 +522,15 @@ policy_summary_card <- function(selected_policies = NULL,
   }
   selection_summary_card(
     title = "Selected Policy Scenarios",
-    badge = paste(configured_count,
-                  if (configured_count == 1L) "policy" else "policies"),
+    badge = paste(
+      configured_count,
+      if (configured_count == 1L) "policy" else "policies"
+    ),
     rows = rows
   )
 }
 
-# ---- Variable label shortening -----------------------------------------------
+# Variable label shortening ----
 
 #' Drop the "Monthly " prefix from a variable label and capitalise the first
 #' letter, so "Monthly daily maximum temperature" reads
@@ -369,7 +567,9 @@ analysis_unit_label <- function(unit) {
 #'   Returns empty string `""` if NULL, empty, or more than 2 variables.
 #' @noRd
 format_weather_heading_phrase <- function(weather_var) {
-  if (is.null(weather_var)) return("")
+  if (is.null(weather_var)) {
+    return("")
+  }
   raw_labels <- if (is.data.frame(weather_var)) {
     cols <- intersect(c("label", "name"), names(weather_var))
     if (length(cols)) as.character(weather_var[[cols[1]]]) else character(0)
@@ -395,7 +595,7 @@ format_weather_heading_phrase <- function(weather_var) {
   }
 }
 
-# ---- Config flyout blocks (UI-02) ---------------------------------------------
+# Config flyout blocks (UI-02) ----
 
 #' Accessible plot output (UI-36)
 #'
@@ -421,6 +621,32 @@ wise_plot_output <- function(plot_id, alt, ...) {
   )
 }
 
+#' Accessible echarts output (UI-36 analogue)
+#'
+#' `echarts4rOutput()` has no intrinsic alt text. This wrapper adds
+#' `role="img"` and a descriptive `aria-label` on the chart's own container,
+#' so screen readers announce what the chart shows.
+#'
+#' @param chart_id Namespaced output id for the chart.
+#' @param alt      Descriptive text: what the chart shows.
+#' @param ...      Forwarded to `echarts4r::echarts4rOutput()` (height, ...).
+#'
+#' @noRd
+wise_chart_output <- function(chart_id, alt, ...) {
+  widget <- echarts4r::echarts4rOutput(chart_id, ...)
+  if (inherits(widget, "shiny.tag")) {
+    shiny::tagAppendAttributes(widget, role = "img", `aria-label` = alt)
+  } else if (inherits(widget, "shiny.tag.list") && length(widget) >= 1L &&
+             inherits(widget[[1L]], "shiny.tag")) {
+    widget[[1L]] <- shiny::tagAppendAttributes(
+      widget[[1L]], role = "img", `aria-label` = alt
+    )
+    widget
+  } else {
+    widget
+  }
+}
+
 #' Toggle button + anchored config flyout panel
 #'
 #' Shared builder for the Step 1/2 config sidebars' disclosure panels
@@ -444,10 +670,11 @@ wise_plot_output <- function(plot_id, alt, ...) {
 #' @param ...          Flyout content, rendered below the header.
 #' @param toggle_label  Button label. Default "Configure".
 #' @param display_label Optional label rendered beside the button.
+#' @param toggle_icon  Font Awesome name of the button icon. Default "sliders".
 #'
 #' @noRd
 config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure",
-                                display_label = NULL) {
+                                display_label = NULL, toggle_icon = "sliders") {
   panel_id <- paste0(toggle_id, "_panel")
   shiny::tags$div(
     class = paste(
@@ -456,7 +683,7 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
     ),
     shiny::actionButton(
       toggle_id, toggle_label,
-      icon  = shiny::icon("sliders"),
+      icon = shiny::icon(toggle_icon),
       class = "btn-outline-primary btn-sm config-flyout-toggle",
       style = "margin-bottom: 10px;",
       `aria-expanded` = "false",
@@ -467,17 +694,18 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
     },
     shiny::conditionalPanel(
       condition = paste0("input['", toggle_id, "'] % 2 == 1"),
-      class     = "config-flyout",
-      id        = panel_id,
+      class = "config-flyout",
+      id = panel_id,
       `data-flyout-for` = toggle_id,
       shiny::tags$div(
         class = "config-flyout-header",
         shiny::tags$h6(title),
         shiny::tags$button(
-          type    = "button",
-          class   = "btn-close",
+          type = "button",
+          class = "btn-close",
           `aria-label` = "Close",
-          onclick = sprintf("document.getElementById('%s').click();", toggle_id)
+          # Handled by a delegated listener in custom.js (no inline handler)
+          `data-flyout-close` = toggle_id
         )
       ),
       ...
@@ -485,7 +713,7 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
   )
 }
 
-# ---- Number formatting for displayed figures (UI-32) -------------------------
+# Number formatting for displayed figures (UI-32) ----
 
 #' Format a number for display at one decimal place
 #'
@@ -505,13 +733,58 @@ config_flyout_block <- function(toggle_id, title, ..., toggle_label = "Configure
 fmt_num <- function(x, digits = 1, prefix = "", suffix = "", na = "\u2014") {
   x <- suppressWarnings(as.numeric(x))
   out <- vapply(x, function(v) {
-    if (!is.finite(v)) return(na)
-    paste0(prefix,
-           formatC(round(v, digits), format = "f", digits = digits,
-                   big.mark = ","),
-           suffix)
+    if (!is.finite(v)) {
+      return(na)
+    }
+    paste0(
+      prefix,
+      formatC(round(v, digits),
+        format = "f", digits = digits,
+        big.mark = ","
+      ),
+      suffix
+    )
   }, character(1))
   out
+}
+
+#' Compact number for cards: 21.3M, $164.6M, $12K
+#'
+#' Values from `threshold` upwards are shortened to K, M or B with up to one
+#' decimal and no trailing zero, matching the chart axes. Smaller values keep
+#' `small_digits` decimals, so a $50.00 transfer is not rounded. Tables and
+#' exports keep the exact value (`fmt_num()`).
+#'
+#' @param x Numeric vector.
+#' @param prefix,suffix Strings placed either side of the number.
+#' @param small_digits Decimals for values below `threshold`.
+#' @param threshold Smallest absolute value that is abbreviated.
+#' @param na Text used for non-finite values.
+#' @return A character vector.
+#' @noRd
+fmt_compact <- function(x, prefix = "", suffix = "", small_digits = 0,
+                        threshold = 1e4, na = "\u2014") {
+  x <- suppressWarnings(as.numeric(x))
+  trim <- function(v) {
+    s <- formatC(round(v, 1), format = "f", digits = 1)
+    sub("\\.0$", "", s)
+  }
+  vapply(x, function(v) {
+    if (!is.finite(v)) {
+      return(na)
+    }
+    a <- abs(v)
+    body <- if (a >= 1e9 && a >= threshold) {
+      paste0(trim(v / 1e9), "B")
+    } else if (a >= 1e6 && a >= threshold) {
+      paste0(trim(v / 1e6), "M")
+    } else if (a >= threshold) {
+      paste0(trim(v / 1e3), "K")
+    } else {
+      formatC(round(v, small_digits), format = "f", digits = small_digits, big.mark = ",")
+    }
+    paste0(prefix, body, suffix)
+  }, character(1))
 }
 
 #' Format a count for display
@@ -527,13 +800,15 @@ fmt_num <- function(x, digits = 1, prefix = "", suffix = "", na = "\u2014") {
 fmt_count <- function(x, na = "\u2014") {
   x <- suppressWarnings(as.numeric(x))
   vapply(x, function(v) {
-    if (!is.finite(v)) return(na)
+    if (!is.finite(v)) {
+      return(na)
+    }
     formatC(round(v), format = "d", big.mark = ",")
   }, character(1))
 }
 
 
-# ---- Nav-header step status (UI-47) ------------------------------------------
+# Nav-header step status (UI-47) ----
 #
 # Steps can be visited in any order, and results survive a move to another tab,
 # so the navbar is the only place where the state of every step is visible at
@@ -554,8 +829,10 @@ fmt_count <- function(x, na = "\u2014") {
 #' @return A `span` output container, safe to nest inside a nav link.
 #' @noRd
 step_badge_ui <- function(output_id) {
-  shiny::uiOutput(output_id, container = shiny::tags$span, inline = TRUE,
-                  class = "nav-step-status-slot")
+  shiny::uiOutput(output_id,
+    container = shiny::tags$span, inline = TRUE,
+    class = "nav-step-status-slot"
+  )
 }
 
 #' Build the badge for one step state
@@ -580,8 +857,10 @@ step_status_badge <- function(state, step_label = "This step") {
     ))
   }
   if (identical(state, "stale")) {
-    tip <- paste0(step_label, ": inputs changed \u2014 re-run to refresh ",
-                  "the results.")
+    tip <- paste0(
+      step_label, ": inputs changed \u2014 re-run to refresh ",
+      "the results."
+    )
     return(shiny::tags$span(
       class = "nav-step-status nav-step-status-stale",
       title = tip,
@@ -608,19 +887,28 @@ step_status <- function(has_result, is_stale = NULL) {
   # "done"), which is worse than an error: it looks like working UI.
   if (!is.function(has_result)) {
     stop("step_status(): `has_result` must be a reactive, got ",
-         class(has_result)[1], ".", call. = FALSE)
+      class(has_result)[1], ".",
+      call. = FALSE
+    )
   }
   if (!is.null(is_stale) && !is.function(is_stale)) {
     stop("step_status(): `is_stale` must be a reactive or NULL, got ",
-         class(is_stale)[1], ".", call. = FALSE)
+      class(is_stale)[1], ".",
+      call. = FALSE
+    )
   }
 
   shiny::reactive({
     res <- tryCatch(has_result(), error = function(e) NULL)
     done <- if (is.logical(res) && length(res) == 1L) isTRUE(res) else !is.null(res)
-    if (!done) return("none")
-    stale <- if (is.null(is_stale)) FALSE else
+    if (!done) {
+      return("none")
+    }
+    stale <- if (is.null(is_stale)) {
+      FALSE
+    } else {
       isTRUE(tryCatch(is_stale(), error = function(e) FALSE))
+    }
     if (stale) "stale" else "done"
   })
 }
@@ -642,116 +930,59 @@ render_step_badge <- function(has_result, is_stale = NULL,
 # imported value happens to equal the current control value.
 stale_after_import <- function(has_result, is_stale = NULL, imported = NULL) {
   own <- is_stale %||% shiny::reactive(FALSE)
-  if (is.null(imported)) return(own)
+  if (is.null(imported)) {
+    return(own)
+  }
   seen <- shiny::reactiveVal(0L)
-  shiny::observeEvent(has_result(), {
-    seen(shiny::isolate(imported()))
-  }, ignoreInit = FALSE)
+  shiny::observeEvent(has_result(),
+    {
+      seen(shiny::isolate(imported()))
+    },
+    ignoreInit = FALSE
+  )
   shiny::reactive(
     isTRUE(own()) || isTRUE(imported() > seen())
   )
 }
 
 
-# ---- Table CSV export (UI-45) ------------------------------------------------
+# Table CSV export (UI-45, guidelines sec. 6) ----
 #
-# Every table in the app offers the same export affordance: one small, quiet
-# "Download CSV" control. For DT tables that is the Buttons extension, driven
-# by the two helpers below; for the handful of hand-built HTML tables it is
-# `csv_download_link()` over a `downloadHandler`. Both render as
-# `.wise-csv-btn` so they look identical wherever they appear (custom.css).
+# Every rendered table in the app is a `reactable` table and offers the same
+# export affordance: one small, quiet "Download CSV" control implemented
+# client-side via `Reactable.downloadDataCSV()` (JavaScript), so the download
+# never round-trips the server. No R-side download handlers for table data.
 
-#' DT `buttons` spec for a single, discreet CSV export
+#' Client-side "Download CSV" button for a reactable table (guidelines sec. 6)
 #'
+#' reactable tables export through the browser: the button calls
+#' `Reactable.downloadDataCSV()` on the table's element id, so the download
+#' never round-trips the server. Pairs with a `renderReactable()` output
+#' whose widget id equals `table_id` (the id of the matching
+#' `reactableOutput()`).
+#'
+#' @param table_id Namespaced id of the `reactableOutput()` this button
+#'   downloads from.
 #' @param filename Base name of the downloaded file, without extension.
-#' @param enabled  When FALSE, returns NULL so the button is omitted (used to
-#'   withhold exports while results are stale - INT-08).
 #'
-#' @return A list suitable for `DT::datatable(options = list(buttons = ...))`,
-#'   or NULL.
+#' @return A `button` tag styled as `.wise-csv-btn` (custom.css).
 #' @noRd
-wise_csv_button <- function(filename, enabled = TRUE) {
-  if (!isTRUE(enabled)) return(NULL)
-  list(list(
-    extend        = "csv",
-    text          = "Download CSV",
-    filename      = filename,
-    className     = "wise-csv-btn",
-    # Export every row, not just the visible page; keep any active search.
-    exportOptions = list(modifier = list(page = "all"))
-  ))
-}
-
-#' Add the Buttons placeholder to a DT `dom` string
-#'
-#' When both the page-length picker (`l`) and search box (`f`) are present,
-#' wrap Buttons and those controls in one flex row. Tables without both retain
-#' the simple leading `B` form.
-#'
-#' @param dom A DataTables `dom` string (e.g. "t", "lfrtip").
-#' @return A `dom` string including the Buttons placeholder.
-#' @noRd
-wise_csv_dom <- function(dom = "lfrtip") {
-  if (grepl("B", dom, fixed = TRUE)) return(dom)
-  has_len <- grepl("l", dom, fixed = TRUE)
-  has_search <- grepl("f", dom, fixed = TRUE)
-  if (!has_len || !has_search) return(paste0("B", dom))
-
-  # Pull l and f out of their original positions into the shared toolbar.
-  rest <- gsub("[lf]", "", dom)
-  paste0("<'wise-dt-controls'Blf>", rest)
-}
-
-#' Small "Download CSV" link for a non-DT table
-#'
-#' Pairs with a `downloadHandler()` registered under the same output id. Use
-#' for hand-built HTML tables (`renderTable()` / `renderUI()`), which have no
-#' DataTables toolbar to hang a button off.
-#'
-#' @param output_id Namespaced id of the matching `downloadHandler` output.
-#' @param label     Link text. Default "Download CSV".
-#'
-#' @return A `downloadLink` tag.
-#' @noRd
-csv_download_link <- function(output_id, label = "Download CSV") {
-  shiny::downloadLink(
-    output_id,
-    label = shiny::tagList(shiny::icon("download"), label),
-    class = "wise-csv-btn wise-csv-link"
+wise_reactable_csv_button <- function(table_id, filename) {
+  shiny::tags$button(
+    type = "button",
+    class = "wise-csv-btn",
+    # Handled by a delegated listener in custom.js, which calls
+    # Reactable.downloadDataCSV(table, file) (no inline handler)
+    `data-csv-table` = table_id,
+    `data-csv-file` = paste0(filename, ".csv"),
+    # R2-A11Y-05: name the table so the buttons are distinguishable; the
+    # visible text stays at the start of the name (WCAG 2.5.3).
+    `aria-label` = paste0("Download CSV: ", gsub("[_-]+", " ", filename)),
+    shiny::tagList(shiny::icon("download"), "Download CSV")
   )
 }
 
-#' `downloadHandler` writing a data frame to CSV
-#'
-#' @param filename_base Base name of the file, without extension.
-#' @param data_fun      Function of no arguments returning a data frame, or
-#'   NULL when there is nothing to export.
-#' @param stale         Optional reactive stale flag. Stale downloads fail
-#'   before writing a file.
-#'
-#' @return A shiny download handler.
-#' @noRd
-csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
-  shiny::downloadHandler(
-    filename = function() {
-      paste0(filename_base, "_", format(Sys.Date(), "%Y%m%d"), ".csv")
-    },
-    content = function(file) {
-      if (is.function(stale) && isTRUE(shiny::isolate(stale()))) {
-        if (file.exists(file)) unlink(file)
-        stop("Step 3 results are stale; rerun before downloading.", call. = FALSE)
-      }
-      df <- tryCatch(data_fun(), error = function(e) NULL)
-      if (is.null(df) || !is.data.frame(df) || nrow(df) == 0) {
-        df <- data.frame(Note = "No data available")
-      }
-      utils::write.csv(df, file, row.names = FALSE, na = "")
-    },
-    contentType = "text/csv"
-  )
-}
-
-# ---- Run signatures & stale-state marking (INT-08) ---------------------------
+# Run signatures & stale-state marking (INT-08) ----
 
 #' Canonicalise a value for identity comparison in a run signature.
 #'
@@ -760,9 +991,15 @@ csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
 #' `identical()` even when captured at different times.
 #' @noRd
 .sig_plain <- function(x) {
-  if (is.null(x) || is.atomic(x)) return(x)
-  if (is.data.frame(x)) return(lapply(x, .sig_plain))
-  if (is.list(x)) return(lapply(x, .sig_plain))
+  if (is.null(x) || is.atomic(x)) {
+    return(x)
+  }
+  if (is.data.frame(x)) {
+    return(lapply(x, .sig_plain))
+  }
+  if (is.list(x)) {
+    return(lapply(x, .sig_plain))
+  }
   as.character(x)
 }
 
@@ -773,24 +1010,22 @@ csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
 #' are explicitly labelled as describing an earlier configuration.
 #'
 #' @param step        Optional label for the affected surface.
-#' @param note        Optional extra sentence; the export-gating surfaces pass
-#'   "Interpretation and exports are disabled until then."
+#' @param note        Optional extra sentence.
 #' @noRd
 .stale_banner <- function(step = NULL, note = NULL) {
   step_txt <- if (!is.null(step)) paste0(" (", step, ")") else NULL
   note_txt <- if (!is.null(note)) paste0(" ", note) else NULL
   shiny::div(
     class = "alert alert-warning",
-    role  = "alert",
+    role = "alert",
     style = "margin-bottom: 10px;",
     shiny::tags$b("\u26a0 Results are out of date", step_txt, "."),
-    "Upstream inputs changed after this run, so the results below were",
-    "produced by an earlier configuration and no longer describe the",
-    "current selections. Re-run to refresh them.", note_txt
+    "Inputs changed after this run. Re-run this step before interpreting or",
+    "exporting these results.", note_txt
   )
 }
 
-# ---- Dynamic-input selection restore (INT-01) -------------------------------
+# Dynamic-input selection restore (INT-01) ----
 
 #' Build a label-lookup function bound to a fixed variable-metadata frame
 #' (INT-05). Result renderers pass this instead of looking labels up in the
@@ -803,16 +1038,22 @@ csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
 .label_lookup <- function(vl) {
   force(vl)
   lookup <- function(var_name) {
-    if (is.null(vl)) return(var_name)
+    if (is.null(vl)) {
+      return(var_name)
+    }
     idx <- match(var_name, vl$name)
     if (is.na(idx)) var_name else as.character(vl$label[idx])
   }
   function(var_name) {
     # Polynomial terms arrive as fixest's double-wrapped "I(I(x^2))" (or the
-    # plain "I(x^2)") - render as "<label of x>²/³" instead of raw syntax.
-    m <- regmatches(var_name,
-                    regexec("^I\\((?:I\\()?([^\\^]+)\\^([23])\\)\\)?$",
-                            var_name))[[1]]
+    # plain "I(x^2)") - render as "<label of x>^2/^3" instead of raw syntax.
+    m <- regmatches(
+      var_name,
+      regexec(
+        "^I\\((?:I\\()?([^\\^]+)\\^([23])\\)\\)?$",
+        var_name
+      )
+    )[[1]]
     if (length(m) == 3) {
       base <- lookup(m[2])
       return(paste0(base, if (m[3] == "2") "\u00b2" else "\u00b3"))
@@ -837,7 +1078,9 @@ csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
 #' @noRd
 .restore_selection <- function(prev, choices, fallback) {
   choices <- as.character(choices)
-  if (is.null(prev) || length(prev) == 0) return(fallback)
+  if (is.null(prev) || length(prev) == 0) {
+    return(fallback)
+  }
   keep <- unname(as.character(prev)[as.character(prev) %in% choices])
   if (length(keep) == 0) fallback else keep
 }
@@ -848,12 +1091,16 @@ csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
 #' single finite value inside `[min - tol, max + tol]`, else `fallback`.
 #' @noRd
 .restore_numeric <- function(prev, min, max, fallback, tol = 1e-8) {
-  if (is.null(prev) || length(prev) != 1L || !is.finite(prev)) return(fallback)
-  if (prev < (min - tol) || prev > (max + tol)) return(fallback)
+  if (is.null(prev) || length(prev) != 1L || !is.finite(prev)) {
+    return(fallback)
+  }
+  if (prev < (min - tol) || prev > (max + tol)) {
+    return(fallback)
+  }
   prev
 }
 
-# ---- Busy guards (REACT-02) -------------------------------------------------
+# Busy guards (REACT-02) ----
 # Long actions (data loads, model fits, simulations) use a module-local
 # `running` reactiveVal so double-clicks cannot re-enter the observer while
 # the previous run is still executing. Triggering controls are disabled for
@@ -893,12 +1140,14 @@ csv_download_handler <- function(filename_base, data_fun, stale = NULL) {
 
   list(
     is_running = running,
-    begin      = function() {
-      if (isTRUE(running())) return(FALSE)
+    begin = function() {
+      if (isTRUE(running())) {
+        return(FALSE)
+      }
       running(TRUE)
       TRUE
     },
-    end        = function() running(FALSE)
+    end = function() running(FALSE)
   )
 }
 
@@ -913,18 +1162,21 @@ shinyjs_disable_button <- function(input_id, enabled = TRUE) {
   )
 }
 
-# ---- Segmented radio controls -------------------------------------------------
+# Segmented radio controls ----
 
 pill_toggle <- function(
-    inputId,
-    choices = NULL,
-    selected = NULL,
-    label = NULL,
-    width = NULL,
-    choiceNames = NULL,
-    choiceValues = NULL,
-    extra_class = NULL,
-    layout = c("horizontal", "vertical")
+  inputId,
+  choices = NULL,
+  selected = NULL,
+  label = NULL,
+  width = NULL,
+  choiceNames = NULL,
+  choiceValues = NULL,
+  extra_class = NULL,
+  layout = c("horizontal", "vertical"),
+  disabled = FALSE,
+  disabled_tooltip = NULL,
+  aria_label = NULL
 ) {
   layout <- match.arg(layout)
   if (is.null(choiceNames) && is.null(selected) && length(choices) > 0) {
@@ -939,13 +1191,53 @@ pill_toggle <- function(
     width = width
   )
   if (!is.null(choiceNames)) {
-    args$choiceNames  <- choiceNames
+    args$choiceNames <- choiceNames
     args$choiceValues <- choiceValues
   } else {
     args$choices <- choices
   }
 
   rb <- do.call(shiny::radioButtons, args)
+  # CR-A11Y-04: with no visible label the radiogroup's aria-labelledby points
+  # at an empty <label>, leaving it unnamed. `aria_label` names it instead.
+  if (is.null(label) && !is.null(aria_label)) {
+    rb$attribs[["aria-labelledby"]] <- NULL
+    rb$attribs[["aria-label"]] <- aria_label
+  }
+  # `disabled`: TRUE (every pill) or a character vector of choice values.
+  # The selected pill is never disabled. Server-side changes after render go
+  # through update_pill_toggle_disabled().
+  if (!isFALSE(disabled) && length(disabled) > 0L) {
+    walk <- function(x) {
+      if (!inherits(x, "shiny.tag")) {
+        if (is.list(x)) x[] <- lapply(x, walk)
+        return(x)
+      }
+      kids <- x$children
+      is_item <- grepl("radio-inline|form-check-inline", x$attribs$class %||% "")
+      if (is_item) {
+        inp <- Filter(function(k) inherits(k, "shiny.tag") && identical(k$name, "input"), kids)
+        val <- if (length(inp)) inp[[1L]]$attribs$value else NULL
+        off <- !is.null(val) && !identical(val, selected) &&
+          (isTRUE(disabled) || (is.character(disabled) && val %in% disabled))
+        if (off) {
+          x$children <- lapply(kids, function(k) {
+            if (inherits(k, "shiny.tag") && identical(k$name, "input")) {
+              k$attribs$disabled <- "disabled"
+              k$attribs[["aria-disabled"]] <- "true"
+            }
+            k
+          })
+          x$attribs$class <- paste(x$attribs$class, "pill-disabled")
+          if (!is.null(disabled_tooltip)) x$attribs$title <- disabled_tooltip
+        }
+        return(x)
+      }
+      x$children <- lapply(kids, walk)
+      x
+    }
+    rb <- walk(rb)
+  }
   classes <- c(
     "toggle-slider",
     "pill-toggle",
@@ -958,7 +1250,39 @@ pill_toggle <- function(
   )
 }
 
-# ---- Wave / Survey Year Toggle Slider ----------------------------------------
+#' Enable or disable pill_toggle() choices from the server
+#'
+#' Sends the `wise_set_disabled` custom message handled in
+#' inst/app/www/custom.js (no shinyjs). `disabled` is TRUE (all pills), FALSE
+#' (re-enable everything) or a character vector of choice values.
+#' @noRd
+update_pill_toggle_disabled <- function(session, inputId, disabled = FALSE,
+                                        tooltip = NULL) {
+  session$sendCustomMessage("wise_set_disabled", list(
+    id = session$ns(inputId),
+    kind = "pill",
+    all = isTRUE(disabled),
+    values = I(if (is.character(disabled)) disabled else character(0)),
+    tooltip = tooltip
+  ))
+  invisible(NULL)
+}
+
+#' Enable or disable a plain input (e.g. numericInput) from the server
+#' @noRd
+update_input_disabled <- function(session, inputId, disabled = FALSE,
+                                  tooltip = NULL) {
+  session$sendCustomMessage("wise_set_disabled", list(
+    id = session$ns(inputId),
+    kind = "input",
+    all = isTRUE(disabled),
+    values = I(character(0)),
+    tooltip = tooltip
+  ))
+  invisible(NULL)
+}
+
+# Wave / Survey Year Toggle Slider ----
 
 #' Survey year / wave toggle-style slider input
 #'
@@ -972,16 +1296,19 @@ pill_toggle <- function(
 #' @param selected Currently selected value.
 #' @param label Optional control label.
 #' @param width Optional width.
+#' @param aria_label Accessible name used when `label` is NULL.
 #'
 #' @noRd
-wave_toggle_slider <- function(inputId, choices, selected = NULL, label = NULL, width = NULL) {
+wave_toggle_slider <- function(inputId, choices, selected = NULL, label = NULL, width = NULL,
+                               aria_label = "Survey wave") {
   pill_toggle(
     inputId = inputId,
     choices = choices,
     selected = selected,
     label = label,
     width = width,
-    extra_class = "wave-toggle-slider"
+    extra_class = "wave-toggle-slider",
+    aria_label = aria_label
   )
 }
 
@@ -999,7 +1326,9 @@ wave_toggle_slider <- function(inputId, choices, selected = NULL, label = NULL, 
 #' @return Named character vector for use in `wave_toggle_slider()`.
 #' @noRd
 wave_slider_choices <- function(wave_df, include_all = TRUE) {
-  if (is.null(wave_df) || nrow(wave_df) == 0) return(character(0))
+  if (is.null(wave_df) || nrow(wave_df) == 0) {
+    return(character(0))
+  }
   multi_country <- length(unique(wave_df$code)) > 1
   labels <- if (multi_country) {
     paste(wave_df$code, wave_df$year)
@@ -1020,8 +1349,29 @@ wave_slider_choices <- function(wave_df, include_all = TRUE) {
 #' @return A named character vector keyed by `wave_df$label`.
 #' @noRd
 wave_plot_labels <- function(wave_df) {
-  if (is.null(wave_df) || nrow(wave_df) == 0) return(character(0))
+  if (is.null(wave_df) || nrow(wave_df) == 0) {
+    return(character(0))
+  }
   choices <- wave_slider_choices(wave_df, include_all = FALSE)
   chart_keys <- paste0(wave_df$economy, ", ", wave_df$year)
   stats::setNames(names(choices), chart_keys)
+}
+
+# Patch an ionRangeSlider grid so major tick labels land exactly on the
+# slider's step values. shiny's auto-grid (grid_num = n_steps /
+# ceiling(n_steps / 10)) produces a fractional grid count for > 10 steps,
+# which renders tick labels at irregular, off-step positions (e.g. a
+# 5-60% slider showing a label at 54.5%). An explicit grid_num of the
+# intended interval count keeps them evenly spaced and meaningful.
+with_grid_num <- function(slider_tag, n) {
+  for (i in seq_along(slider_tag$children)) {
+    ch <- slider_tag$children[[i]]
+    if (is.list(ch) && !is.null(ch$attribs) &&
+      "data-grid-num" %in% names(ch$attribs)) {
+      ch$attribs[["data-grid-num"]] <- n
+      slider_tag$children[[i]] <- ch
+      break
+    }
+  }
+  slider_tag
 }

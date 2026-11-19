@@ -1,68 +1,23 @@
-# wiseapp 0.1.0
+# wiseapp 0.6.0
 
-## Unreleased — 2026-09-03
+## Seasonal forecast
 
-### Changed
+* Step 2 simulates welfare for a seasonal weather forecast (ECMWF SEAS5 via C3S), one weather state per member. Production runs cover 33 countries.
+* Steps 2 and 3 show the forecast on one chart per question, next to Historical for the same months, Historical (annual) and the climate scenarios. A placement card shows where the forecast falls among reference years, with skill flags. Member spread is not a calibrated probability.
+* Step 3 runs levers and transfers on forecast members, including every shock-responsive design: weather and impact triggers, the national gate, dynamic targeting, loss-linked budgets, and ex-post or anticipatory payments. A window is paid once and scored against each household's level in the same months of the historical years. An anticipatory transfer pays a location when a chosen share of members pass its trigger (`forecast_member_share_pct`, default 50). Step 3 adds cards for leakage, missed and false-alarm rates, loss offset and, for anticipatory payments, the cost paid before no event. These are indicators: the member spread is not calibrated.
+* Batch runs add the `forecast` table and the `placement`, `skill`, `season`, `policy_effect` and `shock_window` summary sections (the latter with leakage, rate and anticipatory figures).
+* Fixed repeated clicks on Run in Steps 2 and 3 being dropped.
+* Fixed a forecast run stopping with "Forecast predictor months are missing for selected locations." when survey locations lie outside the land coverage of the weather data (coastal VNM locations). Such locations have no weather, and Step 2 already leaves out their households.
 
-- **Fixed: Weather-by-location maps could boot blank.** `hexmap.js` is served
-  twice (golem's `bundle_resources()` scan plus the explicit htmlDependency),
-  and each copy kept its own message queues/replay registry while both raced
-  their MutationObservers. A re-rendered card could boot its replacement
-  container from the copy holding no replay state, leaving the weather maps
-  at the world view with no cells. The engine now carries a load-once guard
-  (v1.0.5): the first copy owns the router, later copies are strict no-ops.
-- **Leaflet removed as a dependency.** All Step-1 maps render through the
-  MapLibre/H3 engine only: the WebGL fallback machinery (`<id>_webgl`
-  inputs, `renderLeaflet` surfaces, `plot_sample_density_map()`,
-  `plot_outcome_coverage_map()`, `plot_weather_loc_map()` and their
-  GeoJSON/view-memory helpers) is gone, and the palettes use small local
-  ramp builders (`R/fct_surveystats.R` `.ramp_numeric()`/`.ramp_factor()`).
-  `leaflet`/`leaflet.providers` dropped from `DESCRIPTION` and `renv.lock`.
-- Map engine migration (review §5.3 remediation): all Step-1 maps now render
-  through a vendored MapLibre GL 5.24.0 + h3-js 4.1.0 browser engine
-  (`inst/app/www/vendor/`, `inst/app/www/hexmap.js`, `R/fct_hexmap.R`). Maps
-  send columnar payloads (H3 cell ids, values, colour-ramp stops) instead of
-  serialized geometry; geometry is decoded client-side and colours are
-  applied by MapLibre expressions. Camera persists across wave toggles.
-  `map_data` (per-location aggregated geometry) removed
-  end-to-end. No new R packages; `renv.lock` unchanged.
-- Sample-density allocation is now population-weighted:
-  `allocate_units_to_cells()` spreads each location's sampled units across
-  its H3 cells in proportion to `pop_2020` (even split when weights are
-  missing or zero); per-cell totals still reconcile with the sample.
-- Density colour scale is binned: cells averaging fewer than one household
-  (locations whose units spread thin across many cells) share one pale
-  "less than 1" bin, and the occupied range above is split at its
-  quantiles — thin cells stay pale, rural variation stays visible, and
-  city outliers compress into the dark end. A single global transform
-  (log, sqrt) could not do both. The legend renders as discrete labelled
-  bins, and the legend info popup opens downward so the card no longer
-  clips it.
-- Density map renamed "Location of interviews" (matching "Timing of
-  interviews").
-- Fixed stale map-widget assertions in `test-mod_1_05_weatherstats.R`
-  (mapgl-era `__fill` property → Leaflet `style.fillColor` call format).
+## ENSO
 
-### Fixed
+* Years are labelled by El Niño, La Niña, Neutral or Mixed exposure (RONI) and marked in Steps 1 to 3, Diagnostics, the forecast flyout, exports and batch tables.
+* A simulated year combines interview months and lags, so it is classified by exposure, not calendar year: the phase covering at least half of the exposed months, otherwise Mixed. Climate scenario years take the label of their template year; forecast members get one outlook for the run.
+* Steps 2 and 3 add an ENSO phase toggle (off by default) and an ENSO section; Step 3 adds a policy comparison by phase.
+* A descriptive chart plots each simulated year against its continuous exposure RONI: the outcome in Step 2, the policy effect in Step 3, with a fit line and statistics per series and a CSV export.
+* ENSO is annotation only and does not enter estimation or simulation. Without the ENSO tables, every ENSO element is hidden.
 
-- Hex-map engine: the WebGL capability probe no longer fires a Shiny input
-  event, so the card's renderUI never re-renders and replaces a booted map
-  (blank map / basemap flash on wave toggles). The last payload per map is
-  replayed onto replacement containers.
-- Hex-map engine: first tile batch now renders reliably (render kicks after
-  boot and after each payload) instead of stalling until a resize event.
-- Hex-map engine: cells decode as `[lng, lat]` (`cellToBoundary(…,
-  "geojson")`) — h3-js 4.x's default `[lat, lng]` mirrored every cell
-  across the prime meridian/equator. Harness gained a coordinate-bounds
-  regression check.
-- Hex-map card layout: the map shell is a flex item of the card body, so
-  the map and legend fit the card (no overflow below the card) and the
-  legend clears the attribution control.
+## Other
 
-### Added
-
-- Hex-map engine tests: payload contract, density/coverage/weather payload
-  builders (`test-fct_hexmap.R`, `test-fct-outcome-weather-payloads.R`).
-- Payload benchmark harness (`dev/archive/bench_maps.R`) with recorded
-  results at 1k/10k/50k cells.
-
+* Return periods use the Weibull rule (`m / (n + 1)`) throughout; the level of a 1-in-N year is slightly more adverse than before, and an observed year is given a shorter return period (the worst of 30 years is 1 in 31, not 1 in 60).
+* R files renamed to `<role>_<stage or domain>_<topic>.R`. No change in behaviour.

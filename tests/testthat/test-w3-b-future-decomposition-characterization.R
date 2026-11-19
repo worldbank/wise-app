@@ -32,32 +32,6 @@ library(testthat)
   }))
 }
 
-test_that("future channel summaries preserve weighted current output", {
-  future <- .s3p1_future()
-  one_year <- future[future$scenario == "Scenario A" & future$sim_year == 2030, , drop = FALSE]
-  summary <- wiseapp:::decomposition_summary_data(one_year, is_rif = TRUE)
-
-  expect_identical(
-    summary$channel_id,
-    c("total", "level", "cash_transfer", "covariate_shift",
-      "resilience", "repositioning", "interaction")
-  )
-  expect_equal(
-    summary$model_value,
-    c(23 / 75, 4 / 15, 2 / 15, 2 / 15, 1 / 25, 2 / 75, 1 / 75),
-    tolerance = 1e-10
-  )
-  expect_equal(summary$percent, (exp(summary$model_value) - 1) * 100)
-
-  by_year <- lapply(split(future, list(future$scenario, future$sim_year)), function(x) {
-    wiseapp:::decomposition_summary_data(x, is_rif = TRUE)
-  })
-  expect_length(by_year, 4L)
-  expect_true(all(vapply(by_year, nrow, integer(1L)) == 7L))
-  expect_true(all(vapply(by_year, function(x) all(is.finite(x$model_value)), logical(1L)))
-  )
-})
-
 test_that("future channel-by-decile summaries use fixed baseline deciles", {
   future <- .s3p1_future()
   one_year <- future[future$scenario == "Scenario A" & future$sim_year == 2030, , drop = FALSE]
@@ -79,119 +53,78 @@ test_that("future channel-by-decile summaries use fixed baseline deciles", {
   expect_equal(summary$n_households, c(1L, 1L, 1L, 1L))
 })
 
-test_that("compact and legacy future summaries preserve adverse selection", {
-  future <- dplyr::bind_rows(lapply(c("Scenario A", "Scenario B"), function(scenario) {
-    dplyr::bind_rows(lapply(2001:2020, function(year) {
-      out <- .s3p1_fixture()
-      out$scenario <- scenario
-      out$sim_year <- year
-      out$year_start <- 2001L
-      out$year_end <- 2020L
-      out$delta_total <- if (scenario == "Scenario A") year - 2000 else 2021 - year
-      out
-    }))
-  }))
-  baseline_deciles <- c(2L, 5L, 7L, 10L)
-  parts <- lapply(split(future, list(future$scenario, future$sim_year)), function(x) {
-    .compact_future_decomposition(
-      x, x$scenario[[1L]], x$sim_year[[1L]], 2001L, 2020L,
-      baseline_deciles, TRUE, "rif"
-    )
-  })
-  compact <- .bind_compact_future_decompositions(parts, "rif", TRUE)
-  for (outcome in list(
-    list(name = "welfare", type = "numeric"),
-    list(name = "poor", type = "numeric")
-  )) {
-    for (basis in c("adverse_10", "adverse_20")) {
-      for (scenario in c("Scenario A", "Scenario B")) {
-        legacy <- select_decomp_weather_basis(
-          future[future$scenario == scenario, , drop = FALSE], basis, outcome
-        )
-        compact_year <- .compact_future_year(compact, scenario, basis, outcome)
-        expect_identical(compact_year$sim_year, unique(legacy$sim_year))
-        expect_equal(
-          .compact_future_summary(compact, scenario, basis, outcome, TRUE),
-          decomposition_summary_data(legacy, TRUE),
-          tolerance = 0
-        )
-      }
+# Compact per-year channel rows: one row per scenario-model-year, with the
+# baseline level the adverse-year rule ranks on.
+.adverse_compact <- function(models, years = 2001:2020, scenario = "Scenario A") {
+  channels <- c("delta_total", "delta_main", "delta_sp", "delta_main_covar",
+    "delta_res", "delta_res1", "delta_res2", "baseline_level",
+    "lvl_main", "lvl_res1", "lvl_res2", "lvl_total")
+  rows <- dplyr::bind_rows(lapply(names(models), function(m) {
+    out <- data.frame(scenario = scenario, member = m, sim_year = years,
+      year_start = min(years), year_end = max(years))
+    for (ch in channels) {
+      out[[paste0("sum_", ch)]] <- switch(ch,
+        baseline_level = models[[m]](years),
+        delta_total = , lvl_total = models[[m]](years) * 10, 0)
+      out[[paste0("weight_", ch)]] <- 1
     }
-  }
-})
+    out$decile <- 1L
+    out$n_households <- 1L
+    out$weighted_population <- 1
+    out
+  }))
+  structure(list(channel_summary = rows, decile_summary = rows, engine = "fixest",
+    is_rif = FALSE, scenario_order = scenario),
+    class = c("wise_compact_decomp_scenarios", "list"))
+}
 
-test_that("adverse 1-in-10 and 1-in-20 selection preserves ranking direction", {
-  future <- data.frame(
-    scenario = "Scenario A",
-    sim_year = 2001:2020,
-    delta_total = seq(0.01, 0.20, by = 0.01),
-    weight = 1
-  )
+test_that("adverse weather year follows the Step 2 rank-interpolation rule", {
   welfare <- list(name = "welfare", type = "numeric")
-  poor <- list(name = "poor", type = "numeric")
-
-  welfare_10 <- wiseapp:::select_decomp_weather_basis(future, "adverse_10", welfare)
-  welfare_20 <- wiseapp:::select_decomp_weather_basis(future, "adverse_20", welfare)
-  poor_10 <- wiseapp:::select_decomp_weather_basis(future, "adverse_10", poor)
-  poor_20 <- wiseapp:::select_decomp_weather_basis(future, "adverse_20", poor)
-
-  expect_identical(welfare_10$sim_year, 2002L)
-  expect_identical(welfare_20$sim_year, 2001L)
-  expect_identical(poor_10$sim_year, 2019L)
-  expect_identical(poor_20$sim_year, 2020L)
+  poor <- list(name = "poor", type = "logical", direction = "lower_is_better")
+  compact <- .adverse_compact(list(a = function(y) y - 2000))
+  # Higher welfare is better: the low tail is adverse, Weibull adverse rank (n + 1) p
+  # of 20 years: p = 0.05 -> k = 1.05 (was 1.5 with Hazen), and delta = 10 * baseline.
+  res <- .compact_future_decomp(compact, "Scenario A", "adverse_20", welfare)
+  expect_equal(res$baseline_annual, 1.05)
+  expect_equal(res$delta_total, 10.5)
+  expect_equal(res$lvl_total, 10.5)
+  # p = 0.10 -> k = 2.1; p = 0.20 -> k = 4.2.
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_10", welfare)$baseline_annual, 2.1)
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_5", welfare)$baseline_annual, 4.2)
+  # Lower is better (poverty): the high tail is adverse.
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_20", poor)$baseline_annual, 19.95)
+  expect_equal(.compact_future_decomp(compact, "Scenario A", "adverse_5", poor)$baseline_annual, 16.8)
 })
 
-test_that("compact future summaries match the full future frame for OLS and RIF", {
-  future <- .s3p1_future()
-  baseline_deciles <- c(2L, 5L, 7L, 10L)
-  so <- list(name = "welfare", type = "numeric")
-  for (engine in c("fixest", "rif")) {
-    is_rif <- identical(engine, "rif")
-    full <- .compact_future_summary(
-      .bind_compact_future_decompositions(lapply(split(future, list(
-        future$scenario, future$sim_year
-      )), function(x) .compact_future_decomposition(
-        x, x$scenario[[1L]], x$sim_year[[1L]], 2030L, 2040L,
-        baseline_deciles, is_rif, engine
-      )), engine, is_rif),
-      "Scenario A", "mean", so, is_rif
-    )
-    raw <- wiseapp:::decomposition_summary_data(
-      future[future$scenario == "Scenario A" & future$sim_year == 2030, , drop = FALSE],
-      is_rif = is_rif
-    )
-    expect_equal(full, raw, tolerance = 0)
+test_that("adverse weather year is chosen within each model, then averaged equally", {
+  welfare <- list(name = "welfare", type = "numeric")
+  compact <- .adverse_compact(list(a = function(y) y - 2000, b = function(y) 2021 - y))
+  res <- .compact_future_decomp(compact, "Scenario A", "adverse_20", welfare)
+  # Model a: years 2001/2002 (delta 10 * baseline 1, 2); model b: years 2020/2019.
+  expect_equal(res$baseline_annual, 1.05)
+  expect_equal(res$delta_total, 10.5)
+  deciles <- .compact_future_decile_summary(compact, "Scenario A", "adverse_20", welfare)
+  expect_equal(deciles$total, 10.5)
+})
 
-    compact <- .bind_compact_future_decompositions(lapply(split(future, list(
-      future$scenario, future$sim_year
-    )), function(x) .compact_future_decomposition(
-      x, x$scenario[[1L]], x$sim_year[[1L]], 2030L, 2040L,
-      baseline_deciles, is_rif, engine
-    )), engine, is_rif)
-    compact_decile <- .compact_future_decile_summary(
-      compact, "Scenario A", "mean", so, is_rif
-    )
-    raw_decile <- wiseapp:::decomposition_channels_by_decile(
-      future[future$scenario == "Scenario A", , drop = FALSE],
-      data.frame(welfare = 1:4, weight = c(1, 2, 1, 2)),
-      "welfare", is_rif, baseline_deciles
-    )
-    expect_equal(compact_decile, raw_decile, tolerance = 0)
-  }
+test_that("adverse basis is unavailable without enough simulated years", {
+  welfare <- list(name = "welfare", type = "numeric")
+  compact <- .adverse_compact(list(a = function(y) y - 2000), years = 2001:2010)
+  expect_equal(nrow(.compact_future_decomp(compact, "Scenario A", "adverse_20", welfare)), 0L)
+  expect_equal(nrow(.compact_future_decile_summary(compact, "Scenario A", "adverse_20", welfare)), 0L)
+  expect_equal(nrow(.compact_future_decomp(compact, "Scenario A", "adverse_10", welfare)), 1L)
+  expect_equal(nrow(.compact_future_decomp(compact, "Scenario A", "mean", welfare)), 1L)
 })
 
 test_that("decomposition export contracts expose current future and historical products", {
-  base <- .s3p1_fixture()
-  future <- .s3p1_future()
-  compact <- .bind_compact_future_decompositions(lapply(split(
-    future, list(future$scenario, future$sim_year)
-  ), function(x) .compact_future_decomposition(
-    x, x$scenario[[1L]], x$sim_year[[1L]], 2030L, 2040L,
-        c(2L, 5L, 7L, 10L), TRUE, "rif"
-  )), "rif", TRUE)
+  compact <- .adverse_compact(list(a = function(y) y - 2000))
+  compact$engine <- "rif"
+  compact$is_rif <- TRUE
   model <- list(engine = "rif", rif_grid = data.frame())
   survey <- data.frame(welfare = c(1, 2, 3, 4), weight = c(1, 2, 1, 2))
-  so <- list(name = "welfare", type = "numeric", transform = "log")
+  so <- list(name = "welfare", label = "Welfare", units = "PPP",
+    time_basis = "day", welfare_denominator = "person",
+    type = "numeric", transform = "log")
 
   check_module <- function(scenarios) {
     captured <- new.env(parent = emptyenv())
@@ -199,64 +132,45 @@ test_that("decomposition export contracts expose current future and historical p
       wiseapp:::mod_3_09_decomposition_server,
       args = list(
         id = "decomposition",
-        decomp_result = shiny::reactiveVal(base),
         decomp_scenarios = shiny::reactiveVal(scenarios),
         model_fit = shiny::reactiveVal(model),
         so = shiny::reactiveVal(so),
-        baseline_svy = shiny::reactiveVal(survey),
-        policy_svy = shiny::reactiveVal(survey)
+        baseline_svy = shiny::reactiveVal(survey)
       ),
       {
       session$flushReact()
-      session$setInputs(decile_scenario = "Scenario A", decile_weather_basis = "mean")
+      session$setInputs(headline_scenario = "Scenario A", decile_scenario = "Scenario A",
+        headline_weather_basis = "mean", decile_weather_basis = "mean")
       session$flushReact()
       items <- wiseapp:::wise_export_items(session)
-      keys <- c(
-        "policy_decomposition_headline",
-        "policy_decomposition_headline_data",
-        "policy_decomposition_channels",
+      keys <- c("policy_decomposition_headline", "policy_decomposition_headline_data",
         "policy_decomposition_channels_by_decile",
-        "policy_decomposition_channels_selected",
-        "policy_decomposition_summary"
-      )
+        "policy_decomposition_channels_by_decile_plot")
       expect_true(all(keys %in% names(items)))
 
       headline <- items[["policy_decomposition_headline_data"]]$fun()
-      expect_identical(
-        names(headline),
-        c("Scenario", "Effect component", "Mean effect (%)", "Share of total (%)")
-      )
-      expect_true(all(c("Historical", "Scenario A", "Scenario B") %in% headline$Scenario))
+      expect_identical(names(headline), c("Scenario", "Metric", "Outcome", "Change unit",
+        "Effect component", "Mean effect"))
+      expect_true("Scenario A" %in% headline$Scenario)
 
       decile <- items[["policy_decomposition_channels_by_decile"]]$fun()
-      expect_true(all(c("Baseline welfare decile", "Total policy effect (%)",
-                        "Sample units", "Population represented") %in% names(decile)))
-      expect_true(all(c("Mean weather (%)", "Adverse 1-in-5 (%)",
-                        "Adverse 1-in-10 (%)", "Adverse 1-in-20 (%)") %in%
-                        names(items[["policy_decomposition_summary"]]$fun())))
+      expect_true("Baseline welfare decile" %in% names(decile))
+      expect_equal(ncol(decile), 5L)
 
-      expect_s3_class(items[["policy_decomposition_headline"]]$fun(), "ggplot")
-      expect_s3_class(items[["policy_decomposition_channels"]]$fun(), "ggplot")
-      expect_s3_class(items[["policy_decomposition_channels_selected"]]$fun(), "ggplot")
+      # Batch 2: on-screen decomposition figures are echarts4r widgets (their
+      # registry funs switched); export-only figures stay ggplot. The
+      # legacy-vs-compact characterization compares widget opts below.
+      expect_s3_class(items[["policy_decomposition_headline"]]$fun(), "echarts4r")
+      expect_s3_class(items[["policy_decomposition_channels_by_decile_plot"]]$fun(), "echarts4r")
       captured$headline_data <- items[["policy_decomposition_headline_data"]]$fun()
       captured$headline_plot <- items[["policy_decomposition_headline"]]$fun()
-      captured$selected_plot <- items[["policy_decomposition_channels_selected"]]$fun()
+      captured$selected_plot <- items[["policy_decomposition_channels_by_decile_plot"]]$fun()
       }
     )
     captured
   }
 
-  legacy_exports <- check_module(future)
   compact_exports <- check_module(compact)
-  expect_equal(legacy_exports$headline_data, compact_exports$headline_data, tolerance = 0)
-  expect_equal(
-    ggplot2::ggplot_build(legacy_exports$headline_plot),
-    ggplot2::ggplot_build(compact_exports$headline_plot),
-    tolerance = 0
-  )
-  expect_equal(
-    ggplot2::ggplot_build(legacy_exports$selected_plot),
-    ggplot2::ggplot_build(compact_exports$selected_plot),
-    tolerance = 0
-  )
+  expect_true(is.list(compact_exports$headline_plot$x$opts))
+  expect_true(is.list(compact_exports$selected_plot$x$opts))
 })

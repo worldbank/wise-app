@@ -1,8 +1,8 @@
 #' 2_03_diagnostics UI Function
 #'
 #' @description A shiny Module. Renders the Diagnostics tab content:
-#'   weather input density panel and welfare output ridge plots.
-#'   Consolidates the former mod_2_05_sim_diag.
+#'   weather input density panel, climate-model robustness, and weather-year
+#'   trajectory diagnostics. Consolidates the former mod_2_05_sim_diag.
 #'
 #' @param id Internal parameter for {shiny}.
 #'
@@ -12,20 +12,22 @@
 mod_2_03_diagnostics_ui <- function(id) {
   ns <- NS(id)
   tagList(
-    # ---- 0. Stale banner (INT-08) -------------------------------------------
+    # 0. Stale banner (INT-08) ----
     shiny::uiOutput(ns("stale_banner")),
     shiny::uiOutput(ns("simulation_summary_ui")),
 
-    # ---- 1. Weather inputs panel -------------------------------------------
+    # 1. Weather inputs panel ----
     shiny::h4(
       "Are simulated weather conditions within model support?",
       info_popover(
         title = "Weather support and overlap",
         shiny::p(
-          "The Step 1 regression input is the reference distribution. Future",
-          "scenario values are compared with its robust 1st-99th percentile",
-          "interval. Values outside that interval require extrapolation of the",
-          "estimated weather-outcome relationship."
+          "The weather of the Step 1 fitted sample is the reference distribution.",
+          "Future scenario values are compared with its robust 1st-99th percentile",
+          "interval, or with the bins it contains. Values outside that support",
+          "require extrapolation of the estimated weather-outcome relationship.",
+          "The check is marginal, one variable at a time: it does not establish",
+          "support for the joint weather and moderator combinations."
         ),
         docs = TRUE
       ),
@@ -38,43 +40,51 @@ mod_2_03_diagnostics_ui <- function(id) {
         shiny::uiOutput(ns("diag_weather_vars_ui")),
         shiny::uiOutput(ns("diag_weather_scenario_ui"))
       ),
-      wise_plot_output(ns("diag_weather_density"),
-                       "Density plot comparing the selected weather variable in the historical sample against its own climate history",
-                       height = "340px"),
+      wise_chart_output(ns("diag_weather_density"),
+        "Weather distribution comparing model support, historical weather and future scenarios",
+        height = "340px"
+      ),
       shiny::uiOutput(ns("weather_support_warning_ui")),
-      DT::DTOutput(ns("weather_support_table")),
+      shiny::uiOutput(ns("enso_support_ui")),
       shiny::tags$p(
         class = "diagnostic-note",
-        "Distributions are normalized separately so samples with different sizes can be compared. Overlap does not by itself establish model validity."
+        paste0(
+          "Distributions are normalized separately so samples with different sizes can be compared. ",
+          "Overlap does not by itself establish model validity."
+        )
       )
     ),
 
-    # ---- 2. Climate-model robustness (Figure D2-3A default) -----------------
-    shiny::h4(
-      "Are expected outcomes consistent across climate models?",
-      info_popover(
-        title = "Climate-model agreement",
-        shiny::p(
-          "Each point is one climate model's mean outcome across simulated",
-          "weather years for a scenario and projection period. Historical is",
-          "shown once as the neutral reference."
-        ),
-        docs = TRUE
-      ),
-      class = "diagnostic-section-heading"
-    ),
+    # 2. Climate-model robustness (Figure D2-3A default) ----
+    shiny::uiOutput(ns("robustness_heading_ui")),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      wise_plot_output(ns("model_robustness_plot"),
-                       "Climate-model mean outcome by scenario and period",
-                       height = "420px"),
-      shiny::tags$p(
-        class = "diagnostic-note",
-        "Each dark point is one climate model's mean across simulated weather-year draws. The green point is the median model mean."
-      )
+      wise_chart_output(ns("model_robustness_plot"),
+        "Climate-model mean outcome by scenario and period",
+        height = "420px"
+      ),
+      shiny::uiOutput(ns("robustness_note_ui"))
     ),
 
-    # ---- 3. Weather-year trajectories (Figure D2-3B advanced) ---------------
+    # 3. Weather-year trajectories (Figure D2-3B advanced) ----
+    # A forecast alone has no annual weather-year draws; the trajectories apply to the other scenarios.
+    shiny::conditionalPanel(
+      condition = paste0("output['", ns("forecast_only"), "']"),
+      shiny::div(
+        class = "results-section-card diagnostic-section-card",
+        shiny::tags$p(
+          class = "diagnostic-note", style = "margin: 0;",
+          paste0(
+            "Weather-year trajectories describe annual weather draws, so they do not apply to a seasonal ",
+            "forecast alone. Each forecast member is one target-window state; the Results tab compares the ",
+            "members with Historical for the same months in the target-month group of each section."
+          )
+        )
+      )
+    ),
+    shiny::conditionalPanel(
+      condition = paste0("!output['", ns("forecast_only"), "']"),
+      shiny::tagList(
     shiny::h4(
       "How much can outcomes vary across weather-year draws?",
       info_popover(
@@ -90,12 +100,21 @@ mod_2_03_diagnostics_ui <- function(id) {
     ),
     shiny::div(
       class = "results-section-card diagnostic-section-card",
-      wise_plot_output(ns("timeseries_plot"),
-                       "Outcome across simulated weather-year draws",
-                       height = "380px"),
+      wise_chart_output(ns("timeseries_plot"),
+        "Outcome across simulated weather-year draws",
+        height = "380px"
+      ),
       shiny::tags$p(
         class = "diagnostic-note",
-        "Each line shows a climate model's simulated annual outcome across weather-year draws; the bold line summarizes the across-model median. Historical weather-year draws are the reference, and future scenarios apply a delta-method perturbation to that historical reference. Projection windows are separate regimes, not continuous annual forecasts. See the documentation for details on the simulation and perturbation method."
+        paste0(
+          "Each line shows a climate model's simulated annual outcome across weather-year draws; ",
+          "the bold line summarizes the across-model median. Historical weather-year draws are the reference, ",
+          "and future scenarios apply a delta-method perturbation to that historical reference. ",
+          "Projection windows are separate regimes, not continuous annual forecasts. ",
+          "See the documentation for details on the simulation and perturbation method."
+        )
+      )
+    )
       )
     )
   )
@@ -105,7 +124,7 @@ mod_2_03_diagnostics_ui <- function(id) {
 #' 2_03_diagnostics Server Functions
 #'
 #' Appends a Diagnostics tab to the main tabset once the historical simulation
-#' has run. Weather density and welfare ridge panels refresh only when their
+#' has run. Weather density and simulation diagnostics refresh when their
 #' respective Update button is clicked.
 #'
 #' @param id               Module id.
@@ -113,21 +132,24 @@ mod_2_03_diagnostics_ui <- function(id) {
 #' @param saved_scenarios  ReactiveVal holding named scenario entries.
 #' @param survey_weather   Reactive data frame of merged survey-weather data.
 #' @param selected_weather Reactive data frame of selected weather variable metadata.
+#' @param stored_breaks    Reactive named list of Step 1 weather bin breaks.
 #' @param tabset_id        Character id of the parent tabset panel.
 #' @param tabset_session   Shiny session for the tabset.
 #'
 #' @noRd
 mod_2_03_diagnostics_server <- function(id,
-                                         hist_sim,
-                                         saved_scenarios = NULL,
-                                         selected_hist = NULL,
-                                         survey_weather,
-                                         selected_weather,
-                                         variance_breakdown = NULL,
-                                         timeseries_curves = NULL,
-                                         tabset_id,
-                                         tabset_session = NULL,
-                                         stale = reactive(FALSE)) {
+                                        hist_sim,
+                                        saved_scenarios = NULL,
+                                        selected_hist = NULL,
+                                        survey_weather,
+                                        selected_weather,
+                                        timeseries_curves = NULL,
+                                        window_robustness = reactive(NULL),
+                                        enso_labels = reactive(NULL),
+                                        tabset_id,
+                                        tabset_session = NULL,
+                                        stale = reactive(FALSE),
+                                        stored_breaks = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -136,35 +158,90 @@ mod_2_03_diagnostics_server <- function(id,
       if (isTRUE(stale())) .stale_banner("Step 2 diagnostics") else NULL
     })
 
+    # Forecast alone: the climate-model wording and annual trajectories do not apply.
+    forecast_only <- reactive({
+      nm <- tryCatch(names(saved_scenarios()), error = function(e) NULL)
+      length(nm) > 0L && all(vapply(nm, .step2_is_forecast_scenario, logical(1L)))
+    })
+    output$forecast_only <- shiny::reactive(forecast_only())
+    outputOptions(output, "forecast_only", suspendWhenHidden = FALSE)
+    output$robustness_heading_ui <- shiny::renderUI({
+      fc <- forecast_only()
+      shiny::h4(
+        if (fc) "Are expected outcomes consistent across forecast members?" else
+          "Are expected outcomes consistent across climate models?",
+        info_popover(
+          title = if (fc) "Forecast member agreement" else "Climate-model agreement",
+          shiny::p(
+            if (fc) {
+              paste("Each point is one forecast member's outcome for the target window. Historical is",
+                "shown once as the neutral reference.")
+            } else {
+              paste("Each point is one climate model's mean outcome across simulated",
+                "weather years for a scenario and projection period. Historical is",
+                "shown once as the neutral reference.",
+                if (!is.null(window_robustness())) {
+                  paste("A seasonal forecast adds a row of forecast members and a row of reference",
+                    "years, both for the forecast target months only.")
+                })
+            }
+          ),
+          docs = TRUE
+        ),
+        class = "diagnostic-section-heading"
+      )
+    })
+    output$robustness_note_ui <- shiny::renderUI({
+      shiny::tags$p(
+        class = "diagnostic-note",
+        if (forecast_only()) {
+          paste0("Each point is one forecast member's outcome for the target window. ",
+            "The orange point is the mean of the members.")
+        } else {
+          paste0("Each scenario-coloured point is one climate model's mean across simulated weather-year draws. ",
+            "The orange point is the mean of the model means, the centre of the Results headline.",
+            if (!is.null(window_robustness())) {
+              paste0(" The forecast row shows one point per forecast member for the target months, and ",
+                "the Historical row with the target months shows one point per reference year of the same months; ",
+                "compare those two rows with each other, not with the annual rows.")
+            })
+        }
+      )
+    })
+
     output$simulation_summary_ui <- shiny::renderUI({
       simulation_summary_card(
-        hist_sim        = hist_sim(),
+        hist_sim = hist_sim(),
         saved_scenarios = if (!is.null(saved_scenarios)) saved_scenarios() else list(),
-        selected_hist   = if (is.function(selected_hist)) selected_hist() else selected_hist,
-        selected_weather = if (!is.null(selected_weather)) selected_weather() else NULL
+        selected_hist = if (is.function(selected_hist)) selected_hist() else selected_hist
       )
     })
 
     if (is.null(tabset_session)) tabset_session <- session$parent %||% session
 
-    # ---- Reactive computations ---------------------------------------------
+    # Reactive computations ----
 
     diagnostic_cache_key <- NULL
     diagnostic_cache_value <- NULL
     diagnostic_generation <- reactiveVal(0L)
     if (is.function(hist_sim)) {
-      observeEvent(hist_sim(), {
-        diagnostic_cache_key <<- NULL
-        diagnostic_cache_value <<- NULL
-        diagnostic_generation(diagnostic_generation() + 1L)
-      }, ignoreInit = FALSE)
+      observeEvent(hist_sim(),
+        {
+          diagnostic_cache_key <<- NULL
+          diagnostic_cache_value <<- NULL
+          diagnostic_generation(diagnostic_generation() + 1L)
+        },
+        ignoreInit = FALSE
+      )
     }
     # saved_scenarios is intentionally read only when a diagnostic output is
     # requested. This avoids forcing an optional reactive during module setup.
     scenario_weather_data <- reactive({
       generation <- diagnostic_generation()
       sc <- if (!is.null(saved_scenarios)) saved_scenarios() else list()
-      if (length(sc) == 0) return(NULL)
+      if (length(sc) == 0) {
+        return(NULL)
+      }
       vars <- input$diag_weather_vars %||% character(0)
       active <- active_weather_scenarios()
       visible <- names(sc)
@@ -180,51 +257,74 @@ mod_2_03_diagnostics_server <- function(id,
           schema = if (is_ref) wr$schema else NULL
         )
       })
-      cache_key <- digest::digest(list(generation, visible, vars,
-                                       scenario_signature))
-      if (identical(cache_key, diagnostic_cache_key))
-        return(diagnostic_cache_value)
-      out <- lapply(sc[visible], function(e) {
-        raw <- step2_resolve_weather(e$weather_raw, e)
-        if (is.null(raw) || !is.data.frame(raw)) return(NULL)
-        keep <- unique(c(intersect(STEP2_WEATHER_KEY_COLUMNS, names(raw)),
-                         intersect(vars, names(raw))))
+      # R2-PERF-12: the resolved frames hold every selected weather variable,
+      # so the cache key excludes the clicked variable and a variable switch
+      # only subsets columns instead of re-reading each scenario's weather.
+      sw_all <- if (!is.null(selected_weather)) selected_weather() else NULL
+      all_vars <- sort(unique(c(vars, as.character(sw_all$name))))
+      cache_key <- digest::digest(list(
+        generation, visible, all_vars,
+        scenario_signature
+      ))
+      if (!identical(cache_key, diagnostic_cache_key)) {
+        full <- lapply(sc[visible], function(e) {
+          raw <- step2_resolve_weather(e$weather_raw, e)
+          if (is.null(raw) || !is.data.frame(raw)) {
+            return(NULL)
+          }
+          keep <- unique(c(
+            intersect(STEP2_WEATHER_KEY_COLUMNS, names(raw)),
+            intersect(all_vars, names(raw))
+          ))
+          raw[, keep, drop = FALSE]
+        })
+        names(full) <- visible
+        diagnostic_cache_key <<- cache_key
+        diagnostic_cache_value <<- Filter(Negate(is.null), full)
+      }
+      out <- lapply(diagnostic_cache_value, function(raw) {
+        keep <- unique(c(
+          intersect(STEP2_WEATHER_KEY_COLUMNS, names(raw)),
+          intersect(vars, names(raw))
+        ))
         raw[, keep, drop = FALSE]
       })
-      names(out) <- visible
-      out <- Filter(Negate(is.null), out)
-      out <- if (length(out)) out else NULL
-      diagnostic_cache_key <<- cache_key
-      diagnostic_cache_value <<- out
-      out
+      if (length(out)) out else NULL
     })
 
-    # ---- renderUI / render* outputs ----------------------------------------
+    # renderUI / render* outputs ----
 
     output$diag_weather_vars_ui <- shiny::renderUI({
       sw <- if (!is.null(selected_weather)) selected_weather() else NULL
-      if (is.null(sw) || !"name" %in% names(sw) || !nrow(sw)) return(NULL)
+      if (is.null(sw) || !"name" %in% names(sw) || !nrow(sw)) {
+        return(NULL)
+      }
       choices <- if ("label" %in% names(sw)) setNames(sw$name, sw$label) else sw$name
       current <- isolate(input$diag_weather_vars)
-      selected <- if (length(current) > 0 && current %in% unname(choices)) {
-        current
-      } else {
-        unname(choices)[[1L]]
-      }
+      selected <- intersect(current, unname(choices))
+      if (!length(selected)) selected <- unname(choices)[[1L]]
       pill_toggle(
-        ns("diag_weather_vars"), label = NULL,
-        choices = choices, selected = selected,
+        ns("diag_weather_vars"),
+        label = NULL,
+        aria_label = "Weather variable",
+        choices = choices, selected = selected[[1L]],
         layout = "horizontal"
       )
     })
 
     output$diag_weather_scenario_ui <- shiny::renderUI({
       sc_all <- if (!is.null(saved_scenarios)) names(saved_scenarios()) else character(0)
-      if (!length(sc_all)) return(NULL)
+      if (!length(sc_all)) {
+        return(NULL)
+      }
       pill_toggle(
-        ns("diag_weather_scenario"), label = NULL,
-        choices = c("All scenarios and periods" = "all",
-                    stats::setNames(sc_all, sc_all)),
+        ns("diag_weather_scenario"),
+        label = NULL,
+        aria_label = "Scenario and period",
+        choices = c(
+          "All scenarios and periods" = "all",
+          stats::setNames(sc_all, sc_all)
+        ),
         selected = "all"
       )
     })
@@ -234,17 +334,29 @@ mod_2_03_diagnostics_server <- function(id,
       if (identical(selected, "all")) NULL else selected
     })
 
-    output$diag_weather_density <- renderPlot({
+    # R2-PERF-12: the historical filter (a merge over weather_raw) runs once per
+    # run/survey, not on every variable click and again for the support table.
+    hist_weather_filtered <- reactive({
+      req(hist_sim(), survey_weather())
+      req(!is.null(hist_sim()$weather_raw))
+      .filter_hist_weather(hist_sim()$weather_raw, survey_weather())
+    })
+
+    weather_density_chart <- function() {
       req(hist_sim(), survey_weather())
       req(!is.null(hist_sim()$weather_raw))
       vars <- input$diag_weather_vars
       req(length(vars) > 0)
 
-      sw      <- if (!is.null(selected_weather)) selected_weather() else NULL
-      lbl_map <- if (!is.null(sw) && all(c("name", "label") %in% names(sw)))
-        setNames(sw$label, sw$name) else NULL
+      sw <- if (!is.null(selected_weather)) selected_weather() else NULL
+      breaks <- if (is.function(stored_breaks)) stored_breaks() else stored_breaks
+      lbl_map <- if (!is.null(sw) && all(c("name", "label") %in% names(sw))) {
+        setNames(sw$label, sw$name)
+      } else {
+        NULL
+      }
 
-      plot_weather_density_panel(
+      ch <- echart_weather_density_panel(
         survey_weather   = survey_weather(),
         weather_raw      = hist_sim()$weather_raw,
         weather_vars     = vars,
@@ -252,17 +364,43 @@ mod_2_03_diagnostics_server <- function(id,
         scenario_weather = scenario_weather_data(),
         active_scenarios = active_weather_scenarios(),
         log_x            = rep(FALSE, length(vars)),
-        show_regression  = TRUE
+        show_regression  = TRUE,
+        height           = "340px",
+        weather_specs    = sw,
+        stored_breaks    = breaks,
+        hist_filtered    = hist_weather_filtered()
       )
+      req(!is.null(ch))
+      ch
+    }
+    output$diag_weather_density <- echarts4r::renderEcharts4r({
+      ch <- weather_density_chart()
+      req(!is.null(ch))
+      ch
     }) |> shiny::bindEvent(input$diag_weather_vars, input$diag_weather_scenario,
-                           hist_sim(), survey_weather(), selected_weather(),
-                           ignoreNULL = TRUE, ignoreInit = FALSE)
+      hist_sim(), survey_weather(), selected_weather(),
+      ignoreNULL = TRUE, ignoreInit = FALSE
+    )
 
     weather_support_data <- reactive({
-      req(hist_sim(), survey_weather())
+      req(hist_sim())
       vars <- input$diag_weather_vars
-      req(length(vars) > 0L, !is.null(hist_sim()$weather_raw))
-      ref <- .filter_hist_weather(hist_sim()$weather_raw, survey_weather())
+      req(length(vars) > 0L)
+      # Use the summary computed during the run (pooled across every climate
+      # model member, no file reads). Runs made before it existed fall back to
+      # recomputing from the scenario weather.
+      sc <- if (!is.null(saved_scenarios)) saved_scenarios() else list()
+      stored <- weather_support_from_stored(
+        sc, vars, visible = {
+          active <- active_weather_scenarios()
+          if (is.null(active)) names(sc) else intersect(names(sc), active)
+        }
+      )
+      if (!is.null(stored)) {
+        return(stored)
+      }
+      req(survey_weather(), !is.null(hist_sim()$weather_raw))
+      ref <- hist_weather_filtered()
       scenarios <- scenario_weather_data()
       weather_support_summary(
         ref, scenarios, vars,
@@ -270,26 +408,31 @@ mod_2_03_diagnostics_server <- function(id,
       )
     })
 
-    output$weather_support_table <- DT::renderDT({
+    # Display frame retained for the lazy bundle export; it is not rendered in
+    # the Diagnostics tab.
+    weather_support_display <- function() {
       tbl <- weather_support_data()
       if (is.null(tbl) || !nrow(tbl)) {
-        return(DT::datatable(
-          data.frame(Message = "No weather-support summary is available."),
-          rownames = FALSE, options = list(dom = "t")
-        ))
+        return(NULL)
       }
       sw <- if (!is.null(selected_weather)) selected_weather() else NULL
-      label_map <- if (!is.null(sw) && all(c("name", "label") %in% names(sw)))
-        setNames(as.character(sw$label), as.character(sw$name)) else character(0)
+      label_map <- if (!is.null(sw) && all(c("name", "label") %in% names(sw))) {
+        setNames(as.character(sw$label), as.character(sw$name))
+      } else {
+        character(0)
+      }
       reference_display <- ifelse(
         tbl$is_binned,
         paste0("Supported bins: ", tbl$reference_label),
-        paste0(formatC(tbl$robust_lo, format = "fg", digits = 4), " to ",
-               formatC(tbl$robust_hi, format = "fg", digits = 4))
+        paste0(
+          formatC(tbl$robust_lo, format = "fg", digits = 4), " to ",
+          formatC(tbl$robust_hi, format = "fg", digits = 4)
+        )
       )
-      display <- data.frame(
+      data.frame(
         `Weather variable` = ifelse(tbl$weather_variable %in% names(label_map),
-                                    label_map[tbl$weather_variable], tbl$weather_variable),
+          label_map[tbl$weather_variable], tbl$weather_variable
+        ),
         `Scenario / period` = tbl$scenario,
         `Reference support` = reference_display,
         `Scenario values` = tbl$n_scenario,
@@ -298,26 +441,64 @@ mod_2_03_diagnostics_server <- function(id,
         check.names = FALSE,
         stringsAsFactors = FALSE
       )
-      DT::datatable(
-        display, rownames = FALSE, class = "compact stripe",
-        extensions = "Buttons",
-        options = list(dom = wise_csv_dom("t"), paging = FALSE,
-                       buttons = wise_csv_button("simulation_weather_support_summary"))
-      )
-    })
-    outputOptions(output, "weather_support_table", suspendWhenHidden = TRUE)
+    }
+
     output$weather_support_warning_ui <- renderUI({
       tbl <- weather_support_data()
-      if (is.null(tbl) || !nrow(tbl) || !any(tbl$warning)) return(NULL)
+      if (is.null(tbl) || !nrow(tbl) || !any(tbl$warning)) {
+        return(NULL)
+      }
       sw <- if (!is.null(selected_weather)) selected_weather() else NULL
-      label_map <- if (!is.null(sw) && all(c("name", "label") %in% names(sw)))
-        setNames(as.character(sw$label), as.character(sw$name)) else character(0)
+      label_map <- if (!is.null(sw) && all(c("name", "label") %in% names(sw))) {
+        setNames(as.character(sw$label), as.character(sw$name))
+      } else {
+        character(0)
+      }
       bad_vars <- unique(tbl$weather_variable[tbl$warning])
       bad <- ifelse(bad_vars %in% names(label_map), label_map[bad_vars], bad_vars)
-      shiny::tags$div(class = "alert alert-warning", role = "alert",
-                      shiny::tags$strong("Weather support warning: "),
-                      paste(bad, collapse = ", "),
-                      " has more than 5% of scenario values outside the reference support. Extrapolation may be required.")
+      shiny::tags$div(
+        class = "alert alert-warning", role = "alert",
+        shiny::tags$strong("Weather support warning: "),
+        paste(bad, collapse = ", "),
+        " has more than 5% of scenario values outside the support of the fitted sample. Extrapolation may be required."
+      )
+    })
+
+    # Weather outside the fitted support in El Nino and La Nina exposure years (item 6 of
+    # review/archive/enso.md). Weather support, not interview phase, is the check that matters: it
+    # says whether the weather of those years lies where the model was fitted. Absent without
+    # ENSO labels, or when a phase has fewer than three years in a series.
+    output$enso_support_ui <- renderUI({
+      lab <- enso_labels()
+      if (is.null(lab)) return(NULL)
+      v <- input$diag_weather_vars
+      req(length(v) == 1L, hist_sim(), survey_weather(), !is.null(hist_sim()$weather_raw))
+      sv_year <- as.integer(format(as.Date(survey_weather()$timestamp), "%Y"))
+      hist_filt <- hist_weather_filtered()
+      with_year <- function(d) {
+        d$sim_year <- as.integer(format(as.Date(d$timestamp), "%Y"))
+        d
+      }
+      series <- c(
+        list(Historical = with_year(hist_filt)),
+        lapply(Filter(is.data.frame, scenario_weather_data() %||% list()), with_year)
+      )
+      series <- series[!.step2_is_forecast_like(names(series))]
+      sw <- if (!is.null(selected_weather)) selected_weather() else NULL
+      label <- if (!is.null(sw) && all(c("name", "label") %in% names(sw)) && v %in% sw$name) {
+        as.character(sw$label[sw$name == v][[1L]])
+      } else {
+        v
+      }
+      tbl <- weather_support_by_phase(hist_filt[hist_filt$cal_year %in% unique(sv_year), , drop = FALSE],
+        series, v, lab, weather_specs = sw)
+      lines <- enso_support_sentences(tbl, label)
+      if (!length(lines)) return(NULL)
+      shiny::tags$p(
+        class = "diagnostic-note",
+        paste(lines, collapse = " "),
+        " Years are labelled by the ENSO state of the months that enter the model."
+      )
     })
 
     # The selected outcome frame has no `method` column, so a bare `$method`
@@ -326,7 +507,9 @@ mod_2_03_diagnostics_server <- function(id,
     so_method <- function(so) {
       if (is.data.frame(so) && "method" %in% names(so)) {
         out <- as.character(so$method)[[1L]]
-        if (nzchar(out)) return(out)
+        if (nzchar(out)) {
+          return(out)
+        }
       }
       "mean"
     }
@@ -342,14 +525,30 @@ mod_2_03_diagnostics_server <- function(id,
         req(hist_sim(), survey_weather())
         vars <- input$diag_weather_vars
         req(length(vars) > 0L)
-        plot_weather_density_panel(
+        sw <- if (!is.null(selected_weather)) selected_weather() else NULL
+        breaks <- if (is.function(stored_breaks)) stored_breaks() else stored_breaks
+        lbl_map <- if (!is.null(sw) && all(c("name", "label") %in% names(sw))) {
+          setNames(sw$label, sw$name)
+        } else {
+          NULL
+        }
+        ch <- echart_weather_density_panel(
           survey_weather(), hist_sim()$weather_raw, vars,
+          weather_labels = lbl_map,
           scenario_weather = scenario_weather_data(),
           active_scenarios = active_weather_scenarios(),
-          show_regression = TRUE
+          log_x = rep(FALSE, length(vars)),
+          show_regression = TRUE,
+          height = "500px",
+          weather_specs = sw,
+          stored_breaks = breaks
         )
+        req(!is.null(ch))
+        ch
       },
-      description = "Weather input distributions for the selected plot variables across historical and simulated sources.",
+      description = paste0(
+        "Weather input distributions for the selected plot variables across historical and simulated sources."
+      ),
       width = 10, height = 6.5
     )
     wise_export_table(
@@ -377,17 +576,36 @@ mod_2_03_diagnostics_server <- function(id,
       key = "simulation_weather_support_summary",
       label = "Weather support summary",
       step = 2L,
-      fun = weather_support_data,
+      fun = weather_support_display,
+      stale = stale,
       description = "Sample sizes, robust Step 1 support intervals, outside-support shares, and warnings."
     )
+    # Annual climate-model points, then the forecast target-window points (members and the same-month
+    # reference years) when the run has a forecast. A forecast alone has no annual climate rows to show.
+    robustness_table <- function() {
+      tc <- timeseries_curves()
+      req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+      annual <- model_robustness_data(tc$tbl)
+      win <- window_robustness()
+      if (is.null(win) || !nrow(win)) {
+        return(annual)
+      }
+      if (forecast_only()) win else dplyr::bind_rows(annual, win)
+    }
+    robustness_chart <- function() {
+      tc <- timeseries_curves()
+      req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+      ch <- echart_model_robustness(robustness_table(), tc$x_label,
+        height = "420px"
+      )
+      req(!is.null(ch))
+      ch
+    }
     wise_export_figure(
       key = "simulation_model_robustness",
       label = "Climate-model robustness",
       step = 2L,
-      fun = function() {
-        tc <- timeseries_curves(); req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
-        plot_model_robustness(model_robustness_data(tc$tbl), tc$x_label)
-      },
+      fun = robustness_chart,
       description = "One point per climate model's mean across weather-year draws with ensemble spread.",
       width = 10, height = 6
     )
@@ -396,25 +614,38 @@ mod_2_03_diagnostics_server <- function(id,
       label = "Climate-model robustness data",
       step = 2L,
       fun = function() {
-        tc <- timeseries_curves(); req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
-        annotate_visualization_export(model_robustness_data(tc$tbl),
+        tc <- timeseries_curves()
+        req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+        annotate_visualization_export(robustness_table(),
           so_method(hist_sim()$so), hist_sim()$so,
-          observation_unit = "climate-model mean across weather-year draws",
+          observation_unit = paste0(
+            "climate-model mean across weather-year draws; forecast member or reference-year outcome ",
+            "for the target window (rows with a unit)"
+          ),
           aggregation_order = "annual aggregate by model and weather year, then model mean",
-          uncertainty = "ensemble spread")
+          uncertainty = "ensemble spread"
+        )
       },
       description = "Tidy climate-model robustness summaries."
     )
+    trajectories_chart <- function() {
+      req(timeseries_curves)
+      tc <- timeseries_curves()
+      req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
+      ch <- echart_timeseries_spaghetti(tc$tbl,
+        x_label = tc$x_label,
+        ensemble_band_q = tc$ens_q,
+        height = "380px",
+        enso_labels = enso_labels()
+      )
+      req(!is.null(ch))
+      ch
+    }
     wise_export_figure(
       key = "simulation_model_trajectories",
       label = "Climate-model annual trajectories",
       step = 2L,
-      fun = function() {
-        req(timeseries_curves)
-        tc <- timeseries_curves()
-        req(!is.null(tc$tbl), nrow(tc$tbl) > 0L)
-        plot_timeseries_spaghetti(tc$tbl, x_label = tc$x_label)
-      },
+      fun = trajectories_chart,
       description = "Advanced climate-model trajectories by discrete simulation window.",
       width = 10, height = 6.5
     )
@@ -436,112 +667,67 @@ mod_2_03_diagnostics_server <- function(id,
       description = "Tidy data behind the advanced climate-model trajectory view."
     )
 
-    output$variance_contribution_plot <- renderPlot({
-      req(variance_breakdown)
-      vb <- variance_breakdown()
-      req(!is.null(vb) && nrow(vb) > 0L)
-      plot_variance_contribution(vb)
-    })
-    output$variance_share_warning <- renderUI({
-      if (!isTRUE(input$show_variance_shares)) return(NULL)
-      shiny::tags$p(class = "text-warning small",
-                    "Approximate shares assume zero covariance between components and may not sum to the uncertainty of the combined estimand.")
-    })
-    output$variance_share_table <- DT::renderDT({
-      req(variance_breakdown())
-      if (!isTRUE(input$show_variance_shares)) {
-        return(DT::datatable(data.frame(Message = "Approximate shares are hidden by default."),
-                            rownames = FALSE, options = list(dom = "t")))
-      }
-      DT::datatable(
-        variance_component_data(variance_breakdown(), TRUE),
-        rownames = FALSE, class = "compact stripe",
-        extensions = "Buttons",
-        options = list(dom = wise_csv_dom("tp"), pageLength = 20,
-                       buttons = wise_csv_button("simulation_variance_shares"))
-      )
-    })
-    outputOptions(output, "variance_share_table", suspendWhenHidden = FALSE)
-    wise_export_table(
-      key = "simulation_variance_shares",
-      label = "Simulation variance shares",
-      step = 2L,
-      fun = function() {
-        req(variance_breakdown())
-        if (!isTRUE(input$show_variance_shares)) return(NULL)
-        variance_component_data(variance_breakdown(), TRUE)
-      },
-      description = "Approximate shares of simulation uncertainty by variance component."
-    )
-
-    output$timeseries_plot <- renderPlot({
-      req(timeseries_curves)
-      tc <- timeseries_curves()
-      req(!is.null(tc$tbl) && nrow(tc$tbl) > 0L)
-      ts_tbl <- tc$tbl
-      plot_timeseries_spaghetti(
-        ts_tbl          = ts_tbl,
-        x_label         = tc$x_label,
-        ensemble_band_q = tc$ens_q
-      )
+    output$timeseries_plot <- echarts4r::renderEcharts4r({
+      ch <- trajectories_chart()
+      req(!is.null(ch))
+      ch
     })
 
-    output$model_robustness_plot <- renderPlot({
-      req(timeseries_curves)
-      tc <- timeseries_curves()
-      req(!is.null(tc$tbl) && nrow(tc$tbl) > 0L)
-      plot_model_robustness(model_robustness_data(tc$tbl), tc$x_label)
-    }, height = 420)
+    output$model_robustness_plot <- echarts4r::renderEcharts4r({
+      ch <- robustness_chart()
+      req(!is.null(ch))
+      ch
+    })
     outputOptions(output, "model_robustness_plot", suspendWhenHidden = TRUE)
 
 
-
-
-    # ---- Insert Diagnostics tab on first hist_sim; remove when cleared -----
+    # Insert Diagnostics tab on first hist_sim; remove when cleared ----
 
     diag_tab_added <- reactiveVal(FALSE)
 
-    observeEvent(hist_sim(), {
-      if (is.null(hist_sim())) {
-        if (diag_tab_added()) {
-          shiny::removeTab(
+    observeEvent(hist_sim(),
+      {
+        if (is.null(hist_sim())) {
+          if (diag_tab_added()) {
+            shiny::removeTab(
+              inputId = tabset_id,
+              target  = "diag_tab",
+              session = tabset_session
+            )
+            diag_tab_added(FALSE)
+          }
+          return()
+        }
+
+        # UI-50: one Diagnostics tab, not one per Step 2 run. The tab's contents
+        # are a module UI bound to fixed output ids, so an already-present tab
+        # needs no rebuild; the weather-variable pill re-renders itself from
+        # selected_weather().
+        if (!diag_tab_added()) {
+          shiny::appendTab(
             inputId = tabset_id,
-            target  = "diag_tab",
+            shiny::tabPanel(
+              title = "Diagnostics",
+              value = "diag_tab",
+              mod_2_03_diagnostics_ui(sub("-$", "", session$ns("")))
+            ),
+            select = FALSE,
             session = tabset_session
           )
-          diag_tab_added(FALSE)
+          diag_tab_added(TRUE)
         }
-        return()
-      }
+      },
+      ignoreInit = TRUE,
+      ignoreNULL = FALSE
+    )
 
-      # UI-50: one Diagnostics tab, not one per Step 2 run. The tab's contents
-      # are a module UI bound to fixed output ids, so an already-present tab
-      # needs no rebuild; the weather-variable pill re-renders itself from
-      # selected_weather().
-      if (!diag_tab_added()) {
-        shiny::appendTab(
-          inputId = tabset_id,
-          shiny::tabPanel(
-            title = "Diagnostics",
-            value = "diag_tab",
-            mod_2_03_diagnostics_ui(sub("-$", "", session$ns("")))
-          ),
-          select  = FALSE,
-          session = tabset_session
-        )
-        diag_tab_added(TRUE)
-      }
-    }, ignoreInit = TRUE, ignoreNULL = FALSE)
-
-    # ---- Suspend outputs when Results tab is hidden ----------------------
-    outputOptions(output, "diag_weather_vars_ui",   suspendWhenHidden = TRUE)
+    # Suspend outputs when Results tab is hidden ----
+    outputOptions(output, "diag_weather_vars_ui", suspendWhenHidden = TRUE)
     outputOptions(output, "diag_weather_scenario_ui", suspendWhenHidden = TRUE)
-    outputOptions(output, "diag_weather_density",    suspendWhenHidden = TRUE)
-    outputOptions(output, "variance_contribution_plot", suspendWhenHidden = TRUE)
-    outputOptions(output, "timeseries_plot",         suspendWhenHidden = TRUE)
-    outputOptions(output, "variance_share_warning",  suspendWhenHidden = FALSE)
+    outputOptions(output, "diag_weather_density", suspendWhenHidden = TRUE)
+    outputOptions(output, "timeseries_plot", suspendWhenHidden = TRUE)
 
-    # ---- Return API --------------------------------------------------------
+    # Return API ----
     list(diag_tab_added = diag_tab_added)
   })
 }

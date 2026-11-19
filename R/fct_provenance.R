@@ -1,5 +1,5 @@
-# =========================================================================== #
-# Run provenance: one immutable record of what produced a set of results.     #
+# Run provenance ----
+# One immutable record of what produced a set of results.                     #
 #                                                                             #
 # UI-49. An exported table carried no record of what produced it - not        #
 # the data source, the model specification, the random seed, or which         #
@@ -18,7 +18,6 @@
 # There is deliberately no on-screen provenance banner: the same              #
 # information travels with the export, and a permanent panel above            #
 # every result surface cost more space than it earned.                        #
-# =========================================================================== #
 
 
 #' Strip credentials from a connection-parameter list
@@ -37,7 +36,9 @@
   secret_like <- "secret|key|token|password|credential|client_id|tenant"
   keep <- names(params)[!grepl(secret_like, names(params), ignore.case = TRUE)]
   out <- lapply(params[keep], function(v) {
-    if (is.null(v)) return(NULL)
+    if (is.null(v)) {
+      return(NULL)
+    }
     if (is.atomic(v) && length(v) <= 8) v else paste0("<", class(v)[1], ">")
   })
   out <- Filter(Negate(is.null), out)
@@ -47,6 +48,27 @@
     out$credentials <- paste0("redacted (", length(redacted), " field(s) set)")
   }
   out
+}
+
+#' Describe a data source for shared records (CR-SEC-05)
+#'
+#' Exports and provenance records leave the app, so they name only the source
+#' type and whether it came from the server configuration ("env") or the UI
+#' ("ui"); hosts, buckets, paths and credentials are never included. The Step 2
+#' run signature, which stays in the session, still uses
+#' `.provenance_source()`.
+#'
+#' @param params Connection parameter list.
+#' @return A list with `type` and `origin`.
+#' @noRd
+.provenance_source_label <- function(params) {
+  if (is.null(params) || !length(params)) {
+    return(list(type = "unknown"))
+  }
+  list(
+    type = as.character(params$type %||% "unknown")[1L],
+    origin = as.character(params$origin %||% "unknown")[1L]
+  )
 }
 
 #' Short, stable digest of a run signature
@@ -59,7 +81,9 @@
 #' @return An 8-character hex string, or NA when no signature is available.
 #' @noRd
 .provenance_digest <- function(sig) {
-  if (is.null(sig)) return(NA_character_)
+  if (is.null(sig)) {
+    return(NA_character_)
+  }
   tryCatch(
     substr(digest::digest(.sig_plain(sig), algo = "xxhash64"), 1L, 8L),
     error = function(e) NA_character_
@@ -73,31 +97,53 @@
 #' @return A single string, or NA when no specification is available.
 #' @noRd
 .provenance_model_spec <- function(sm, label_fun = identity) {
-  if (is.null(sm) || !length(sm)) return(NA_character_)
+  if (is.null(sm) || !length(sm)) {
+    return(NA_character_)
+  }
   lab <- function(x) {
-    if (!length(x)) return(character(0))
+    if (!length(x)) {
+      return(character(0))
+    }
     vapply(x, function(v) {
       l <- tryCatch(label_fun(v), error = function(e) v)
       if (length(l) == 1 && !is.na(l) && nzchar(l)) l else v
     }, character(1))
   }
-  covs <- unique(c(sm$ind_covariates, sm$hh_covariates,
-                   sm$firm_covariates, sm$area_covariates))
+  covs <- unique(c(
+    sm$ind_covariates, sm$hh_covariates,
+    sm$firm_covariates, sm$area_covariates
+  ))
   parts <- c(
     sm$type %||% NA_character_,
     if (length(sm$engine)) paste0("engine: ", sm$engine),
-    if (length(sm$interactions))
-      paste0("interaction: ", paste(lab(sm$interactions), collapse = ", ")),
-    if (length(sm$fixedeffects))
-      paste0("fixed effects: ", paste(lab(sm$fixedeffects), collapse = ", ")),
-    paste0("covariates: ",
-           if (length(covs)) paste(lab(covs), collapse = ", ") else "none"),
-    if (length(sm$covariate_selection))
-      paste0("selection: ", sm$covariate_selection),
-    if (length(sm$cluster))
+    if (length(sm$interactions)) {
+      paste0("interaction: ", paste(lab(sm$interactions), collapse = ", "))
+    },
+    if (length(sm$fixedeffects)) {
+      paste0("fixed effects: ", paste(lab(sm$fixedeffects), collapse = ", "))
+    },
+    paste0(
+      "covariates: ",
+      if (length(covs)) paste(lab(covs), collapse = ", ") else "none"
+    ),
+    if (length(sm$covariate_selection)) {
+      paste0("selection: ", sm$covariate_selection)
+    },
+    if (length(sm$cluster)) {
       paste0("clustered SEs: ", paste(sm$cluster, collapse = ", "))
+    }
   )
   paste(Filter(function(x) !is.na(x) && nzchar(x), parts), collapse = " / ")
+}
+
+#' Seed stored with a result
+#'
+#' @param result A stored step result.
+#' @return A single integer, or NA when the result records none.
+#' @noRd
+.provenance_result_seed <- function(result) {
+  stored <- result$.seed %||% result$seed %||% result$.run$seed
+  suppressWarnings(as.integer(stored)[1L])
 }
 
 #' Build an immutable provenance record for one step's results
@@ -106,7 +152,10 @@
 #' @param result The stored result object (carries `.sig` and, for Step 1,
 #'   `.snap`). NULL when the step has not run.
 #' @param connection_params Connection parameters for the data source.
-#' @param seed   Base random seed.
+#' @param seed   Seed to record when the result carries none of its own. A
+#'   seed stored with the result (`.seed` on a Step 1 fit, `seed` on a
+#'   simulation) always wins, so the record names the seed the run used, not
+#'   the seed in force when the record is read.
 #' @param extra  Named list of step-specific fields to append.
 #' @param label_fun Optional variable-name to label mapping.
 #'
@@ -115,40 +164,53 @@
 wise_provenance <- function(step, result, connection_params = NULL,
                             seed = WISEAPP_DEFAULT_SEED, extra = list(),
                             label_fun = identity) {
-  if (is.null(result)) return(NULL)
+  if (is.null(result)) {
+    return(NULL)
+  }
 
   snap <- result$.snap %||% list()
-  sig  <- result$.sig
+  sig <- result$.sig
 
   outcome <- snap$outcome %||% sig$outcome %||% NULL
   weather <- snap$weather %||% sig$weather %||% NULL
 
   one_line <- function(x, field = "label") {
-    if (is.null(x)) return(NA_character_)
+    if (is.null(x)) {
+      return(NA_character_)
+    }
     v <- if (is.data.frame(x)) x[[field]] else x[[field]] %||% x
-    if (is.null(v) || !length(v)) return(NA_character_)
+    if (is.null(v) || !length(v)) {
+      return(NA_character_)
+    }
     paste(as.character(v), collapse = ", ")
   }
 
+  run_seed <- .provenance_result_seed(result)
+  if (is.na(run_seed)) run_seed <- as.integer(seed)
+
   rec <- list(
-    step           = as.integer(step),
-    step_label     = .export_step_label(step),
-    run_signature  = .provenance_digest(sig),
-    random_seed    = as.integer(seed),
-    app_version    = tryCatch(as.character(golem::get_golem_version()),
-                              error = function(e) NA_character_),
-    source         = .provenance_source(connection_params),
+    step = as.integer(step),
+    step_label = .export_step_label(step),
+    run_signature = .provenance_digest(sig),
+    random_seed = run_seed,
+    app_version = tryCatch(as.character(golem::get_golem_version()),
+      error = function(e) NA_character_
+    ),
+    source = .provenance_source_label(connection_params),
     survey_version = sig$survey_version %||% NA,
-    outcome        = one_line(outcome),
-    weather        = one_line(weather),
-    model_spec     = .provenance_model_spec(
+    outcome = one_line(outcome),
+    weather = one_line(weather),
+    model_spec = .provenance_model_spec(
       snap$model %||% sig$model %||% result$selected_model, label_fun
     ),
-    engine         = result$engine %||% NA_character_,
-    n_observations = tryCatch({
-      sw <- snap$survey_weather
-      if (is.null(sw)) NA_integer_ else nrow(sw)
-    }, error = function(e) NA_integer_)
+    engine = result$engine %||% NA_character_,
+    n_observations = tryCatch(
+      {
+        sw <- snap$survey_weather
+        if (is.null(sw)) NA_integer_ else nrow(sw)
+      },
+      error = function(e) NA_integer_
+    )
   )
 
   # Record any specification fallback the fitter applied (REACT-14): a result
@@ -157,10 +219,28 @@ wise_provenance <- function(step, result, connection_params = NULL,
   fb <- result$fallbacks %||% list()
   if (length(fb)) {
     rec$fallbacks <- vapply(fb, function(x) {
-      sprintf("%s: requested %s, fitted %s (%s)",
-              x$kind %||% "spec", x$requested %||% "?", x$used %||% "?",
-              x$reason %||% "")
+      sprintf(
+        "%s: requested %s, fitted %s (%s)",
+        x$kind %||% "spec", x$requested %||% "?", x$used %||% "?",
+        x$reason %||% ""
+      )
     }, character(1))
+  }
+
+  # F0: Step 2 baseline households with and without an estimation row for the
+  # "original" residual rule.
+  rm_ <- result$sim_summary$residual_match
+  if (!is.null(rm_)) {
+    rec$residual_matched <- rm_$n_matched
+    rec$residual_unmatched <- rm_$n_unmatched
+  }
+
+  # The residual rule that was applied, next to the one requested: a demotion
+  # to "none" (quantile model, missing estimation residuals) is otherwise silent.
+  ss <- result$sim_summary
+  if (!is.null(ss$residuals_effective)) {
+    rec$residuals_requested <- ss$residuals_requested %||% NA_character_
+    rec$residuals_effective <- ss$residuals_effective
   }
 
   c(rec, extra)

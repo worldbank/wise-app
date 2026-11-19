@@ -15,9 +15,9 @@ mod_1_modelling_ui <- function(id) {
     sidebar = bslib::sidebar(
       width = 360,
       bslib::accordion(
-        id       = ns("accordion"),
+        id = ns("accordion"),
         multiple = FALSE,
-        open     = "Sample",
+        open = "Sample",
         bslib::accordion_panel(
           title = "Sample",
           value = "Sample",
@@ -47,8 +47,9 @@ mod_1_modelling_ui <- function(id) {
         )
       )
     ),
-    h4("How much does weather affect welfare? Who is most affected?",
-       class = "step-question"),
+    h1("How much does weather affect welfare? Who is most affected?",
+      class = "step-question"
+    ),
     tabsetPanel(
       id = ns("step1_output_tabs"),
       tabPanel(
@@ -57,7 +58,7 @@ mod_1_modelling_ui <- function(id) {
         div(
           class = "empty-state overview-empty-state",
           icon("chart-line"),
-          h5("No results yet"),
+          h2(class = "h5", "No results yet"),
           p(paste(
             "Work through the sidebar: choose your sample, define the outcome,",
             "configure weather variables, then run the model.",
@@ -74,101 +75,95 @@ mod_1_modelling_ui <- function(id) {
 #' 1_modelling Server Functions
 #'
 #' Orchestrates sub-modules 01-08. All pure logic is delegated to
-#' `fct_modelling.R`. Returns a flat API list consumed by Step 2 / Step 3.
+#' the `fct_step1_*` and `fct_model_*` files. Returns a flat API list consumed by Step 2 / Step 3.
 #'
 #' @param id              Module id.
 #' @param connection_params Reactive named list from mod_0_overview.
 #' @param survey_list     Reactive tibble of survey metadata.
 #' @param variable_list   Reactive tibble of variable metadata.
 #' @param cpi_ppp         Reactive tibble of CPI/PPP conversion factors.
-#' @param pov_lines       Reactive tibble of 2021 PPP poverty lines.
 #' @param run_trigger         Optional reactive trigger for a programmatic fit.
 #' @param load_survey_trigger Optional reactive trigger for survey loading.
 #' @param load_weather_trigger Optional reactive trigger for weather loading.
 #'
 #' @noRd
 mod_1_modelling_server <- function(id,
-                                    connection_params,
-                                    survey_list,
-                                    variable_list,
-                                    cpi_ppp,
-                                     pov_lines,
-                                     run_trigger = shiny::reactive(NULL),
-                                     load_survey_trigger = shiny::reactive(NULL),
-                                     load_weather_trigger = shiny::reactive(NULL)) {
+                                   connection_params,
+                                   survey_list,
+                                   variable_list,
+                                   cpi_ppp,
+                                   enso = shiny::reactive(NULL),
+                                   run_trigger = shiny::reactive(NULL),
+                                   load_survey_trigger = shiny::reactive(NULL),
+                                   load_weather_trigger = shiny::reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
-
-    # ---- 1. Sample ----------------------------------------------------------
+    # 1. Sample ----
 
     s1 <- mod_1_01_sample_server(
       "sample",
       connection_params = connection_params,
-      survey_list       = survey_list,
-      variable_list     = variable_list
+      survey_list       = survey_list
     )
 
-    # ---- 2. Survey stats ----------------------------------------------------
+    # 2. Survey stats ----
 
     s2 <- mod_1_02_surveystats_server(
       "surveystats",
       connection_params = connection_params,
       variable_list     = variable_list,
       cpi_ppp           = cpi_ppp,
+      enso              = enso,
       selected_surveys  = s1$selected_surveys,
-      selected_outcome  = NULL,
       tabset_id         = "step1_output_tabs",
       tabset_session    = session,
       analysis_unit     = s1$analysis_unit,
       run_trigger       = load_survey_trigger
     )
 
-    # ---- 3. Outcome ---------------------------------------------------------
+    # 3. Outcome ----
 
     s3 <- mod_1_03_outcome_server(
       "outcome",
-      variable_list  = variable_list,
-      survey_data    = s2$survey_data,
-      cell_data      = s2$cell_data,
+      variable_list = variable_list,
+      survey_data = s2$survey_data,
+      cell_data = s2$cell_data,
       survey_version = s2$survey_version,
       survey_data_generation = s2$survey_data_generation,
-      tabset_id      = "step1_output_tabs",
+      tabset_id = "step1_output_tabs",
       tabset_session = session
     )
 
-    # ---- 4. Weather ---------------------------------------------------------
+    # 4. Weather ----
 
     s4 <- mod_1_04_weather_server(
       "weather",
-      variable_list    = variable_list,
-      selected_surveys = s1$selected_surveys,
-      survey_data      = s2$survey_data
+      variable_list    = variable_list
     )
 
-    # ---- 5. Weather stats ---------------------------------------------------
+    # 5. Weather stats ----
 
     s5 <- mod_1_05_weatherstats_server(
       "weatherstats",
       connection_params = connection_params,
-      variable_list     = variable_list,
-      selected_surveys  = s1$selected_surveys,
-      selected_outcome  = s3$selected_outcome,
-      selected_weather  = s4$selected_weather,
-      hist_years        = s4$hist_years,
-      survey_data       = s2$survey_data,
-      cell_data         = s2$cell_data,
-      survey_version    = s2$survey_version,
+      selected_surveys = s1$selected_surveys,
+      selected_outcome = s3$selected_outcome,
+      selected_weather = s4$selected_weather,
+      hist_years = s4$hist_years,
+      survey_data = s2$survey_data,
+      cell_data = s2$cell_data,
+      enso = enso,
+      survey_version = s2$survey_version,
       survey_data_generation = s2$survey_data_generation,
-      tabset_id         = "step1_output_tabs",
-      tabset_session    = session,
-      run_trigger       = load_weather_trigger
+      tabset_id = "step1_output_tabs",
+      tabset_session = session,
+      run_trigger = load_weather_trigger
     )
 
-    # ---- 6. Model -----------------------------------------------------------
+    # 6. Model ----
 
     s6 <- mod_1_06_model_server(
       "model",
       variable_list    = variable_list,
-      selected_surveys = s1$selected_surveys,
       analysis_unit    = s1$analysis_unit,
       selected_outcome = s3$selected_outcome,
       selected_weather = s4$selected_weather,
@@ -176,12 +171,11 @@ mod_1_modelling_server <- function(id,
       run_trigger      = run_trigger
     )
 
-    # ---- 7. Results ---------------------------------------------------------
+    # 7. Results ----
 
     s7 <- mod_1_07_results_server(
       "results",
       variable_list    = variable_list,
-      selected_surveys = s1$selected_surveys,
       selected_outcome = s3$selected_outcome,
       selected_weather = s4$selected_weather,
       survey_weather   = s5$survey_weather,
@@ -194,45 +188,42 @@ mod_1_modelling_server <- function(id,
       tabset_session   = session
     )
 
-    # ---- 8. Model fit diagnostics -------------------------------------------
+    # 8. Model fit diagnostics ----
 
     mod_1_08_modelfit_server(
       "modelfit",
-      variable_list    = variable_list,
-      selected_outcome = s3$selected_outcome,
       model_fit        = s7$model_fit,
       tabset_id        = "step1_output_tabs",
-      survey_weather   = s5$survey_weather,
       fit_stale        = s7$stale,
       tabset_session   = session
     )
 
-    # ---- Return API ---------------------------------------------------------
+    # Return API ----
 
     list(
       # Selections
-      selected_surveys  = s1$selected_surveys,
-      analysis_unit     = s1$analysis_unit,
-      selected_outcome  = s3$selected_outcome,
-      selected_weather  = s4$selected_weather,
-      selected_model    = s6$selected_model,
+      selected_surveys = s1$selected_surveys,
+      analysis_unit = s1$analysis_unit,
+      selected_outcome = s3$selected_outcome,
+      selected_weather = s4$selected_weather,
+      selected_model = s6$selected_model,
       selected_policies = s6$selected_policies,
 
       # Data
-      survey_data    = s2$survey_data,
+      survey_data = s2$survey_data,
       survey_weather = s5$survey_weather,
       survey_load_done = s2$load_done,
       survey_load_status = s2$load_status,
       weather_load_done = s5$load_done,
       weather_load_status = s5$load_status,
-      model_fit      = s7$model_fit,
+      model_fit = s7$model_fit,
       fit_generation = s7$fit_generation,
-      fit_status     = s7$fit_status,
-      stored_breaks  = s5$stored_breaks,
+      fit_status = s7$fit_status,
+      stored_breaks = s5$stored_breaks,
 
       # Provenance (INT-08)
       survey_version = s2$survey_version,
-      fit_stale      = s7$stale
+      fit_stale = s7$stale
     )
   })
 }

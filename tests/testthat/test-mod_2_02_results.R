@@ -51,8 +51,82 @@ make_hist_sim_fixture <- function() {
   )
 }
 
+test_that("Step 2 headline and point-range charts share the equal-model-mean centre and align with Step 3", {
+  pipe <- function(values, years) list(
+    y_point = rep(values, each = 4) + rep(c(-.03, -.01, .01, .03), length(values)),
+    sim_year = rep(years, each = 4),
+    F_loading = matrix(0, nrow = 4 * length(values), ncol = 1L)
+  )
+  so <- list(type = "numeric", name = "welfare", transform = "identity")
+  hist <- list(so = so, residuals = "none", has_weights = FALSE,
+               pipeline = pipe(seq_len(20), 2000:2019))
+  scenario <- "SSP2-4.5 / 2030-2050"
+  pipes <- list(m1 = pipe(rep(1, 20), 2030:2049),
+                m2 = pipe(rep(10, 21), 2030:2050),
+                m3 = pipe(rep(100, 22), 2030:2051))
+  saved <- setNames(list(list(so = so, pipelines = pipes)), scenario)
+  testServer(mod_2_02_results_server, args = list(
+    id = "results", hist_sim = reactiveVal(hist),
+    saved_scenarios = reactiveVal(saved), selected_hist = reactiveVal(NULL),
+    tabset_id = "step2_output_tabs"
+  ), {
+    session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none")
+    session$flushReact()
+    old_bands <- pointrange_bands_rv()
+    old_tail <- threshold_table_rv()
+    old_curves <- timeseries_curves_rv()
+    old_uncertainty <- variance_breakdown_rv()
+    # R2-BUG-26: one convention; chart centre = equal-model mean (1, 10, 100).
+    expect_equal(old_bands$value[old_bands$scenario == scenario], 37)
+    headline <- headline_bands_rv()
+    expect_equal(headline$value[headline$scenario == scenario], 37)
+    expect_equal(headline_cards_data_rv()[[1]]$value_native[[2]], 37)
+    expect_identical(pointrange_bands_rv(), old_bands)
+    expect_identical(threshold_table_rv(), old_tail)
+    expect_identical(timeseries_curves_rv(), old_curves)
+    expect_identical(variance_breakdown_rv(), old_uncertainty)
+
+    baseline <- scenario_agg_rv()[[scenario]]$unweighted$mean
+    paired <- paired_model_year_effects(baseline, baseline)
+    summary <- paired_effect_summary(paired, center = "equal_model_mean")
+    expect_equal(summary$baseline, headline$value[headline$scenario == scenario])
+    expect_equal(summary$policy, summary$baseline)
+    expect_equal(summary$value, 0)
+    before <- saved_scenarios()[[scenario]]$pipelines
+    for (deviation in c("mean", "median")) {
+      session$setInputs(cmp_deviation = deviation)
+      session$flushReact()
+      expect_equal(headline_bands_rv()$value[headline_bands_rv()$scenario == scenario],
+                   37 - hist_ref_val())
+      expect_identical(saved_scenarios()[[scenario]]$pipelines, before)
+      expect_identical(scenario_agg_rv()[[scenario]]$unweighted$mean, baseline)
+      expect_equal(paired_effect_summary(
+        paired_model_year_effects(baseline, baseline), center = "equal_model_mean"
+      )$baseline, 37)
+    }
+  })
+})
+
+test_that("Step 2 outcome metadata tolerates a missing optional level column", {
+  so <- tibble::tibble(
+    type = "numeric", name = "welfare", label = "Welfare", units = "PPP"
+  )
+  expect_no_warning({
+    analysis_unit <- wiseapp:::.metric_context_value(so, "level")
+    metadata <- metric_metadata("mean", so, analysis_unit = analysis_unit,
+      weighted = TRUE)
+  })
+  expect_null(analysis_unit)
+  expect_identical(metadata$analysis_unit, NULL)
+})
+
+test_that("simulation prediction counts are compact and identify their row unit", {
+  expect_identical(format_prediction_count(4500000, "hh"), "4.5M household-years")
+  expect_identical(format_prediction_count(1250, "ind"), "1.2K individual-years")
+  expect_identical(format_prediction_count(42, NULL), "42 observation-years")
+})
+
 test_that("Results frame is immutable and scoped to method/deviation", {
-  skip_if_not_installed("shiny")
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
   stale <- shiny::reactiveVal(FALSE)
   shiny::testServer(
@@ -82,7 +156,6 @@ test_that("Results frame is immutable and scoped to method/deviation", {
 })
 
 test_that("agg cache: display-only controls do not invalidate unaffected methods", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
 
@@ -120,8 +193,7 @@ test_that("agg cache: display-only controls do not invalidate unaffected methods
       m2 <- .get_hist_agg("mean")
       expect_identical(h1, m2)
       expect_true(all(g2$unweighted$gap$value > g1$unweighted$gap$value))
-
-      # headcount reads both pl and bandwidth; gap ignores bandwidth
+      # headcount reads pl and the fixed bandwidth; gap ignores bandwidth
       session$setInputs(bandwidth_p0 = 0.10); settle()
       hc1 <- .get_hist_agg("headcount_ratio")
       expect_length(ls(envir = ws()$cache), 4L)
@@ -133,11 +205,12 @@ test_that("agg cache: display-only controls do not invalidate unaffected methods
       expect_identical(h1, m3)
       expect_length(ls(envir = ws()$cache), 4L)
 
-      # New bandwidth invalidates only headcount
+      # bandwidth_p0 has no UI control (CR-BUG-11): a stray input value is
+      # ignored, so headcount stays cached at the fixed default bandwidth.
       session$setInputs(bandwidth_p0 = 0.20); settle()
       hc3 <- .get_hist_agg("headcount_ratio")
-      expect_false(identical(hc2, hc3))
-      expect_length(ls(envir = ws()$cache), 5L)
+      expect_identical(hc2, hc3)
+      expect_length(ls(envir = ws()$cache), 4L)
       g4 <- .get_hist_agg("gap")
       expect_identical(g2, g4)
       m4 <- .get_hist_agg("mean")
@@ -147,7 +220,6 @@ test_that("agg cache: display-only controls do not invalidate unaffected methods
 })
 
 test_that("agg cache is bounded, observable, and recomputes evicted values", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
 
@@ -189,7 +261,6 @@ test_that("agg cache is bounded, observable, and recomputes evicted values", {
 })
 
 test_that("agg cache clears with the published Results lifecycle", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
 
@@ -219,7 +290,6 @@ test_that("agg cache clears with the published Results lifecycle", {
 })
 
 test_that("agg cache preserves the active result while reruns become stale", {
-  skip_if_not_installed("shiny")
 
   first <- make_hist_sim_fixture()
   second <- make_hist_sim_fixture()
@@ -262,7 +332,6 @@ test_that("agg cache preserves the active result while reruns become stale", {
 })
 
 test_that("agg cache records hits, misses, and value-affecting key changes", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
 
@@ -300,7 +369,6 @@ test_that("agg cache records hits, misses, and value-affecting key changes", {
 })
 
 test_that("session end releases aggregation cache entries", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
   cache_state <- NULL
@@ -330,7 +398,6 @@ test_that("session end releases aggregation cache entries", {
 # ---- INT-08: stale banner on the Step 2 results pane ------------------------
 
 test_that("Step 2 results pane shows the stale banner while stale", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
   stale    <- shiny::reactiveVal(FALSE)
@@ -363,7 +430,6 @@ test_that("Step 2 results pane shows the stale banner while stale", {
 # ---- INT-07: results tab follows the hist_sim lifecycle ---------------------
 
 test_that("results tab is appended, removed on clear, re-appended on rerun", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(NULL)
 
@@ -399,7 +465,6 @@ test_that("results tab is appended, removed on clear, re-appended on rerun", {
 # ---- Scenario coverage ------------------------------------------------------
 
 test_that("all saved scenarios feed results when no scenario filter is shown", {
-  skip_if_not_installed("shiny")
 
   hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
   saved    <- shiny::reactiveVal(list(
@@ -428,7 +493,6 @@ test_that("all saved scenarios feed results when no scenario filter is shown", {
 })
 
 test_that("all Module 2 summaries use the same complete scenario set", {
-  skip_if_not_installed("shiny")
 
   hist <- make_hist_sim_fixture()
   shifted_pipeline <- function(shift) {
@@ -479,15 +543,44 @@ test_that("all Module 2 summaries use the same complete scenario set", {
       expect_setequal(unique(exceedance$scenario), expected)
       expect_equal(dplyr::n_distinct(round(bands$value, 8)), 3L)
 
-      central <- thresholds[thresholds$Estimate == "Central (P50)" &
+      central <- thresholds[thresholds$Estimate == "Equal-model mean" &
                               thresholds$rp_name == "1:1", , drop = FALSE]
-      expect_equal(dplyr::n_distinct(round(central$value, 8)), 3L)
+      expect_equal(dplyr::n_distinct(round(central$value, 8)), 2L)
+    }
+  )
+})
+
+test_that("exceedance curve uses Weibull plotting positions (R2-BUG-16)", {
+  hist <- make_hist_sim_fixture()
+  n_years <- 10L
+  n <- 400L
+  set.seed(16)
+  hist$pipeline$sim_year <- rep(2020:2029, each = n / n_years)
+  hist$pipeline$y_point <- rnorm(n, 1.2, 0.4) + rep(rnorm(n_years, 0, 0.2), each = n / n_years)
+  hist$pipeline$F_loading <- matrix(rnorm(2 * n) * 0.01, nrow = n)
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id = "results", hist_sim = shiny::reactiveVal(hist),
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist = shiny::reactiveVal(NULL),
+      tabset_id = "step2_output_tabs"
+    ),
+    {
+      session$setInputs(
+        cmp_agg_method = "mean", cmp_deviation = "none",
+        ensemble_band = "none", uncertainty_band = "p10_p90"
+      )
+      session$flushReact()
+      curves <- exceedance_curves_rv()
+      expect_gt(nrow(curves), 2L)
+      # Weibull plotting positions, rank / (n + 1), as the threshold table (rp_quantile()).
+      expect_equal(curves$exceed_prob, curves$rank / (n_years + 1))
     }
   )
 })
 
 test_that("formatted threshold table preserves output across repeated builds", {
-  skip_if_not_installed("shiny")
   testServer(
     mod_2_02_results_server,
     args = list(
@@ -510,7 +603,7 @@ test_that("formatted threshold table preserves output across repeated builds", {
 
 # ---- Step 2 Headline Cards -------------------------------------------------
 
-test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
+test_that("step2_headline_cards returns 4 cards plus a basis card with mod_1 styling", {
   bands <- tibble::tibble(
     scenario      = c("Historical", "SSP3-7.0 / 2025-2035"),
     value         = c(4.50, 4.52),
@@ -535,6 +628,7 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
 
   hist_sim <- list(
     so = list(type = "numeric", name = "welfare", label = "Consumption", units = "$/day"),
+    svy = data.frame(welfare = rep(1, 100)),
     sim_summary = list(
       total_runs = 690L,
       historical_years = c(1991L, 2020L)
@@ -556,9 +650,6 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
     hist_sim         = hist_sim,
     saved_scenarios  = saved,
     method           = "mean",
-    deviation        = "none",
-    ensemble_band    = "minmax",
-    uncertainty_band = "p10_p90",
     timeseries_curves = timeseries
   )
 
@@ -568,8 +659,8 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
   labels <- vapply(cards, function(c) c$label, character(1L))
   expect_identical(
     labels,
-    c("Expected outcome", "Adverse weather years", "Range across years",
-      "Climate-model spread", "Simulation years")
+    c("Expected change", "Adverse weather years", "Signal vs noise",
+      "Year-to-year range", "Simulation years")
   )
 
   # Every card has non-empty fields
@@ -581,10 +672,16 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
     expect_true(nzchar(card$info))
   }
 
-  # Card 1: Typical outcome
-  expect_identical(cards[[1]]$value, "4.50 vs 4.52")
-  expect_match(cards[[1]]$note, "Historical vs SSP", fixed = TRUE)
-  expect_match(cards[[1]]$note, "Mean weather year", fixed = TRUE)
+  # Card 1: Expected change (delta headline, levels in the context line)
+  expect_identical(cards[[1]]$value, "+0.02 $/day")
+  expect_match(cards[[1]]$note, "4.50 \u2192 4.52", fixed = TRUE)
+  expect_match(cards[[1]]$note, "Historical \u2192 SSP", fixed = TRUE)
+  expect_match(cards[[1]]$note, "average year", fixed = TRUE)
+  expect_false(grepl("Outcome level", cards[[1]]$note, fixed = TRUE))
+  expect_match(cards[[1]]$info, "mean across weather years and climate models", fixed = TRUE)
+  expect_match(cards[[1]]$info, "adaptation is not included", fixed = TRUE)
+  expect_match(cards[[1]]$basis_text, "adaptation not included", fixed = TRUE)
+  expect_identical(cards[[1]]$status$kind, "favourable")
 
   median_cards <- step2_headline_cards(
     bands            = bands,
@@ -592,40 +689,114 @@ test_that("step2_headline_cards returns 5 cards with mod_1 styling", {
     hist_sim         = hist_sim,
     saved_scenarios  = saved,
     method           = "median",
-    deviation        = "none",
-    ensemble_band    = "minmax",
-    uncertainty_band = "p10_p90",
     timeseries_curves = timeseries
   )
-  expect_match(median_cards[[1]]$note, "Mean weather year", fixed = TRUE)
-  expect_false(grepl("Median weather year", median_cards[[1]]$note, fixed = TRUE))
+  expect_match(median_cards[[1]]$note, "average year", fixed = TRUE)
 
-  # Card 2: Adverse weather years (1-in-20 year)
-  expect_identical(cards[[2]]$value, "4.05 vs 4.10")
-  expect_match(cards[[2]]$note, "Historical vs SSP", fixed = TRUE)
+  # Card 2: Adverse weather years (1-in-20 year), change headline
+  expect_identical(cards[[2]]$value, "+0.05 $/day")
+  expect_match(cards[[2]]$note, "4.05 \u2192 4.10", fixed = TRUE)
   expect_match(cards[[2]]$note, "1-in-20 year", fixed = TRUE)
+  # Six simulated years cannot resolve a 1-in-20 frequency.
+  expect_false(grepl("now ", cards[[2]]$note, fixed = TRUE))
 
-  # Card 3: Range across years
-  expect_identical(cards[[3]]$value, "4.35 to 4.80")
-  expect_match(cards[[3]]$note, "Hist: 4.20 to 4.80", fixed = TRUE)
-  expect_match(cards[[3]]$note, "Inter-annual weather variability", fixed = TRUE)
+  # Card 3: Signal vs noise (m1 -0.05, m2 +0.15 against the +0.02 ensemble change)
+  expect_identical(cards[[3]]$value, "1 of 2 models")
+  expect_match(cards[[3]]$note, "agree on direction", fixed = TRUE)
+  expect_identical(cards[[3]]$status$kind, "uncertain")
+  expect_identical(cards[[3]]$status$text, "Models disagree")
+  expect_match(cards[[3]]$info, "Range of model averages: 4.45 to 4.65", fixed = TRUE)
+  expect_match(cards[[3]]$info, "coefficient", fixed = TRUE)
 
-  # Card 4: Climate-model spread
-  expect_identical(cards[[4]]$value, "4.45 to 4.65")
-  expect_match(cards[[4]]$note, "Full range across 2 models", fixed = TRUE)
-  expect_match(cards[[4]]$note, "CMIP6 model disagreement", fixed = TRUE)
-  expect_false(grepl("Coef", cards[[4]]$note, fixed = TRUE))
+  # Card 4: Year-to-year range (people card does not apply to a mean)
+  expect_identical(cards[[4]]$value, "4.35 to 4.80")
+  expect_match(cards[[4]]$note, "Hist: 4.20 to 4.80", fixed = TRUE)
+  expect_match(cards[[4]]$note, "SSP3-7.0 / 2025-2035", fixed = TRUE)
 
-  # Card 5: Simulation years
+  # Card 5: Simulation years (basis strip, not a card)
+  expect_true(cards[[5]]$basis_only)
   expect_identical(cards[[5]]$value, "6")
-  expect_match(cards[[5]]$note, "(1 SSP \u00d7 22 models + 1 historical) \u00d7 3 yrs", fixed = TRUE)
+  expect_identical(cards[[5]]$prediction_count_note, "600 observation-years")
+  expect_identical(cards[[5]]$prediction_count_native, 600)
+  expect_match(cards[[5]]$note, "600 observation-years", fixed = TRUE)
+  expect_match(cards[[5]]$basis_text, "600 observation-years", fixed = TRUE)
+  expect_match(cards[[5]]$note, "(1 scenario \u00d7 2 models) \u00d7 3 yrs", fixed = TRUE)
   expect_identical(cards[[5]]$class, "neutral")
 
   # Table conversion
   df <- step2_headline_df(cards)
   expect_equal(nrow(df), 5L)
-  expect_identical(names(df), c("Metric", "Value", "Note"))
+  expect_identical(names(df)[1:3], c("Metric", "Value", "Note"))
   expect_identical(df$Metric, labels)
+  expect_equal(df$Historical_native[[1]], 4.5)
+  expect_equal(df$Focus_native[[1]], 4.52)
+  expect_identical(df$Summary_method[[1]], "equal_model_mean")
+  expect_match(df$Note[[5]], "600 observation-years", fixed = TRUE)
+  expect_identical(df$Prediction_count_native[[5]], 600)
+  expect_identical(df$Prediction_sample_rows[[5]], 100)
+
+  total_cards <- step2_headline_cards(
+    bands = bands, threshold_tbl = thresh_tbl, hist_sim = hist_sim,
+    saved_scenarios = saved, method = "total", timeseries_curves = timeseries,
+    metadata = metric_metadata("total", hist_sim$so, weighted = TRUE)
+  )
+  expect_match(total_cards[[1]]$value, "^\\+0")
+})
+
+test_that("headline levels and deviation changes use metric-native display units", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "SSP2-4.5 / 2030"),
+    value = c(0.32, 0.28),
+    interann_lo = c(0.25, 0.22), interann_hi = c(0.40, 0.35),
+    n_models = c(1L, 2L), is_historical = c(TRUE, FALSE)
+  )
+  so <- list(type = "numeric", name = "welfare", label = "Consumption", units = "PPP")
+  hist_sim <- list(so = so)
+  timeseries <- tibble::tibble(
+    scenario = "SSP2-4.5 / 2030", model_id = c("m1", "m1"), sim_year = 2030:2031,
+    value = c(0.22, 0.35)
+  )
+  metadata <- metric_metadata("headcount_ratio", so, pov_line = 0.3, weighted = TRUE)
+  cards <- step2_headline_cards(
+    bands, hist_sim = hist_sim, method = "headcount_ratio", timeseries_curves = timeseries,
+    deviation = "mean", metadata = metadata
+  )
+  expect_identical(cards[[1]]$value, "-4.0 pp")
+  expect_match(cards[[1]]$note, "Difference from historical mean", fixed = TRUE)
+  expect_match(cards[[1]]$info, "Poverty line 0.3", fixed = TRUE)
+  expect_match(cards[[4]]$value, "+22.0 pp to +35.0 pp", fixed = TRUE)
+  df <- step2_headline_df(cards)
+  expect_equal(df$Historical_native[[1]], 0.32)
+  expect_equal(df$Focus_native[[1]], 0.28)
+  expect_equal(df$Range_lower_native[[4]], 0.22)
+  expect_equal(df$Range_upper_native[[4]], 0.35)
+  expect_identical(df$Native_unit[[1]], "fraction")
+  expect_identical(df$Threshold_value[[1]], 0.3)
+  expect_identical(df$Deviation[[1]], "mean")
+  expect_identical(df$Display_unit[[1]], "pp")
+  expect_identical(df$Summary_method[[2]], "median_across_climate_models")
+
+  change <- format_metric_value(0.28 - 0.32, metadata, change = TRUE)
+  expect_identical(change, "-4.00 pp")
+})
+
+test_that("prosperity gap uses fixed threshold context without editable poverty line", {
+  so <- list(
+    name = "welfare", type = "numeric", label = "Consumption", units = "PPP",
+    povline = 3
+  )
+  ui <- wiseapp:::.results_content_ui(shiny::NS("results"), so)
+  html <- as.character(htmltools::renderTags(ui)$html)
+  expect_match(html, "fixed threshold of 28", fixed = TRUE)
+  expect_match(html, "prosperity_gap", fixed = TRUE)
+
+  metadata <- metric_metadata("prosperity_gap", so, pov_line = 3, weighted = TRUE)
+  expect_false(metadata$uses_poverty_line)
+  expect_identical(metadata$threshold_value, 28)
+  expect_match(metric_context_note(metadata), "Fixed prosperity threshold 28", fixed = TRUE)
+
+  # The selected prosperity aggregation key has no editable threshold suffix.
+  expect_false(metadata$uses_poverty_line)
 })
 
 test_that("step2_headline_cards handles historical-only simulation gracefully", {
@@ -660,8 +831,8 @@ test_that("step2_headline_cards handles historical-only simulation gracefully", 
   )
 
   expect_length(cards, 5L)
-  expect_identical(cards[[1]]$value, "4.50")
-  expect_identical(cards[[4]]$value, "Not applicable")
+  expect_match(cards[[1]]$value, "4.50", fixed = TRUE)
+  expect_identical(cards[[3]]$value, "Not applicable")
   expect_match(cards[[5]]$note, "1 historical \u00d7 30 yrs", fixed = TRUE)
 })
 
@@ -701,7 +872,7 @@ test_that("results content UI produces clear aggregation panel with question and
   expect_match(html, "What outcomes are predicted in adverse weather years?", fixed = TRUE)
   expect_match(html, "What is the probability of severe outcomes occurring?", fixed = TRUE)
   expect_match(html, "results-exceedance_model_spread", fixed = TRUE)
-  expect_match(html, "Climate model spread", fixed = TRUE)
+  expect_match(html, "Ensemble spread", fixed = TRUE)
   expect_match(html, "Full ensemble spread", fixed = TRUE)
   expect_match(html, "results-ensemble_band", fixed = TRUE)
   expect_match(html, "value=\"none\"", fixed = TRUE)
@@ -735,7 +906,7 @@ test_that("threshold-table direction is always defined from the selected metric"
   )
 })
 
-test_that("adverse plot uses the selected climate-model spread", {
+test_that("adverse dot data uses the selected climate-model spread", {
   threshold_tbl <- tibble::tibble(
     scenario = rep("SSP2-4.5 / 2030", 6L),
     Estimate = c("Central (P50)", "Central (P50)",
@@ -745,108 +916,581 @@ test_that("adverse plot uses the selected climate-model spread", {
     is_historical = FALSE,
     n_obs = 30L
   )
+  threshold_tbl <- dplyr::bind_rows(threshold_tbl, tibble::tibble(
+    scenario = "Historical", Estimate = "Single historical estimate",
+    rp_name = "1:1", value = 0, is_historical = TRUE, n_obs = 30L
+  ))
 
   dot <- step2_adverse_dot_data(threshold_tbl, method = "mean")
-  expect_equal(dot$intermod_lo, c(4, 3))
-  expect_equal(dot$intermod_hi, c(6, 7))
-
-  plot <- plot_step2_adverse_dot(dot)
-  expect_equal(plot$data$intermod_lo, c(4, 3))
-  expect_equal(plot$data$intermod_hi, c(6, 7))
+  expect_equal(dot$intermod_lo[!dot$is_historical], c(4, 3))
+  expect_equal(dot$intermod_hi[!dot$is_historical], c(6, 7))
 })
 
-test_that("adverse plot legend identifies projection periods", {
-  threshold_tbl <- tibble::tibble(
-    scenario = c(rep("SSP2-4.5 / 2030-2040", 6L),
-                 rep("SSP2-4.5 / 2050-2060", 6L)),
-    Estimate = rep(c("Central (P50)", "Central (P50)",
-                     "Ensemble min", "Ensemble min",
-                     "Ensemble max", "Ensemble max"), 2L),
-    rp_name = rep(c("1:1", "1:5", "1:1", "1:5", "1:1", "1:5"), 2L),
-    value = rep(c(5, 5, 4, 3, 6, 7), 2L),
+# Batch 2 UI migration: DT -> reactable, ggplot -> echarts4r (guidelines §6/§7)
+# ============================================================================ #
+
+test_that("echart_pointrange_climate draws bands, dots and empty states", {
+  bands <- tibble::tibble(
+    scenario      = c("Historical", "SSP2-4.5 / 2030-2040", "SSP3-7.0 / 2030-2040"),
+    value         = c(4.50, 4.60, 4.70),
+    coef_lo       = c(4.45, 4.55, 4.65),
+    coef_hi       = c(4.55, 4.65, 4.75),
+    interann_lo   = c(4.20, 4.30, 4.40),
+    interann_hi   = c(4.80, 4.90, 5.00),
+    intermod_lo   = c(4.50, 4.55, 4.60),
+    intermod_hi   = c(4.50, 4.65, 4.75),
+    total_lo      = NA_real_, total_hi = NA_real_,
+    is_historical = c(TRUE, FALSE, FALSE),
+    n_models      = 1L
+  )
+  ch <- echart_pointrange_climate(bands, "Mean welfare", show_coef = TRUE)
+  expect_s3_class(ch, "echarts4r")
+  types <- vapply(ch$x$opts$series, `[[`, character(1), "type")
+  expect_true("bar" %in% types)
+  expect_true("scatter" %in% types)
+  # One open central marker per scenario row plus its bands.
+  expect_equal(sum(types == "scatter"), 3L)
+  expect_identical(ch$x$opts$yAxis$name, "Mean welfare")
+
+  blank <- echart_pointrange_climate(NULL)
+  expect_s3_class(blank, "echarts4r")
+  expect_match(blank$x$opts$title[[1]]$text, "Run a simulation to see results.",
+    fixed = TRUE
+  )
+})
+
+test_that("echart_annual_distribution keeps violin and boxplot modes", {
+  set.seed(2)
+  curves <- do.call(rbind, lapply(
+    c("Historical", "SSP2-4.5 / 2030-2040"),
+    function(s) {
+      data.frame(
+        scenario = s, model_id = paste0("m", 1:3),
+        sim_year = rep(2020:2022, 3),
+        value = rnorm(9, ifelse(s == "Historical", 5, 5.2)),
+        is_historical = s == "Historical"
+      )
+    }
+  ))
+  violin <- echart_annual_distribution(curves, "Mean", "violin")
+  expect_s3_class(violin, "echarts4r")
+  # Historical-mean reference markLine survives the migration.
+  ml <- violin$x$opts$series[[which(vapply(violin$x$opts$series, function(s)
+    !is.null(s$markLine), logical(1)))[1]]]$markLine
+  expect_equal(ml$data[[1]]$xAxis, mean(curves$value[curves$scenario == "Historical"]))
+
+  box <- echart_annual_distribution(curves, "Mean", "boxplot")
+  expect_s3_class(box, "echarts4r")
+  types <- vapply(box$x$opts$series, `[[`, character(1), "type")
+  expect_true(all(types %in% c("custom", "scatter", "line")))
+
+  blank <- echart_annual_distribution(NULL, "Mean", "violin")
+  expect_match(blank$x$opts$title[[1]]$text, "No annual simulation results available.",
+    fixed = TRUE
+  )
+})
+
+test_that("echart_step2_adverse_dot labels scenarios on the top row", {
+  tbl <- data.frame(
+    scenario = rep(c("SSP2-4.5 / 2030-2040", "SSP5-8.5 / 2030-2040"), each = 2),
+    Estimate = "Central (P50)",
+    rp_label = rep(factor(c("Adverse 1-in-10", "Expected"),
+      levels = rev(c("Expected", "Adverse 1-in-5", "Adverse 1-in-10",
+        "Adverse 1-in-20", "Adverse 1-in-50")
+    )), 2),
+    value = c(12, 13, 12.5, 13.5),
     is_historical = FALSE,
-    n_obs = 30L
+    intermod_lo = c(11, 12, 11.5, 12.5),
+    intermod_hi = c(13, 14, 13.5, 14.5)
   )
+  ch <- echart_step2_adverse_dot(tbl, "Outcome")
+  expect_s3_class(ch, "echarts4r")
+  dots <- Filter(function(s) identical(s$type, "scatter"), ch$x$opts$series)
+  expect_length(dots, 2L)
+  # One bold endpoint label per scenario (direct labels, no legend).
+  labs <- unlist(lapply(dots, function(s) {
+    vapply(s$data, function(pt) {
+      if (!is.null(pt$label)) pt$label$formatter else NA_character_
+    }, character(1))
+  }))
+  expect_setequal(stats::na.omit(labs), c("SSP2-4.5 / 2030-2040", "SSP5-8.5 / 2030-2040"))
 
-  dot <- step2_adverse_dot_data(threshold_tbl, method = "mean")
-  plot <- plot_step2_adverse_dot(dot)
-  colour_scale <- plot$scales$get_scales("colour")
-
-  expect_identical(colour_scale$name, "Climate scenario and period")
-  expect_true(all(c("SSP2-4.5 / 2030-2040", "SSP2-4.5 / 2050-2060") %in%
-                  colour_scale$breaks))
-  expect_true("yr_lbl" %in% names(plot$facet$params$facets))
+  blank <- echart_step2_adverse_dot(NULL)
+  expect_match(blank$x$opts$title[[1]]$text, "Return-period outcomes are unavailable.",
+    fixed = TRUE
+  )
 })
 
-test_that("adverse dot plot offsets scenario dumbbells vertically", {
-  # Two future scenarios at the same return-period rows: without vertical
-  # dodging their dumbbells overlap and only one is readable.
-  threshold_tbl <- tibble::tibble(
-    scenario = rep(c("SSP2-4.5 / 2030-2040", "SSP5-8.5 / 2030-2040"), each = 4L),
-    Estimate = rep(c("Central (P50)", "Central (P50)",
-                     "Ensemble min", "Ensemble max"), 2L),
-    rp_name = rep(c("1:1", "1:5", "1:1", "1:5"), 2L),
-    value = rep(c(4.6, 4.4, 3.8, 5.0), 2L),
-    is_historical = FALSE,
-    n_obs = 30L
+test_that("echart_exceedance mirrors the median curves and empty state", {
+  curves <- data.frame(
+    scenario = rep(c("Historical", "SSP2 / 2030"), each = 30),
+    model_id = rep(rep(c("m1", "m2"), each = 15), 2),
+    rank = rep(seq(15), 4),
+    welfare_val = c(seq(1, 30), seq(2, 31)),
+    coef_sd = 0.1,
+    exceed_prob = rep((seq(15) - 0.5) / 30, 4),
+    is_historical = rep(c(TRUE, FALSE), each = 30)
   )
-  dot <- step2_adverse_dot_data(threshold_tbl, method = "mean")
-  plot <- plot_step2_adverse_dot(dot)
+  ch <- echart_exceedance(curves, "Mean", n_sim_years = 30,
+    logit_x = TRUE, band_q = NULL, ensemble_band_q = c(lo = 0.25, hi = 0.75)
+  )
+  expect_s3_class(ch, "echarts4r")
+  expect_identical(ch$x$opts$xAxis$type, "log")
+  expect_match(ch$x$opts$xAxis$name, "Annual adverse exceedance probability",
+    fixed = TRUE
+  )
+  # One labelled median line per scenario plus two ensemble boundary lines
+  # per future scenario.
+  median_lines <- Filter(function(s) {
+    identical(s$type, "line") && !is.null(s$name) &&
+      !grepl("__", s$name, fixed = TRUE) && !identical(s$name, "Historical mean")
+  }, ch$x$opts$series)
+  expect_setequal(
+    vapply(median_lines, `[[`, character(1), "name"),
+    c("Historical", "SSP2 / 2030")
+  )
 
-  # The y aesthetic must be scenario-dependent within a return period, so
-  # dumbbells at the same rp_label get distinct vertical offsets.
-  seg_idx <- which(vapply(plot$layers, function(l) inherits(l$geom, "GeomSegment"),
-                          logical(1)))[1]
-  seg <- ggplot2::layer_data(plot, seg_idx)
-  expect_equal(nrow(seg), nrow(plot$data))
-
-  # Match rendered segment rows back to data rows via the rp_label y position
-  # pattern: currently both scenarios at the same rp_label share one y, so
-  # y values repeat across scenarios. With vertical dodging, scenarios at the
-  # same rp_label must have different rendered y values.
-  y_expected <- as.integer(plot$data$rp_label)
-  y1 <- seg$y[plot$data$scenario_key == "SSP2-4.5 / 2030-2040"]
-  y2 <- seg$y[plot$data$scenario_key == "SSP5-8.5 / 2030-2040"]
-  expect_false(isTRUE(all.equal(y1, y2)))
+  blank <- echart_exceedance(NULL, "Mean")
+  expect_match(blank$x$opts$title[[1]]$text,
+    "Run a simulation to see exceedance probabilities.", fixed = TRUE
+  )
 })
 
-test_that("exceedance plot omits unsupported return-period warning annotation", {
-  curves <- tibble::tibble(
-    scenario = rep("SSP2-4.5 / 2030-2040", 30L),
-    model_id = rep(c("m1", "m2"), each = 15L),
-    rank = rep(seq_len(15L), 2L),
-    welfare_val = seq_len(30L),
-    coef_sd = 0,
-    exceed_prob = rep((seq_len(15L) - 0.5) / 30, 2L),
-    is_historical = FALSE
+test_that("echart_exceedance uses explicit stacked uncertainty bands", {
+  curves <- data.frame(
+    scenario = rep(c("Historical", "SSP2 / 2030"), each = 20),
+    model_id = rep(rep(c("m1", "m2"), each = 10), 2),
+    rank = rep(seq_len(10), 4),
+    welfare_val = c(seq(1, 10), seq(2, 11)),
+    coef_sd = 0.1,
+    exceed_prob = rep((seq(10) - 0.5) / 20, 4),
+    is_historical = rep(c(TRUE, FALSE), each = 20)
   )
-
-  plot <- enhance_exceedance(
-    curves, x_label = "Outcome", n_sim_years = 30L,
-    logit_x = TRUE, band_q = NULL, ensemble_band_q = c(lo = 0, hi = 1)
+  chart <- echart_exceedance(
+    curves, "Mean", n_sim_years = 20,
+    band_q = c(lo = 0.10, hi = 0.90),
+    ensemble_band_q = c(lo = 0.10, hi = 0.90)
   )
-  labels <- vapply(plot$layers, function(layer) {
-    if (!inherits(layer$geom, "GeomText")) return("")
-    as.character(layer$stat_params$label %||% "")
-  }, character(1L))
-  expect_false(any(grepl("unreliable", labels, fixed = TRUE)))
-  expect_false(any(grepl("1:50", labels, fixed = TRUE)))
+  bands <- Filter(function(s) grepl("__(ensemble|coefficient)$", s$name), chart$x$opts$series)
+  expect_true(length(bands) >= 3L)
+  band_shapes <- vapply(bands, function(s) {
+    !is.null(s$lineStyle) && !is.null(s$areaStyle) &&
+      is.matrix(s$data) && nrow(s$data) >= 4L
+  }, logical(1))
+  expect_true(all(band_shapes))
+  expect_true(all(vapply(bands, function(s) is.null(s$stack), logical(1))))
+  expect_gt(length(unique(vapply(bands, `[[`, character(1), "name"))), 1L)
 })
 
-test_that("make_decision_table_html produces clean .wise-table HTML", {
-  df <- data.frame(
-    scenario = c("Historical", "SSP3-7.0 / 2030"),
-    Expected = c(4.5, 4.6),
-    `Change from historical` = c(NA, 0.1),
-    check.names = FALSE
+test_that("echart_variance_contribution draws one bar series per source", {
+  vb <- data.frame(
+    scenario = c("Historical", "SSP2 / 2030"),
+    var_coef = c(1, 2), var_within = c(4, 3), var_across = c(0, 9),
+    is_historical = c(TRUE, FALSE)
   )
-  tag <- make_decision_table_html(df, subheader = "Welfare outcomes", footnotes = "Footnote 1")
-  html <- as.character(htmltools::renderTags(tag)$html)
+  ch <- echart_variance_contribution(vb)
+  expect_s3_class(ch, "echarts4r")
+  expect_length(ch$x$opts$series, 3L)
+  expect_true(all(vapply(ch$x$opts$series, function(s)
+    identical(s$type, "bar"), logical(1))))
+  blank <- echart_variance_contribution(NULL)
+  expect_match(blank$x$opts$title[[1]]$text, "Run a simulation to see SD contributions.",
+    fixed = TRUE
+  )
+})
 
-  expect_match(html, "wise-table", fixed = TRUE)
-  expect_match(html, "wise-subheader", fixed = TRUE)
-  expect_match(html, "Welfare outcomes", fixed = TRUE)
-  expect_match(html, "historical-row", fixed = TRUE)
-  expect_match(html, "+0.10", fixed = TRUE)
-  expect_match(html, "Footnote 1", fixed = TRUE)
+test_that("results module renders echarts charts and a reactable threshold table", {
+  testServer(
+    mod_2_02_results_server,
+    args = list(
+      id = "results", hist_sim = reactiveVal(make_hist_sim_fixture()),
+      saved_scenarios = reactiveVal(list()), selected_hist = reactiveVal(NULL),
+      tabset_id = "step2_output_tabs"
+    ),
+    {
+      session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none",
+                        cmp_group_order = "scenario_x_year")
+      session$flushReact()
+
+      # Zero-arg closures return echarts widgets (render + export share them).
+      expect_s3_class(pointrange_chart(), "echarts4r")
+      expect_s3_class(annual_distribution_chart(), "echarts4r")
+      expect_s3_class(adverse_dot_chart(), "echarts4r")
+      expect_s3_class(exceedance_chart(), "echarts4r")
+      expect_s3_class(uncertainty_chart(), "echarts4r")
+
+      # Threshold table is a reactable widget carrying the raw rows.
+      tbl <- threshold_table_df()
+      expect_gt(nrow(tbl), 0L)
+      rt <- threshold_reactable()
+      expect_s3_class(rt, "reactable")
+      payload <- jsonlite::fromJSON(rt$x$tag$attribs$data)
+      expect_identical(as.character(payload[["Scenario / Period"]][[1]]),
+        "Historical")
+    }
+  )
+})
+
+test_that("results content UI mounts chart outputs and the reactable CSV button", {
+  so <- list(name = "welfare", type = "numeric", label = "Welfare")
+  html <- as.character(htmltools::renderTags(
+    wiseapp:::.results_content_ui(shiny::NS("results"), so)
+  )$html)
+
+  expect_match(html, "results-annual_distribution_plot", fixed = TRUE)
+  expect_match(html, "results-adverse_dot_plot", fixed = TRUE)
+  expect_match(html, "results-exceedance_plot", fixed = TRUE)
+  expect_match(html, "results-uncertainty_sources_plot", fixed = TRUE)
+  expect_match(html, "results-summary_threshold_table", fixed = TRUE)
+  # Client-side CSV button bound to the reactable widget id.
+  expect_match(html, "wise-csv-btn", fixed = TRUE)
+  expect_match(html, "climate_outcome_thresholds.csv", fixed = TRUE)
+  expect_false(grepl("threshold_csv", html, fixed = TRUE))
+})
+
+test_that("results_section container id is namespaced (CR-BUG-12)", {
+  src <- testthat::test_path("..", "..", "R", "mod_2_02_results.R")
+  skip_if(!file.exists(src), "R/ source tree not available (installed package)")
+  text <- readLines(src, warn = FALSE)
+  code <- text[!grepl("^\\s*#", text)]
+  # Every reference goes through ns(); no bare id or selector remains.
+  expect_false(any(grepl("\"#results_section|id = \"results_section", code)))
+  expect_true(any(grepl("ns(\"results_section\")", code, fixed = TRUE)))
+})
+
+test_that("lazy aggregation S3 methods live at package top level (CR-BUG-15)", {
+  ns <- asNamespace("wiseapp")
+  for (m in c("[[.wise_lazy_aggregation_method_list", "$.wise_lazy_aggregation_method_list",
+              "names.wise_lazy_aggregation_method_list", "length.wise_lazy_aggregation_method_list",
+              ".force_lazy_aggregation_method")) {
+    expect_true(exists(m, envir = ns, inherits = FALSE), info = m)
+  }
+  calls <- 0L
+  state <- new.env(parent = emptyenv())
+  state$builder <- function() {
+    calls <<- calls + 1L
+    list(mean = data.frame(v = 1))
+  }
+  state$built <- FALSE
+  x <- structure(list(mean = NULL), class = c("wise_lazy_aggregation_method_list", "list"),
+    state = state)
+  expect_identical(calls, 0L)
+  expect_identical(length(x), 1L)
+  expect_identical(names(x), "mean")
+  expect_identical(calls, 0L)
+  expect_identical(x[["mean"]]$v, 1)
+  expect_identical(x$mean$v, 1)
+  expect_identical(calls, 1L)
+})
+
+test_that("step2_adverse_return_period inverts the adverse exceedance count over N + 1", {
+  v <- c(rep(1, 90), rep(5, 10))
+  # Eq. 4.3: 10 of 100 model-years reach the level, so p = 10 / 101 (Weibull), not 10 / 100
+  expect_equal(step2_adverse_return_period(v, 5, "high"), 101 / 10)
+  expect_equal(step2_adverse_return_period(-v, -5, "low"), 101 / 10)
+  expect_identical(step2_adverse_return_period(v, 9, "high"), Inf)
+  expect_true(is.na(step2_adverse_return_period(numeric(0), 5)))
+  expect_true(is.na(step2_adverse_return_period(v, NA_real_)))
+})
+
+test_that("step2 headline cards report return-period shift, model agreement and people", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "SSP3-7.0 / 2025-2035"),
+    value = c(0.30, 0.34), interann_lo = c(0.2, 0.2), interann_hi = c(0.4, 0.4),
+    is_historical = c(TRUE, FALSE), n_models = c(1L, 4L)
+  )
+  hist_vals <- seq(0.20, 0.40, length.out = 40)
+  ts <- dplyr::bind_rows(
+    tibble::tibble(scenario = "Historical", model_id = "h", sim_year = 1:40,
+      value = hist_vals, is_historical = TRUE),
+    do.call(rbind, lapply(1:4, function(m) tibble::tibble(
+      scenario = "SSP3-7.0 / 2025-2035", model_id = paste0("m", m), sim_year = 1:40,
+      value = hist_vals + 0.04 + 0.01 * m, is_historical = FALSE)))
+  )
+  thresh <- tibble::tibble(
+    scenario = c(rep("Historical", 2L), rep("SSP3-7.0 / 2025-2035", 2L)),
+    Estimate = "Central (P50)", rp_name = rep(c("1:1", "1:20"), 2L),
+    value = c(0.30, 0.38, 0.35, 0.41)
+  )
+  so <- list(type = "numeric", name = "welfare", label = "Consumption", units = "PPP")
+  hist_sim <- list(so = so, svy = data.frame(weight = rep(1000, 50)))
+  metadata <- metric_metadata("headcount_ratio", so, pov_line = 3, weighted = TRUE)
+  cards <- step2_headline_cards(bands, thresh, hist_sim,
+    saved_scenarios = list("SSP3-7.0 / 2025-2035" = list()),
+    method = "headcount_ratio", timeseries_curves = ts, metadata = metadata)
+
+  # Poverty rate is lower-is-better: a rise is adverse.
+  expect_identical(cards[[1]]$status$kind, "adverse")
+  expect_match(cards[[1]]$value, "^\\+4\\.0 pp")
+  # Return-period shift: more than 1 in 20 of the scenario years now reach 0.38.
+  expect_match(cards[[2]]$note, "Historical 1-in-20 year \u2192 about 1-in-", fixed = TRUE)
+  expect_match(cards[[2]]$note, "in SSP3-7.0 / 2025-2035", fixed = TRUE)
+  expect_lt(cards[[2]]$return_period_native, 20)
+  # All four models shift upward and the shift is large relative to variability.
+  expect_identical(cards[[3]]$value, "4 of 4 models")
+  expect_identical(cards[[3]]$status$text, "Robust: worsens")
+  expect_gt(cards[[3]]$snr_native, 0.3)
+  # Number of poor on the first two cards: +4 pp x 50,000 weighted people = 2.0K,
+  # and +3 pp at the 1-in-20 level = 1.5K.
+  expect_match(cards[[1]]$note, "\u2248 2.0K more poor", fixed = TRUE)
+  expect_match(cards[[2]]$note, "\u2248 1.5K more poor", fixed = TRUE)
+  # The fourth card stays the year-to-year range for every metric.
+  expect_identical(cards[[4]]$label, "Year-to-year range")
+})
+
+test_that("step2_baseline_check compares the observed survey with the simulated baseline", {
+  set.seed(1)
+  svy <- data.frame(welfare = c(rep(2, 40), rep(6, 60)), weight = 1)
+  so <- list(name = "welfare", type = "numeric", transform = "none", units = "PPP")
+  rate <- metric_metadata("headcount_ratio", so, pov_line = 3, weighted = TRUE)
+  # Observed poverty rate: 40% below $3.
+  ok <- step2_baseline_check(svy, so, "headcount_ratio", 3, TRUE, 0.41, rate)
+  expect_equal(ok$observed, 0.40)
+  expect_equal(ok$gap, 0.01, tolerance = 1e-8)
+  expect_false(ok$flag)
+  expect_identical(ok$tolerance_text, "2 pp")
+  # A 5 pp miss exceeds the 2 pp tolerance for rates.
+  bad <- step2_baseline_check(svy, so, "headcount_ratio", 3, TRUE, 0.45, rate)
+  expect_true(bad$flag)
+  # Levels use a relative tolerance: observed mean 4.4, 10% = 0.44.
+  lvl <- metric_metadata("mean", so)
+  expect_false(step2_baseline_check(svy, so, "mean", NULL, TRUE, 4.8, lvl)$flag)
+  expect_true(step2_baseline_check(svy, so, "mean", NULL, TRUE, 5.0, lvl)$flag)
+  # Log outcomes are compared on the level scale.
+  svy_log <- data.frame(welfare = exp(c(rep(log(2), 40), rep(log(6), 60))), weight = 1)
+  so_log <- list(name = "welfare", type = "numeric", transform = "log", units = "PPP")
+  expect_equal(step2_baseline_check(svy_log, so_log, "mean", NULL, TRUE, 4.4, lvl)$observed, 4.4)
+  # Not available: no outcome column, binary "poor" outcome, LCU log without the PPP factor.
+  expect_null(step2_baseline_check(svy[, "weight", drop = FALSE], so, "mean", NULL, TRUE, 4, lvl))
+  expect_null(step2_baseline_check(svy, list(name = "poor"), "mean", NULL, TRUE, 4, lvl))
+  so_lcu <- list(name = "welfare", type = "numeric", transform = "log", units = "LCU")
+  expect_null(step2_baseline_check(svy_log, so_lcu, "mean", NULL, TRUE, 4, lvl))
+  expect_null(step2_baseline_check(svy, so, "mean", NULL, TRUE, NA_real_, lvl))
+})
+
+test_that("a baseline check gap above tolerance is flagged in the basis strip", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "SSP3-7.0 / 2025-2035"), value = c(0.40, 0.42),
+    interann_lo = c(0.3, 0.3), interann_hi = c(0.5, 0.5),
+    is_historical = c(TRUE, FALSE), n_models = c(1L, 2L)
+  )
+  so <- list(type = "numeric", name = "welfare", units = "PPP")
+  hist_sim <- list(so = so)
+  meta <- metric_metadata("headcount_ratio", so, pov_line = 3, weighted = TRUE)
+  chk <- list(observed = 0.30, simulated = 0.40, gap = 0.10, flag = TRUE,
+    tolerance_text = "2 pp")
+  cards <- step2_headline_cards(bands, hist_sim = hist_sim, method = "headcount_ratio",
+    metadata = meta, baseline_check = chk)
+  expect_match(cards[[1]]$info, "Baseline check: simulated 40.0% vs survey 30.0%", fixed = TRUE)
+  expect_match(cards[[1]]$basis_text, "exceeds 2 pp", fixed = TRUE)
+  chk$flag <- FALSE
+  quiet <- step2_headline_cards(bands, hist_sim = hist_sim, method = "headcount_ratio",
+    metadata = meta, baseline_check = chk)
+  expect_match(quiet[[1]]$info, "Baseline check", fixed = TRUE)
+  expect_false(grepl("Baseline check", quiet[[1]]$basis_text, fixed = TRUE))
+})
+
+test_that("Results module feeds the observed-survey baseline check into the headline cards", {
+  pipe <- function(values, years) list(
+    y_point = rep(values, each = 4) + rep(c(-.03, -.01, .01, .03), length(values)),
+    sim_year = rep(years, each = 4),
+    F_loading = matrix(0, nrow = 4 * length(values), ncol = 1L)
+  )
+  so <- list(type = "numeric", name = "welfare", transform = "identity", units = "PPP")
+  hist <- list(
+    so = so, residuals = "none", has_weights = FALSE,
+    pipeline = pipe(rep(5, 20), 2000:2019),
+    svy = data.frame(welfare = c(4, 5, 6, 5), weight = 1)
+  )
+  scenario <- "SSP2-4.5 / 2030-2050"
+  saved <- setNames(list(list(so = so, pipelines = list(
+    m1 = pipe(rep(5.5, 20), 2030:2049)
+  ))), scenario)
+  testServer(mod_2_02_results_server, args = list(
+    id = "results", hist_sim = reactiveVal(hist),
+    saved_scenarios = reactiveVal(saved), selected_hist = reactiveVal(NULL),
+    tabset_id = "step2_output_tabs"
+  ), {
+    session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none")
+    session$flushReact()
+    chk <- baseline_check_rv()
+    expect_equal(chk$observed, 5)
+    expect_equal(chk$simulated, 5, tolerance = 0.01)
+    expect_false(chk$flag)
+    card1 <- headline_cards_data_rv()[[1]]
+    expect_match(card1$info, "Baseline check", fixed = TRUE)
+    expect_equal(card1$baseline_check$observed, 5)
+  })
+})
+
+test_that("simulation-years note uses the scenarios, models and years actually simulated", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "SSP2-4.5 / 2030", "SSP3-7.0 / 2030"),
+    value = c(1, 1.1, 1.2), interann_lo = 0.9, interann_hi = 1.3,
+    is_historical = c(TRUE, FALSE, FALSE), n_models = c(1L, 22L, 22L)
+  )
+  so <- list(type = "numeric", name = "welfare", units = "PPP")
+  mk <- function(scenario, models, years, hist = FALSE) tibble::tibble(
+    scenario = scenario,
+    model_id = rep(models, each = length(years)),
+    sim_year = rep(years, length(models)),
+    value = 1, is_historical = hist
+  )
+  # Uniform: 2 scenarios x 3 models x 4 years + 4 historical years.
+  uniform <- dplyr::bind_rows(
+    mk("Historical", "h", 1:4, TRUE),
+    mk("SSP2-4.5 / 2030", c("a", "b", "c"), 1:4),
+    mk("SSP3-7.0 / 2030", c("a", "b", "c"), 1:4)
+  )
+  cards <- step2_headline_cards(bands, hist_sim = list(so = so),
+    saved_scenarios = list(a = list(), b = list(), c = list()),
+    method = "mean", timeseries_curves = uniform)
+  expect_match(cards[[5]]$basis_text, "(2 scenarios \u00d7 3 models + 1 historical) \u00d7 4 yrs", fixed = TRUE)
+  expect_identical(cards[[5]]$value, as.character(nrow(uniform)))
+  # Models differ across scenarios (and one saved scenario was not selected):
+  # state the range rather than a product that does not add up.
+  uneven <- dplyr::bind_rows(
+    mk("Historical", "h", 1:4, TRUE),
+    mk("SSP2-4.5 / 2030", c("a", "b", "c"), 1:4),
+    mk("SSP3-7.0 / 2030", c("a", "b"), 1:4)
+  )
+  cards2 <- step2_headline_cards(bands, hist_sim = list(so = so),
+    saved_scenarios = list(a = list(), b = list(), c = list()),
+    method = "mean", timeseries_curves = uneven)
+  expect_match(cards2[[5]]$basis_text, "2 scenarios, 2\u20133 models and 4 yrs each", fixed = TRUE)
+  expect_identical(cards2[[5]]$value, as.character(nrow(uneven)))
+})
+
+test_that("step2_delta_ci is the norm of the difference of mean gradients", {
+  hist_tbl <- tibble::tibble(F_agg_all = list(
+    matrix(c(1, 0), nrow = 1), matrix(c(3, 0), nrow = 1)
+  ))
+  scen_tbl <- tibble::tibble(F_agg_all = list(
+    matrix(c(4, 2, 4, 2), nrow = 2, byrow = TRUE),
+    matrix(c(6, 2, 6, 2), nrow = 2, byrow = TRUE)
+  ))
+  # Mean historical gradient (2, 0); mean scenario gradient (5, 2); diff (3, 2).
+  expect_equal(step2_delta_ci(hist_tbl, scen_tbl)$sd, sqrt(13))
+  # Same gradients for both: the coefficients move them together, no uncertainty.
+  expect_null(step2_delta_ci(hist_tbl, hist_tbl))
+  expect_null(step2_delta_ci(hist_tbl, tibble::tibble(value = 1)))
+  expect_null(step2_delta_ci(NULL, scen_tbl))
+})
+
+test_that("Expected change card prints the 95% CI from estimation uncertainty", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "SSP3-7.0 / 2025-2035"), value = c(4.50, 4.40),
+    interann_lo = 4, interann_hi = 5, is_historical = c(TRUE, FALSE),
+    n_models = c(1L, 2L)
+  )
+  so <- list(type = "numeric", name = "welfare", label = "Consumption", units = "$/day")
+  cards <- step2_headline_cards(bands, hist_sim = list(so = so), method = "mean",
+    delta_ci = list(sd = 0.025))
+  # -0.10 +/- 1.96 * 0.025 = -0.149 to -0.051.
+  expect_match(cards[[1]]$note, "(95% CI: -0.15 to -0.05 $/day)", fixed = TRUE)
+  expect_equal(cards[[1]]$change_ci_native, -0.10 + c(-1, 1) * stats::qnorm(0.975) * 0.025)
+  expect_match(cards[[1]]$info, "weather coefficients only", fixed = TRUE)
+  # No interval when gradients are unavailable.
+  none <- step2_headline_cards(bands, hist_sim = list(so = so), method = "mean")
+  expect_false(grepl("95% CI", none[[1]]$note, fixed = TRUE))
+  expect_true(all(is.na(none[[1]]$change_ci_native)))
+})
+
+test_that("Results module derives the climate-shift interval from the aggregation gradients", {
+  set.seed(3)
+  pipe <- function(values, years) {
+    n <- 4 * length(values)
+    list(
+      y_point = rep(values, each = 4) + rep(c(-.03, -.01, .01, .03), length(values)),
+      sim_year = rep(years, each = 4),
+      F_loading = matrix(stats::rnorm(n * 2) * 0.05, nrow = n)
+    )
+  }
+  so <- list(type = "numeric", name = "welfare", transform = "identity", units = "PPP")
+  hist <- list(so = so, residuals = "none", has_weights = FALSE,
+    pipeline = pipe(rep(5, 20), 2000:2019))
+  scenario <- "SSP2-4.5 / 2030-2050"
+  saved <- setNames(list(list(so = so, pipelines = list(
+    m1 = pipe(rep(5.5, 20), 2030:2049), m2 = pipe(rep(5.7, 20), 2030:2049)
+  ))), scenario)
+  testServer(mod_2_02_results_server, args = list(
+    id = "results", hist_sim = reactiveVal(hist),
+    saved_scenarios = reactiveVal(saved), selected_hist = reactiveVal(NULL),
+    tabset_id = "step2_output_tabs"
+  ), {
+    session$setInputs(cmp_agg_method = "mean", cmp_deviation = "none")
+    session$flushReact()
+    ci <- delta_ci_rv()
+    expect_false(is.null(ci))
+    expect_gt(ci$sd, 0)
+    expect_match(headline_cards_data_rv()[[1]]$note, "95% CI", fixed = TRUE)
+  })
+})
+
+test_that("weather support is stated in the popover and warned about in the basis strip", {
+  bands <- tibble::tibble(
+    scenario = c("Historical", "SSP3-7.0 / 2025-2035"), value = c(4.5, 4.4),
+    interann_lo = 4, interann_hi = 5, is_historical = c(TRUE, FALSE),
+    n_models = c(1L, 2L)
+  )
+  so <- list(type = "numeric", name = "welfare", units = "$/day")
+  support <- data.frame(
+    weather_variable = c("temp", "rain"), weather_label = c("Temperature", NA),
+    outside_share = c(0.123, 0.01), warning = c(TRUE, FALSE)
+  )
+  cards <- step2_headline_cards(bands, hist_sim = list(so = so), method = "mean",
+    weather_support = support)
+  expect_match(cards[[1]]$info, "Temperature 12.3%; rain 1.0%", fixed = TRUE)
+  expect_match(cards[[1]]$basis_text,
+    "Weather outside fitted-sample range: Temperature 12.3% (see Diagnostics)", fixed = TRUE)
+  support$warning <- FALSE
+  quiet <- step2_headline_cards(bands, hist_sim = list(so = so), method = "mean",
+    weather_support = support)
+  expect_match(quiet[[1]]$info, "Weather support", fixed = TRUE)
+  expect_false(grepl("Weather outside", quiet[[1]]$basis_text, fixed = TRUE))
+})
+
+test_that("weather_support_pool adds member counts and recomputes the share", {
+  rows <- list(
+    data.frame(weather_variable = "temp", scenario = "m1", n_scenario = 100,
+      outside_n = 10, outside_share = 0.10, warning = TRUE),
+    data.frame(weather_variable = "temp", scenario = "m2", n_scenario = 100,
+      outside_n = 0, outside_share = 0, warning = FALSE)
+  )
+  pooled <- weather_support_pool(rows, "SSP2 / 2030")
+  expect_equal(pooled$outside_n, 10)
+  expect_equal(pooled$n_scenario, 200)
+  expect_equal(pooled$outside_share, 0.05)
+  expect_false(pooled$warning)
+  expect_equal(pooled$max_member_share, 0.10)
+  expect_identical(pooled$scenario, "SSP2 / 2030")
+  expect_null(weather_support_pool(list(NULL), "x"))
+})
+
+test_that("the weighted-suite cache is bounded and evicts the least recently used (CR-CQ-03)", {
+  hist_sim <- shiny::reactiveVal(make_hist_sim_fixture())
+
+  shiny::testServer(
+    mod_2_02_results_server,
+    args = list(
+      id              = "results",
+      hist_sim        = hist_sim,
+      saved_scenarios = shiny::reactiveVal(list()),
+      selected_hist   = shiny::reactiveVal(NULL),
+      tabset_id       = "step2_output_tabs"
+    ),
+    {
+      session$flushReact()
+      w <- agg_workspace()
+      for (i in 1:40) assign_suite(w, paste0("k", i), i)
+      expect_length(ls(w$weighted_suite_cache), 32L)
+      expect_null(get_suite(w, "k1"))
+      expect_identical(get_suite(w, "k40"), 40L)
+      # A read refreshes the entry: k9 is the oldest, reading it saves it
+      expect_identical(get_suite(w, "k9"), 9L)
+      assign_suite(w, "k41", 41L)
+      expect_identical(get_suite(w, "k9"), 9L)
+      expect_null(get_suite(w, "k10"))
+    }
+  )
 })

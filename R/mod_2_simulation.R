@@ -14,28 +14,9 @@ mod_2_simulation_ui <- function(id) {
   bslib::layout_sidebar(
     sidebar = bslib::sidebar(
       width = 360,
-      mod_2_01_weathersim_ui(ns("weathersim")),
-      shiny::hr(),
-      shiny::div(
-        style = "display:flex; align-items:center; gap:0.4rem;",
-        shiny::actionButton(
-          ns("clear_scenarios"),
-          label = "Clear simulation results",
-          icon  = shiny::icon("trash"),
-          width = "100%",
-          class = "btn-outline-danger"
-        ),
-        info_popover(
-          title = "Clear simulation results",
-          shiny::p(paste(
-            "Removes all saved future-scenario runs and the historical",
-            "baseline from this session. Your settings are kept -",
-            "re-run the simulation to regenerate results."
-          ))
-        )
-      )
+      mod_2_01_weathersim_ui(ns("weathersim"))
     ),
-    h4("What welfare is expected given historical weather conditions? In future climate scenarios?",
+    h1("What welfare is expected given historical weather conditions? In future climate scenarios?",
        class = "step-question"),
     tabsetPanel(
       id = ns("step2_output_tabs"),
@@ -45,7 +26,7 @@ mod_2_simulation_ui <- function(id) {
         div(
           class = "empty-state overview-empty-state",
           icon("cloud-sun-rain"),
-          h5("No simulations yet"),
+          h2(class = "h5", "No simulations yet"),
           p(paste(
             "Configure climate scenarios in the sidebar, then click",
             "'Run simulation'. Results will appear here as new tabs."
@@ -69,7 +50,9 @@ mod_2_simulation_ui <- function(id) {
 #' @param selected_surveys Reactive data frame from the survey list.
 #' @param survey_weather   Reactive data frame of merged survey-weather data.
 #' @param model_fit        Reactive list of fitted model objects.
+#' @param enso             Optional reactive: `enso_load()` result, `NULL` without the ENSO tables.
 #' @param run_trigger      Optional reactive trigger for a programmatic run.
+#' @param shared_aggregation_cache Optional shared session aggregation cache.
 #'
 #' @noRd
 mod_2_simulation_server <- function(id,
@@ -81,10 +64,16 @@ mod_2_simulation_server <- function(id,
                                     model_fit,
                                     stored_breaks = reactive(NULL),
                                      survey_version = reactive(0L),
-                                     run_trigger = reactive(NULL)) {
+                                      enso = reactive(NULL),
+                                      run_trigger = reactive(NULL),
+                                      shared_aggregation_cache = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # ---- 1. Unified sidebar + simulation engine ----------------------------
+    # Results-tab display settings (method, poverty line, bandwidth), written
+    # by mod_2_02 in committed mode and read by mod_2_01 at submit.
+    display_settings <- reactiveVal(NULL)
+
+    # 1. Unified sidebar + simulation engine ----
     s1 <- mod_2_01_weathersim_server(
       "weathersim",
       connection_params = connection_params,
@@ -95,24 +84,32 @@ mod_2_simulation_server <- function(id,
       model_fit         = model_fit,
       stored_breaks     = stored_breaks,
        survey_version    = survey_version,
-       run_trigger       = run_trigger
+       run_trigger       = run_trigger,
+      display_settings  = display_settings,
+      enso              = enso
     )
 
-    # ---- 2. Results tab ----------------------------------------------------
+    # 2. Results tab ----
     s2 <- mod_2_02_results_server(
       "results",
       hist_sim        = s1$hist_sim,
       saved_scenarios = s1$saved_scenarios,
       selected_hist   = s1$selected_hist,
       selected_weather = selected_weather,
+      survey_weather  = survey_weather,
+      enso            = enso,
       tabset_id       = "step2_output_tabs",
       tabset_session  = session,
-      residuals       = s1$residuals,
+       residuals       = s1$residuals,
+       shared_aggregation_cache = shared_aggregation_cache,
       skip_coef_draws = s1$skip_coef_draws,
-      stale           = s1$stale
+      stale           = s1$stale,
+      live_run        = s1$live_run %||% reactive(NULL),
+      adopted_partials = s1$adopted_partials %||% reactive(NULL),
+      display_settings_out = display_settings
     )
 
-    # ---- 3. Diagnostics tab ------------------------------------------------
+    # 3. Diagnostics tab ----
     mod_2_03_diagnostics_server(
       "diagnostics",
       hist_sim           = s1$hist_sim,
@@ -120,34 +117,28 @@ mod_2_simulation_server <- function(id,
       selected_hist      = s1$selected_hist,
       survey_weather     = survey_weather,
       selected_weather   = selected_weather,
-      variance_breakdown = s2$variance_breakdown,
+      stored_breaks      = stored_breaks,
       timeseries_curves  = s2$timeseries_curves,
+      window_robustness  = s2$window_robustness,
+      enso_labels        = s2$enso_labels,
       tabset_id          = "step2_output_tabs",
       tabset_session     = session,
       stale              = s1$stale
     )
 
-    # ---- Clear scenarios button --------------------------------------------
-    observeEvent(input$clear_scenarios, {
-      if (is.function(s1$clear_weather_stores)) s1$clear_weather_stores()
-      s1$saved_scenarios(list())
-      s1$hist_sim(NULL)
-      shiny::showNotification(
-        "All scenarios and historical baseline cleared. Re-run simulations to populate.",
-        type = "message", duration = 4
-      )
-    })
-
-    # ---- Return API --------------------------------------------------------
+    # Return API ----
     list(
       selected_hist   = s1$selected_hist,
-      selected_fut    = s1$selected_fut,
       hist_sim        = s1$hist_sim,
       saved_scenarios = s1$saved_scenarios,
       skip_coef_draws = s1$skip_coef_draws,
       residuals       = s1$residuals,
       propagate_all_covariate_uncertainty = s1$propagate_all_covariate_uncertainty,
       stale           = s1$stale,
+      enso_labels     = s2$enso_labels,
+      enso_window_labels = s2$enso_window_labels,
+      enso_forecast_marks = s2$enso_forecast_marks,
+      enso_relevance  = s2$enso_relevance,
       run_generation  = s1$run_generation,
       run_status      = s1$run_status
     )

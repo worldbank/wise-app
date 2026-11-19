@@ -22,46 +22,45 @@ mod_1_01_sample_ui <- function(id) {
 #'
 #' @param id Module id.
 #' @param survey_list Reactive tibble from mod_0_overview (survey metadata).
-#' @param variable_list Reactive tibble from mod_0_overview (variable metadata).
 #' @param connection_params Reactive named list from mod_0_overview
 #'   (connection type + credentials/path).
 #'
 #' @noRd
-mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_list) {
+mod_1_01_sample_server <- function(id, connection_params, survey_list) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # ---- List available files at the connection endpoint --------------------
+    # List available files at the connection endpoint ----
 
+    # CR-PERF-09: only the selected unit's folder is listed.
     available_files <- reactive({
-      req(connection_params())
-      list_available_files(connection_params())
+      req(connection_params(), input$unit)
+      list_available_files(connection_params(), input$unit)
     })
 
-    # ---- Level of analysis selector -----------------------------------------
+    # Level of analysis selector ----
 
     output$unit_ui <- renderUI({
       pill_toggle(
-        inputId  = ns("unit"),
-        label    = "Level of analysis",
-        choices  = c(
+        inputId = ns("unit"),
+        label = "Level of analysis",
+        choices = c(
           "Individual" = "ind",
           "Household"  = "hh",
           "Firm"       = "firm"
         ),
-        selected = "hh"
+        selected = wise_spec_defaults()$sample$unit
       )
     })
 
-    # ---- Surveys available at the endpoint for the selected unit ------------
+    # Surveys available at the endpoint for the selected unit ----
 
     surveys <- reactive({
       req(input$unit, survey_list())
-      sl <- build_survey_fnames(survey_list(), input$unit, connection_params())
-      filter_surveys_to_available(sl, available_files())
+      wise_available_surveys(survey_list(), input$unit, connection_params(), available_files())
     })
 
-    # ---- Economy selector ---------------------------------------------------
+    # Economy selector ----
 
     output$sample_ui <- renderUI({
       req(surveys())
@@ -71,27 +70,26 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
           "No data files found for the selected level of analysis."
         ))
       }
-      choices         <- setNames(sv$code, sv$economy)
-      choices         <- choices[!duplicated(choices)]
+      choices <- setNames(sv$code, sv$economy)
+      choices <- choices[!duplicated(choices)]
       selectizeInput(
         inputId  = ns("economy"),
         label    = "Economy",
         choices  = choices,
-        # make default "BFA" if it exists, otherwise first in list
-        selected = if ("BFA" %in% sv$code) "BFA" else choices[1],
+        selected = wise_default_economy(sv$code),
         multiple = TRUE,
         options  = list(maxItems = 2, placeholder = "Select up to 2 economies")
       )
     })
 
-    # ---- Available survey years per selected economy ------------------------
+    # Available survey years per selected economy ----
 
     available_years <- reactive({
       req(input$economy, surveys())
       get_available_years(surveys(), input$economy)
     })
 
-    # ---- Year selector UI ---------------------------------------------------
+    # Year selector UI ----
 
     output$survey_year_ui <- renderUI({
       req(input$economy, available_years())
@@ -102,7 +100,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
       all_yrs <- available_years()
 
       year_inputs <- lapply(codes, function(code) {
-        yrs          <- all_yrs[[code]]
+        yrs <- all_yrs[[code]]
         economy_name <- sv |>
           dplyr::filter(.data$code == !!code) |>
           dplyr::pull(.data$economy) |>
@@ -115,7 +113,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
           inputId  = ns(paste0("year_", code)),
           label    = paste("Survey years -", economy_name),
           choices  = yrs,
-          selected = .restore_selection(prev_yrs, yrs, fallback = yrs),
+          selected = .restore_selection(prev_yrs, yrs, fallback = wise_default_years(yrs)),
           multiple = TRUE,
           options  = list(placeholder = paste("Select years for", economy_name))
         )
@@ -131,7 +129,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
       shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
     })
 
-    # ---- Collect selected years from dynamic inputs -------------------------
+    # Collect selected years from dynamic inputs ----
 
     selected_years_by_code <- reactive({
       req(input$economy)
@@ -142,7 +140,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
       Filter(Negate(is.null), years_list)
     })
 
-    # ---- Selected surveys ---------------------------------------------------
+    # Selected surveys ----
 
     selected_surveys <- reactive({
       req(input$economy)
@@ -151,7 +149,7 @@ mod_1_01_sample_server <- function(id, connection_params, survey_list, variable_
       build_selected_surveys(surveys(), years_by_code)
     })
 
-    # ---- Return API ---------------------------------------------------------
+    # Return API ----
 
     list(
       selected_surveys = selected_surveys,

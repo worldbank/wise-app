@@ -23,7 +23,7 @@ step2_contract_weather <- function() {
   )
 }
 
-step2_contract_pipeline <- function(weather_raw, ...) {
+step2_contract_pipeline <- function(weather_raw, svy, ...) {
   list(
     y_point = c(1, 2),
     F_loading = NULL,
@@ -39,7 +39,9 @@ step2_contract_pipeline <- function(weather_raw, ...) {
 }
 
 step2_contract_run <- function(weather_result = step2_contract_weather(),
-                               weather_fn = NULL, ...) {
+                               weather_fn = NULL,
+                               fp_list = list(c("2030-01-01", "2040-12-31")),
+                               ssps = "ssp2_4_5", ...) {
   fct_run_simulation(
     sw = data.frame(name = "temp", stringsAsFactors = FALSE),
     so = data.frame(
@@ -48,7 +50,7 @@ step2_contract_run <- function(weather_result = step2_contract_weather(),
     ),
     svy = data.frame(
       hhid = c("hh01", "hh02"), code = "TST", year = 2020L,
-      survname = "SRV", loc_id = "loc01", welfare = c(1, 2),
+      survname = "SRV", loc_id = "loc01", int_month = 6L, welfare = c(1, 2),
       temp = c(1, 1), weight = c(1, 2), stringsAsFactors = FALSE
     ),
     ss = NULL,
@@ -57,14 +59,13 @@ step2_contract_run <- function(weather_result = step2_contract_weather(),
       weather_terms = "temp"
     ),
     cp = list(type = "local", path = tempdir()),
-    fp_list = list(c("2030-01-01", "2040-12-31")),
-    ssps = "ssp2_4_5",
+    fp_list = fp_list,
+    ssps = ssps,
     residuals = "none",
     skip_coef_draws = TRUE,
     sim_dates = c("2020-01-01", "2020-12-31"),
     perturbation_method = NULL,
     stored_breaks = NULL,
-    notify_fn = function(...) invisible(NULL),
     progress_fn = function(...) invisible(NULL),
     weather_fn = weather_fn %||% function(...) weather_result,
     pipeline_fn = step2_contract_pipeline,
@@ -117,14 +118,13 @@ test_that("Step 2 top-level result contract is stable", {
   expect_identical(
     names(result),
     c(
-      "hist_sim_result", "new_scenarios", "chol_obj", "n_keys",
+      "hist_sim_result", "new_scenarios", "n_keys",
        "total_runs", "t_elapsed", "t_weather", "failures", "n_keys_ok",
-       "payload_mode"
+       "data_quality", "payload_mode"
     )
   )
   expect_type(result$hist_sim_result, "list")
   expect_type(result$new_scenarios, "list")
-  expect_null(result$chol_obj)
   expect_identical(result$n_keys, 3L)
   expect_identical(result$n_keys_ok, 3L)
   expect_length(result$failures, 0L)
@@ -141,9 +141,10 @@ test_that("historical and scenario payload contracts preserve key fields", {
     names(historical),
     c(
        "pipeline", "chol_obj", "so", "has_weights", "weather_raw",
-        "svy", "residuals", "shared_context"
+        "svy", "residuals", "seed", "shared_context"
     )
   )
+  expect_identical(historical$seed, WISEAPP_DEFAULT_SEED)
   expect_identical(
     names(historical$pipeline),
     c(
@@ -154,7 +155,7 @@ test_that("historical and scenario payload contracts preserve key fields", {
   expect_identical(
     names(scenario),
     c(
-       "pipelines", "weather_raw", "chol_obj", "so", "year_range",
+       "pipelines", "weather_raw", "so", "year_range",
         "n_models", "n_models_requested", "residuals", "weather_shared",
         "shared_context"
     )
@@ -183,6 +184,60 @@ test_that("scenario pipelines retain model-specific weather payloads", {
   )
 })
 
+test_that("forecast members share one distinct forecast scenario and start-year state", {
+  frames <- step2_contract_weather()
+  forecast_member <- frames$ssp2_4_5_2030_2040_ensemble_mean
+  forecast_member <- forecast_member[rep(1L, 3L), , drop = FALSE]
+  forecast_member$year <- "2020"
+  forecast_member$int_month <- c(11L, 12L, 1L)
+  forecast_member$timestamp <- as.POSIXct(c("2030-11-01", "2030-12-01", "2031-01-01"), tz = "UTC")
+  forecast_member$temp <- 8
+  forecast_member$forecast_member <- NULL
+  attr(forecast_member, "forecast_member") <- 0L
+  forecast_member_1 <- forecast_member
+  attr(forecast_member_1, "forecast_member") <- 1L
+  forecast <- list(
+    run = list(
+      id = "pilot-1", product = "seasonal", label = "test",
+      members = 0:1, variables = "temp", model_id = "test", init = as.Date("2030-01-01"),
+      observed_through = as.Date("2029-12-01"), n_leads = 12L,
+      file = "test.parquet", adjustment = "additive_mean_bias_only",
+      data_sha256 = "data", manifest_sha256 = "manifest"
+    ),
+    start = "2030-11", len = 3L
+  )
+  loader <- function(weather_consumer, ...) {
+    weather_consumer("member_0", forecast_member, list(
+      forecast = TRUE, forecast_run = "pilot-1", forecast_member = 0L,
+      member_index = 1L, period_members = 2L, start = "2030-11", len = 3L,
+      label = "Nov 2030 - Jan 2031", order = 2L, is_historical = FALSE
+    ))
+    weather_consumer("member_1", forecast_member_1, list(
+      forecast = TRUE, forecast_run = "pilot-1", forecast_member = 1L,
+      member_index = 2L, period_members = 2L, start = "2030-11", len = 3L,
+      label = "Nov 2030 - Jan 2031", order = 3L, is_historical = FALSE
+    ))
+    list()
+  }
+  result <- suppressWarnings(step2_contract_run(
+    weather_result = list(), weather_fn = loader, fp_list = list(), ssps = character(0),
+    forecast = forecast
+  ))
+  scenario <- result$new_scenarios[[1L]]
+  expect_length(result$new_scenarios, 1L)
+  expect_match(names(result$new_scenarios), "Seasonal forecast")
+  expect_setequal(names(scenario$pipelines), c("member_0", "member_1"))
+  expect_identical(scenario$forecast$start, "2030-11")
+  expect_identical(scenario$forecast$len, 3L)
+  expect_identical(scenario$forecast$sim_year, 2030L)
+  expect_identical(scenario$pipelines$member_0$sim_year, c(2030L, 2030L))
+  expect_identical(scenario$pipelines$member_1$sim_year, c(2030L, 2030L))
+  expect_identical(scenario$pipelines$member_0$svy_row_id, c(1L, 2L))
+  expect_identical(scenario$pipelines$member_1$svy_row_id, c(1L, 2L))
+  expect_identical(result$n_forecast_members, 2L)
+})
+
+
 test_that("per-pipeline vector and row alignment contract is stable", {
   result <- suppressWarnings(step2_contract_run())
   pipe <- result$hist_sim_result$pipeline
@@ -202,7 +257,6 @@ test_that("per-pipeline vector and row alignment contract is stable", {
 })
 
 test_that("run_sim_pipeline contract preserves joins and disabled uncertainty", {
-  skip_if_not_installed("broom")
 
   train <- data.frame(
     welfare = c(1, 2, 3, 4), temp = c(0, 1, 2, 3),
@@ -236,7 +290,8 @@ test_that("run_sim_pipeline contract preserves joins and disabled uncertainty", 
     out,
     c(
       "y_point", "F_loading", "sim_year", "weight", "id_vec", "id_col",
-      "svy_row_id", "n_pre_join", "weather_raw", "train_aug"
+      "svy_row_id", "weather_exposure", "n_pre_join", "weather_raw",
+      "train_aug"
     )
   )
   expect_length(out$y_point, 2L)
@@ -249,7 +304,6 @@ test_that("run_sim_pipeline contract preserves joins and disabled uncertainty", 
 })
 
 test_that("enabled coefficient uncertainty preserves F_loading dimensions and order", {
-  skip_if_not_installed("fixest")
 
   train <- data.frame(
     welfare = c(1, 2, 3, 4), temp = c(0, 1, 2, 3),
@@ -305,7 +359,7 @@ test_that("aggregation residual modes remain accepted by the reference contract"
     )
   )
 
-  for (mode in c("none", "original", "normal", "resample")) {
+  for (mode in c("none", "original", "resample")) {
     out <- aggregate_pipeline_per_year(
       pipe, method = "mean", weighted = TRUE, residuals = mode, seed = 123L
     )

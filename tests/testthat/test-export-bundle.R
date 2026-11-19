@@ -9,10 +9,10 @@ library(testthat)
 library(shiny)
 
 item <- function(key, kind = "table", step = 1L, fun = NULL, label = key,
-                 description = "Description.") {
+                 description = "Description.", width = 6, height = 4) {
   list(key = key, label = label, step = as.integer(step), kind = kind,
        fun = fun %||% function() data.frame(a = 1:2, b = c("x", "y")),
-       description = description, width = 6, height = 4)
+       description = description, width = width, height = height)
 }
 
 # ---- Registry ---------------------------------------------------------------
@@ -35,7 +35,7 @@ test_that("modules register artefacts through the shared session userData", {
 })
 
 test_that("re-registering a key replaces rather than duplicates", {
-  testServer(function(input, output, session) {
+  shiny::testServer(function(input, output, session) {
     for (i in 1:3) {
       wise_export_table("t", paste("Version", i), 1L,
                         function() data.frame(x = i), session = session)
@@ -64,7 +64,6 @@ test_that("registering outside a session is a no-op rather than an error", {
   expect_length(wise_export_items(NULL), 0L)
 })
 
-
 # ---- File naming ------------------------------------------------------------
 
 test_that("file names follow the documented NN_stepN_slug.ext scheme", {
@@ -89,7 +88,6 @@ test_that("slugs are filesystem- and archive-safe", {
 # ---- Bundle assembly --------------------------------------------------------
 
 test_that("a bundle contains the artefacts, manifest and README", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   zf <- withr::local_tempfile(fileext = ".zip")
   items <- list(item("survey_summary"), item("coefficients"))
 
@@ -103,7 +101,6 @@ test_that("a bundle contains the artefacts, manifest and README", {
 })
 
 test_that("surfaces that produced nothing are skipped; numbering keeps their slots", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   zf <- withr::local_tempfile(fileext = ".zip")
   items <- list(
     item("first"),
@@ -120,7 +117,6 @@ test_that("surfaces that produced nothing are skipped; numbering keeps their slo
 })
 
 test_that("file names are stable across bundles whose steps differ (UI-57)", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   items_all_ok <- list(item("first"), item("ok"), item("ok2"), item("second"))
   items_partial <- list(
     item("first"),
@@ -141,7 +137,6 @@ test_that("file names are stable across bundles whose steps differ (UI-57)", {
 })
 
 test_that("bundle assembly does not consume the session RNG (UI-58)", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   zf <- withr::local_tempfile(fileext = ".zip")
   items <- list(item("first"), item("never_run", fun = function() NULL))
   before <- .Random.seed
@@ -150,7 +145,6 @@ test_that("bundle assembly does not consume the session RNG (UI-58)", {
 })
 
 test_that("an artefact that errors is skipped with a warning, not fatal", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   zf <- withr::local_tempfile(fileext = ".zip")
   items <- list(item("ok"), item("boom", fun = function() stop("kaboom")))
 
@@ -163,7 +157,6 @@ test_that("an artefact that errors is skipped with a warning, not fatal", {
 })
 
 test_that("the bundle reports per-item progress (UI-59)", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   seen <- list(); n <- 0L
   wise_export_bundle(
     withr::local_tempfile(fileext = ".zip"),
@@ -197,8 +190,32 @@ test_that("a genuine builder failure is named, not silently dropped (UI-53)", {
   expect_match(res$note, "grid mismatch")
 })
 
+# ---- echarts figure PNG export (guidelines §7) -------------------------------
+
+test_that("an echarts figure renders to PNG through the headless browser", {
+  chrome_err <- tryCatch({
+    ci <- chromote::Chromote$new()
+    ci$close()
+    NULL
+  }, error = function(e) conditionMessage(e))
+  skip_if(!is.null(chrome_err),
+    paste("no headless Chrome available:", chrome_err))
+
+  widget <- echarts4r::e_charts(data.frame(x = 1:3, y = c(1, 4, 2)), x) |>
+    echarts4r::e_bar(y)
+  path <- withr::local_tempfile(fileext = ".png")
+  unlink(path)
+  res <- .export_write_item(
+    item("ech", kind = "figure", width = 6, height = 4,
+         fun = function() widget),
+    dirname(path), basename(path)
+  )
+  expect_equal(res$status, "ok")
+  expect_true(file.exists(path))
+  expect_gt(file.size(path), 1000)
+})
+
 test_that("a req() throw inside a registered artefact leaves no failure note", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   zf <- withr::local_tempfile(fileext = ".zip")
   items <- list(item("ok"),
                 item("pending", kind = "figure",
@@ -215,11 +232,9 @@ test_that("a req() throw inside a registered artefact leaves no failure note", {
 })
 
 test_that("include= selects which parts are written", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
-  skip_if_not_installed("ggplot2")
   fig <- item("plot", kind = "figure",
-              fun = function() ggplot2::ggplot(mtcars, ggplot2::aes(wt, mpg)) +
-                ggplot2::geom_point())
+              fun = function() echarts4r::e_charts(mtcars, wt) |>
+                echarts4r::e_scatter(mpg))
   items <- list(item("tbl"), fig)
 
   zf1 <- withr::local_tempfile(fileext = ".zip")
@@ -271,12 +286,13 @@ test_that("the README states provenance and never leaks credentials", {
   md <- paste(wise_export_readme(list(), prov, list()), collapse = "\n")
 
   expect_match(md, "databricks", fixed = TRUE)
-  expect_match(md, "https://adb-1.example.net", fixed = TRUE)
   expect_match(md, "Welfare", fixed = TRUE)
   expect_match(md, "Run signature", fixed = TRUE)
-  # The identity of the source is recorded; the means of reading it is not.
+  # CR-SEC-05: only the source type is recorded - neither its location nor
+  # the means of reading it.
+  expect_false(grepl("https://adb-1.example.net", md, fixed = TRUE))
+  expect_false(grepl("/Volumes/cat", md, fixed = TRUE))
   expect_false(grepl("TOP-SECRET-VALUE", md, fixed = TRUE))
-  expect_match(md, "redacted", fixed = TRUE)
 })
 
 test_that("the README is honest when nothing has been run", {
@@ -380,12 +396,41 @@ test_that("credential-shaped inputs are never exported (SEC-06)", {
     "overview-db_client_id", "overview-db_client_secret"
   )
   expect_false(any(.export_keep_input(secretish)))
-  # Source identity (never the means of reading it) survives.
-  expect_true(all(.export_keep_input(c(
+  # CR-SEC-05: source identity (type, hosts, buckets, paths) is not carried
+  # either; other steps' settings are.
+  expect_false(any(.export_keep_input(c(
     "overview-connection_type", "overview-db_workspace",
     "overview-db_volume_path", "overview-s3_bucket", "overview-s3_prefix",
     "overview-s3_region", "overview-gcs_bucket", "overview-hf_repo",
     "overview-hf_subdir", "overview-local_path"))))
+  expect_true(all(.export_keep_input(c("step1-model-model_type", "sim-fut_period_1"))))
+})
+
+test_that("config import drops connection settings and says so (CR-SEC-05)", {
+  sent <- character(0)
+  session <- list(
+    input = list(),
+    sendInputMessage = function(id, message) sent <<- c(sent, id)
+  )
+  cfg <- list(inputs = list(
+    "overview-connection_type" = "databricks",
+    "overview-db_workspace" = "https://evil.cloud.databricks.com",
+    "overview-local_path" = "/etc",
+    "step1-model-model_type" = "Linear regression"
+  ))
+  res <- wise_config_apply(cfg, session)
+  expect_identical(sent, "step1-model-model_type")
+  expect_identical(res$applied, "step1-model-model_type")
+  expect_length(res$pending, 0L)
+
+  n <- .import_dropped_connection(cfg)
+  expect_identical(n, 3L)
+  text <- .import_status_text(res, n)
+  expect_match(text, "Applied 1 setting(s).", fixed = TRUE)
+  expect_match(text, "3 data-source setting(s) in the file were not imported", fixed = TRUE)
+  expect_false(grepl("not imported", .import_status_text(res, 0L)))
+  expect_match(.import_status_text(list(applied = "a", pending = c("b", "c")), 0L),
+    "Applied 1 setting(s); 2 more", fixed = TRUE)
 })
 
 test_that("a snapshot of a filled connection form carries no secrets", {
@@ -402,8 +447,8 @@ test_that("a snapshot of a filled connection form carries no secrets", {
     js  <- jsonlite::toJSON(cfg, auto_unbox = TRUE, null = "null", digits = NA)
     expect_false(grepl("TOP-SECRET-VALUE", js, fixed = TRUE))
     expect_false(grepl("AKIAEXAMPLE", js, fixed = TRUE))
-    expect_equal(cfg$inputs$`overview-s3_bucket`, "my-bucket")
-    expect_false("overview-s3_secret" %in% names(cfg$inputs))
+    expect_false(grepl("my-bucket", js, fixed = TRUE))
+    expect_false(any(grepl("^overview-", names(cfg$inputs))))
   })
 })
 
@@ -427,8 +472,9 @@ test_that("importing an exported snapshot never pushes credentials or counters",
     res <- wise_config_apply(back, fake, existing = c(
       "overview-s3_bucket", "overview-s3_key_id", "overview-s3_secret",
       "overview-apply_connection"))
-    expect_equal(res$applied, "overview-s3_bucket")
-    expect_equal(sent$`overview-s3_bucket`, "b")
+    # CR-SEC-05: no connection field is pushed, not even the bucket.
+    expect_length(res$applied, 0L)
+    expect_length(sent, 0L)
     expect_false("overview-apply_connection" %in% names(sent))
     expect_false("overview-s3_key_id" %in% names(sent))
   })
@@ -488,6 +534,24 @@ test_that("applying an empty config is a no-op", {
   expect_length(res$pending, 0L)
 })
 
+test_that("configuration validation rejects non-object JSON and malformed inputs", {
+  bad_empty <- .import_validate(list())
+  expect_false(bad_empty$ok)
+  bad_scalar <- .import_validate(1)
+  expect_false(bad_scalar$ok)
+  bad_inputs <- .import_validate(list(inputs = "not-an-object"))
+  expect_false(bad_inputs$ok)
+})
+
+test_that("input application keeps failed controls pending", {
+  fake <- list(sendInputMessage = function(id, msg) stop("unavailable"))
+  res <- wise_config_apply(list(inputs = list(setting = "value")), fake,
+                           existing = "setting")
+  expect_equal(res$failed, "setting")
+  expect_equal(res$pending, "setting")
+  expect_length(res$applied, 0L)
+})
+
 
 # ---- Import validation & deferred retry (UI-52) ------------------------------
 
@@ -515,16 +579,6 @@ test_that("the import validator rejects non-WISE-APP and newer-format files", {
                      app_version = NA_character_)$notes, 0L)
 })
 
-test_that("already-in-force values are not counted as changes", {
-  expect_true(.import_value_same(50, 50))
-  expect_true(.import_value_same(50L, 50))   # JSON round-trip: int -> double
-  expect_true(.import_value_same(c("tx", "r"), c("tx", "r")))
-  expect_false(.import_value_same(50, 51))
-  expect_false(.import_value_same("a", "b"))
-  expect_false(.import_value_same(NULL, 1))
-  expect_true(.import_value_same(NULL, NULL))
-})
-
 # The deferred-retry mechanism end to end. The proxy session records what the
 # retry pushes without replacing the test session itself.
 .import_e2e_server <- function(sent) {
@@ -540,6 +594,18 @@ test_that("already-in-force values are not counted as changes", {
                        run_triggers = list(), step_results = list())
   }
 }
+
+test_that("configuration exports retain the session analysis seed", {
+  testServer(function(input, output, session) {
+    export_menu_server(input, output, session, seed = 123L)
+  }, {
+    session$userData$wise_analysis_seed <- 907L
+    file <- output$export_config
+    cfg <- jsonlite::read_json(file, simplifyVector = FALSE)
+    expect_equal(cfg$random_seed, 907L)
+    expect_equal(cfg$wiseapp_config_version, 1L)
+  })
+})
 
 .import_file <- function(inputs) {
   # Plain tempfile: withr::local_tempfile() would delete the file when this
@@ -614,7 +680,6 @@ test_that("deferred settings that never appear are abandoned audibly", {
 
 
 test_that("the archive writer falls back when no system zip is present", {
-  skip_if_not_installed("zip")
   d <- withr::local_tempdir()
   writeLines("a,b\n1,2", file.path(d, "x.csv"))
   zf <- withr::local_tempfile(fileext = ".zip")
@@ -695,7 +760,6 @@ test_that("list-column numbers keep full double precision in the CSV (UI-55)", {
 })
 
 test_that("a table that cannot be written is skipped, not fatal", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   hostile <- item("hostile", fun = function() {
     d <- data.frame(x = 1); d$fn <- list(mean); d
   })
@@ -708,12 +772,10 @@ test_that("a table that cannot be written is skipped, not fatal", {
 })
 
 test_that("a figure whose builder throws is skipped and named in the README", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
-  skip_if_not_installed("ggplot2")
   items <- list(
     item("good_fig", kind = "figure",
-         fun = function() ggplot2::ggplot(mtcars, ggplot2::aes(wt, mpg)) +
-           ggplot2::geom_point()),
+         fun = function() echarts4r::e_charts(mtcars, wt) |>
+           echarts4r::e_scatter(mpg)),
     item("bad_fig", kind = "figure", label = "Broken figure",
          fun = function() stop("plot builder failed"))
   )
@@ -732,7 +794,6 @@ test_that("a figure whose builder throws is skipped and named in the README", {
 })
 
 test_that("a real list-column table round-trips through a bundle", {
-  skip_if_not(nzchar(Sys.which("zip")), "system zip not available")
   sw <- data.frame(name = "tx", label = "Max temp", stringsAsFactors = FALSE)
   sw$polynomial <- list(c(1, 2))
   zf <- withr::local_tempfile(fileext = ".zip")
@@ -745,4 +806,50 @@ test_that("a real list-column table round-trips through a bundle", {
   expect_length(csv, 1L)
   back <- utils::read.csv(csv, stringsAsFactors = FALSE)
   expect_equal(back$polynomial, "1; 2")
+})
+
+test_that("echarts PNG export removes its temporary page and _files dir (R2-SEC-05)", {
+  seen <- NULL
+  local_mocked_bindings(saveWidget = function(widget, file, ...) {
+    seen <<- file
+    writeLines("<html></html>", file)
+    libdir <- paste0(tools::file_path_sans_ext(file), "_files")
+    dir.create(libdir)
+    writeLines("x", file.path(libdir, "dep.js"))
+  }, .package = "htmlwidgets")
+  fail_shot <- FALSE
+  local_mocked_bindings(webshot = function(url, file, ...) {
+    if (fail_shot) stop("browser crashed")
+    writeLines("png", file)
+  }, .package = "webshot2")
+  out <- withr::local_tempfile(fileext = ".png")
+  item <- list(width = 4, height = 3)
+  for (fail_shot in c(FALSE, TRUE)) {
+    res <- .export_write_echarts(list(x = list(opts = list())), out, item)
+    expect_identical(res$status, if (fail_shot) "error" else "ok")
+    expect_false(file.exists(seen))
+    expect_false(dir.exists(paste0(tools::file_path_sans_ext(seen), "_files")))
+  }
+})
+
+test_that("the seasonal forecast inputs travel in an exported configuration", {
+  ids <- paste0("step2-weathersim-", c("fc_include", "fc_run", "fc_start", "fc_len"))
+  expect_true(all(.export_keep_input(ids)))
+  expect_false(.export_keep_input("step2-weathersim-forecast_toggle"))
+
+  sent <- list()
+  session <- list(
+    input = list(),
+    sendInputMessage = function(id, msg) sent[[id]] <<- msg$value
+  )
+  cfg <- list(inputs = list(
+    "step2-weathersim-fc_include" = TRUE, "step2-weathersim-fc_run" = "2026-10",
+    "step2-weathersim-fc_start" = "2027-01", "step2-weathersim-fc_len" = "3"
+  ))
+  res <- wise_config_apply(cfg, session, existing = ids)
+  expect_setequal(res$applied, ids)
+  expect_identical(sent[["step2-weathersim-fc_start"]], "2027-01")
+  # Controls that are not rendered yet (no forecast run) are queued for retry.
+  res <- wise_config_apply(cfg, session, existing = "step2-weathersim-fc_include")
+  expect_setequal(res$pending, setdiff(ids, "step2-weathersim-fc_include"))
 })

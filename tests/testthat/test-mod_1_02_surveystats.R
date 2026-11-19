@@ -260,6 +260,64 @@ test_that("density cells share mapped-location counts with the payload", {
   )
 })
 
+test_that("PERF-43: wave toggles re-slice the density prep without recompute", {
+  prep_calls <- 0L
+  local_mocked_bindings(
+    .density_wave_summary = function(cell_map, survey_data) {
+      prep_calls <<- prep_calls + 1L
+      list(
+        cells = data.frame(
+          wave = "TST|2021|SRV", h3 = c("a", "b"), n_units = c(2.5, 0.5)
+        ),
+        n_locations = stats::setNames(2L, "TST|2021|SRV")
+      )
+    }
+  )
+
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id                = "ss",
+      connection_params = shiny::reactiveVal(list()),
+      variable_list     = shiny::reactiveVal(data.frame()),
+      selected_surveys  = shiny::reactiveVal(make_selected_surveys_fixture()),
+      cpi_ppp            = shiny::reactiveVal(data.frame()),
+      tabset_id         = "step1_tabs"
+    ),
+    {
+      survey_data(data.frame(
+        code = "TST", year = "2021", survname = "SRV",
+        loc_id = c("L1", "L1", "L2")
+      ))
+      cell_data(list(
+        geom = data.frame(
+          h3 = c("a", "b"), geom = c("{a}", "{b}"),
+          xmin = 0, ymin = 0, xmax = 1, ymax = 1
+        ),
+        map = data.frame(
+          code = "TST", year = 2021L, survname = "SRV",
+          loc_id = "L1", h3 = "a", pop_2020 = 1
+        )
+      ))
+
+      d_all <- density_cells("all")
+      expect_equal(d_all$cells$h3, c("a", "b"))
+      expect_equal(d_all$n_locations, 2L)
+      d_wave <- density_cells("TST|2021|SRV")
+      expect_equal(d_wave$cells$n_units, c(2.5, 0.5))
+      # The prep ran once for both reads.
+      expect_equal(prep_calls, 1L)
+
+      # A new published load invalidates the prep (survey_data value change).
+      sd2 <- survey_data()
+      sd2$probe <- 1L
+      publish_new_survey_data(sd2)
+      density_cells("all")
+      expect_equal(prep_calls, 2L)
+    }
+  )
+})
+
 test_that("an unmet survey prerequisite releases the load guard", {
   selected <- shiny::reactiveVal(NULL)
   shiny::testServer(
@@ -286,4 +344,109 @@ test_that("an unmet survey prerequisite releases the load guard", {
       expect_equal(load_done(), 2L)
     }
   )
+})
+
+test_that("CR-BUG-16: panel join reports unmatched records and rejects duplicates", {
+  notes <- character(0)
+  panel <- data.frame(
+    code = "TST", year = "2021", survname = "SRV", loc_id = c("L1", "L2"),
+    loc_id_panel = c("P1", "P2"), stringsAsFactors = FALSE
+  )
+  local_mocked_bindings(
+    load_data = function(fnames, ...) {
+      if (any(grepl("/h3/", fnames))) {
+        return(data.frame(
+          code = "TST", year = "2021", survname = "SRV",
+          loc_id = c("L1", "L2", "L3"), h3 = "x", pop_2020 = 1,
+          stringsAsFactors = FALSE
+        ))
+      }
+      make_raw_survey()
+    },
+    .duck_load_ext = function(...) stop("no spatial in tests"),
+    loc_panel = function(...) panel,
+    collect_deterministic = function(data, keys = NULL) as.data.frame(data)
+  )
+  local_mocked_bindings(
+    showNotification = function(ui, ...) {
+      notes <<- c(notes, paste(as.character(ui), collapse = " "))
+      invisible("id")
+    },
+    .package = "shiny"
+  )
+
+  shiny::testServer(
+    mod_1_02_surveystats_server,
+    args = list(
+      id                = "ss",
+      connection_params = shiny::reactiveVal(list()),
+      variable_list     = shiny::reactiveVal(
+        data.frame(name = character(0), units = character(0))
+      ),
+      selected_surveys  = shiny::reactiveVal(make_selected_surveys_fixture()),
+      cpi_ppp           = shiny::reactiveVal(data.frame()),
+      tabset_id         = "step1_tabs"
+    ),
+    {
+      session$setInputs(survey_stats = 0L)
+      session$setInputs(survey_stats = 1L)
+      session$flushReact()
+      sd <- survey_data()
+      expect_equal(nrow(sd), 3L)
+      expect_equal(sum(is.na(sd$loc_id_panel)), 1L)
+      expect_true(any(grepl(
+        "1 of 3 survey records have no location data", notes, fixed = TRUE
+      )))
+
+      # A location mapped to two panel ids errors instead of duplicating rows.
+      panel <<- rbind(panel, transform(panel[1, ], loc_id_panel = "P9"))
+      notes <<- character(0)
+      session$setInputs(survey_stats = 2L)
+      session$flushReact()
+      expect_equal(nrow(survey_data()), 3L)
+      expect_true(any(grepl("Location-level uncertainty", notes, fixed = TRUE)))
+    }
+  )
+})
+
+test_that("R2-PERF-14: H3 cell bbox needs only the h3 extension and matches the boundary", {
+  con <- DBI::dbConnect(duckdb::duckdb())
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  h3_ok <- tryCatch({
+    tryCatch(DBI::dbExecute(con, "LOAD h3"), error = function(e) {
+      DBI::dbExecute(con, "INSTALL h3 FROM community; LOAD h3;")
+    })
+    TRUE
+  }, error = function(e) FALSE)
+  skip_if_not(h3_ok, "DuckDB h3 extension unavailable")
+
+  # Cells north and south of the equator, east and west of Greenwich, near
+  # the equator and at a high latitude, at several resolutions.
+  DBI::dbExecute(con, "
+    CREATE TEMP TABLE cells AS
+    SELECT h3_latlng_to_cell_string(lat, lng, res) AS h3
+    FROM (VALUES (12.3, -1.5, 6), (35.7, 51.4, 5), (-33.9, 18.4, 7),
+                 (0.01, -78.5, 4), (64.1, -21.9, 6)) t(lat, lng, res)")
+  got <- dplyr::tbl(con, "cells") |> .h3_cell_bbox() |> dplyr::collect()
+  expect_named(got, c("h3", "xmin", "ymin", "xmax", "ymax"))
+  expect_equal(nrow(got), 5L)
+  loaded <- DBI::dbGetQuery(
+    con, "SELECT extension_name FROM duckdb_extensions() WHERE loaded"
+  )$extension_name
+  expect_false("spatial" %in% loaded)
+
+  # Reference: min/max of the boundary vertices parsed in R.
+  wkt <- DBI::dbGetQuery(
+    con, "SELECT h3, h3_cell_to_boundary_wkt(h3) AS wkt FROM cells"
+  )
+  for (i in seq_len(nrow(wkt))) {
+    xy <- matrix(as.numeric(unlist(strsplit(
+      gsub("POLYGON \\(\\(|\\)\\)", "", wkt$wkt[[i]]), "[ ,]+"
+    ))), ncol = 2L, byrow = TRUE)
+    row <- got[got$h3 == wkt$h3[[i]], ]
+    expect_identical(
+      c(row$xmin, row$ymin, row$xmax, row$ymax),
+      c(min(xy[, 1]), min(xy[, 2]), max(xy[, 1]), max(xy[, 2]))
+    )
+  }
 })

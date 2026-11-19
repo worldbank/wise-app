@@ -29,21 +29,7 @@ test_that("stale bundle items are recorded as skipped, not exported", {
   expect_false(any(grepl("stale_table", manifest$file)))
 })
 
-test_that("direct Results CSV handlers suppress stale writes", {
-  stale <- shiny::reactiveVal(FALSE)
-  parts <- function(handler) environment(environment(handler)$renderFunc)
-  target <- withr::local_tempfile(fileext = ".csv")
-  handler <- csv_download_handler("policy_outcome_thresholds",
-                                  function() data.frame(value = 99), stale = stale)
-  parts(handler)$content(target)
-  expect_equal(utils::read.csv(target)$value, 99)
-  stale(TRUE)
-  expect_error(parts(handler)$content(target), "stale")
-  expect_false(file.exists(target))
-})
-
 test_that("Step 3 preview labels and calculations use one debounced snapshot", {
-  skip_if_not_installed("shiny")
   svy <- data.frame(welfare = 1:4, weight = 1)
   hs <- shiny::reactiveVal(list(svy = svy, so = list(name = "welfare")))
   testServer(mod_3_01_sp_server, args = list(
@@ -51,12 +37,16 @@ test_that("Step 3 preview labels and calculations use one debounced snapshot", {
     variable_list = shiny::reactiveVal(data.frame()),
     analysis_unit = shiny::reactiveVal("hh"), hist_sim = hs
   ), {
+    session$userData$wise_analysis_seed <- 12345L
     session$setInputs(sp_type = "shock", transfer_amount_usd = 10)
     session$elapse(300); session$flushReact()
     snap <- sp_preview_inputs(); reach <- sp_reach()
-    expect_identical(reach$preview_spec, snap$spec)
-    expect_identical(reach$preview_analysis_unit, snap$analysis_unit)
     expect_identical(snap$display_type, "shock")
+    expect_identical(reach$on_baseline, TRUE)
+    expect_identical(
+      reach[names(reach) != "on_baseline"],
+      .sp_scenario_reach(svy, sp_scenario_spec(), "hh", seed = 12345L)
+    )
   })
 })
 

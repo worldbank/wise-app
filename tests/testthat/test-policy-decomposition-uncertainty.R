@@ -73,7 +73,7 @@ test_that("policy decomposition derives a missing poor outcome", {
 })
 
 test_that("variance additivity: Var(total) == Var(main) + Var(res1) + Var(res2)", {
-  # Under the diagonal-Σ approximation documented in fct_policy_decompose.R,
+  # Under the diagonal-Σ approximation documented in fct_policy_decomp.R,
   # channels are independent and variances add exactly.
   fx <- make_ols_fixture()
   r  <- wiseapp::decompose_policy_effect(fx$svy_base, fx$svy_policy,
@@ -117,34 +117,7 @@ test_that("aggregated total SE remains consistent under household weighting", {
   expect_lt(abs(v_total - v_components) / pmax(v_total, 1e-12), 1e-10)
 })
 
-test_that("headline decomposition reconciles level plus resilience to total", {
-  fx <- make_ols_fixture()
-  r <- wiseapp::decompose_policy_effect(fx$svy_base, fx$svy_policy,
-                                         fx$model_fit, fx$so)
-  s <- wiseapp:::decomposition_summary_data(r, is_rif = FALSE)
-  rec <- wiseapp:::decomposition_reconciliation(s)
-  expect_identical(rec$status, "reconciled")
-  expect_lt(abs(rec$residual), 1e-10)
-  expect_equal(s$channel[s$channel_id == "resilience"], "Resilience")
-})
-
-test_that("empty headline decomposition keeps the render schema", {
-  s <- wiseapp:::decomposition_summary_data(NULL, is_rif = FALSE)
-
-  expect_equal(nrow(s), 0L)
-  expect_true(all(c("channel_id", "channel", "log_points", "percent",
-                    "share_of_total") %in% names(s)))
-  expect_equal(wiseapp:::decomposition_reconciliation(s)$status, "unavailable")
-})
-
-test_that("decomposition explanation distinguishes OLS and RIF", {
-  expect_match(wiseapp:::decomposition_explanation(FALSE)$text,
-               "no repositioning")
-  expect_match(wiseapp:::decomposition_explanation(TRUE)$text,
-               "repositioning")
-})
-
-test_that("decile decomposition plot uses engine-specific channels", {
+test_that("decile decomposition data uses engine-specific channels", {
   fx <- make_ols_fixture()
   r <- wiseapp::decompose_policy_effect(fx$svy_base, fx$svy_policy,
                                          fx$model_fit, fx$so)
@@ -154,11 +127,6 @@ test_that("decile decomposition plot uses engine-specific channels", {
   expect_true(all(c("cash_transfer_percent", "covariate_shift_percent",
                     "interaction_percent",
                     "repositioning_percent") %in% names(tbl)))
-  p <- wiseapp:::plot_decomposition_channels_by_decile(tbl, is_rif = FALSE)
-  expect_s3_class(p, "ggplot")
-  expect_false("Resilience - Repositioning effect" %in% as.character(p$data$channel))
-  expect_true(all(c("Main effect (covariate shift)",
-                    "Resilience - Interaction effect") %in% as.character(p$data$channel)))
 })
 
 test_that("decomposition module renders core plots for OLS and RIF schemas", {
@@ -191,12 +159,10 @@ test_that("decomposition module renders core plots for OLS and RIF schemas", {
       wiseapp:::mod_3_09_decomposition_server,
       args = list(
         id = "decomposition",
-        decomp_result = shiny::reactiveVal(result),
         decomp_scenarios = shiny::reactiveVal(scenarios),
         model_fit = shiny::reactiveVal(model),
         so = shiny::reactiveVal(fx$so),
-        baseline_svy = shiny::reactiveVal(fx$svy_base),
-        policy_svy = shiny::reactiveVal(fx$svy_policy)
+        baseline_svy = shiny::reactiveVal(fx$svy_base)
       ),
       {
         session$flushReact()
@@ -216,6 +182,56 @@ test_that("decomposition module renders core plots for OLS and RIF schemas", {
   rif$delta_res1 <- rep(0.002, nrow(rif))
   rif$delta_total <- rif$delta_main + rif$delta_res1 + rif$delta_res2
   check_module(rif, "rif")
+})
+
+test_that("metric decomposition is kept separate from Step 3 plots", {
+  summary <- data.frame(scenario = "SSP2-4.5", baseline = .32, after_main = .30,
+    after_repositioning = .29, policy = .28, main = -.02, repositioning = -.01,
+    interaction = -.01, resilience = -.02, total = -.04, n_models = 2L,
+    n_model_years = 60L, n_dropped_model_years = 0L, center_method = "equal_model_mean",
+    scope = "production_prediction_rows")
+  annual <- data.frame(scenario = "SSP2-4.5", member = "model-a", model_id = "model-a",
+    sim_year = 2020L, baseline = .31, after_main = .30, after_repositioning = .29,
+    policy = .28, main = -.01, repositioning = -.01, interaction = -.01,
+    resilience = -.02, total = -.03, n_prediction_rows = 100L, n_retained_rows = 100L,
+    n_excluded_rows = 0L, parity_error = 0, requested_residuals = "original",
+    effective_residuals = "none", scope = "production_prediction_rows")
+  tails <- data.frame(scenario = "SSP2-4.5", return_period = 20,
+    scope = "baseline_anchored", adverse_basis = "baseline_selected_metric", status = "ok", reason = "",
+    baseline = .1, after_main = .09, after_repositioning = .08, policy = .07,
+    main = -.01, repositioning = -.01, interaction = -.01, resilience = -.02,
+    total = -.03, probability = .05, n_models = 2L, n_model_years = 60L,
+    center_method = "equal_model_mean", ensemble_center = "equal_model_mean",
+    quantile_method = "weibull_rank_n_plus_1_p", tie_method = "value_then_sim_year_ascending",
+    year_lo = 2001, year_hi = 2002, rank_lo = 1L, rank_hi = 2L, weight_lo = .5, weight_hi = .5)
+  mechanisms <- data.frame(scenario = "SSP2-4.5", hazard = "temp", category = NA_character_,
+    contrast = "continuous_coefficient_change", repositioning = .02, interaction = -.01,
+    positive_repositioning_share = .6, negative_repositioning_share = .4,
+    positive_interaction_share = .2, negative_interaction_share = .8, tau_pre = .4,
+    tau_post = .6, model_units = "log outcome units", weather_units = "C", n_models = 2L)
+  result <- list(status = "ok", reason = NULL, summary = summary, return_period = tails,
+    annual = annual,
+    mechanisms = list(summary = mechanisms, annual = transform(mechanisms, sim_year = 2020L,
+      model_id = "model-a"), repositioning_status = "modeled",
+      interaction_status = "included", fitted_curve = NULL),
+    metadata = list(method = "headcount_ratio", label = "Poverty rate", format = "percent",
+      display_multiplier = 100, change_unit = "pp", level_unit = "percent",
+      component_order = "main -> repositioning -> interaction", correction_version = "row_aligned_annual_v1",
+      focus_scenario = "SSP2-4.5", repositioning_modeled = TRUE, interaction_included = TRUE,
+      population_scope = "fixed survey rows", weight_interpretation = "survey weighted",
+      native_unit = "fraction", threshold_kind = "selected poverty line", threshold_value = 3,
+      threshold_unit = "selected PPP units (2021)", exposure_source = "step2_prediction_row_mapping",
+      run_identity = "run-1", requested_residuals = "original", effective_residuals = "none",
+      uncertainty = "central_only"),
+    scenarios = list("SSP2-4.5" = list(status = "ok", summary = summary,
+      annual = annual, return_period = tails, adverse_support = data.frame(), adverse_by_model = data.frame(),
+      mechanisms = transform(mechanisms, sim_year = 2020L, model_id = "model-a"))),
+    adverse_support = data.frame(), adverse_by_model = data.frame())
+  html <- htmltools::renderTags(mod_3_09_decomposition_ui("decomposition"))$html
+  expect_false(grepl("Technical Decomposition on the Model Scale", html, fixed = TRUE))
+  expect_false(grepl("How the Policy Changes Weather Sensitivity", html, fixed = TRUE))
+  expect_match(html, "What drives the total policy effect?", fixed = TRUE)
+  expect_match(html, "Who gains, and through which channel?", fixed = TRUE)
 })
 
 test_that("Module 3 diagnostics formatters are callable", {
@@ -250,7 +266,7 @@ test_that("Module 3 diagnostics tables render with policy data", {
   )
 })
 
-test_that("decomposition UI omits redundant cards and tables", {
+test_that("decomposition UI provides collapsible data tables below charts", {
   html <- as.character(htmltools::renderTags(
     wiseapp:::mod_3_09_decomposition_ui("decomposition")
   )$html)
@@ -259,75 +275,15 @@ test_that("decomposition UI omits redundant cards and tables", {
   expect_false(grepl("Paired policy incidence", html, fixed = TRUE))
   expect_false(grepl("Hierarchical channel details", html, fixed = TRUE))
   expect_false(grepl("scenario_range_table", html, fixed = TRUE))
-  expect_true(grepl("Weather-year basis", html, fixed = TRUE))
-})
-
-test_that("technical decomposition table is concise and human readable", {
-  fx <- make_ols_fixture()
-  result <- wiseapp::decompose_policy_effect(
-    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so
-  )
-  tbl <- wiseapp:::.build_decomp_table(result, is_rif = FALSE)
-
-  expect_identical(
-    names(tbl),
-    c("Effect component", "Mean effect (%)", "Coefficient SE (%)")
-  )
-  expect_true(all(c("Total effect",
-                    "Main effect (direct transfer and covariate shift)",
-                    "Direct transfer component",
-                    "Weather-policy interaction") %in% tbl$`Effect component`))
-  expect_false("Repositioning effect" %in% tbl$`Effect component`)
-
-  deciles <- wiseapp:::decomposition_channels_by_decile(
-    result, fx$svy_base, "welfare", is_rif = FALSE
-  )
-  exported <- wiseapp:::decomposition_decile_export(deciles, is_rif = FALSE)
-  expect_false(any(grepl("_", names(exported), fixed = TRUE)))
-  expect_false("Repositioning effect (%)" %in% names(exported))
-})
-
-test_that("technical decomposition table includes adverse weather bases", {
-  fx <- make_ols_fixture()
-  result <- wiseapp::decompose_policy_effect(
-    fx$svy_base, fx$svy_policy, fx$model_fit, fx$so
-  )
-  tbl <- wiseapp:::.build_decomp_table_by_basis(
-    list(
-      `Mean weather` = result,
-      `Adverse 1-in-5` = result,
-      `Adverse 1-in-10` = result,
-      `Adverse 1-in-20` = result
-    ),
-    is_rif = FALSE
-  )
-  expect_identical(
-    names(tbl),
-    c("Effect component", "Mean weather (%)", "Coefficient SE (%)",
-      "Adverse 1-in-5 (%)", "Adverse 1-in-10 (%)", "Adverse 1-in-20 (%)")
-  )
-  expect_true(all(c("Total effect", "Weather-policy interaction") %in% tbl$`Effect component`))
-})
-
-test_that("technical decomposition table handles unavailable weather bases", {
-  expect_identical(
-    wiseapp:::.build_decomp_table_by_basis(list(NULL, NULL), is_rif = FALSE),
-    data.frame()
-  )
-})
-
-test_that("weather basis selects adverse years for future decompositions", {
-  sc <- data.frame(
-    scenario = rep("SSP3-7.0 / 2025-2035", 3),
-    sim_year = 2025:2027,
-    delta_total = c(0.10, 0.30, 0.20),
-    weight = 1
-  )
-
-  selected <- wiseapp:::select_decomp_weather_basis(
-    sc, basis = "adverse_10", so = list(name = "welfare", type = "numeric")
-  )
-  expect_identical(selected$sim_year, 2025L)
+  expect_true(grepl("What drives the total policy effect?", html, fixed = TRUE))
+  expect_true(grepl("Who gains, and through which channel?", html, fixed = TRUE))
+  expect_true(grepl("headline_weather_basis_ui", html, fixed = TRUE))
+  expect_true(grepl("decile_weather_basis_ui", html, fixed = TRUE))
+  expect_true(grepl("Mean policy effect by baseline welfare decile", html, fixed = TRUE))
+  expect_true(grepl("View decomposition data", html, fixed = TRUE))
+  expect_true(grepl("headline_decomp_table", html, fixed = TRUE))
+  expect_true(grepl("decile_decomp_table", html, fixed = TRUE))
+  expect_false(grepl("decomp_summary_table", html, fixed = TRUE))
 })
 
 test_that("one decomposition context preserves central values and schemas", {
@@ -418,6 +374,28 @@ test_that("RIF context parity caches channels and rejects stale runs", {
   )
 })
 
+test_that("run-owned context is isolated from data.table mutation; public reuse stays strict", {
+  skip_if_not_installed("data.table")
+  fx <- make_ols_fixture(N = 120)
+  baseline <- data.table::as.data.table(data.table::copy(fx$svy_base))
+  policy <- data.table::as.data.table(data.table::copy(fx$svy_policy))
+  context <- wiseapp:::.build_decomposition_context(
+    baseline, policy, fx$model_fit, fx$so, run_identity = "owned-data-table-run"
+  )
+
+  data.table::set(baseline, i = 1L, j = "welfare", value = baseline$welfare[[1L]] + 10)
+  data.table::set(policy, i = 1L, j = "transfer", value = 99)
+
+  expect_equal(as.numeric(context$svy_baseline$welfare), fx$svy_base$welfare, tolerance = 0)
+  expect_error(
+    wiseapp::decompose_policy_effect(
+      baseline, policy, fx$model_fit, fx$so, context = context,
+      run_identity = "owned-data-table-run"
+    ),
+    "Incompatible or stale"
+  )
+})
+
 test_that("decomposition summaries honor fixed cached deciles", {
   fx <- make_ols_fixture(N = 40)
   result <- wiseapp::decompose_policy_effect(
@@ -432,13 +410,10 @@ test_that("decomposition summaries honor fixed cached deciles", {
 })
 
 test_that("failed publication preserves the previous result and context", {
-  old <- list(result = data.frame(id = 1L), context = "run-1")
+  old <- list(context = "run-1")
+  expect_identical(wiseapp:::.publish_decomposition_bundle(old, "run-2", FALSE), old)
   expect_identical(
-    wiseapp:::.publish_decomposition_bundle(old, data.frame(id = 2L), "run-2", FALSE),
-    old
-  )
-  expect_identical(
-    wiseapp:::.publish_decomposition_bundle(old, data.frame(id = 2L), "run-2", TRUE),
-    list(result = data.frame(id = 2L), context = "run-2")
+    wiseapp:::.publish_decomposition_bundle(old, "run-2", TRUE),
+    list(context = "run-2")
   )
 })

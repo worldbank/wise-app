@@ -5,80 +5,183 @@
 # callers: ordinary-object inputs, explicit RNG, process-local setup, stage
 # events, validation, and immutable run metadata.
 
+# Slim model snapshot for the Step 2 worker (R2-PERF-02) ----
+#
+# The worker only predicts with `fit3`, builds residuals from `train_data`, and
+# signs the run from `.snap$model`. Everything else on the live model fit
+# (`fit1`, `fit2`, the fit-time survey snapshot) is dropped, and the
+# environments captured by fixest fits (`call_env` holds the whole fitting
+# frame, about 70 MB per fit at BFA scale) are replaced by the global
+# environment. Predictions, fitted values, residuals and `vcov()` do not use
+# them; `model.matrix()` on a stripped fit does, which is why the worker never
+# calls it. Applied to a copy: the caller's model is untouched.
+
+.step2_strip_environments <- function(x, depth = 0L) {
+  if (is.environment(x)) {
+    return(globalenv())
+  }
+  if (inherits(x, "formula")) {
+    environment(x) <- globalenv()
+    return(x)
+  }
+  if (is.call(x)) {
+    # Fit calls (`fit$call`) hold evaluated arguments, such as a `cluster`
+    # formula carrying the fitting frame.
+    for (i in seq_along(x)) {
+      el <- x[[i]]
+      if (is.environment(el) || inherits(el, "formula")) {
+        x[[i]] <- .step2_strip_environments(el, depth + 1L)
+      }
+    }
+    return(x)
+  }
+  if (is.name(x) || is.function(x)) {
+    return(x)
+  }
+  if (is.list(x) && !is.data.frame(x) && depth < 6L) {
+    for (i in seq_along(x)) {
+      if (!is.null(x[[i]])) x[[i]] <- .step2_strip_environments(x[[i]], depth + 1L)
+    }
+  }
+  if (!is.null(attr(x, ".Environment"))) attr(x, ".Environment") <- globalenv()
+  x
+}
+
+# Seed of the Step 2 run a `hist_sim` came from (stamped by step2_compute());
+# the default seed for results without one.
+.step2_run_seed <- function(hs) {
+  seed <- suppressWarnings(as.integer(hs$seed %||% NA_integer_)[1L])
+  if (is.na(seed)) WISEAPP_DEFAULT_SEED else seed
+}
+
+.step2_is_fixest_fit <- function(fit) {
+  inherits(fit, "fixest") ||
+    (is.list(fit) && length(fit) > 0L && all(vapply(fit, inherits, logical(1), "fixest")))
+}
+
+step2_slim_model_fit <- function(mf) {
+  keep <- intersect(
+    c("engine", "weather_terms", "interaction_terms", "fe_terms", "fit3",
+      "formulas", "train_data", "y_var", "model_type", "taus", "rif_grid",
+      "fallbacks", ".sig"),
+    names(mf)
+  )
+  out <- mf[keep]
+  if (!is.null(mf$.snap$model)) out$.snap <- list(model = mf$.snap$model)
+  if (.step2_is_fixest_fit(out$fit3)) {
+    out$fit3 <- .step2_strip_environments(out$fit3)
+  }
+  if (!is.null(out$formulas)) out$formulas <- .step2_strip_environments(out$formulas)
+  out
+}
+
 .step2_compute_required <- c(
   "sw", "so", "svy", "ss", "mf", "cp", "fp_list", "ssps",
   "residuals", "skip_coef_draws", "sim_dates", "perturbation_method",
   "stored_breaks"
 )
 
-.step2_compute_copy <- function(x) {
-  if (is.null(x) || is.atomic(x)) return(x)
-  if (is.data.frame(x)) {
-    out <- lapply(x, .step2_compute_copy)
-    names(out) <- names(x)
-    class(out) <- class(x)
-    row.names(out) <- row.names(x)
-    return(out)
-  }
-  if (is.list(x)) {
-    out <- lapply(x, .step2_compute_copy)
-    names(out) <- names(x)
-    attributes(out) <- attributes(x)
-    return(out)
-  }
-  x
-}
-
 .step2_compute_validate <- function(input) {
   if (!is.list(input) || is.null(names(input))) {
     stop("step2_compute() requires a named ordinary-object input snapshot.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   missing <- setdiff(.step2_compute_required, names(input))
   if (length(missing)) {
     stop("step2_compute() input snapshot is missing: ",
-         paste(missing, collapse = ", "), call. = FALSE)
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
   }
   if (!is.list(input$mf)) stop("step2_compute()$mf must be a list.", call. = FALSE)
   if (!is.list(input$cp) || !validate_connection_params(input$cp)) {
     stop("step2_compute()$cp is not a valid connection parameter list.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!is.data.frame(input$sw) || !"name" %in% names(input$sw)) {
     stop("step2_compute()$sw must be a data frame with a name column.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!is.data.frame(input$so) || !"name" %in% names(input$so) ||
-      length(input$so$name) != 1L) {
+    length(input$so$name) != 1L) {
     stop("step2_compute()$so must contain exactly one outcome name.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!is.data.frame(input$svy)) {
     stop("step2_compute()$svy must be a data frame.", call. = FALSE)
   }
   if (!is.list(input$fp_list) || !is.character(input$ssps) ||
-      !is.character(input$sim_dates)) {
+    !is.character(input$sim_dates)) {
     stop("step2_compute() date and scenario fields have invalid types.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (length(input$fp_list) && any(lengths(input$fp_list) != 2L)) {
     stop("Each step2_compute() future period must contain two dates.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
+  if (!is.null(input$forecast)) {
+    forecast <- input$forecast
+    if (!is.list(forecast) || !is.list(forecast$run) ||
+        is.null(forecast$run$id) || is.null(forecast$run$members) ||
+        length(forecast$run$id) != 1L || is.na(forecast$run$id) ||
+        length(forecast$run$members) < 1L ||
+        length(forecast$start) != 1L ||
+        !grepl("^[0-9]{4}-[0-9]{2}$", as.character(forecast$start)) ||
+        length(forecast$len) != 1L || is.na(as.integer(forecast$len)) ||
+        as.integer(forecast$len) < 1L) {
+      stop("step2_compute()$forecast must contain a run, YYYY-MM start, and positive length.",
+        call. = FALSE
+      )
+    }
+  }
+  if (!is.null(input$forecast) && !all(input$sw$name %in% input$forecast$run$variables)) {
+    stop("step2_compute() selected weather is not covered by the forecast run.", call. = FALSE)
   }
   if (length(input$residuals) != 1L ||
-      !input$residuals %in% c("none", "original", "normal", "resample")) {
+    !input$residuals %in% c("none", "original", "resample")) {
     stop("step2_compute()$residuals is invalid.", call. = FALSE)
   }
   if (length(input$skip_coef_draws) != 1L ||
-      !is.logical(input$skip_coef_draws) || is.na(input$skip_coef_draws)) {
+    !is.logical(input$skip_coef_draws) || is.na(input$skip_coef_draws)) {
     stop("step2_compute()$skip_coef_draws must be one non-missing logical value.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   invisible(TRUE)
 }
 
+# CR-BUG-07: every per-row pipeline field must align with y_point, otherwise
+# the delta-method aggregation silently pairs predictions with the wrong
+# factor-loading rows, weights or households.
+.step2_compute_assert_alignment <- function(pipe) {
+  if (!is.list(pipe) || is.null(pipe$y_point)) return(pipe)
+  n <- length(pipe$y_point)
+  lens <- c(
+    sim_year = length(pipe$sim_year),
+    weight = length(pipe$weight),
+    id_vec = length(pipe$id_vec),
+    svy_row_id = length(pipe$svy_row_id),
+    F_loading = if (is.null(pipe$F_loading)) 0L else NROW(pipe$F_loading)
+  )
+  present <- !vapply(pipe[names(lens)], is.null, logical(1))
+  bad <- present & lens != n
+  if (any(bad)) {
+    stop(sprintf(
+      "Pipeline rows are not aligned with %d predictions: %s.", n,
+      paste(sprintf("%s has %d", names(lens)[bad], lens[bad]), collapse = ", ")
+    ), call. = FALSE)
+  }
+  pipe
+}
+
 .step2_compute_signature <- function(input, seed, run_id) {
-  list(
+  out <- list(
     step = "sim",
     schema = 1L,
     seed = as.integer(seed),
@@ -96,10 +199,41 @@
     perturbation_method = .sig_plain(input$perturbation_method),
     stored_breaks = .sig_plain(input$stored_breaks)
   )
+  if (!is.null(input$forecast)) {
+    forecast <- input$forecast
+    out$forecast <- list(
+      product = forecast$product %||% forecast$run$product %||% "seasonal",
+      run = list(
+        id = forecast$run$id,
+        product = forecast$run$product %||% "seasonal",
+        model_id = forecast$run$model_id %||% NA_character_,
+        init = forecast$run$init %||% as.Date(NA),
+        observed_through = forecast$run$observed_through %||% as.Date(NA),
+        n_leads = forecast$run$n_leads %||% NA_integer_,
+        members = forecast$run$members,
+        variables = forecast$run$variables %||% character(0),
+        file = forecast$run$file %||% "",
+        adjustment = forecast$run$adjustment %||% "",
+        data_sha256 = forecast$run$data_sha256 %||% "",
+        manifest_sha256 = forecast$run$manifest_sha256 %||% ""
+      ),
+      start = forecast$start,
+      len = as.integer(forecast$len),
+      run_identity = .sig_plain(list(
+        id = forecast$run$id, data_sha256 = forecast$run$data_sha256 %||% "",
+        manifest_sha256 = forecast$run$manifest_sha256 %||% "",
+        file = forecast$run$file %||% "", members = forecast$run$members,
+        released = forecast$run$released %||% as.Date(NA),
+        next_release = forecast$run$next_release %||% as.Date(NA)
+      ))
+    )
+  }
+  out
 }
 
 .step2_compute_event <- function(events, stage, status, started,
-                                 detail = NULL, error = NULL) {
+                                 detail = NULL, error = NULL,
+                                 fields = NULL) {
   event <- list(
     stage = stage,
     status = status,
@@ -107,14 +241,16 @@
   )
   if (!is.null(detail)) event$detail <- as.character(detail)
   if (!is.null(error)) event$error <- conditionMessage(error)
+  if (is.list(fields) && length(fields)) event <- c(event, fields)
   events[[length(events) + 1L]] <- event
+  if (length(events) > 256L) events <- events[(length(events) - 255L):length(events)]
   events
 }
 
 .step2_compute_init_process <- function(input, cache_dir = NULL) {
   .duck_con()
   if (!is.null(cache_dir)) {
-    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE, mode = "0700")
     Sys.setenv(
       WISEAPP_WEATHER_CACHE_DIR = normalizePath(cache_dir, mustWork = FALSE),
       WISEAPP_WEATHER_CACHE_DISABLE = "0"
@@ -129,14 +265,29 @@
 #' Execute the pure serial Step 2 computation boundary
 #'
 #' @param input Named ordinary-object snapshot accepted by
-#'   \\code{fct_run_simulation()}. It must contain the fields validated by
-#'   \\code{step2_compute()}.
+#'   `fct_run_simulation()`. It must contain the fields validated by
+#'   `step2_compute()`.
 #' @param seed Integer base seed. RNG state is set inside the call and restored
 #'   before return.
 #' @param run_id Optional stable caller/run identifier.
 #' @param event_fn Function receiving one structured stage-event list.
+#' @param preview_fn Optional function receiving the reduced historical mean
+#'   summary before future processing.
+#' @param partial_fn Optional function receiving one display-ready aggregated
+#'   table (schema 1 list) for the historical key and each completed group.
+#'   The snapshot may carry `display = list(method, pov_line, bandwidth_p0)`.
+#' @param checkpoint_fn Optional cooperative cancellation checkpoint function.
 #' @param cache_dir Optional process/run-scoped weather-cache directory.
 #' @param weather_fn,pipeline_fn Injectable serial reference functions.
+#' @param weather_storage `"memory"` (default) or `"reference"`; reference mode
+#'   keeps future member weather in a run-scoped store and resolves it at
+#'   consumer boundaries (see `fct_run_simulation()`).
+#' @param weather_store_root Directory for the reference weather store; used
+#'   only when `weather_storage = "reference"`.
+#' @param weather_collect Future-weather collection strategy passed to
+#'   `get_weather()`: `"fast"` (default) or `"bounded"`.
+#' @param weather_threads DuckDB weather-query thread mode passed to
+#'   `get_weather()`: `"auto"` (default), `"1"` or `"2"`.
 #' @return A list with `result`, `signature`, `run`, and `events`.
 #' @export
 step2_compute <- function(input,
@@ -144,27 +295,59 @@ step2_compute <- function(input,
                           run_id = NULL,
                           event_fn = function(event) invisible(NULL),
                           cache_dir = NULL,
+                          weather_storage = c("memory", "reference"),
+                          weather_store_root = NULL,
+                          weather_collect = c("fast", "bounded"),
+                          weather_threads = c("auto", "1", "2"),
                           weather_fn = get_weather,
-                          pipeline_fn = run_sim_pipeline) {
+                          pipeline_fn = run_sim_pipeline,
+                          preview_fn = NULL,
+                          partial_fn = NULL,
+                          checkpoint_fn = NULL) {
   .step2_compute_validate(input)
+  weather_storage <- match.arg(weather_storage)
+  weather_collect <- match.arg(weather_collect)
+  weather_threads <- match.arg(weather_threads)
+  propagate_all_covariate_uncertainty <-
+    isTRUE(input$propagate_all_covariate_uncertainty)
+  fit_multi <- input$fit_multi %||% NULL
+  taus <- input$taus %||% NULL
+  weather_cols <- input$weather_cols %||% NULL
   seed <- as.integer(seed)[1L]
   if (is.na(seed)) stop("step2_compute()$seed must be an integer.", call. = FALSE)
   run_id <- as.character(run_id %||% paste0("step2-", .provenance_digest(
     list(seed = seed, now = format(Sys.time(), "%Y%m%dT%H%M%OS3Z"))
   )))[1L]
-  snapshot <- .step2_compute_copy(input)
+  snapshot <- input
   signature <- .step2_compute_signature(snapshot, seed, run_id)
+  simulation_args <- snapshot
   started <- proc.time()[["elapsed"]]
   events <- list()
-  emit <- function(stage, status, detail = NULL, error = NULL) {
-    events <<- .step2_compute_event(events, stage, status, started, detail, error)
-    try(event_fn(events[[length(events)]]), silent = TRUE)
+  emit <- function(stage, status, detail = NULL, error = NULL, fields = NULL) {
+    events <<- .step2_compute_event(
+      events, stage, status, started, detail, error, fields
+    )
+    tryCatch(
+      event_fn(events[[length(events)]]),
+      error = function(e) invisible(NULL)
+    )
+    invisible(NULL)
+  }
+  checkpoint_wrapper <- function(event) {
+    events <<- .step2_compute_event(
+      events, event$stage, "checkpoint", started,
+      fields = event[setdiff(names(event), "stage")]
+    )
+    tryCatch(event_fn(events[[length(events)]]), error = function(e) invisible(NULL))
+    if (is.function(checkpoint_fn)) checkpoint_fn(event)
     invisible(NULL)
   }
 
   old_seed <- if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
     get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  } else NULL
+  } else {
+    NULL
+  }
   had_seed <- !is.null(old_seed)
   old_rng_kind <- RNGkind()
   cache_env_names <- c(
@@ -174,12 +357,19 @@ step2_compute <- function(input,
   old_cache_env <- Sys.getenv(cache_env_names, unset = NA_character_)
   restore_rng <- function() {
     do.call(RNGkind, as.list(old_rng_kind))
-    if (had_seed) assign(".Random.seed", old_seed, envir = .GlobalEnv)
-    else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
       rm(".Random.seed", envir = .GlobalEnv)
+    }
     for (i in seq_along(cache_env_names)) {
-      if (is.na(old_cache_env[[i]])) Sys.unsetenv(cache_env_names[[i]])
-      else Sys.setenv(setNames(old_cache_env[[i]], cache_env_names[[i]]))
+      if (is.na(old_cache_env[[i]])) {
+        Sys.unsetenv(cache_env_names[[i]])
+      } else {
+        do.call(Sys.setenv, as.list(setNames(
+          old_cache_env[[i]], cache_env_names[[i]]
+        )))
+      }
     }
   }
   on.exit(restore_rng(), add = TRUE)
@@ -202,31 +392,56 @@ step2_compute <- function(input,
     emit("weather", "completed")
     value
   }
+  if (!is.null(simulation_args$forecast) && !is.null(simulation_args$forecast$run$data_sha256)) {
+    forecast_code <- unique(as.character(simulation_args$svy$code))
+    current_runs <- .forecast_catalogue_runs(simulation_args$cp, forecast_code)
+    current <- if (is.null(current_runs)) NULL else current_runs[[simulation_args$forecast$run$id]]
+    if (is.null(current) ||
+        !identical(current$data_sha256, simulation_args$forecast$run$data_sha256) ||
+        !identical(current$manifest_sha256, simulation_args$forecast$run$manifest_sha256) ||
+        !identical(current$members, simulation_args$forecast$run$members)) {
+      stop("Selected forecast data changed after the Step 2 snapshot was created; refresh the forecast selection.",
+        call. = FALSE
+      )
+    }
+    simulation_args$forecast$run <- current
+  }
   pipeline_index <- 0L
   pipeline_wrapper <- function(...) {
     pipeline_index <<- pipeline_index + 1L
     value <- tryCatch(
-      pipeline_fn(...),
+      .step2_compute_assert_alignment(pipeline_fn(...)),
       error = function(e) {
-        emit("pipeline", "failed", sprintf("key %d", pipeline_index), e)
+        emit("pipeline", "failed", error = e,
+             fields = list(member_ordinal = pipeline_index))
         stop(e)
       }
     )
-    emit("pipeline", "completed", sprintf("key %d", pipeline_index))
+    emit("pipeline", "completed", fields = list(member_ordinal = pipeline_index))
     value
   }
+  simulation_args$progress_fn <- function(value, detail) {
+    emit("simulation", "progress", detail)
+  }
+  simulation_args$weather_fn <- weather_wrapper
+  simulation_args$pipeline_fn <- pipeline_wrapper
+  simulation_args$preview_fn <- preview_fn
+  simulation_args$partial_fn <- partial_fn
+  simulation_args$checkpoint_fn <- checkpoint_wrapper
+  simulation_args$weather_storage <- weather_storage
+  simulation_args$weather_store_root <- weather_store_root
+  simulation_args$weather_collect <- weather_collect
+  simulation_args$weather_threads <- weather_threads
+  simulation_args$propagate_all_covariate_uncertainty <-
+    propagate_all_covariate_uncertainty
+  simulation_args$fit_multi <- fit_multi
+  simulation_args$taus <- taus
+  simulation_args$weather_cols <- weather_cols
+  simulation_args$payload_mode <- "compact"
+  simulation_args$direct_rif_predictions <- TRUE
+  simulation_args$seed <- seed
   result <- tryCatch(
-    do.call(
-      fct_run_simulation,
-      c(snapshot, list(
-        notify_fn = function(message) emit("simulation", "message", message),
-        progress_fn = function(value, detail) {
-          emit("simulation", "progress", detail)
-        },
-        weather_fn = weather_wrapper,
-        pipeline_fn = pipeline_wrapper
-      ))
-    ),
+    do.call(fct_run_simulation, simulation_args),
     error = function(e) {
       emit("simulation", "failed", error = e)
       stop(e)

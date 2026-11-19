@@ -15,7 +15,9 @@ make_wx_rows <- function(var = "tx") {
     code      = "TST",
     year      = "2021",
     survname  = "SRV",
-    loc_id    = "L1",
+    # One weather row per location-month (CR-BUG-16: merge_survey_weather
+    # rejects duplicated weather keys).
+    loc_id    = c("L1", "L2"),
     timestamp = as.Date("2021-06-01"),
     value     = c(25, 30),
     check.names = FALSE
@@ -48,13 +50,12 @@ make_wx_selected <- function(name = "tx", label = "Max temp") {
 }
 
 test_that("weather stats tab is inert to selector changes until re-pressed", {
-  skip_if_not_installed("shiny")
 
   loc_calls <- 0L
   real_swl  <- summarise_weather_by_loc
   local_mocked_bindings(
     get_weather = function(survey_data, selected_surveys, selected_weather,
-                           dates, connection_params) {
+                           dates, connection_params, seed = NULL) {
       rows <- make_wx_rows(selected_weather$name[1])
       structure(
         list(historical = rows),
@@ -80,7 +81,6 @@ test_that("weather stats tab is inert to selector changes until re-pressed", {
     args = list(
       id                = "weatherstats",
       connection_params = shiny::reactiveVal(list()),
-      variable_list     = shiny::reactiveVal(data.frame()),
       selected_surveys  = shiny::reactiveVal(data.frame(
         fname = "microdata/TST/TST_2021_SRv_NAT.parquet")),
       selected_outcome  = sel_outcome_rv,

@@ -1,5 +1,4 @@
-# fct_aggregation_delta.R
-# -----------------------
+# Delta-method aggregation ----
 # Closed-form delta-method uncertainty aggregation.
 #
 # Closed-form variance for (value, var) tuples that feed into
@@ -34,7 +33,7 @@
 #' @param weights Numeric vector length N or \code{NULL}.
 #' @param pov_line Numeric scalar or \code{NULL}. Required for poverty methods.
 #' @param residuals Character. One of \code{"none"}, \code{"original"},
-#'   \code{"normal"}, \code{"resample"}.
+#'   \code{"resample"}.
 #' @param train_aug Data frame with \code{.resid} column, or \code{NULL}.
 #' @param id_vec,id_col Vector and character. For \code{residuals = "original"}.
 #' @param is_log Logical. \code{TRUE} (default) back-transforms via \code{exp()}.
@@ -46,33 +45,59 @@
 #'   \code{.residual_lookup()} (PERF-34). Built per call when NULL.
 #' @param resid_sigma2 Optional pre-built residual variance from
 #'   \code{.residual_sigma2()} (PERF-34). Computed per call when NULL.
+#' @param prepared_mu Optional pre-computed \code{mu} from the shared
+#'   preparation cache. Skips residual drawing when supplied.
+#' @param prepared_value Optional pre-computed point estimate from the
+#'   single-pass welfare kernel (\code{welfare_stats_all()}). Skips
+#'   \code{resolve_agg_fn()} when supplied. Internal use by the multi-method
+#'   suite path; NULL keeps the resolver behaviour unchanged.
+#' @param prepared_order Optional stable sort order of \code{mu} (attribute of
+#'   the kernel result) reused by the Gini gradient in place of \code{order()}.
+#' @param F_row_ss Optional pre-computed row sums of squares of the year's
+#'   \code{F_loading} block, reused by the headcount bandwidth tuning.
+#' @param sp_level,sp_log Optional per-row cash transfer of a policy arm on a
+#'   log outcome (DOC-11): the level amount and the log shift it contributed
+#'   to \code{y_point}. The transfer is added after the residual,
+#'   \code{exp(y_point - sp_log + resid) + sp_level}, and the gradient is
+#'   taken on the welfare without it. \code{sp_log} is needed only when
+#'   \code{prepared_mu} is not supplied.
 #'
+#' @param rate_band Logical. The outcome is a binary rate from a logistic fit
+#'   (the loading is already on the probability scale): the mean's band is
+#'   built on the logit scale so it stays inside \code{[0, 1]}.
 #' @return Named list:
 #'   \describe{
 #'     \item{value}{Numeric scalar. Point estimate.}
 #'     \item{value_lo, value_p50, value_hi}{Numeric scalars. Coefficient-uncertainty band.}
 #'     \item{var_coef, var_resid}{Numeric scalars. Variance components.}
+#'     \item{n_coef_dropped}{Integer. Rows excluded from the variance because
+#'       their welfare, weight, factor-loading row or gradient is not finite.}
 #'     \item{draw_values}{\code{NULL}. Compatibility slot; downstream code reads
 #'       \code{value_lo}/\code{value_hi} directly.}
 #'   }
 #' @export
 aggregate_with_uncertainty_delta <- function(y_point,
-                                              F_loading,
-                                              method,
-                                              weights      = NULL,
-                                              pov_line     = NULL,
-                                              residuals    = "original",
-                                              train_aug    = NULL,
-                                              id_vec       = NULL,
-                                              id_col       = NULL,
-                                              is_log       = TRUE,
-                                              band_q       = c(lo = 0.10, hi = 0.90),
-                                              bandwidth_p0 = 0.05,
-                                              seed          = WISEAPP_DEFAULT_SEED,
-                                              resid_lookup  = NULL,
-                                              resid_sigma2  = NULL,
-                                              prepared_mu   = NULL) {
-
+                                             F_loading,
+                                             method,
+                                             weights = NULL,
+                                             pov_line = NULL,
+                                             residuals = "original",
+                                             train_aug = NULL,
+                                             id_vec = NULL,
+                                             id_col = NULL,
+                                             is_log = TRUE,
+                                             band_q = c(lo = 0.10, hi = 0.90),
+                                             bandwidth_p0 = 0.05,
+                                             seed = WISEAPP_DEFAULT_SEED,
+                                             resid_lookup = NULL,
+                                             resid_sigma2 = NULL,
+                                             prepared_mu = NULL,
+                                             prepared_value = NULL,
+                                             prepared_order = NULL,
+                                             F_row_ss = NULL,
+                                             sp_level = NULL,
+                                             sp_log = NULL,
+                                             rate_band = FALSE) {
   N <- length(y_point)
   stopifnot(is.numeric(y_point) && N > 0)
 
@@ -80,57 +105,119 @@ aggregate_with_uncertainty_delta <- function(y_point,
   # train_aug = NULL by construction). Avoids forcing every caller to repeat
   # the safety check now that "original" is the default.
   if (!identical(residuals, "none") &&
-      (is.null(train_aug) || !".resid" %in% names(train_aug))) {
+    (is.null(train_aug) || !".resid" %in% names(train_aug))) {
     residuals <- "none"
   }
 
   if (is.null(prepared_mu)) {
     resid_vec <- draw_residuals_vec(
-      residuals, train_aug, N, id_vec, id_col, seed = seed,
-      resid_lookup = resid_lookup, resid_sigma2 = resid_sigma2
+      residuals, train_aug, N, id_vec, id_col,
+      seed = seed,
+      resid_lookup = resid_lookup
     )
-    mu <- if (is_log) exp(y_point + resid_vec) else y_point + resid_vec
+    mu <- if (!is_log) {
+      y_point + resid_vec
+    } else if (!is.null(sp_level)) {
+      exp(y_point - sp_log + resid_vec) + sp_level
+    } else {
+      exp(y_point + resid_vec)
+    }
   } else {
     stopifnot(length(prepared_mu) == N)
     mu <- prepared_mu
   }
 
-  # Point estimate via existing resolver
-  agg_fn   <- resolve_agg_fn(method)
-  value_pt <- agg_fn(mu, weights, pov_line)
+  # Point estimate via existing resolver; the multi-method suite path
+  # supplies the single-pass kernel value instead (parity-tested).
+  value_pt <- if (!is.null(prepared_value)) {
+    as.numeric(prepared_value)
+  } else {
+    resolve_agg_fn(method)(mu, weights, pov_line)
+  }
 
-  # Welfare-scale gradient h_i = (dT/dw_i) * mu_i
-  h <- gradient_for_method(method, mu, weights, pov_line, value_pt,
-                           bandwidth_p0 = bandwidth_p0,
-                           F_loading    = F_loading)
+  # R2-BUG-02: rows with a non-finite welfare, weight or factor-loading row
+  # are excluded from both the gradient and F (and counted) instead of
+  # zeroing the coefficient variance of the whole aggregate. Clean data
+  # takes the unchanged full-length path.
+  keep <- NULL
+  if (!is.null(F_loading)) {
+    keep <- is.finite(mu) & is.finite(F_row_ss %||% rowSums(F_loading))
+    if (!is.null(weights)) keep <- keep & is.finite(weights)
+    if (all(keep)) keep <- NULL
+  }
+
+  # Gradient wrt the prediction scale: h_i = (dT/dw_i) * mu_i for log
+  # outcomes, h_i = dT/dw_i for level outcomes.
+  h <- if (is.null(keep)) {
+    gradient_for_method(method, mu, weights, pov_line, value_pt,
+      bandwidth_p0 = bandwidth_p0,
+      F_loading    = F_loading,
+      prepared_order = prepared_order,
+      F_row_ss     = F_row_ss,
+      is_log       = is_log,
+      sp_level     = sp_level
+    )
+  } else {
+    F_loading <- F_loading[keep, , drop = FALSE]
+    gradient_for_method(method, mu[keep], weights[keep], pov_line, value_pt,
+      bandwidth_p0 = bandwidth_p0,
+      F_loading    = F_loading,
+      prepared_order = NULL,
+      F_row_ss     = F_row_ss[keep],
+      is_log       = is_log,
+      sp_level     = sp_level[keep]
+    )
+  }
+  n_coef_dropped <- if (is.null(keep)) 0L else sum(!keep)
+  if (!is.null(F_loading) && !all(is.finite(h))) {
+    ok <- is.finite(h)
+    n_coef_dropped <- n_coef_dropped + sum(!ok)
+    h <- h[ok]
+    F_loading <- F_loading[ok, , drop = FALSE]
+  }
 
   # Coefficient variance: ||F' h||^2
   # F_agg is the per-coefficient gradient of the aggregated scalar with
   # respect to beta; ||F_agg||^2 = var_coef. Exposing F_agg lets callers
   # build contrast variances such as ||F_agg_scn - F_agg_hist||^2, which
   # is the right SE for paired counterfactuals on the same population.
-  F_agg <- if (!is.null(F_loading) && !any(!is.finite(h))) {
+  F_agg <- if (!is.null(F_loading)) {
     as.numeric(crossprod(F_loading, h))
-  } else NULL
+  } else {
+    NULL
+  }
   var_coef <- if (!is.null(F_agg)) sum(F_agg * F_agg) else 0
 
   # Residual variance (only for stochastic residual draws)
   # PERF-34: reuse a caller-supplied variance; identical value to the
   # per-call stats::var() this replaces.
-  var_resid <- if (residuals %in% c("normal", "resample") &&
-                   !is.null(train_aug) && ".resid" %in% names(train_aug)) {
+  var_resid <- if (identical(residuals, "resample") &&
+    !is.null(train_aug) && ".resid" %in% names(train_aug)) {
     sigma_e2 <- resid_sigma2 %||%
       stats::var(train_aug$.resid, na.rm = TRUE)
-    if (is.finite(sigma_e2)) sigma_e2 * sum(h * h, na.rm = TRUE) else 0
-  } else 0
+    if (identical(method, "headcount_ratio") && identical(residuals, "resample") && !is.null(pov_line)) {
+      # F9: a residual draw is a large shift, so the kernel gradient overstates
+      # the variance of the poverty rate; the draws are independent across
+      # households, so the exact variance is sum(w^2 p (1 - p)).
+      .headcount_resid_variance(
+        y_point, weights, pov_line, train_aug$.resid, is_log, sp_level, sp_log
+      )
+    } else if (is.finite(sigma_e2)) {
+      sigma_e2 * sum(h * h, na.rm = TRUE)
+    } else {
+      0
+    }
+  } else {
+    0
+  }
 
   var_total <- var_coef + var_resid
-  se        <- sqrt(max(var_total, 0))
+  se <- sqrt(max(var_total, 0))
 
   # Band via method-appropriate transform
   z_lo <- stats::qnorm(band_q[["lo"]])
   z_hi <- stats::qnorm(band_q[["hi"]])
-  band <- apply_band_transform(method, value_pt, se, z_lo, z_hi)
+  band <- apply_band_transform(method, value_pt, se, z_lo, z_hi, rate = rate_band)
 
   list(
     value       = value_pt,
@@ -140,38 +227,104 @@ aggregate_with_uncertainty_delta <- function(y_point,
     var_coef    = var_coef,
     var_resid   = var_resid,
     F_agg       = F_agg,
+    n_coef_dropped = n_coef_dropped,
+    draw_values = NULL
+  )
+}
+
+# Variance of the weighted headcount ratio over independent residual draws
+# `e` resampled from `resid` (F9): household i is poor with probability
+# p_i = P(welfare_i < pov_line), the headcount is sum(w_i 1[poor_i]) with
+# normalised weights, and the variance is sum(w_i^2 p_i (1 - p_i)). With a
+# cash transfer added after the residual (`sp_level`, `sp_log`; DOC-11) the
+# welfare below the line is the one without it.
+.headcount_resid_variance <- function(y_point, weights, pov_line, resid, is_log = TRUE,
+                                      sp_level = NULL, sp_log = NULL) {
+  resid <- resid[is.finite(resid)]
+  ok <- is.finite(y_point)
+  w <- if (is.null(weights)) rep(1, length(y_point)) else weights
+  ok <- ok & is.finite(w)
+  if (!length(resid) || !any(ok)) {
+    return(0)
+  }
+  w_tilde <- w[ok] / sum(w[ok])
+  y <- y_point[ok]
+  if (is_log) {
+    base <- if (!is.null(sp_log)) y - sp_log[ok] else y
+    room <- if (!is.null(sp_level)) pov_line - sp_level[ok] else rep(pov_line, length(y))
+    thr <- ifelse(room > 0, log(pmax(room, .Machine$double.xmin)) - base, -Inf)
+  } else {
+    thr <- pov_line - y
+  }
+  # Poverty is strict (welfare < line), so a residual equal to the cut-off is not poor
+  p <- findInterval(thr, sort(resid), left.open = TRUE) / length(resid)
+  sum(w_tilde^2 * p * (1 - p))
+}
+
+# Avoid gradient and band calculations when only deterministic point estimates
+# are requested. Stochastic residual modes retain the delta-method path because
+# their residual variance still depends on the welfare gradient.
+aggregate_point_estimate <- function(mu, method, weights = NULL, pov_line = NULL,
+                                     prepared_value = NULL) {
+  stopifnot(is.numeric(mu), length(mu) > 0L)
+  value_pt <- if (!is.null(prepared_value)) {
+    as.numeric(prepared_value)
+  } else {
+    resolve_agg_fn(method)(mu, weights, pov_line)
+  }
+  list(
+    value = value_pt,
+    value_lo = value_pt,
+    value_p50 = value_pt,
+    value_hi = value_pt,
+    var_coef = 0,
+    var_resid = 0,
+    F_agg = NULL,
+    n_coef_dropped = 0L,
     draw_values = NULL
   )
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Per-method gradient functions                                                #
-# ---------------------------------------------------------------------------- #
-# Each returns h = (dT/dwelfare) * mu, length N. Sign matters - preserves the
+# Per-method gradient functions ----
+# Each returns h = dT/dy, the gradient wrt the prediction scale y that
+# F_loading perturbs: (dT/dwelfare) * mu when welfare = exp(y) (is_log), and
+# dT/dwelfare when welfare = y (level outcomes). With a cash transfer added
+# after the residual (`sp_level`, DOC-11) the log lift is the welfare without
+# it, mu - sp_level. Length N. Sign matters - preserves the
 # direction of perturbation so var = ||F' h||^2 reflects the true Taylor
 # expansion. For aggregates where the sign cancels in the variance (everything
 # here), we still keep it explicit for clarity.
 
 gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
                                 bandwidth_p0 = 0.05,
-                                F_loading    = NULL) {
+                                F_loading = NULL,
+                                prepared_order = NULL,
+                                F_row_ss = NULL,
+                                is_log = TRUE,
+                                sp_level = NULL) {
   N <- length(mu)
+  # dwelfare/dy: mu on the log scale, 1 on the level scale. Log outcomes keep
+  # the exact arithmetic they had before level outcomes were handled.
+  dw <- if (!is_log) rep(1, N) else if (is.null(sp_level)) mu else mu - sp_level
+  # Factor of the methods written with mu itself: dw / mu (DOC-11)
+  dw_over_mu <- if (is_log && !is.null(sp_level)) {
+    r <- dw / mu
+    r[!is.finite(r)] <- 0
+    r
+  }
   W <- if (!is.null(weights)) sum(weights, na.rm = TRUE) else N
   if (!is.finite(W) || W <= 0) W <- N
   w_tilde <- if (!is.null(weights)) weights / W else rep(1 / N, N)
 
   # F_loading carried in for headcount bandwidth tuning (closed over below).
   switch(method,
-    mean = w_tilde * mu,
-
-    total = if (!is.null(weights)) weights * mu else mu,
-
+    mean = w_tilde * dw,
+    total = if (!is.null(weights)) weights * dw else dw,
     gap = {
       stopifnot(!is.null(pov_line))
-      -w_tilde * mu * as.numeric(mu < pov_line) / pov_line
+      -w_tilde * dw * as.numeric(mu < pov_line) / pov_line
     },
-
     prosperity_gap = {
       # Point estimate: mean(pmax(28/mu, 1)); pov_line ignored - $28/day
       # threshold hardcoded. With h = (dT/dwelfare) * welfare:
@@ -179,6 +332,7 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
       # so h_i = -t_i * 28 / w_i below the threshold:
       #   unweighted -28/(N * mu_i); weighted -(w_i/W) * 28/mu_i.
       # Non-positive mu contributes zero (pmax(28/mu, 1) is flat there).
+      # Level outcomes divide by mu once more (dT/dw_i = -t_i * 28 / w_i^2).
       below28 <- is.finite(mu) & mu > 0 & mu < 28
       if (is.null(weights)) {
         h <- rep(0, N)
@@ -188,39 +342,42 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
         h <- rep(0, N)
         if (W > 0) h[below28] <- -(weights[below28] / W) * 28 / mu[below28]
       }
+      if (!is_log) h[below28] <- h[below28] / mu[below28]
+      if (!is.null(dw_over_mu)) h <- h * dw_over_mu
       h
     },
-
     fgt2 = {
       stopifnot(!is.null(pov_line))
-      -2 * w_tilde * mu * pmax(pov_line - mu, 0) / pov_line^2
+      -2 * w_tilde * dw * pmax(pov_line - mu, 0) / pov_line^2
     },
-
     headcount_ratio = {
       stopifnot(!is.null(pov_line))
       # Kernel-smoothed indicator on welfare scale:
       #   1{w < z_p} ~ Phi((z_p - w)/b_w)
       # Auto-tune bandwidth: max(user_b * z_p, median per-obs welfare SE).
-      # The per-obs welfare SE is mu_i * sqrt(sum(F_i^2)). Using a bandwidth
+      # The per-obs welfare SE is mu_i * sqrt(sum(F_i^2)) on the log scale
+      # and sqrt(sum(F_i^2)) on the level scale. Using a bandwidth
       # smaller than the typical perturbation magnitude yields an undersmoothed
       # kernel that under-counts threshold crossings.
       b_user <- bandwidth_p0 * pov_line
       b_auto <- if (!is.null(F_loading)) {
-        log_se <- sqrt(rowSums(F_loading * F_loading))
-        stats::median(mu * log_se, na.rm = TRUE)
-      } else 0
+        log_se <- sqrt(F_row_ss %||% rowSums(F_loading * F_loading))
+        stats::median(dw * log_se, na.rm = TRUE)
+      } else {
+        0
+      }
       b_w <- max(b_user, b_auto, .Machine$double.eps)
       arg <- (pov_line - mu) / b_w
-      -w_tilde * stats::dnorm(arg) * mu / b_w
+      -w_tilde * stats::dnorm(arg) * dw / b_w
     },
-
     avg_poverty = {
       # Point estimate: mean(1 / mu) over valid rows ("days needed to earn $1").
       # With h = (dT/dwelfare) * welfare: dT/dw_i = -t_i / w_i^2 for w_i > 0,
       # so h_i = -t_i / w_i, i.e. unweighted -1/(n_ok * mu_i) and weighted
-      # -w_i / (W_ok * mu_i). pov_line ignored.
+      # -w_i / (W_ok * mu_i). pov_line ignored. Level outcomes divide by
+      # mu once more (dT/dw_i itself).
       ok <- is.finite(mu) & mu > 0
-      h  <- rep(0, N)
+      h <- rep(0, N)
       if (is.null(weights)) {
         n_ok <- sum(ok)
         if (n_ok > 0) h[ok] <- -1 / (n_ok * mu[ok])
@@ -228,25 +385,34 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
         W_ok <- sum(weights[ok], na.rm = TRUE)
         if (W_ok > 0) h[ok] <- -weights[ok] / (W_ok * mu[ok])
       }
+      if (!is_log) h[ok] <- h[ok] / mu[ok]
+      if (!is.null(dw_over_mu)) h <- h * dw_over_mu
       h
     },
-
     median = {
-      # Hampel IF: IF_i = -(1{w_i<=m} - 0.5) / f(m)
-      # Lift to log scale: h_i = w_tilde_i * mu_i * IF_i, with mu_i chain rule
-      # cancelling because median is in welfare units.
-      f_hat <- tryCatch({
-        d <- if (!is.null(weights))
-               suppressWarnings(stats::density(mu, weights = weights / sum(weights, na.rm = TRUE),
-                              na.rm = TRUE))
-             else stats::density(mu, na.rm = TRUE)
-        approx_y <- stats::approx(d$x, d$y, xout = value_pt)$y
-        if (is.finite(approx_y) && approx_y > 1e-12) approx_y else NA_real_
-      }, error = function(e) NA_real_)
-      if (is.na(f_hat)) return(rep(0, N))
-      w_tilde * (0.5 - as.numeric(mu <= value_pt)) / f_hat
+      # Smoothed-quantile derivative (R2-BUG-03). The median m solves
+      #   sum_i w_tilde_i * Phi((m - w_i)/b) = 0.5,
+      # so by implicit differentiation dm/dw_i = k_i / sum(k) with
+      #   k_i = w_tilde_i * phi((m - w_i)/b) / b.
+      # Lifted to log scale like every other method here:
+      #   h_i = (dm/dw_i) * mu_i = k_i * mu_i / sum(k)
+      # (level outcomes: h_i = k_i / sum(k)).
+      # Under a common log shift delta, sum(h) * delta ~ m * delta, as it
+      # should. (The Hampel influence function used previously is the
+      # sampling-variance IF; its gradients sum to ~0 under that shift.)
+      # b is the bandwidth stats::density() used for f(m) before: bw.nrd0.
+      ok <- is.finite(mu)
+      if (sum(ok) < 2L) {
+        return(rep(0, N))
+      }
+      b <- stats::bw.nrd0(mu[ok])
+      k <- w_tilde * stats::dnorm((value_pt - mu) / b) / b
+      k_sum <- sum(k, na.rm = TRUE)
+      if (!is.finite(b) || b <= 0 || !is.finite(k_sum) || k_sum <= 0) {
+        return(rep(0, N))
+      }
+      k * dw / k_sum
     },
-
     gini = {
       # Partial-derivative gradient of the weighted Gini wrt y_i, used in
       # the delta-method propagation of regression coefficient uncertainty
@@ -260,52 +426,59 @@ gradient_for_method <- function(method, mu, weights, pov_line, value_pt,
       #   dG/dy_i = (w_tilde_i / mu_bar) * (2 F_i - 1 - G)
       #   h_i = (dG/dy_i) * y_i = w_tilde_i * y_i * (2 F_i - 1 - G) / mu_bar
       # Scale invariance check: sum h_i = (G*mu_bar - G*mu_bar)/mu_bar = 0.
+      # Level outcomes use dG/dy_i itself (no * y_i).
       valid <- !is.na(mu)
-      if (sum(valid) < 2L) return(rep(0, N))
-      ord    <- order(mu)
-      mu_o   <- mu[ord]
-      w_o    <- if (!is.null(weights)) weights[ord] else rep(1, N)
-      w_n    <- w_o / sum(w_o, na.rm = TRUE)
-      F_vec  <- cumsum(w_n) - w_n / 2
+      if (sum(valid) < 2L) {
+        return(rep(0, N))
+      }
+      ord <- if (!is.null(prepared_order) && length(prepared_order) == N) {
+        as.integer(prepared_order)
+      } else {
+        order(mu)
+      }
+      mu_o <- mu[ord]
+      w_o <- if (!is.null(weights)) weights[ord] else rep(1, N)
+      w_n <- w_o / sum(w_o, na.rm = TRUE)
+      F_vec <- cumsum(w_n) - w_n / 2
       mu_bar <- sum(w_n * mu_o, na.rm = TRUE)
-      if (!is.finite(mu_bar) || mu_bar <= 0) return(rep(0, N))
-      G_pt   <- value_pt
-      h_o    <- w_n * mu_o * (2 * F_vec - 1 - G_pt) / mu_bar
-      h      <- numeric(N)
+      if (!is.finite(mu_bar) || mu_bar <= 0) {
+        return(rep(0, N))
+      }
+      G_pt <- value_pt
+      h_o <- w_n * (if (is_log) dw[ord] else 1) * (2 * F_vec - 1 - G_pt) / mu_bar
+      h <- numeric(N)
       h[ord] <- h_o
       h
     },
-
     stop(sprintf("[gradient_for_method] unsupported method: '%s'", method))
   )
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Band transforms                                                              #
-# ---------------------------------------------------------------------------- #
+# Band transforms ----
 # Some aggregates are bounded (headcount in [0,1], gap in [0,1]) or strictly
 # positive (mean welfare). Build bands on a transformed scale and invert so
 # they respect natural bounds.
 
-apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
-  if (!is.finite(se) || se == 0) {
+apply_band_transform <- function(method, value_pt, se, z_lo, z_hi, rate = FALSE) {
+  if (!is.finite(se) || se == 0 || !is.finite(value_pt)) {
     return(list(lo = value_pt, hi = value_pt))
   }
 
-  use_logit <- method %in% c("headcount_ratio", "gap", "fgt2")
-  use_log   <- method %in% c("median", "avg_poverty")
+  # `rate`: the mean of a binary outcome is a rate in [0, 1] (F8)
+  use_logit <- method %in% c("headcount_ratio", "gap", "fgt2") || (isTRUE(rate) && identical(method, "mean"))
+  use_log <- method %in% c("median", "avg_poverty")
 
   if (use_logit && value_pt > 0 && value_pt < 1) {
     # SE on logit scale via delta: d logit / d p = 1 / (p(1-p))
     se_t <- se / (value_pt * (1 - value_pt))
-    lt   <- log(value_pt / (1 - value_pt))
-    lo   <- 1 / (1 + exp(-(lt + z_lo * se_t)))
-    hi   <- 1 / (1 + exp(-(lt + z_hi * se_t)))
+    lt <- log(value_pt / (1 - value_pt))
+    lo <- 1 / (1 + exp(-(lt + z_lo * se_t)))
+    hi <- 1 / (1 + exp(-(lt + z_hi * se_t)))
   } else if (use_log && value_pt > 0) {
     se_t <- se / value_pt
-    lo   <- exp(log(value_pt) + z_lo * se_t)
-    hi   <- exp(log(value_pt) + z_hi * se_t)
+    lo <- exp(log(value_pt) + z_lo * se_t)
+    hi <- exp(log(value_pt) + z_hi * se_t)
   } else {
     lo <- value_pt + z_lo * se
     hi <- value_pt + z_hi * se
@@ -315,9 +488,7 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Shared per-year pipeline aggregator                                          #
-# ---------------------------------------------------------------------------- #
+# Shared per-year pipeline aggregator ----
 
 #' Aggregate a single pipeline-like list across simulation years
 #'
@@ -355,53 +526,110 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
 }
 
 .aggregation_preparation_key <- function(pipe, train_aug, id_col,
-                                         residuals, seed, is_log) {
+                                         residuals, seed, is_log,
+                                         include_factor_loading = FALSE) {
   resid_data <- if (!is.null(train_aug) && ".resid" %in% names(train_aug)) {
     list(
       residuals = train_aug$.resid,
-      ids = if (!is.null(id_col) && id_col %in% names(train_aug))
-        train_aug[[id_col]] else NULL
+      ids = if (!is.null(id_col) && id_col %in% names(train_aug)) {
+        train_aug[[id_col]]
+      } else {
+        NULL
+      }
     )
-  } else NULL
-  digest::digest(list(
+  } else {
+    NULL
+  }
+  # rlang::hash() serializes through rlang's C-level xxhash wrapper instead
+  # of R's serialize() round-trip; the key is session-scoped (never persisted)
+  # so the trade is purely speed. IRN-scale pipelines (~2M-row vectors) spent
+  # up to ~0.3 s per suite build in digest::digest.
+  rlang::hash(list(
     sim_year = pipe$sim_year,
     y_point = pipe$y_point,
+    sp_level = pipe$sp_level,
+    sp_log = pipe$sp_log,
     weight = pipe$weight,
     id_vec = pipe$id_vec,
     id_col = id_col,
     residuals = residuals,
     seed = seed,
     is_log = is_log,
+    include_factor_loading = isTRUE(include_factor_loading),
     train = resid_data
-  ), serialize = TRUE)
+  ))
 }
 
 .aggregation_prepare_pipeline <- function(pipe, train_aug, id_col,
                                           residuals, seed, is_log,
+                                          include_factor_loading = FALSE,
                                           cache = NULL) {
   key <- .aggregation_preparation_key(
-    pipe, train_aug, id_col, residuals, seed, is_log
+    pipe, train_aug, id_col, residuals, seed, is_log, include_factor_loading
   )
   if (!is.null(cache) && is.environment(cache) &&
-      !is.null(cache$entries[[key]])) {
+    !is.null(cache$entries[[key]])) {
     cache$keys <- c(setdiff(cache$keys, key), key)
     return(cache$entries[[key]])
   }
 
   years <- sort(unique(pipe$sim_year))
-  rows <- lapply(years, function(year) which(pipe$sim_year == year))
-  valid <- lapply(rows, function(idx) !is.na(pipe$y_point[idx]))
+  # One grouping pass instead of one full-vector scan per year; each element is
+  # the ascending row index, identical to which(sim_year == year).
+  rows <- unname(split(seq_along(pipe$sim_year), match(pipe$sim_year, years)))
+  pred_ok <- lapply(rows, function(idx) !is.na(pipe$y_point[idx]))
+  # R2-BUG-28: NA household-year predictions are excluded from each year's
+  # statistics. Count them per year (this pipeline = one model/member) and
+  # report.
+  n_na_dropped <- vapply(pred_ok, function(v) sum(!v), integer(1))
+  if (sum(n_na_dropped) > 0L) {
+    message(sprintf(
+      "[wiseapp] %d NA household-year prediction(s) excluded from per-year statistics (%s).",
+      sum(n_na_dropped),
+      paste(sprintf("%s: %d", years, n_na_dropped)[n_na_dropped > 0L],
+            collapse = ", ")
+    ))
+  }
+  # Rows with a missing survey weight would turn every point estimate and the
+  # coefficient variance into NA; drop them the same way and report the count.
+  valid <- pred_ok
+  n_na_weight_dropped <- integer(length(rows))
+  if (!is.null(pipe$weight)) {
+    valid <- lapply(seq_along(rows), function(i) {
+      pred_ok[[i]] & !is.na(pipe$weight[rows[[i]]])
+    })
+    n_na_weight_dropped <- vapply(seq_along(rows), function(i) {
+      sum(pred_ok[[i]] & !valid[[i]])
+    }, integer(1))
+    if (sum(n_na_weight_dropped) > 0L) {
+      message(sprintf(
+        "[wiseapp] %d row(s) with a missing survey weight excluded from per-year statistics (%s).",
+        sum(n_na_weight_dropped),
+        paste(sprintf("%s: %d", years, n_na_weight_dropped)[n_na_weight_dropped > 0L],
+              collapse = ", ")
+      ))
+    }
+  }
   weights <- lapply(seq_along(rows), function(i) {
     idx <- rows[[i]][valid[[i]]]
     if (!is.null(pipe$weight)) as.numeric(pipe$weight[idx]) else NULL
   })
   weights_normalized <- lapply(weights, function(w) {
-    if (is.null(w)) return(NULL)
+    if (is.null(w)) {
+      return(NULL)
+    }
     total <- sum(w, na.rm = TRUE)
     if (is.finite(total) && total != 0) w / total else w
   })
   lookup <- .residual_lookup(train_aug, id_col)
   sigma2 <- .residual_sigma2(train_aug)
+  # Original-residual matching: convert each distinct id to character once for
+  # the pipeline, not once per year.
+  id_pos <- if (identical(residuals, "original") && !is.null(pipe$id_vec) &&
+    !is.null(lookup)) {
+    u <- unique(pipe$id_vec)
+    list(of = match(pipe$id_vec, u), pos = match(as.character(u), names(lookup)))
+  }
   residual_vectors <- lapply(seq_along(rows), function(i) {
     idx <- rows[[i]][valid[[i]]]
     draw_residuals_vec(
@@ -412,24 +640,60 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
       id_col = id_col,
       seed = wise_seed(seed, "residual", years[[i]]),
       resid_lookup = lookup,
-      resid_sigma2 = sigma2
+      resid_pos = if (!is.null(id_pos)) id_pos$pos[id_pos$of[idx]]
     )
   })
+  # DOC-11: a cash transfer of a policy arm on a log outcome is a level amount
+  # added after the residual, not part of the exponentiated prediction
+  has_sp <- isTRUE(is_log) && !is.null(pipe$sp_level) && !is.null(pipe$sp_log)
+  sp_level <- if (has_sp) {
+    lapply(seq_along(rows), function(i) pipe$sp_level[rows[[i]][valid[[i]]]])
+  }
   mu <- lapply(seq_along(rows), function(i) {
     idx <- rows[[i]][valid[[i]]]
     y <- pipe$y_point[idx]
     r <- residual_vectors[[i]]
-    if (isTRUE(is_log)) exp(y + r) else y + r
+    if (!isTRUE(is_log)) {
+      y + r
+    } else if (has_sp) {
+      exp(y - pipe$sp_log[idx] + r) + pipe$sp_level[idx]
+    } else {
+      exp(y + r)
+    }
   })
+  factor_blocks <- if (isTRUE(include_factor_loading) && !is.null(pipe$F_loading)) {
+    F_full <- pipe$F_loading
+    if (is.null(dim(F_full))) F_full <- matrix(F_full, nrow = 1L)
+    lapply(seq_along(rows), function(i) {
+      idx <- rows[[i]][valid[[i]]]
+      F_full[idx, , drop = FALSE]
+    })
+  } else {
+    NULL
+  }
+  # Row sums of squares feed the headcount bandwidth tuning; computing them
+  # once per prepared year removes a per-method O(N*K) pass (the multiply
+  # dominates the cost for K beyond ~10).
+  factor_row_ss <- if (!is.null(factor_blocks)) {
+    lapply(factor_blocks, function(F_b) rowSums(F_b * F_b))
+  } else {
+    NULL
+  }
   prepared <- list(
     key = key,
     years = years,
     rows = rows,
     valid = valid,
+    n_na_dropped = n_na_dropped,
+    n_na_weight_dropped = n_na_weight_dropped,
     weights = weights,
     weights_normalized = weights_normalized,
     residuals = residual_vectors,
-    mu = mu
+    mu = mu,
+    sp_level = sp_level,
+    factor_blocks = factor_blocks,
+    factor_row_ss = factor_row_ss,
+    resid_sigma2 = sigma2
   )
 
   if (!is.null(cache) && is.environment(cache)) {
@@ -461,31 +725,36 @@ apply_band_transform <- function(method, value_pt, se, z_lo, z_hi) {
 #' @return A list of per-year aggregation results.
 #' @export
 aggregate_pipeline_per_year <- function(pipe,
-                                         method,
-                                         weighted    = TRUE,
-                                         pov_line     = NULL,
-                                         residuals    = "original",
-                                         is_log       = TRUE,
-                                         band_q       = c(lo = 0.10, hi = 0.90),
-                                         skip_coef    = FALSE,
-                                         bandwidth_p0 = 0.05,
-                                         seed          = WISEAPP_DEFAULT_SEED,
-                                         shared_context = NULL,
-                                         preparation_cache = NULL) {
-  if (is.null(pipe) || is.null(pipe$y_point)) return(list())
+                                        method,
+                                        weighted = TRUE,
+                                        pov_line = NULL,
+                                        residuals = "original",
+                                        is_log = TRUE,
+                                        band_q = c(lo = 0.10, hi = 0.90),
+                                        skip_coef = FALSE,
+                                        bandwidth_p0 = 0.05,
+                                        seed = WISEAPP_DEFAULT_SEED,
+                                        shared_context = NULL,
+                                        preparation_cache = NULL) {
+  if (is.null(pipe) || is.null(pipe$y_point)) {
+    return(list())
+  }
 
   context <- step2_pipeline_context(pipe, shared_context)
   train_aug <- context$train_aug
   id_col <- context$id_col
 
-  # train_aug carries .resid for "original"/"resample" residual paths. RIF
-  # pipelines set train_aug = NULL by construction; honour that.
+  # All residual modes require retained training residuals, including compact
+  # shared contexts. Incomplete training state uses the same no-residual fallback.
   res_mode <- residuals %||% "original"
-  if (is.null(train_aug) && !identical(res_mode, "none"))
+  if ((is.null(train_aug) || !".resid" %in% names(train_aug)) &&
+      !identical(res_mode, "none")) {
     res_mode <- "none"
+  }
 
-  if (is.null(preparation_cache))
+  if (is.null(preparation_cache)) {
     preparation_cache <- .new_aggregation_preparation_cache()
+  }
   prep <- .aggregation_prepare_pipeline(
     pipe = pipe,
     train_aug = train_aug,
@@ -493,44 +762,216 @@ aggregate_pipeline_per_year <- function(pipe,
     residuals = res_mode,
     seed = seed,
     is_log = is_log,
+    include_factor_loading = !isTRUE(skip_coef),
     cache = preparation_cache
   )
-  F_full <- pipe$F_loading
-  # Promote a length-K numeric to a 1xK matrix so row-subsetting below never
-  # fails with "incorrect number of dimensions".
-  if (!is.null(F_full) && is.null(dim(F_full))) {
-    F_full <- matrix(F_full, nrow = 1L)
-  }
-  # PERF-34: the ID-to-residual lookup and the residual variance are the
-  # same for every year of this pipeline - build them once, not per year.
-  lk <- NULL
-  sg2 <- NULL
+  # PERF-34: reuse the preparation-owned residual variance for every year
+  # instead of rebuilding var(.resid) per year. Prepared residual vectors have
+  # already consumed the temporary ID lookup during preparation.
+  sg2 <- prep$resid_sigma2
+  point_estimate_only <- isTRUE(skip_coef) &&
+    res_mode %in% c("none", "original")
 
   lapply(seq_along(prep$years), function(i) {
     yr <- prep$years[[i]]
     idx <- prep$rows[[i]][prep$valid[[i]]]
-    F_idx <- if (!is.null(F_full) && !isTRUE(skip_coef))
-               F_full[idx, , drop = FALSE] else NULL
+    F_idx <- if (!isTRUE(skip_coef) && !is.null(prep$factor_blocks)) {
+      prep$factor_blocks[[i]]
+    } else {
+      NULL
+    }
     w_idx <- if (isTRUE(weighted)) prep$weights[[i]] else NULL
-    m <- aggregate_with_uncertainty_delta(
-      y_point      = pipe$y_point[idx],
-      F_loading    = F_idx,
-      method       = method,
-      weights      = w_idx,
-      pov_line     = pov_line,
-      residuals    = res_mode,
-      train_aug    = train_aug,
-      id_vec       = NULL,
-      id_col       = id_col,
-      is_log       = is_log,
-      band_q       = band_q,
-      bandwidth_p0 = bandwidth_p0,
-      seed          = wise_seed(seed, "residual", yr),
-      resid_lookup  = lk,
-      resid_sigma2  = sg2,
-      prepared_mu   = prep$mu[[i]]
-    )
+    m <- if (point_estimate_only) {
+      aggregate_point_estimate(prep$mu[[i]], method, w_idx, pov_line)
+    } else {
+      aggregate_with_uncertainty_delta(
+        y_point = pipe$y_point[idx],
+        F_loading = F_idx,
+        method = method,
+        weights = w_idx,
+        pov_line = pov_line,
+        residuals = res_mode,
+        train_aug = train_aug,
+        id_vec = NULL,
+        id_col = id_col,
+        is_log = is_log,
+        band_q = band_q,
+        bandwidth_p0 = bandwidth_p0,
+        seed = wise_seed(seed, "residual", yr),
+        resid_lookup = NULL,
+        resid_sigma2 = sg2,
+        prepared_mu = prep$mu[[i]],
+        sp_level = prep$sp_level[[i]],
+        rate_band = isTRUE(pipe$logit_link)
+      )
+    }
     m$sim_year <- yr
+    m$n_na_dropped <- prep$n_na_dropped[[i]]
+    m$n_na_weight_dropped <- prep$n_na_weight_dropped[[i]]
     m
   })
+}
+
+#' Aggregate one prediction pipeline for several methods in one prepared pass
+#'
+#' This is the weighted Results-path accelerator. Preparation (including
+#' residual realization and per-year row selection) is shared across methods;
+#' each method still uses the production delta-method implementation so its
+#' value, gradient, and variance contract remains unchanged.
+#'
+#' @param pipe Prediction pipeline containing point predictions and metadata.
+#' @param methods Character vector of aggregation methods.
+#' @param weighted Logical; whether to use pipeline weights.
+#' @param pov_lines Optional named list of method-specific poverty lines.
+#' @param pov_line Fallback poverty line when a method is not in \\code{pov_lines}.
+#' @param residuals Residual draw mode.
+#' @param is_log Logical; whether predictions are on the log scale.
+#' @param band_q Quantile band for uncertainty output.
+#' @param skip_coef Logical; skip coefficient uncertainty calculations.
+#' @param bandwidth_p0 Bandwidth for the headcount-ratio kernel.
+#' @param seed Integer base seed for deterministic residual streams.
+#' @param shared_context Optional shared pipeline context.
+#' @param preparation_cache Optional bounded preparation cache.
+#' @return Named list of per-year aggregation-result lists, one per method.
+#' @noRd
+aggregate_pipeline_per_year_multi <- function(pipe,
+                                               methods,
+                                               weighted = TRUE,
+                                               pov_lines = NULL,
+                                               pov_line = NULL,
+                                               residuals = "original",
+                                               is_log = TRUE,
+                                               band_q = c(lo = 0.10, hi = 0.90),
+                                               skip_coef = FALSE,
+                                               bandwidth_p0 = 0.05,
+                                               seed = WISEAPP_DEFAULT_SEED,
+                                               shared_context = NULL,
+                                               preparation_cache = NULL) {
+  if (is.null(pipe) || is.null(pipe$y_point) || !length(methods)) {
+    return(setNames(vector("list", length(methods)), methods))
+  }
+
+  context <- step2_pipeline_context(pipe, shared_context)
+  train_aug <- context$train_aug
+  id_col <- context$id_col
+  res_mode <- residuals %||% "original"
+  if ((is.null(train_aug) || !".resid" %in% names(train_aug)) &&
+      !identical(res_mode, "none")) {
+    res_mode <- "none"
+  }
+
+  if (is.null(preparation_cache)) {
+    preparation_cache <- .new_aggregation_preparation_cache()
+  }
+  prep <- .aggregation_prepare_pipeline(
+    pipe = pipe,
+    train_aug = train_aug,
+    id_col = id_col,
+    residuals = res_mode,
+    seed = seed,
+    is_log = is_log,
+    include_factor_loading = !isTRUE(skip_coef),
+    cache = preparation_cache
+  )
+
+  sg2 <- prep$resid_sigma2
+  point_estimate_only <- isTRUE(skip_coef) &&
+    res_mode %in% c("none", "original")
+
+  # Single-pass welfare kernel: all covered methods share one scan + one
+  # stable sort per (pipeline, year, distinct poverty line). Method names not
+  # covered by the kernel fall back to the per-method resolver (parity
+  # oracle); poverty methods without a poverty line keep today's resolver
+  # error behaviour by falling back too.
+  pov_methods <- c("headcount_ratio", "gap", "fgt2")
+  kernel_pov <- vapply(methods, function(method) {
+    mp <- if (!is.null(pov_lines) && !is.null(pov_lines[[method]])) {
+      pov_lines[[method]]
+    } else {
+      pov_line
+    }
+    if (is.null(mp)) NA_real_ else as.numeric(mp)
+  }, numeric(1))
+  kernel_ok <- !is.na(kernel_pov) | !(methods %in% pov_methods)
+  kernel_pov_unique <- unique(kernel_pov[kernel_ok])
+  need_sort <- !point_estimate_only || any(methods %in% c("median", "gini"))
+
+  out <- setNames(lapply(methods, function(method) vector("list", length(prep$years))),
+                  methods)
+  for (i in seq_along(prep$years)) {
+    yr <- prep$years[[i]]
+    idx <- prep$rows[[i]][prep$valid[[i]]]
+    F_idx <- if (!isTRUE(skip_coef) && !is.null(prep$factor_blocks)) {
+      prep$factor_blocks[[i]]
+    } else {
+      NULL
+    }
+    F_row_ss <- if (!isTRUE(skip_coef) && !is.null(prep$factor_row_ss)) {
+      prep$factor_row_ss[[i]]
+    } else {
+      NULL
+    }
+    w_idx <- if (isTRUE(weighted)) prep$weights[[i]] else NULL
+
+    # One kernel pass per distinct poverty line shares the scan and the sort
+    # across the whole method suite. The sort is skipped when no method needs
+    # it (the line-dependent group: headcount, gap, fgt2) and no uncertainty
+    # band reuses its order; every other statistic comes from the scan pass.
+    kernel_suites <- lapply(kernel_pov_unique, function(p) {
+      welfare_stats_all(
+        prep$mu[[i]],
+        if (is.null(w_idx)) numeric(0) else w_idx,
+        p, p, p, 28, need_sort
+      )
+    })
+
+    for (method in methods) {
+      method_pov <- if (!is.null(pov_lines) && !is.null(pov_lines[[method]])) {
+        pov_lines[[method]]
+      } else {
+        pov_line
+      }
+      picked <- if (kernel_ok[[method]]) {
+        .welfare_kernel_pick(
+          kernel_suites[[match(kernel_pov[[method]], kernel_pov_unique)]],
+          method
+        )
+      } else {
+        list(value = NULL, order = NULL)
+      }
+      value <- if (point_estimate_only) {
+        aggregate_point_estimate(prep$mu[[i]], method, w_idx, method_pov,
+          prepared_value = picked$value)
+      } else {
+        aggregate_with_uncertainty_delta(
+          y_point = pipe$y_point[idx],
+          F_loading = F_idx,
+          method = method,
+          weights = w_idx,
+          pov_line = method_pov,
+          residuals = res_mode,
+          train_aug = train_aug,
+          id_vec = NULL,
+          id_col = id_col,
+          is_log = is_log,
+          band_q = band_q,
+          bandwidth_p0 = bandwidth_p0,
+          seed = wise_seed(seed, "residual", yr),
+          resid_lookup = NULL,
+          resid_sigma2 = sg2,
+          prepared_mu = prep$mu[[i]],
+          prepared_value = picked$value,
+          prepared_order = picked$order,
+          F_row_ss = F_row_ss,
+          sp_level = prep$sp_level[[i]],
+          rate_band = isTRUE(pipe$logit_link)
+        )
+      }
+      value$sim_year <- yr
+      value$n_na_dropped <- prep$n_na_dropped[[i]]
+      value$n_na_weight_dropped <- prep$n_na_weight_dropped[[i]]
+      out[[method]][[i]] <- value
+    }
+  }
+  out
 }

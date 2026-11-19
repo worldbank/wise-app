@@ -134,6 +134,15 @@ test_that("the record is built from stored metadata, not live inputs", {
   expect_equal(p$source$type, "databricks")
 })
 
+test_that("provenance records only source type and origin (CR-SEC-05)", {
+  p <- wise_provenance(1L, fake_fit(),
+    connection_params = c(db_params(), origin = "env"))
+  expect_identical(p$source, list(type = "databricks", origin = "env"))
+  flat <- paste(unlist(p), collapse = " ")
+  expect_false(grepl("adb-999|/Volumes/", flat))
+  expect_identical(.provenance_source_label(NULL), list(type = "unknown"))
+})
+
 test_that("specification fallbacks travel with the record", {
   fit <- fake_fit(fallbacks = list(
     list(kind = "model_family", requested = "logistic", used = "linear",
@@ -162,4 +171,43 @@ test_that("connection params are read without blocking on an unmet req()", {
   # raw value comes back untouched.
   expect_equal(read_connection_params(function() db_params())$client_secret,
                "TOP-SECRET-VALUE")
+})
+
+test_that("the record carries the residual rule that was applied next to the request", {
+  res <- fake_fit(sim_summary = list(residuals_requested = "original", residuals_effective = "none"))
+  p <- wise_provenance(2L, res)
+  expect_equal(p$residuals_requested, "original")
+  expect_equal(p$residuals_effective, "none")
+  expect_null(wise_provenance(2L, fake_fit())$residuals_effective)
+})
+
+test_that("the record names the seed stored with the result, not the seed passed at read time", {
+  fit <- fake_fit()
+  fit$.seed <- 999L
+  expect_equal(wise_provenance(1L, fit)$random_seed, 999L)
+  # A later change of the live seed does not rewrite the stored one.
+  expect_equal(wise_provenance(1L, fit, seed = 5L)$random_seed, 999L)
+
+  hs <- fake_fit()
+  hs$seed <- 77L
+  expect_equal(wise_provenance(2L, hs, seed = 5L)$random_seed, 77L)
+
+  pol <- fake_fit()
+  pol$.seed <- 31L
+  pol$seed <- 77L
+  expect_equal(wise_provenance(3L, pol)$random_seed, 31L)
+
+  # No stored seed: the seed argument, then the default, are recorded.
+  expect_equal(wise_provenance(1L, fake_fit(), seed = 5L)$random_seed, 5L)
+  expect_equal(wise_provenance(1L, fake_fit())$random_seed, as.integer(WISEAPP_DEFAULT_SEED))
+})
+
+test_that("the export top-level seed agrees with the per-step records", {
+  prov <- list(
+    step1 = list(random_seed = 999L), step2 = list(random_seed = 999L)
+  )
+  expect_equal(.export_run_seed(prov, seed = 5L), 999L)
+  # Records that disagree, or none at all, leave the live seed.
+  expect_equal(.export_run_seed(list(list(random_seed = 1L), list(random_seed = 2L)), 5L), 5L)
+  expect_equal(.export_run_seed(list(), 5L), 5L)
 })

@@ -1,0 +1,844 @@
+# Outcome selection helpers ----
+# Pure functions for outcome variable selection logic.                         #
+# Used by mod_1_03_outcome_server().
+# All functions are stateless and testable without a Shiny session.
+
+
+# Available outcomes ----
+
+#' Filter variable list to available outcome variables
+#'
+#' Filters `variable_list` to rows flagged as outcomes (`outcome == 1`) that
+#' are present in `survey_colnames`. If `"welfare"` is present, a synthetic
+#' `"poor"` row is appended. Results are ordered welfare -> poor -> all others.
+#'
+#' @param variable_list A data frame with columns `name`, `label`, `units`,
+#'   `type`, and `outcome` (integer 0/1).
+#' @param survey_colnames A character vector of column names present in the
+#'   loaded survey data.
+#'
+#' @return A data frame with columns `name`, `label`, `units`, `type`.
+#'
+#' @export
+filter_outcome_vars <- function(variable_list, survey_colnames) {
+  outs <- variable_list |>
+    dplyr::filter(.data$outcome == 1 & .data$name %in% survey_colnames) |>
+    dplyr::select("name", "label", "units", "type") |>
+    dplyr::mutate(
+      name  = as.character(.data$name),
+      label = as.character(.data$label),
+      units = as.character(.data$units),
+      type  = as.character(.data$type)
+    )
+
+  if (any(grepl("welfare", outs$name, fixed = TRUE))) {
+    outs <- dplyr::bind_rows(
+      outs,
+      data.frame(
+        name = "poor",
+        label = "Poor (welfare < poverty line)",
+        units = "",
+        type = "logical",
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+
+  priority <- c("welfare", "poor")
+  rest <- setdiff(outs$name, priority)
+  outs |> dplyr::arrange(factor(.data$name, levels = c(priority, rest)))
+}
+
+
+# Monetary outcome guard ----
+
+#' Test whether an outcome row represents a monetary variable
+#'
+#' Returns `TRUE` when `name` is `"welfare"` or `"poor"`, or when `units` is
+#' `"LCU"`. All comparisons are scalar-safe.
+#'
+#' @param name  A single character string - the outcome variable name.
+#' @param units A single character string - the outcome units (may be `NA`).
+#'
+#' @return A single logical value.
+#'
+#' @export
+is_monetary_outcome <- function(name, units) {
+  name <- as.character(name[1])
+  units <- as.character(units[1])
+  name %in% c("welfare", "poor") || (!is.na(units) && units == "LCU")
+}
+
+
+# Default LCU poverty line ----
+
+#' Compute the default LCU poverty line from survey welfare data
+#'
+#' Returns the 20th percentile of LCU welfare (welfare x ppp2021). Falls back
+#' to `1.00` on error or when required columns are absent.
+#'
+#' @param df A data frame with numeric columns `welfare` and `ppp2021`; an
+#'   optional `weight` column is used for weighted quantile computation.
+#'
+#' @return A single numeric value.
+#'
+#' @export
+default_lcu_poverty_line <- function(df) {
+  tryCatch(
+    {
+      if (!all(c("welfare", "ppp2021") %in% names(df))) {
+        return(1.00)
+      }
+      df_lcu <- df |> dplyr::mutate(welfare_lcu = .data$welfare * .data$ppp2021)
+      p20 <- .sp_welfare_quantile(df_lcu$welfare_lcu, df_lcu[["weight"]], 0.2)
+      round(as.numeric(p20), 2)
+    },
+    error = function(e) {
+      message("default_lcu_poverty_line() error: ", e$message)
+      1.00
+    }
+  )
+}
+
+
+# Poverty line label ----
+
+#' Return the appropriate poverty line input label for the selected currency
+#'
+#' @param currency A single character string: `"PPP"` or `"LCU"`. Defaults to
+#'   `"PPP"` when `NULL`.
+#'
+#' @return A single character string for use as a `numericInput` label.
+#'
+#' @export
+poverty_line_label <- function(currency) {
+  currency <- currency[1]
+  if (is.null(currency) || is.na(currency) || identical(currency, "PPP")) {
+    "Poverty line ($/day, 2021 PPP)"
+  } else {
+    "Poverty line (LCU/day)"
+  }
+}
+
+
+# Outcome transform classification ----
+
+#' Classify the transformation to apply to an outcome variable
+#'
+#' Returns `"log"` for numeric/continuous outcomes and `NA_character_` for all
+#' others (binary, logical, etc.).
+#'
+#' @param type A single character string - the outcome type as stored in the
+#'   variable list (e.g. `"numeric"`, `"logical"`, `"binary"`).
+#'
+#' @return `"log"` or `NA_character_`.
+#'
+#' @export
+outcome_transform <- function(type) {
+  type <- tolower(as.character(type[1]))
+  if (identical(type, "numeric")) "log" else NA_character_
+}
+
+
+# Outcome direction note ----
+
+#' Plain-language interpretation of an outcome direction
+#'
+#' @param direction A single character string, as returned by
+#'   `outcome_direction()`: `"higher_is_better"` or `"lower_is_better"`.
+#'
+#' @return A single character string, or `NULL` for unknown values.
+#'
+#' @export
+outcome_direction_note <- function(direction) {
+  switch(as.character(direction[1]) %||% "",
+    higher_is_better = "Higher values indicate better outcomes",
+    lower_is_better  = "Lower values indicate better outcomes",
+    NULL
+  )
+}
+
+
+# Build selected outcome row ----
+
+#' Augment an outcome info row with transform, units, and poverty-line metadata
+#'
+#' Takes a single-row data frame from `filter_outcome_vars()` and attaches
+#' three additional columns: `transform`, `units`, and `povline`.
+#'
+#' @param info         A single-row data frame with columns `name`, `units`,
+#'   `type`.
+#' @param currency     A single character string: `"PPP"` or `"LCU"`. May be
+#'   `NULL` (treated as `"PPP"`).
+#' @param poverty_line A single numeric value. May be `NULL`.
+#'
+#' @return `info` augmented with columns `transform`, `units`, `povline`.
+#'
+#' @export
+build_selected_outcome <- function(info, currency = NULL, poverty_line = NULL) {
+  if (is.null(info) || nrow(info) == 0) {
+    return(info)
+  }
+
+  name <- as.character(info$name[1])
+  units <- as.character(info$units[1])
+  type <- as.character(info$type[1])
+
+  info$transform <- outcome_transform(type)
+  if (tolower(type) %in% c("binary", "logical", "boolean")) {
+    explicit <- if ("direction" %in% names(info)) as.character(info$direction[[1L]]) else "unknown"
+    info$direction <- if (!is.na(explicit) && explicit %in%
+      c("higher_is_better", "lower_is_better")) explicit else "unknown"
+  } else {
+    info$direction <- outcome_direction(name, type)
+  }
+
+  if (is_monetary_outcome(name, units)) {
+    info$units <- if (!is.null(currency) && nzchar(currency)) currency else units
+    pl <- suppressWarnings(as.numeric(poverty_line))
+    info$povline <- if (!is.null(pl) && length(pl) == 1 && is.finite(pl) && pl > 0) {
+      pl
+    } else if (is.null(currency) || identical(currency, "PPP")) {
+      3.00
+    } else {
+      NA_real_
+    }
+  } else {
+    info$povline <- NA_real_
+  }
+
+  info
+}
+
+
+# Shared with the archived static plot: outcome ridges use one colour per
+# economy, matching the wave series in the interview-date and weather charts.
+# The ridge labels already identify each wave, so a quiet economy-level fill is
+# clearer than a separate legend entry per wave. Delegates to the shared wave
+# palette in fct_step1_weatherstats.R.
+#' @noRd
+.outcome_density_palette <- function(codes) {
+  codes <- sort(unique(as.character(codes)))
+  codes <- codes[!is.na(codes) & nzchar(codes)]
+  if (!length(codes)) {
+    return(character(0))
+  }
+  .wave_palette(codes)
+}
+
+
+# Outcome distribution ridge plot (by survey wave) ----
+
+# Data prep behind the binary branch of the outcome distribution figure:
+# per-wave No/Yes shares with in-bar percent labels, shared by the static and
+# echarts renderers.
+#' @noRd
+.welfare_dist_binary_bars <- function(df, outcome, wave_labels = NULL) {
+  if (!"countryyear" %in% names(df)) {
+    return(NULL)
+  }
+  x <- suppressWarnings(as.numeric(as.character(df[[outcome]])))
+  if (is.logical(df[[outcome]])) x <- as.integer(df[[outcome]])
+  keep <- is.finite(x) & x %in% c(0, 1) & !is.na(df$countryyear)
+  if (!any(keep)) {
+    return(NULL)
+  }
+  bars <- data.frame(
+    countryyear = as.character(df$countryyear[keep]),
+    value = factor(x[keep], levels = c(0, 1), labels = c("No", "Yes")),
+    stringsAsFactors = FALSE
+  )
+  bars <- collapse::fcount(
+    bars,
+    countryyear,
+    value,
+    name = "n",
+    sort = FALSE
+  )
+  bars <- bars[order(bars$countryyear, bars$value), , drop = FALSE]
+  bars$n_total <- ave(bars$n, bars$countryyear, FUN = sum)
+  bars$share <- bars$n / bars$n_total
+  bars$label <- ifelse(
+    bars$share >= 0.03,
+    paste0(round(100 * bars$share, 1), "%"),
+    ""
+  )
+  bars$label_colour <- ifelse(
+    bars$value == "No", "#1D2A35", "white"
+  )
+  bars$ymin <- ave(bars$share, bars$countryyear, FUN = function(z) {
+    c(0, head(cumsum(z), -1L))
+  })
+  bars$ymax <- bars$ymin + bars$share
+  bars$countryyear <- factor(
+    bars$countryyear,
+    levels = sort(unique(bars$countryyear))
+  )
+  display_waves <- levels(bars$countryyear)
+  if (!is.null(wave_labels)) {
+    mapped <- unname(wave_labels[display_waves])
+    keep <- !is.na(mapped) & nzchar(mapped)
+    display_waves[keep] <- mapped[keep]
+  }
+  list(bars = bars, display_waves = display_waves)
+}
+
+#' Echarts outcome distribution by survey wave
+#'
+#' Interactive outcome distribution view drawn as an `echarts4r` widget.
+#' Binary outcomes become 100% stacked bars; continuous outcomes become ridges
+#' from the shared `build_ridge_distribution_data()` precomputation (256 bins,
+#' 256 grid points), with welfare poverty lines as dashed reference marks.
+#'
+#' @param df A data frame with a `countryyear` column for ridge grouping.
+#' @param outcome Single character string - outcome variable name. Defaults to
+#'   `"welfare"`.
+#' @param label Human-readable label for the x axis.
+#' @param type Outcome type: `"numeric"` or `"logical"`.
+#' @param currency Display currency for welfare, `"PPP"` or `"LCU"`.
+#' @param poverty_lines A data frame with columns `value` and `label`.
+#'   Only used when `outcome == "welfare"`.
+#' @param wave_labels Optional named character vector replacing wave labels.
+#' @param height Widget height; a CSS length or a number of pixels.
+#'
+#' @return An `echarts4r` widget, or `NULL` invisibly when there is nothing
+#'   to draw.
+#'
+#' @export
+echart_welfare_dist <- function(df,
+                                outcome = "welfare",
+                                label = NULL,
+                                type = "numeric",
+                                currency = "PPP",
+                                poverty_lines = welfare_poverty_lines(),
+                                wave_labels = NULL,
+                                height = "400px") {
+  if (is.null(df) || !(outcome %in% names(df))) {
+    return(invisible(NULL))
+  }
+
+  vals <- df[[outcome]][!is.na(df[[outcome]])]
+  type_l <- tolower(type %||% "")
+  is_binary <- type_l %in% c("logical", "binary", "boolean") ||
+    (length(vals) > 0 && is.numeric(vals) && all(vals %in% c(0, 1)))
+  x_label <- label %||% outcome
+  if (identical(outcome, "welfare")) x_label <- "$ per day (2021 PPP)"
+
+  if (is_binary) {
+    bb <- .welfare_dist_binary_bars(df, outcome, wave_labels)
+    if (is.null(bb)) {
+      return(invisible(NULL))
+    }
+    bars <- bb$bars
+    display_waves <- bb$display_waves
+
+    e <- .e_new(height)
+    make_bar <- function(lvl, col) {
+      d <- bars[bars$value == lvl, , drop = FALSE]
+      d <- d[match(levels(bars$countryyear), as.character(d$countryyear)), ,
+        drop = FALSE
+      ]
+      list(
+        name = lvl, type = "bar", stack = "share",
+        data = lapply(seq_len(nrow(d)), function(i) {
+          list(
+            value = d$share[i],
+            label = list(
+              show = nzchar(d$label[i]),
+              formatter = d$label[i],
+              position = "inside",
+              color = d$label_colour[i],
+              fontSize = 11, fontWeight = "bold"
+            )
+          )
+        }),
+        itemStyle = list(color = col),
+        barMaxWidth = 44
+      )
+    }
+    e$x$opts$xAxis <- list(
+      type = "category",
+      data = as.character(display_waves),
+      name = NULL,
+      axisLabel = wise_eaxis_label(rotate = 0),
+      axisTick = list(alignWithLabel = TRUE),
+      axisLine = list(lineStyle = list(color = .wise_grid)),
+      splitLine = wise_esplit_line()
+    )
+    y_title <- if (identical(outcome, "poor") && !is.null(poverty_lines) &&
+      nrow(poverty_lines) > 0 && is.finite(poverty_lines$value[1L])) {
+      paste0(
+        "Poor ($",
+        formatC(poverty_lines$value[1L], format = "f", digits = 2),
+        "/day)"
+      )
+    } else {
+      outcome_nm <- if (!is.null(label) && nzchar(label)) label else outcome
+      outcome_nm
+    }
+    e$x$opts$yAxis <- list(
+      type = "value", min = 0, max = 1,
+      name = NULL,
+      axisLabel = wise_eaxis_label(
+        formatter = htmlwidgets::JS(
+          "function(v){return Math.round(100*v)+'%';}"
+        )
+      ),
+      splitLine = wise_esplit_line()
+    )
+    e$x$opts$title <- list(
+      text = stringr::str_wrap(y_title, 28),
+      left = 8,
+      top = 0,
+      textStyle = list(
+        color = .wise_charcoal,
+        fontSize = 13,
+        fontWeight = "normal",
+        align = "left",
+        verticalAlign = "top"
+      )
+    )
+    e$x$opts$series <- list(
+      make_bar("No", "#D9EFF8"), make_bar("Yes", "#0071BC")
+    )
+    e$x$opts$legend <- wise_elegend_style(
+      right = 36, top = 0, orient = "horizontal"
+    )
+    e$x$opts$grid <- list(
+        containLabel = TRUE, left = 8, right = 14, top = 50, bottom = 46
+      )
+      e$x$opts$tooltip <- list(
+        trigger = "axis",
+        axisPointer = list(type = "shadow"),
+        formatter = htmlwidgets::JS(
+          "function(params){\n            var rows = [];\n            (params || []).forEach(function(p){\n              var value = Number(Array.isArray(p.value) ? p.value[0] : p.value);\n              if (!isFinite(value)) return;\n              rows.push((p.marker || '') + p.seriesName + ': <b>' +\n                (100 * value).toLocaleString('en-US', {maximumFractionDigits: 1}) + '%</b>');\n            });\n            return (params && params.length ? params[0].axisValueLabel : '') +\n              (rows.length ? '<br/>' + rows.join('<br/>') : '');\n          }"
+        )
+      )
+    return(wise_echart_theme(e))
+  }
+
+  use_log <- identical(type, "numeric") &&
+    all(df[[outcome]][!is.na(df[[outcome]])] > 0)
+
+  # Survey ingestion stores monetary variables in 2021 PPP. Convert back to
+  # local currency for this display when the user explicitly selects LCU;
+  # model fitting continues to use the canonical PPP survey snapshot.
+  dist_df <- df
+  if (identical(toupper(currency %||% "PPP"), "LCU") &&
+    identical(outcome, "welfare") && "ppp2021" %in% names(dist_df)) {
+    dist_df[[outcome]] <- dist_df[[outcome]] * dist_df$ppp2021
+  }
+  if (identical(outcome, "welfare")) {
+    currency_label <- toupper(currency %||% "PPP")
+    x_label <- if (identical(currency_label, "LCU")) {
+      "LCU per day (2021)"
+    } else {
+      "$ per day (2021 PPP)"
+    }
+  }
+
+  agg <- build_ridge_distribution_data(
+    dist_df,
+    x_var         = outcome,
+    group_var     = "countryyear",
+    fill_var      = "code",
+    log_transform = use_log
+  )
+  if (is.null(agg)) {
+    return(invisible(NULL))
+  }
+
+  # Carry the weighted empirical share below each hovered x value as a third
+  # point dimension. It is consumed only by the tooltip, not plotted.
+  if (identical(outcome, "welfare") || "weight" %in% names(dist_df)) {
+    values <- suppressWarnings(as.numeric(dist_df[[outcome]]))
+    weights <- if ("weight" %in% names(dist_df)) {
+      suppressWarnings(as.numeric(dist_df$weight))
+    } else {
+      rep(1, nrow(dist_df))
+    }
+    shares <- lapply(agg$groups, function(grp) {
+      ii <- which(as.character(dist_df$countryyear) == grp)
+      ok <- is.finite(values[ii]) & is.finite(weights[ii]) & weights[ii] > 0
+      x_grid <- agg$data$x[agg$data$group == grp]
+      if (!any(ok)) return(rep(NA_real_, length(x_grid)))
+      v <- values[ii][ok]
+      w <- weights[ii][ok]
+      vapply(x_grid, function(x) sum(w[v <= x]) / sum(w), numeric(1))
+    })
+    share_map <- unlist(shares, use.names = FALSE)
+    agg$data$tooltip_value <- share_map[seq_len(nrow(agg$data))]
+  }
+
+  ridge_labels_raw <- agg$groups
+  if (!is.null(wave_labels)) {
+    mapped <- unname(wave_labels[ridge_labels_raw])
+    keep <- !is.na(mapped) & nzchar(mapped)
+    ridge_labels_raw[keep] <- mapped[keep]
+  }
+
+  pal <- .outcome_density_palette(agg$data$fill)
+  styles <- data.frame(
+    group = agg$groups,
+    fill = vapply(agg$groups, function(g) {
+      code <- agg$data$fill[match(g, agg$data$group)]
+      col <- pal[[code]]
+      if (is.null(col) || is.na(col)) NA_character_ else col
+    }, character(1)),
+    line = "grey30",
+    dashed = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  e <- ridge_echart_widget(
+    agg$data, agg$groups, ridge_labels_raw, styles,
+    height = height, log_scale = use_log, x_name = x_label,
+    tooltip_x_name = x_label
+  )
+  if (identical(outcome, "welfare") && !is.null(poverty_lines) &&
+    nrow(agg$data)) {
+    ser <- e$x$opts$series
+    tgt <- length(ser)
+    ser[[tgt]]$markLine <- list(
+      symbol = "none", silent = TRUE,
+      lineStyle = list(
+        color = .wise_marker, type = "dashed", width = 0.5
+      ),
+      label = list(
+        color = .wise_marker, fontSize = 11, rotate = 90,
+        position = "insideStartBottom", distance = 4
+      ),
+      data = lapply(seq_len(nrow(poverty_lines)), function(i) {
+        list(
+          xAxis = poverty_lines$value[i],
+          label = list(formatter = poverty_lines$label[i])
+        )
+      })
+    )
+    e$x$opts$series <- ser
+  }
+  e
+}
+
+
+# Outcome spatial coverage map ----
+
+# Per-location availability of the outcome, pooled over the passed rows: the
+# share of sampled units with a non-missing value plus the unit count.
+#' @return A data frame keyed by `code/year/survname/loc_id` (whichever keys
+#'   the frame carries), or `NULL` when the inputs are unusable.
+#' @noRd
+.outcome_loc_availability <- function(df, outcome) {
+  keys <- c("code", "year", "survname", "loc_id")
+  if (is.null(df) || !outcome %in% names(df) || !"loc_id" %in% names(df)) {
+    return(NULL)
+  }
+  df |>
+    dplyr::mutate(.has = !is.na(.data[[outcome]])) |>
+    dplyr::summarise(
+      pct  = mean(.data$.has, na.rm = TRUE) * 100,
+      n_hh = dplyr::n(),
+      .by  = dplyr::any_of(c(keys))
+    )
+}
+
+# UI-04: colorblind-safe bad/mid/good ramp (vermillion / orange / bluish
+# green) replacing the red-yellow-green ramp.
+.coverage_ramp <- c("#D55E00", "#E69F00", "#009E73")
+
+# Scale to the coverage actually present rather than a fixed 0-100: when
+# every area sits at 95-100% a full-range ramp paints them all the same
+# green and hides the variation that matters. A uniform map still needs a
+# legend with width, so give it a token span ending at its own value.
+.coverage_rng <- function(vals) {
+  rng <- range(vals, na.rm = TRUE)
+  if (!all(is.finite(rng))) rng <- c(0, 100)
+  if (diff(rng) < 1) {
+    rng <- c(max(0, rng[2] - 1), rng[2])
+    if (diff(rng) == 0) rng <- c(max(0, rng[2] - 1), rng[2] + 1e-9)
+  }
+  rng
+}
+
+.coverage_legend_info <- function(rng) {
+  paste0(
+    "Share of sampled units at each location with a non-missing value",
+    " for this outcome. The scale runs over the coverage present in",
+    " this sample (", format(signif(rng[1], 3)), "% to ",
+    format(signif(rng[2], 3)), "%), not a fixed 0-100, so small",
+    " differences stay visible."
+  )
+}
+
+#' Columnar hex-map payload for the outcome coverage map
+#'
+#' Colours H3 polygons by whether the outcome variable is available (non-NA)
+#' per cell: the same per-location availability, the same weighted cell merge,
+#' the same
+#' vermillion / orange / green ramp over the coverage range actually
+#' present - but the payload carries only cell ids and coverage percentages,
+#' and the browser applies colour. Cells the survey reached without a
+#' non-missing outcome value arrive as `NA` and the browser paints them with
+#' its grey `na.color` (the Leaflet fallback shades them at the bottom of
+#' the ramp, as it always has).
+#'
+#' @param cell_geo Per-cell bounds frame (`cell_data()$geom`): h3 plus
+#'   xmin/ymin/xmax/ymax (geometry is decoded in the browser from cell ids).
+#' @param cmap     Wave-filtered location-to-cell map (`cell_data()$map`).
+#' @param df       Wave-filtered outcome data.
+#' @param outcome  Outcome variable name.
+#'
+#' @return A list with `payload` (for `hexmap_update()`) and `legend` (for
+#'   `.compact_legend_html()`); `NULL` when there is nothing to draw.
+#'
+#' @noRd
+.coverage_hex_payload <- function(cell_geo, cmap, df, outcome) {
+  if (is.null(cell_geo) || is.null(cmap) || nrow(cmap) == 0) {
+    return(NULL)
+  }
+  loc_avail <- .outcome_loc_availability(df, outcome)
+  if (is.null(loc_avail)) {
+    return(NULL)
+  }
+
+  lv <- loc_avail
+  names(lv)[names(lv) == "pct"] <- "value"
+  # by_wave = FALSE: one value per cell, pooling every selected wave, so a
+  # cell sampled by two waves is painted once (PERF-36 draw-once rule).
+  merged <- merge_loc_values_to_cells(cmap, lv, by_wave = FALSE)
+  if (is.null(merged) || nrow(merged) == 0) {
+    return(NULL)
+  }
+
+  # Weighted merging can leave a hair outside [0, 100] in floating point.
+  vals <- pmin(pmax(merged$value, 0), 100)
+  rng <- .coverage_rng(vals)
+
+  # Drawn set: every selected-wave cell that carries bounds - cells the
+  # merge produced no value for are sent with NA and painted grey.
+  cells <- cell_geo |>
+    dplyr::inner_join(dplyr::distinct(cmap, .data$h3), by = "h3") |>
+    dplyr::filter(!is.na(.data$xmin), !is.na(.data$ymax))
+  if (nrow(cells) == 0) {
+    return(NULL)
+  }
+
+  by_h3 <- stats::setNames(vals, merged$loc_id)
+  v <- unname(by_h3[cells$h3])
+
+  # Tooltip identifiers from the cell map: the first contributing wave plus
+  # how many locations feed the cell.
+  wave_txt <- trimws(paste(
+    ifelse(is.na(merged$code), "", as.character(merged$code)),
+    ifelse(is.na(merged$year), "", as.character(merged$year)),
+    ifelse(is.na(merged$survname), "", as.character(merged$survname))
+  ))
+  info <- paste0(
+    wave_txt, ifelse(nzchar(wave_txt), " \u00b7 ", ""),
+    merged$n_locs, ifelse(merged$n_locs == 1L, " location", " locations")
+  )
+  info_by_h3 <- stats::setNames(info, merged$loc_id)
+  tip <- unname(info_by_h3[cells$h3])
+
+  bounds <- NULL
+  if (all(c("xmin", "ymin", "xmax", "ymax") %in% names(cells))) {
+    bounds <- c(
+      min(cells$xmin, na.rm = TRUE), min(cells$ymin, na.rm = TRUE),
+      max(cells$xmax, na.rm = TRUE), max(cells$ymax, na.rm = TRUE)
+    )
+  }
+
+  payload <- hexmap_payload(
+    h3     = cells$h3,
+    v      = v,
+    v_kind = "continuous",
+    stops  = list(domain = rng, colors = .coverage_ramp),
+    bounds = bounds,
+    info   = tip,
+    label  = "% available",
+    unit   = "%"
+  )
+
+  pal <- .ramp_numeric(.coverage_ramp, domain = rng)
+  list(
+    payload = payload,
+    legend = list(
+      pal_info = list(pal = pal, domain = rng),
+      binned   = FALSE,
+      title    = "% available",
+      info     = .coverage_legend_info(rng)
+    )
+  )
+}
+
+
+# Outcome mean-value map ----
+
+# Per-location mean of the outcome, pooled over the passed rows: the plain
+# mean of the sampled units' non-missing values plus how many of them sit
+# behind it. Unweighted, like the tab's pooled summary statistics - a sample
+# statistic, not a population estimate.
+#' @return A data frame keyed by `code/year/survname/loc_id` (whichever keys
+#'   the frame carries), or `NULL` when the inputs are unusable.
+#' @noRd
+.outcome_loc_means <- function(df, outcome) {
+  keys <- c("code", "year", "survname", "loc_id")
+  if (is.null(df) || !outcome %in% names(df) || !"loc_id" %in% names(df)) {
+    return(NULL)
+  }
+  df |>
+    dplyr::mutate(.val = suppressWarnings(as.numeric(.data[[outcome]]))) |>
+    dplyr::filter(!is.na(.data$.val)) |>
+    dplyr::summarise(
+      value = mean(.data$.val, na.rm = TRUE),
+      n_hh  = dplyr::n(),
+      .by   = dplyr::any_of(keys)
+    )
+}
+
+# Legend hover text for the mean map. The sample-statistics caveat is the
+# whole point of the view, so it rides along wherever the map is read.
+#' @noRd
+.outcome_mean_legend_info <- function(is_binary) {
+  paste0(
+    "Mean of the sampled units' outcome value at each location",
+    if (is_binary) " (share of 1s, shown as %)" else "",
+    ". Mean values reflect sample statistics in a given location, not ",
+    "population-representative statistics (location sample sizes are not ",
+    "sufficient)."
+  )
+}
+
+#' Columnar hex-map payload for the outcome mean-value map
+#'
+#' The mean-value companion of `.coverage_hex_payload()`: per-location means
+#' of the outcome's non-missing sampled values, merged onto cells with the
+#' same weighted rule and drawn with the weather maps' sequential ramp.
+#' Binary outcomes are shares and are scaled to percent on a fixed 0-100
+#' domain so two runs of the map stay comparable; continuous outcomes use a
+#' ramp over the range actually observed. Locations with no non-missing
+#' value drop out and their cells arrive as `NA` and are painted grey.
+#'
+#' @param cell_geo Per-cell bounds frame (`cell_data()$geom`): h3 plus
+#'   xmin/ymin/xmax/ymax (geometry is decoded in the browser from cell ids).
+#' @param cmap     Wave-filtered location-to-cell map (`cell_data()$map`).
+#' @param df       Wave-filtered outcome data.
+#' @param outcome  Outcome variable name.
+#' @param type     Outcome type string (`"numeric"` / `"logical"`), as stored
+#'   in the variable list.
+#'
+#' @return A list with `payload` (for `hexmap_update()`) and `legend` (for
+#'   `.compact_legend_html()`); `NULL` when there is nothing to draw.
+#'
+#' @noRd
+.outcome_mean_hex_payload <- function(cell_geo, cmap, df, outcome,
+                                      type = "numeric") {
+  if (is.null(cell_geo) || is.null(cmap) || nrow(cmap) == 0) {
+    return(NULL)
+  }
+  loc_means <- .outcome_loc_means(df, outcome)
+  if (is.null(loc_means) || nrow(loc_means) == 0) {
+    return(NULL)
+  }
+
+  is_binary <- tolower(as.character(type[1])) %in%
+    c("logical", "binary", "boolean")
+
+  lv <- loc_means
+  if (is_binary) lv$value <- lv$value * 100
+
+  # by_wave = FALSE: one value per cell, pooling every selected wave, so a
+  # cell sampled by two waves is painted once (PERF-36 draw-once rule) -
+  # the same pooling the coverage map applies.
+  merged <- merge_loc_values_to_cells(cmap, lv, by_wave = FALSE)
+  if (is.null(merged) || nrow(merged) == 0) {
+    return(NULL)
+  }
+
+  vals <- suppressWarnings(as.numeric(merged$value))
+
+  # A share is a fixed 0-100 scale; anything else follows the observed range
+  # (the palette builds its own domain from the values when none is fixed).
+  pal_info <- .weather_map_palette(
+    vals, FALSE, NULL, "None",
+    domain = if (is_binary) c(0, 100) else NULL
+  )
+  rng <- pal_info$domain
+
+  # Drawn set: every selected-wave cell that carries bounds - cells the
+  # merge produced no mean for are sent with NA and painted grey.
+  cells <- cell_geo |>
+    dplyr::inner_join(dplyr::distinct(cmap, .data$h3), by = "h3") |>
+    dplyr::filter(!is.na(.data$xmin), !is.na(.data$ymax))
+  if (nrow(cells) == 0) {
+    return(NULL)
+  }
+
+  by_h3 <- stats::setNames(vals, merged$loc_id)
+  v <- unname(by_h3[cells$h3])
+
+  # Tooltip identifiers from the cell map: the first contributing wave plus
+  # how many locations feed the cell.
+  wave_txt <- trimws(paste(
+    ifelse(is.na(merged$code), "", as.character(merged$code)),
+    ifelse(is.na(merged$year), "", as.character(merged$year)),
+    ifelse(is.na(merged$survname), "", as.character(merged$survname))
+  ))
+  info <- paste0(
+    wave_txt, ifelse(nzchar(wave_txt), " \u00b7 ", ""),
+    merged$n_locs, ifelse(merged$n_locs == 1L, " location", " locations")
+  )
+  info_by_h3 <- stats::setNames(info, merged$loc_id)
+  tip <- unname(info_by_h3[cells$h3])
+
+  bounds <- NULL
+  if (all(c("xmin", "ymin", "xmax", "ymax") %in% names(cells))) {
+    bounds <- c(
+      min(cells$xmin, na.rm = TRUE), min(cells$ymin, na.rm = TRUE),
+      max(cells$xmax, na.rm = TRUE), max(cells$ymax, na.rm = TRUE)
+    )
+  }
+
+  title <- if (is_binary) "Mean (%)" else "Mean value"
+  payload <- hexmap_payload(
+    h3     = cells$h3,
+    v      = v,
+    v_kind = "continuous",
+    stops  = list(domain = rng, colors = pal_info$colors),
+    bounds = bounds,
+    info   = tip,
+    label  = title,
+    unit   = if (is_binary) "%" else ""
+  )
+
+  list(
+    payload = payload,
+    legend = list(
+      pal_info = list(pal = pal_info$pal, domain = rng),
+      binned   = FALSE,
+      title    = title,
+      info     = .outcome_mean_legend_info(is_binary)
+    )
+  )
+}
+
+
+# Outcome directionality ----
+
+#' Classify whether larger simulated values are better or worse for an outcome
+#'
+#' Returns `"lower_is_better"` for poverty/inequality measures where a higher
+#' simulated value represents a worse outcome. Returns `"higher_is_better"` for
+#' all other outcomes (welfare, employment, hours worked, etc.).
+#'
+#' @param name A single character string - the outcome variable name.
+#' @param type A single character string - the outcome type.
+#'
+#' @return `"lower_is_better"` or `"higher_is_better"`.
+#'
+#' @export
+outcome_direction <- function(name, type) {
+  name <- tolower(as.character(name[1]))
+  lower_is_better_names <- c("poor", "headcount_ratio", "gap", "fgt2", "gini")
+  if (name %in% lower_is_better_names) "lower_is_better" else "higher_is_better"
+}

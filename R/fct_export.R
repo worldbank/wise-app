@@ -1,5 +1,5 @@
-# ============================================================================ #
-# Export bundle: configuration, tables, figures and a metadata document.       #
+# Export bundle ----
+# Configuration, tables, figures and a metadata document.
 #                                                                              #
 # UI-48. Two problems this solves:                                             #
 #                                                                              #
@@ -17,12 +17,9 @@
 # a root session and every module session under it, so a module registers an   #
 # artefact without any change to its server signature or return API - see      #
 # `wise_export_table()` / `wise_export_figure()`.                              #
-# ============================================================================ #
 
 
-# ---------------------------------------------------------------------------- #
-# Registry                                                                      #
-# ---------------------------------------------------------------------------- #
+# Registry ----
 
 #' Access (creating on first use) the session's export registry
 #'
@@ -30,7 +27,9 @@
 #' @return An environment with an `items` list, or NULL outside a session.
 #' @noRd
 .export_store <- function(session = shiny::getDefaultReactiveDomain()) {
-  if (is.null(session)) return(NULL)
+  if (is.null(session)) {
+    return(NULL)
+  }
   ud <- session$userData
   if (is.null(ud$wise_exports)) {
     store <- new.env(parent = emptyenv())
@@ -68,11 +67,21 @@ wise_export_register <- function(key, label, step, kind, fun,
                                  session = shiny::getDefaultReactiveDomain(),
                                  stale = NULL) {
   store <- .export_store(session)
-  if (is.null(store)) return(invisible(key))
+  if (is.null(store)) {
+    return(invisible(key))
+  }
   stopifnot(is.function(fun))
-  stale_ref <- if (identical(as.integer(step), 3L)) {
-    stale %||% if (!is.null(session)) session$userData$wise_step3_stale else NULL
-  } else NULL
+  stale_ref <- stale
+  if (is.null(stale_ref) && !is.null(session) && as.integer(step) > 0L) {
+    stale_ref <- local({
+      s <- session
+      step_id <- as.integer(step)
+      function() {
+        ref <- s$userData[[paste0("wise_step", step_id, "_stale")]]
+        if (is.function(ref)) isTRUE(ref()) else isTRUE(ref)
+      }
+    })
+  }
   store$items[[key]] <- list(
     key         = key,
     label       = label,
@@ -87,13 +96,34 @@ wise_export_register <- function(key, label, step, kind, fun,
   invisible(key)
 }
 
+wise_export_remove <- function(keys, session = shiny::getDefaultReactiveDomain()) {
+  store <- .export_store(session)
+  if (is.null(store) || !length(keys)) {
+    return(invisible(FALSE))
+  }
+  store$items[keys] <- NULL
+  invisible(TRUE)
+}
+
+wise_export_retain <- function(prefix, keys,
+                               session = shiny::getDefaultReactiveDomain()) {
+  store <- .export_store(session)
+  if (is.null(store)) {
+    return(invisible(FALSE))
+  }
+  current <- names(store$items)
+  drop <- current[startsWith(current, prefix) & !current %in% keys]
+  wise_export_remove(drop, session)
+}
+
 #' @rdname wise_export_register
 #' @noRd
 wise_export_table <- function(key, label, step, fun, description = NULL,
                               session = shiny::getDefaultReactiveDomain(),
                               stale = NULL) {
   wise_export_register(key, label, step, "table", fun, description,
-                       session = session, stale = stale)
+    session = session, stale = stale
+  )
 }
 
 #' @rdname wise_export_register
@@ -103,8 +133,9 @@ wise_export_figure <- function(key, label, step, fun, description = NULL,
                                session = shiny::getDefaultReactiveDomain(),
                                stale = NULL) {
   wise_export_register(key, label, step, "figure", fun, description,
-                       width = width, height = height, session = session,
-                       stale = stale)
+    width = width, height = height, session = session,
+    stale = stale
+  )
 }
 
 #' List registered artefacts, ordered for the bundle
@@ -117,7 +148,9 @@ wise_export_figure <- function(key, label, step, fun, description = NULL,
 #' @noRd
 wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
   store <- .export_store(session)
-  if (is.null(store) || !length(store$items)) return(list())
+  if (is.null(store) || !length(store$items)) {
+    return(list())
+  }
   items <- store$items
   ord <- order(
     vapply(items, `[[`, integer(1), "step"),
@@ -128,9 +161,7 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
 }
 
 
-# ---------------------------------------------------------------------------- #
-# File naming                                                                   #
-# ---------------------------------------------------------------------------- #
+# File naming ----
 
 #' Slugify a string for use in a file name
 #'
@@ -171,9 +202,7 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Configuration state                                                           #
-# ---------------------------------------------------------------------------- #
+# Configuration state ----
 
 # Inputs that describe transient UI state rather than analysis configuration.
 # Restoring them would replay clicks (re-running models on import) or fight the
@@ -186,6 +215,9 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
 # read them. Credential-shaped ids are dropped outright: the bundle is meant
 # to be shared, and `.provenance_source()` redacts the same shapes on the
 # provenance side - the snapshot must agree with it.
+# Input ids of the Step 0 data-source controls (module namespace "overview").
+.EXPORT_CONNECTION_INPUT <- "^overview-"
+
 .EXPORT_INPUT_DROP <- c(
   "^run_model$", "^run_sim$", "^run_policy_sim$", "^load_", "^refresh",
   # These controls may appear under names that are not known to the app. The
@@ -200,12 +232,54 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
   "^plotly_", "_click$", "_hover$", "_brush$", "_dblclick$",
   "^\\.clientdata", "^sidebar", "^accordion$", "_bounds$", "_center$",
   "_zoom$", "_shape_", "_marker_", "_groups$",
-  "secret", "key", "token", "password", "credential", "client_id", "tenant"
+  "secret", "key", "token", "password", "credential", "client_id", "tenant",
+  # CR-SEC-05: Step 0 connection fields (type, paths, hosts, buckets) are
+  # neither exported nor imported; a shared file cannot point a session at
+  # another data source.
+  .EXPORT_CONNECTION_INPUT
 )
+
+#' Number of Step 0 connection settings in a configuration that are not
+#' imported (CR-SEC-05).
+#' @noRd
+.import_dropped_connection <- function(config) {
+  sum(grepl(.EXPORT_CONNECTION_INPUT, names(config$inputs %||% list())))
+}
+
+#' Status text after an imported configuration was applied (CR-SEC-05).
+#' @noRd
+.import_status_text <- function(res, n_dropped = 0L) {
+  dropped <- if (n_dropped > 0L) {
+    paste0(
+      " ", n_dropped, " data-source setting(s) in the file were not imported;",
+      " the current data source is kept."
+    )
+  } else {
+    ""
+  }
+  if (length(res$pending)) {
+    paste0(
+      "Applied ", length(res$applied), " setting(s); ",
+      length(res$pending), " more will be applied as controls appear.", dropped
+    )
+  } else {
+    paste0(
+      "Applied ", length(res$applied), " setting(s).", dropped,
+      " Re-run each step to refresh results."
+    )
+  }
+}
 
 # How long the import retry keeps waiting for renderUI() controls to appear
 # before it gives up, audibly (see export_menu_server()).
 .EXPORT_RETRY_SECONDS <- 120
+
+wise_current_seed <- function(default = WISEAPP_DEFAULT_SEED,
+                              session = shiny::getDefaultReactiveDomain()) {
+  value <- if (!is.null(session)) session$userData$wise_analysis_seed else NULL
+  value <- suppressWarnings(as.integer(value)[1L])
+  if (is.na(value)) as.integer(default) else value
+}
 
 #' Should an input be carried in the exported configuration?
 #'
@@ -223,6 +297,19 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
   keep
 }
 
+#' Seed to write at the top level of an export
+#'
+#' @param provenance List of per-step provenance records.
+#' @param seed Seed in force for the session.
+#' @return The common seed of the records, else `seed`.
+#' @noRd
+.export_run_seed <- function(provenance, seed) {
+  seeds <- unique(stats::na.omit(vapply(
+    provenance, function(p) as.integer(p$random_seed %||% NA_integer_)[1L], integer(1)
+  )))
+  if (length(seeds) == 1L) seeds else as.integer(seed)
+}
+
 #' Capture the full analysis configuration as a plain list
 #'
 #' Shiny namespaces module inputs as a prefix on one flat input map, so a
@@ -232,7 +319,9 @@ wise_export_items <- function(session = shiny::getDefaultReactiveDomain()) {
 #'
 #' @param input   The root session's `input` object.
 #' @param seed    Base random seed in force for the session.
-#' @param provenance Optional list of per-step run provenance records.
+#' @param provenance Optional list of per-step run provenance records. When
+#'   every record names the same seed, that seed is the top-level
+#'   `random_seed`, so the bundle does not contradict its own step records.
 #'
 #' @return A named list ready for `jsonlite::toJSON()`.
 #' @noRd
@@ -253,13 +342,14 @@ wise_config_snapshot <- function(input, seed = WISEAPP_DEFAULT_SEED,
   }
   list(
     wiseapp_config_version = 1L,
-    exported_at   = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
-    app_version   = tryCatch(as.character(golem::get_golem_version()),
-                             error = function(e) NA_character_),
-    r_version     = paste0(R.version$major, ".", R.version$minor),
-    random_seed   = as.integer(seed),
-    provenance    = provenance,
-    inputs        = vals
+    exported_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
+    app_version = tryCatch(as.character(golem::get_golem_version()),
+      error = function(e) NA_character_
+    ),
+    r_version = paste0(R.version$major, ".", R.version$minor),
+    random_seed = .export_run_seed(provenance, seed),
+    provenance = provenance,
+    inputs = vals
   )
 }
 
@@ -279,13 +369,21 @@ wise_config_snapshot <- function(input, seed = WISEAPP_DEFAULT_SEED,
 #' @noRd
 wise_config_apply <- function(config, session, existing = character(0)) {
   vals <- config$inputs %||% list()
-  if (!length(vals)) return(invisible(list(applied = character(0),
-                                           pending = character(0))))
+  if (!length(vals)) {
+    return(invisible(list(
+      applied = character(0),
+      pending = character(0)
+    )))
+  }
   # Filter on import as well as export so configurations written by older
   # versions cannot queue controls that can never be restored.
   vals <- vals[.export_keep_input(names(vals))]
-  if (!length(vals)) return(invisible(list(applied = character(0),
-                                           pending = character(0))))
+  if (!length(vals)) {
+    return(invisible(list(
+      applied = character(0),
+      pending = character(0)
+    )))
+  }
   ids <- names(vals)
   can <- if (length(existing)) ids %in% existing else rep(TRUE, length(ids))
 
@@ -295,15 +393,54 @@ wise_config_apply <- function(config, session, existing = character(0)) {
   }
 
   applied <- character(0)
+  failed <- character(0)
   for (id in ids[can]) {
     if (is_button(id)) next
-    tryCatch(
-      session$sendInputMessage(id, list(value = vals[[id]])),
-      error = function(e) NULL
+    ok <- tryCatch(
+      {
+        session$sendInputMessage(id, list(value = vals[[id]]))
+        TRUE
+      },
+      error = function(e) FALSE
     )
-    applied <- c(applied, id)
+    if (ok) applied <- c(applied, id) else failed <- c(failed, id)
   }
-  invisible(list(applied = applied, pending = ids[!can]))
+  invisible(list(
+    applied = applied, pending = unique(c(ids[!can], failed)),
+    failed = failed
+  ))
+}
+
+#' Step 3 access-control ids of an earlier export as lever-code ids
+#'
+#' Controls of the infrastructure, digital, education and other modules are
+#' `step3-<module>-<code>_universal` / `_pct`; exports written before the lever
+#' codes used the old stems (`elec`, `imp_wat_san`, `primary`, `secondary`,
+#' `postsec`). Renames those so the controls are found, and reads an earlier
+#' letter key of the Model tab's policy scenario as the lever code.
+#'
+#' @param cfg Parsed configuration list.
+#' @return `cfg` with the renamed input ids.
+#' @noRd
+.config_lever_ids <- function(cfg) {
+  ids <- names(cfg$inputs)
+  if (is.null(ids)) {
+    return(cfg)
+  }
+  for (module in c("infra", "digital", "education", "other")) {
+    prefix <- paste0("step3-", module, "-")
+    hit <- startsWith(ids, prefix)
+    ids[hit] <- paste0(prefix, names(policy_normalise_stems(
+      stats::setNames(seq_len(sum(hit)), substring(ids[hit], nchar(prefix) + 1L))
+    )))
+  }
+  names(cfg$inputs) <- ids
+  # the policy scenario of the Model tab: letter keys (`A`) are lever codes now
+  sel <- "step1-model-selected_policies"
+  if (!is.null(cfg$inputs[[sel]])) {
+    cfg$inputs[[sel]] <- policy_normalise_keys(unlist(cfg$inputs[[sel]]))
+  }
+  cfg
 }
 
 #' Validate an imported configuration before anything is applied
@@ -319,59 +456,57 @@ wise_config_apply <- function(config, session, existing = character(0)) {
 #' @noRd
 .import_validate <- function(cfg, app_version = NA_character_) {
   reject <- function(text) list(ok = FALSE, text = text, notes = character(0))
+  if (!is.list(cfg) || is.null(names(cfg))) {
+    return(reject("That file must contain a JSON object exported by WISE-APP."))
+  }
   if (is.null(cfg$inputs)) {
     return(reject(paste(
       "That file has no `inputs` section - it does not look like a",
-      "WISE-APP configuration export.")))
+      "WISE-APP configuration export."
+    )))
+  }
+  if (!is.list(cfg$inputs) || is.null(names(cfg$inputs))) {
+    return(reject("The `inputs` section must be a named JSON object."))
   }
   v <- cfg$wiseapp_config_version
   if (is.null(v)) {
     return(reject(paste(
       "That file has no `wiseapp_config_version` field - it does not look",
-      "like a WISE-APP configuration export.")))
+      "like a WISE-APP configuration export."
+    )))
   }
   if (isTRUE(v > 1)) {
     return(reject(paste0(
       "That file was written in configuration version ", v, "; this app ",
-      "reads version 1. Update WISE-APP, then re-import.")))
+      "reads version 1. Update WISE-APP, then re-import."
+    )))
   }
   notes <- character(0)
   if (!is.null(cfg$app_version) && !is.na(app_version) &&
-      !identical(as.character(cfg$app_version), app_version)) {
+    !identical(as.character(cfg$app_version), app_version)) {
     notes <- c(notes, paste0(
       "Exported from WISE-APP ", cfg$app_version, "; this session runs ",
-      app_version, " - settings may differ."))
+      app_version, " - settings may differ."
+    ))
   }
   list(ok = TRUE, text = character(0), notes = notes)
 }
 
-#' Compare an imported value with the control's current value
-#'
-#' `all.equal()` rather than `identical()`: the JSON round-trip turns integers
-#' into doubles, and a restored setting equal to what the control already
-#' shows is not a restoration - it must not be reported as one.
-#'
-#' @noRd
-.import_value_same <- function(a, b) {
-  if (is.null(a) || is.null(b)) return(is.null(a) && is.null(b))
-  isTRUE(all.equal(a, b))
-}
 
-
-# ---------------------------------------------------------------------------- #
-# Configuration pipeline runner                                                   #
-# ---------------------------------------------------------------------------- #
+# Configuration pipeline runner ----
 
 .PIPELINE_STAGE_TIMEOUT <- 900
 .PIPELINE_SETTLE_SECONDS <- 3
 
-.pipeline_stages <- function() list(
-  list(key = "load_survey", label = "Load the survey sample"),
-  list(key = "load_weather", label = "Load the weather variables"),
-  list(key = "step1", label = "Step 1 - Fit the welfare model"),
-  list(key = "step2", label = "Step 2 - Run the climate simulation"),
-  list(key = "step3", label = "Step 3 - Run the policy simulation")
-)
+.pipeline_stages <- function() {
+  list(
+    list(key = "load_survey", label = "Load the survey sample"),
+    list(key = "load_weather", label = "Load the weather variables"),
+    list(key = "step1", label = "Step 1 - Fit the welfare model"),
+    list(key = "step2", label = "Step 2 - Run the climate simulation"),
+    list(key = "step3", label = "Step 3 - Run the policy simulation")
+  )
+}
 
 .pipeline_settle_seconds <- function() {
   getOption("wiseapp.pipeline_settle", .PIPELINE_SETTLE_SECONDS)
@@ -393,8 +528,9 @@ wise_config_apply <- function(config, session, existing = character(0)) {
         class = paste0("pipeline-stage pipeline-stage-", status),
         icons[[status]],
         shiny::tags$span(stage$label),
-        if (identical(status, "running"))
+        if (identical(status, "running")) {
           shiny::tags$span(class = "pipeline-note", "running...")
+        }
       )
     })
   )
@@ -408,6 +544,7 @@ wise_config_apply <- function(config, session, existing = character(0)) {
 #' @noRd
 pipeline_runner <- function(triggers, results, on_state = NULL,
                             on_settle = NULL,
+                            ready_to_run = function(key) TRUE,
                             stage_timeout = .PIPELINE_STAGE_TIMEOUT) {
   stages <- .pipeline_stages()
   keys <- vapply(stages, `[[`, character(1), "key")
@@ -459,8 +596,9 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     set_stage(key, "failed")
     idx <- match(key, keys)
     if (!is.na(idx) && idx < length(keys)) {
-      for (later in keys[seq.int(idx + 1L, length(keys))])
+      for (later in keys[seq.int(idx + 1L, length(keys))]) {
         set_stage(later, "skipped")
+      }
     }
     active(NULL)
     baseline(NULL)
@@ -494,27 +632,22 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     deadline(Sys.time() + stage_timeout)
     settling(next_key)
     settle_until(Sys.time() + .pipeline_settle_seconds())
-    if (is.function(on_settle)) on_settle()
-    emit()
-  }
-
-  fire <- function(key) {
-    set_stage(key, "running")
-    active(key)
-    baseline(results[[key]]$generation())
-    fired(FALSE)
-    deadline(Sys.time() + stage_timeout)
-    settling(key)
-    settle_until(Sys.time() + .pipeline_settle_seconds())
-    if (is.function(on_settle)) on_settle()
+    if (is.function(on_settle)) on_settle(next_key)
     emit()
   }
 
   shiny::observe({
     key <- settling()
     until <- settle_until()
-    if (is.null(key) || is.null(until)) return(invisible(NULL))
+    if (is.null(key) || is.null(until)) {
+      return(invisible(NULL))
+    }
     if (Sys.time() >= until) {
+      if (!isTRUE(ready_to_run(key))) {
+        if (is.function(on_settle)) on_settle(key)
+        shiny::invalidateLater(250)
+        return(invisible(NULL))
+      }
       settling(NULL)
       settle_until(NULL)
       request_id <<- request_id + 1L
@@ -522,50 +655,62 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
       fired(TRUE)
       emit()
     } else {
-      if (is.function(on_settle)) on_settle()
+      if (is.function(on_settle)) on_settle(key)
       shiny::invalidateLater(250)
     }
   })
 
-  for (key in keys) local({
-    stage_key <- key
-    shiny::observe({
-      current <- active()
-      if (!identical(current, stage_key)) return(invisible(NULL))
-      if (!isTRUE(fired())) return(invisible(NULL))
-      result <- results[[stage_key]]
-      generation <- result$generation()
-      status <- result$status()
-      if (identical(status, "failure") &&
+  for (key in keys) {
+    local({
+      stage_key <- key
+      shiny::observe({
+        current <- active()
+        if (!identical(current, stage_key)) {
+          return(invisible(NULL))
+        }
+        if (!isTRUE(fired())) {
+          return(invisible(NULL))
+        }
+        result <- results[[stage_key]]
+        generation <- result$generation()
+        status <- result$status()
+        if (identical(status, "failure") &&
           isTRUE(generation > (baseline() %||% generation))) {
-        fail(stage_key, paste0(.pipeline_label(stage_key), " failed."))
-      } else if (identical(status, "success") &&
-                 isTRUE(generation > (baseline() %||% generation))) {
-        set_stage(stage_key, "done")
-        clear_trigger(stage_key)
-        active(NULL)
-        baseline(NULL)
-        fired(FALSE)
-        deadline(NULL)
-        emit()
-        advance(stage_key)
-      }
+          fail(stage_key, paste0(.pipeline_label(stage_key), " failed."))
+        } else if (identical(status, "success") &&
+          isTRUE(generation > (baseline() %||% generation))) {
+          set_stage(stage_key, "done")
+          clear_trigger(stage_key)
+          active(NULL)
+          baseline(NULL)
+          fired(FALSE)
+          deadline(NULL)
+          emit()
+          advance(stage_key)
+        }
+      })
     })
-  })
+  }
 
   shiny::observe({
     key <- active()
     dl <- deadline()
-    if (is.null(key) || is.null(dl)) return(invisible(NULL))
+    if (is.null(key) || is.null(dl)) {
+      return(invisible(NULL))
+    }
     shiny::invalidateLater(1000)
     if (Sys.time() > dl) {
-      fail(key, paste0(.pipeline_label(key), " did not finish within ",
-                       round(stage_timeout / 60), " minutes."))
+      fail(key, paste0(
+        .pipeline_label(key), " did not finish within ",
+        round(stage_timeout / 60), " minutes."
+      ))
     }
   })
 
   cancel <- function() {
-    if (!identical(phase(), "running")) return(invisible(NULL))
+    if (!identical(phase(), "running")) {
+      return(invisible(NULL))
+    }
     active(NULL)
     baseline(NULL)
     fired(FALSE)
@@ -577,8 +722,10 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     current[current %in% c("pending", "running")] <- "skipped"
     state(current)
     phase("cancelled")
-    message(paste("Stopped. The current synchronous operation, if already started, ",
-            "will finish; later stages will not run."))
+    message(paste(
+      "Stopped. The current synchronous operation, if already started, ",
+      "will finish; later stages will not run."
+    ))
     emit()
     invisible(NULL)
   }
@@ -602,7 +749,7 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     deadline(Sys.time() + stage_timeout)
     settling(first)
     settle_until(Sys.time() + .pipeline_settle_seconds())
-    if (is.function(on_settle)) on_settle()
+    if (is.function(on_settle)) on_settle(first)
     emit()
     invisible(NULL)
   }
@@ -622,8 +769,10 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     invisible(NULL)
   }
 
-  list(start = start, cancel = cancel, reset = reset,
-       state = state, phase = phase, message = message)
+  list(
+    start = start, cancel = cancel, reset = reset,
+    state = state, phase = phase, message = message
+  )
 }
 
 .pipeline_label <- function(key) {
@@ -632,9 +781,7 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Bundle assembly                                                               #
-# ---------------------------------------------------------------------------- #
+# Bundle assembly ----
 
 #' Materialise one registry item to a file
 #'
@@ -650,19 +797,24 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
 #' @return A data frame whose columns are all atomic.
 #' @noRd
 .export_flatten_df <- function(df) {
-  if (!is.data.frame(df) || !ncol(df)) return(df)
+  if (!is.data.frame(df) || !ncol(df)) {
+    return(df)
+  }
   as.data.frame(
     lapply(df, function(col) {
       # A matrix column: one string per row. digits = 15 keeps the double
       # precision write.csv() itself would give - format()'s 7-digit default
       # silently rounded specification values (bin breaks, polynomials).
       if (is.matrix(col)) {
-        return(apply(col, 1L, function(r)
-          paste(format(r, trim = TRUE, digits = 15), collapse = "; ")))
+        return(apply(col, 1L, function(r) {
+          paste(format(r, trim = TRUE, digits = 15), collapse = "; ")
+        }))
       }
       if (is.list(col)) {
         return(vapply(col, function(x) {
-          if (is.null(x) || !length(x)) return(NA_character_)
+          if (is.null(x) || !length(x)) {
+            return(NA_character_)
+          }
           x <- unlist(x, use.names = FALSE)
           paste(format(x, trim = TRUE, digits = 15), collapse = "; ")
         }, character(1)))
@@ -682,11 +834,14 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
   fail <- function(msg) list(status = "error", note = msg)
   path <- file.path(dir, file)
 
-  # Do not materialise a previous Step 3 result while the published run is stale.
-  if (identical(as.integer(item$step), 3L) && is.function(item$stale) &&
-      isTRUE(shiny::isolate(item$stale()))) {
+  # Do not materialise a previous result while the published run is stale.
+  if (is.function(item$stale) &&
+    isTRUE(shiny::isolate(item$stale()))) {
     if (file.exists(path)) unlink(path)
-    return(list(status = "skipped", note = "Step 3 results are stale."))
+    return(list(status = "skipped", note = paste0(
+      "Step ", item$step,
+      " results are stale."
+    )))
   }
 
   value <- tryCatch(item$fun(), error = function(e) e)
@@ -696,66 +851,137 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
     # it is skipped exactly like a NULL return, with no note. Any other
     # error is a genuine failure: the artefact is named in the README's
     # "Not exported" section rather than vanishing beside the not-run ones.
-    if (inherits(value, "shiny.silent.error")) return(NULL)
+    if (inherits(value, "shiny.silent.error")) {
+      return(NULL)
+    }
+    # An item can ask to be skipped with a note (e.g. a Step 2 run is still
+    # streaming); the note reaches the README and the export notification.
+    if (inherits(value, "wise_export_skip")) {
+      return(list(status = "skipped", note = conditionMessage(value)))
+    }
     msg <- conditionMessage(value)
     if (!nzchar(msg)) msg <- "artefact could not be produced"
     return(fail(msg))
   }
-  if (is.null(value)) return(NULL)
+  if (is.null(value)) {
+    return(NULL)
+  }
 
   if (identical(item$kind, "table")) {
     # The write itself is guarded, not just the builder. An unwritable table
     # used to propagate out of the download handler, so Shiny answered the
     # request with its HTML error page - which the browser then saved under
     # the .zip/.csv name. One bad table must cost that table, not the bundle.
-    return(tryCatch({
-      if (!is.data.frame(value)) value <- as.data.frame(value)
-      if (nrow(value) == 0L) return(NULL)
-      flat <- .export_flatten_df(value)
-      utils::write.csv(flat, path, row.names = FALSE, na = "")
-      list(status = "ok", rows = nrow(flat), cols = ncol(flat))
-    }, error = function(e) {
-      if (file.exists(path)) unlink(path)
-      fail(conditionMessage(e))
-    }))
+    return(tryCatch(
+      {
+        if (!is.data.frame(value)) value <- as.data.frame(value)
+        if (nrow(value) == 0L) {
+          return(NULL)
+        }
+        flat <- .export_flatten_df(value)
+        utils::write.csv(flat, path, row.names = FALSE, na = "")
+        list(status = "ok", rows = nrow(flat), cols = ncol(flat))
+      },
+      error = function(e) {
+        if (file.exists(path)) unlink(path)
+        fail(conditionMessage(e))
+      }
+    ))
   }
 
-  # Figures: ggplot objects render through ggsave with the ragg AGG device -
-  # the same renderer the on-screen plots use (shiny.useragg), so fonts and
-  # antialiasing in the PNG match what the user saw, and ragg is faster than
-  # the grDevices cairo path. Anything else is skipped rather than guessed at.
-  tryCatch({
-    if (inherits(value, "ggplot")) {
-      ggplot2::ggsave(path, plot = value, width = item$width,
-                      height = item$height, dpi = 150, bg = "white",
-                      device = ragg::agg_png)
-    } else {
-      return(NULL)
+  # Figures are UI-backed ECharts widgets, rendered through a headless browser
+  # using the same chart engine as the on-screen view. Anything else is skipped
+  # rather than guessed at.
+  tryCatch(
+    {
+      if (inherits(value, "echarts4r")) {
+        res <- .export_write_echarts(value, path, item)
+        if (res$status %in% c("error", "skipped")) {
+          return(res)
+        }
+      } else {
+        return(NULL)
+      }
+      list(status = "ok", rows = NA_integer_, cols = NA_integer_)
+    },
+    error = function(e) {
+      if (file.exists(path)) unlink(path)
+      fail(conditionMessage(e))
     }
-    list(status = "ok", rows = NA_integer_, cols = NA_integer_)
-  }, error = function(e) {
-    if (file.exists(path)) unlink(path)
-    fail(conditionMessage(e))
-  })
+  )
+}
+
+# Render one echarts4r widget to PNG through a headless browser
+#
+# The widget is written to a standalone HTML file (animation disabled so the
+# first paint is the final state), loaded in Chromium via webshot2, and
+# captured at the registry item's figure size (inches at 150 dpi). Requires
+# webshot2 and a Chrome/Chromium binary; when
+# either is unavailable the figure is skipped with a note - one missing
+# capability costs that figure, not the bundle.
+#
+#' @param value An echarts4r widget.
+#' @param path  Destination PNG path.
+#' @param item  Registry item (width/height in inches).
+#' @noRd
+.export_write_echarts <- function(value, path, item) {
+  fail <- function(msg) list(status = "error", note = msg)
+  skip <- function(msg) list(status = "skipped", note = msg)
+  if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+    return(skip("htmlwidgets is not installed"))
+  }
+  if (!requireNamespace("webshot2", quietly = TRUE)) {
+    return(skip("PNG export of echarts figures needs the webshot2 package"))
+  }
+
+  # R2-SEC-05: remove the intermediate page and any non-self-contained
+  # "<name>_files" dependency folder on every exit path.
+  html <- tempfile(fileext = ".html")
+  on.exit(unlink(c(
+    html, paste0(tools::file_path_sans_ext(html), "_files")
+  ), recursive = TRUE, force = TRUE), add = TRUE)
+
+  tryCatch(
+    {
+      value$x$opts$animation <- FALSE
+      value$x$opts$toolbox$show <- FALSE
+      htmlwidgets::saveWidget(value, html)
+      webshot2::webshot(html, path,
+        vwidth = max(round(item$width * 150), 1L),
+        vheight = max(round(item$height * 150), 1L),
+        delay = 1.5, quiet = TRUE
+      )
+      if (!file.exists(path)) {
+        return(fail("the headless browser did not produce a PNG"))
+      }
+      list(status = "ok")
+    },
+    error = function(e) {
+      if (file.exists(path)) unlink(path)
+      fail(conditionMessage(e))
+    }
+  )
 }
 
 #' Write the machine-readable manifest
 #' @noRd
 .export_manifest_df <- function(entries) {
   if (!length(entries)) {
-    return(data.frame(file = character(0), kind = character(0),
-                      step = character(0), title = character(0),
-                      description = character(0), rows = integer(0),
-                      columns = integer(0), stringsAsFactors = FALSE))
+    return(data.frame(
+      file = character(0), kind = character(0),
+      step = character(0), title = character(0),
+      description = character(0), rows = integer(0),
+      columns = integer(0), stringsAsFactors = FALSE
+    ))
   }
   data.frame(
-    file        = vapply(entries, `[[`, character(1), "file"),
-    kind        = vapply(entries, `[[`, character(1), "kind"),
-    step        = vapply(entries, `[[`, character(1), "step_label"),
-    title       = vapply(entries, `[[`, character(1), "label"),
+    file = vapply(entries, `[[`, character(1), "file"),
+    kind = vapply(entries, `[[`, character(1), "kind"),
+    step = vapply(entries, `[[`, character(1), "step_label"),
+    title = vapply(entries, `[[`, character(1), "label"),
     description = vapply(entries, `[[`, character(1), "description"),
-    rows        = vapply(entries, function(e) e$rows %||% NA_integer_, integer(1)),
-    columns     = vapply(entries, function(e) e$cols %||% NA_integer_, integer(1)),
+    rows = vapply(entries, function(e) e$rows %||% NA_integer_, integer(1)),
+    columns = vapply(entries, function(e) e$cols %||% NA_integer_, integer(1)),
     stringsAsFactors = FALSE
   )
 }
@@ -773,9 +999,7 @@ pipeline_runner <- function(triggers, results, on_state = NULL,
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Metadata document                                                             #
-# ---------------------------------------------------------------------------- #
+# Metadata document ----
 
 #' Build the README that explains the bundle
 #'
@@ -799,7 +1023,7 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
     "# WISE-APP export bundle",
     "",
     paste0("Exported: ", config$exported_at %||%
-             format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")),
+      format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")),
     paste0("App version: ", config$app_version %||% "unknown"),
     paste0("R version: ", config$r_version %||% "unknown"),
     paste0("Random seed: ", config$random_seed %||% WISEAPP_DEFAULT_SEED),
@@ -817,14 +1041,23 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
     "",
     "| File | Contents |",
     "| --- | --- |",
-    if ("config" %in% included)
-      "| `configuration.json` | Every input in the app at export time, plus the random seed and per-step run provenance. Re-import it through Export -> Import configuration to restore this analysis. |",
-    "| `manifest.csv` | Machine-readable index of every file below: name, kind, step, title, description, and row/column counts. |",
+    if ("config" %in% included) {
+      paste0(
+        "| `configuration.json` | Every input in the app at export time, plus the random seed and ",
+        "per-step run provenance. Re-import it through Export -> Import configuration to restore this analysis. |"
+      )
+    },
+    paste0(
+      "| `manifest.csv` | Machine-readable index of every file below: name, kind, step, title, description, ",
+      "row/column counts, and registered metadata. |"
+    ),
     "| `README.md` | This document. |",
-    if ("tables" %in% included)
-      "| `*.csv` | One file per table the session produced. |",
-    if ("figures" %in% included)
-      "| `*.png` | One file per figure the session produced. |",
+    if ("tables" %in% included) {
+      "| `*.csv` | One file per table the session produced. |"
+    },
+    if ("figures" %in% included) {
+      "| `*.png` | One file per figure the session produced. |"
+    },
     ""
   )
 
@@ -840,7 +1073,10 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
     "| Part | Meaning |",
     "| --- | --- |",
     "| `NN` | Two-digit sequence number. Sorting a directory by name reproduces the order of this document. |",
-    "| `stepN` | The pipeline step that produced the artefact: `step0` overview and data source, `step1` model welfare, `step2` climate scenarios, `step3` policy scenarios. |",
+    paste0(
+      "| `stepN` | The pipeline step that produced the artefact: `step0` overview and data source, ",
+      "`step1` model welfare, `step2` climate scenarios, `step3` policy scenarios. |"
+    ),
     "| `artefact-name` | Lowercase, hyphen-separated identifier for the artefact. |",
     "| `.ext` | `.csv` for tables, `.png` for figures. |",
     "",
@@ -855,23 +1091,31 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
 
   files <- c("## Files", "")
   if (!length(entries)) {
-    files <- c(files,
+    files <- c(
+      files,
       paste(
         "No tables or figures were exported. Artefacts are only included",
         "once the step that produces them has been run."
-      ), "")
+      ), ""
+    )
   } else {
     by_step <- split(entries, vapply(entries, `[[`, character(1), "step_label"))
     for (sl in names(by_step)) {
       files <- c(files, paste0("### ", sl), "")
       for (e in by_step[[sl]]) {
         size <- if (!is.na(e$rows %||% NA)) {
-          sprintf(" (%s %s x %s %s)",
-                  fmt_count(e$rows), if (identical(e$rows, 1L)) "row" else "rows",
-                  e$cols, if (identical(e$cols, 1L)) "column" else "columns")
-        } else ""
-        files <- c(files,
-          sprintf("- **`%s`** - %s%s", e$file, e$description, size))
+          sprintf(
+            " (%s %s x %s %s)",
+            fmt_count(e$rows), if (identical(e$rows, 1L)) "row" else "rows",
+            e$cols, if (identical(e$cols, 1L)) "column" else "columns"
+          )
+        } else {
+          ""
+        }
+        files <- c(
+          files,
+          sprintf("- **`%s`** - %s%s", e$file, e$description, size)
+        )
       }
       files <- c(files, "")
     }
@@ -880,8 +1124,10 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
   prov <- c("## Provenance", "")
   prov_recs <- Filter(Negate(is.null), provenance)
   if (!length(prov_recs)) {
-    prov <- c(prov,
-      "No step has produced results yet, so there is no run to describe.", "")
+    prov <- c(
+      prov,
+      "No step has produced results yet, so there is no run to describe.", ""
+    )
   } else {
     prov <- c(prov, paste(
       "Each block below describes one completed run: the data source it read,",
@@ -893,30 +1139,43 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
       prov <- c(prov, paste0("### ", p$step_label %||% "Run"), "")
       src <- p$source %||% list()
       kv <- list(
-        "Run signature"  = p$run_signature,
-        "Data source"    = if (length(src)) paste(
-          paste0(names(src), "=", vapply(src, function(v)
-            paste(as.character(v), collapse = "/"), character(1))),
-          collapse = "; ") else NULL,
+        "Run signature" = p$run_signature,
+        "Data source" = if (length(src)) {
+          paste(
+            paste0(names(src), "=", vapply(src, function(v) {
+              paste(as.character(v), collapse = "/")
+            }, character(1))),
+            collapse = "; "
+          )
+        } else {
+          NULL
+        },
         "Survey version" = p$survey_version,
-        "Outcome"        = p$outcome,
-        "Weather"        = p$weather,
-        "Specification"  = p$model_spec,
-        "Engine"         = p$engine,
-        "Observations"   = if (is.na(p$n_observations %||% NA)) NULL
-                           else fmt_count(p$n_observations),
-        "Random seed"    = p$random_seed,
+        "Outcome" = p$outcome,
+        "Weather" = p$weather,
+        "Specification" = p$model_spec,
+        "Engine" = p$engine,
+        "Observations" = if (is.na(p$n_observations %||% NA)) {
+          NULL
+        } else {
+          fmt_count(p$n_observations)
+        },
+        "Random seed" = p$random_seed,
         # A stale run's numbers still describe its own inputs, but the
         # session's current inputs have moved on: say so, rather than letting
         # a diff-hunting reader wonder why a re-run disagrees.
-        "Results stale"  = if (isTRUE(p$stale))
-          "yes - current inputs have changed since this run" else NULL,
-        "App version"    = p$app_version
+        "Results stale" = if (isTRUE(p$stale)) {
+          "yes - current inputs have changed since this run"
+        } else {
+          NULL
+        },
+        "App version" = p$app_version
       )
       extra_keys <- setdiff(names(p), c(
         "step", "step_label", "run_signature", "source", "survey_version",
         "outcome", "weather", "model_spec", "engine", "n_observations",
-        "random_seed", "app_version", "fallbacks", "stale"))
+        "random_seed", "app_version", "fallbacks", "stale"
+      ))
       for (k in extra_keys) kv[[k]] <- p[[k]]
       for (k in names(kv)) {
         v <- kv[[k]]
@@ -926,8 +1185,10 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
         prov <- c(prov, sprintf("- **%s:** %s", k, v))
       }
       if (length(p$fallbacks)) {
-        prov <- c(prov, sprintf("- **Specification fallbacks:** %s",
-                                paste(p$fallbacks, collapse = "; ")))
+        prov <- c(prov, sprintf(
+          "- **Specification fallbacks:** %s",
+          paste(p$fallbacks, collapse = "; ")
+        ))
       }
       prov <- c(prov, "")
     }
@@ -942,9 +1203,15 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
         "is unaffected."
       ),
       "",
-      vapply(skipped, function(sk) sprintf("- **%s** (%s) - %s",
-                                           sk$label, sk$step_label, sk$note),
-             character(1)),
+      vapply(
+        skipped, function(sk) {
+          sprintf(
+            "- **%s** (%s) - %s",
+            sk$label, sk$step_label, sk$note
+          )
+        },
+        character(1)
+      ),
       ""
     )
   }
@@ -973,33 +1240,34 @@ wise_export_readme <- function(entries, provenance = list(), config = list(),
       "interface fills in. Connect to the data source before importing."
     ),
     paste(
-      "- The configuration records the data source's identity, never its",
-      "credentials. Supply those as usual."
+      "- The configuration and provenance record only the data source's type",
+      "and whether it came from the server or the app, never its location or",
+      "credentials. Data-source settings are not imported."
     ),
     ""
   )
 
-    notes <- c(
-      "## Notes", "",
-      paste(
-        "- Figures are PNG renders at fixed per-figure dimensions, not the",
-        "on-screen plot size; text rendering matches what the app shows."
-      ),
-      paste(
-        "- Data CSVs carry the raw values behind the display at full double",
-        "precision; the Download CSV buttons on the on-screen tables carry",
-        "the displayed formatting instead."
-      ),
-      ""
-    )
+  notes <- c(
+    "## Notes", "",
+    paste(
+      "- Figures are PNG renders at fixed per-figure dimensions, not the",
+      "on-screen plot size: ggplot figures render through the AGG device,",
+      "echarts figures through a headless browser, so text rendering matches",
+      "what the app shows."
+    ),
+    paste(
+      "- Data CSVs carry the raw values behind the display at full double",
+      "precision; the Download CSV buttons on the on-screen tables carry",
+      "the displayed formatting instead."
+    ),
+    ""
+  )
 
-    L(hdr, contents, naming, files, notes, omitted, prov, repro)
-  }
+  L(hdr, contents, naming, files, notes, omitted, prov, repro)
+}
 
 
-# ---------------------------------------------------------------------------- #
-# Bundle writer                                                                 #
-# ---------------------------------------------------------------------------- #
+# Bundle writer ----
 
 #' Assemble an export bundle as a zip archive
 #'
@@ -1020,9 +1288,17 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
 
   wanted <- Filter(function(it) {
-    (identical(it$kind, "table")  && "tables"  %in% include) ||
-    (identical(it$kind, "figure") && "figures" %in% include)
+    (identical(it$kind, "table") && "tables" %in% include) ||
+      (identical(it$kind, "figure") && "figures" %in% include)
   }, items)
+
+  all_items <- Filter(function(it) {
+    identical(it$kind, "table") || identical(it$kind, "figure")
+  }, items)
+  stable_index <- setNames(
+    seq_along(all_items),
+    vapply(all_items, `[[`, character(1), "key")
+  )
 
   entries <- list()
   skipped <- list()
@@ -1032,10 +1308,10 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
   # bundles of the same analysis stay file-by-file diffable even when steps
   # differ in what they produced.
   for (i in seq_along(wanted)) {
-    it   <- wanted[[i]]
-    file <- .export_filename(i, it$step, it$key, it$kind)
+    it <- wanted[[i]]
+    file <- .export_filename(stable_index[[it$key]], it$step, it$key, it$kind)
     if (is.function(progress)) progress(i, length(wanted), it$label)
-    res  <- .export_write_item(it, stage, file)
+    res <- .export_write_item(it, stage, file)
     if (is.null(res)) next
     if (res$status %in% c("error", "skipped")) {
       # Recorded and reported in the README rather than dropped in silence -
@@ -1058,17 +1334,20 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
 
   manifest <- .export_manifest_df(entries)
   utils::write.csv(manifest, file.path(stage, "manifest.csv"),
-                   row.names = FALSE, na = "")
+    row.names = FALSE, na = ""
+  )
 
   if ("config" %in% include && !is.null(config)) {
     jsonlite::write_json(config, file.path(stage, "configuration.json"),
-                         auto_unbox = TRUE, pretty = TRUE, null = "null",
-                         digits = NA)
+      auto_unbox = TRUE, pretty = TRUE, null = "null",
+      digits = NA
+    )
   }
 
   writeLines(
     wise_export_readme(entries, provenance, config %||% list(), include,
-                       skipped = skipped),
+      skipped = skipped
+    ),
     file.path(stage, "README.md")
   )
 
@@ -1095,15 +1374,19 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
 #' @noRd
 .export_zip <- function(zipfile, dir, files) {
   if (requireNamespace("zip", quietly = TRUE)) {
-    zip::zip(zipfile = zipfile, files = files, root = dir,
-             mode = "cherry-pick")
+    zip::zip(
+      zipfile = zipfile, files = files, root = dir,
+      mode = "cherry-pick"
+    )
     return(invisible(TRUE))
   }
   if (nzchar(Sys.which("zip"))) {
     old <- setwd(dir)
     on.exit(setwd(old), add = TRUE, after = FALSE)
     status <- utils::zip(zipfile = zipfile, files = files, flags = "-rXq")
-    if (identical(as.integer(status), 0L)) return(invisible(TRUE))
+    if (identical(as.integer(status), 0L)) {
+      return(invisible(TRUE))
+    }
   }
   stop(
     "Cannot create the export archive: the `zip` R package is not installed ",
@@ -1114,9 +1397,7 @@ wise_export_bundle <- function(zipfile, items, config = NULL,
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Navbar export menu                                                            #
-# ---------------------------------------------------------------------------- #
+# Navbar export menu ----
 
 #' Export dropdown for the navbar
 #'
@@ -1133,65 +1414,67 @@ export_menu_ui <- function() {
   bslib::nav_menu(
     title = shiny::tagList(shiny::icon("file-export"), "Export"),
     align = "right",
-
     item(shiny::tags$div(
       class = "export-menu-head",
       "Save this analysis, or hand it to someone else."
     )),
-
     item(shiny::downloadLink(
       "export_all",
       class = "export-menu-link",
       shiny::tagList(
-        shiny::tags$span(class = "export-menu-title",
-                         shiny::icon("box-archive"), "Export all (.zip)"),
+        shiny::tags$span(
+          class = "export-menu-title",
+          shiny::icon("box-archive"), "Export all (.zip)"
+        ),
         note(paste(
           "The configuration, every table as a CSV, every figure as a PNG,",
           "and a README documenting them"
         ))
       )
     )),
-
     item(shiny::tags$hr(class = "export-menu-sep")),
-
     item(shiny::downloadLink(
       "export_config",
       class = "export-menu-link",
       shiny::tagList(
-        shiny::tags$span(class = "export-menu-title",
-                         shiny::icon("gear"), "Configuration only (.json)"),
+        shiny::tags$span(
+          class = "export-menu-title",
+          shiny::icon("gear"), "Configuration only (.json)"
+        ),
         note("Every setting, the random seed and each run's provenance")
       )
     )),
-
     item(shiny::downloadLink(
       "export_tables",
       class = "export-menu-link",
       shiny::tagList(
-        shiny::tags$span(class = "export-menu-title",
-                         shiny::icon("table"), "Tables only (.zip)"),
+        shiny::tags$span(
+          class = "export-menu-title",
+          shiny::icon("table"), "Tables only (.zip)"
+        ),
         note("Every table as a CSV")
       )
     )),
-
     item(shiny::downloadLink(
       "export_figures",
       class = "export-menu-link",
       shiny::tagList(
-        shiny::tags$span(class = "export-menu-title",
-                         shiny::icon("chart-line"), "Figures only (.zip)"),
+        shiny::tags$span(
+          class = "export-menu-title",
+          shiny::icon("chart-line"), "Figures only (.zip)"
+        ),
         note("Every figure as a PNG")
       )
     )),
-
     item(shiny::tags$hr(class = "export-menu-sep")),
-
     item(shiny::actionLink(
       "import_config_open",
       class = "export-menu-link",
       shiny::tagList(
-        shiny::tags$span(class = "export-menu-title",
-                         shiny::icon("file-import"), "Import configuration..."),
+        shiny::tags$span(
+          class = "export-menu-title",
+          shiny::icon("file-import"), "Import configuration..."
+        ),
         note("Restore analysis from a previously exported configuration.json.")
       )
     ))
@@ -1220,7 +1503,8 @@ export_menu_server <- function(input, output, session,
 
   snapshot <- function() {
     wise_config_snapshot(
-      input, seed = seed,
+      input,
+      seed = wise_current_seed(seed, session),
       provenance = tryCatch(provenance(), error = function(e) list())
     )
   }
@@ -1233,38 +1517,47 @@ export_menu_server <- function(input, output, session,
           items <- wise_export_items(session)
           shiny::setProgress(0.3, detail = "Writing files")
           mf <- wise_export_bundle(
-            zipfile    = file,
-            items      = items,
-            config     = if ("config" %in% include) snapshot() else NULL,
+            zipfile = file,
+            items = items,
+            config = if ("config" %in% include) snapshot() else NULL,
             provenance = tryCatch(provenance(), error = function(e) list()),
-            include    = include,
+            include = include,
             # Per-item detail instead of two jumps: a 20-figure bundle takes
             # seconds, and a frozen bar reads as a hang.
-            progress   = function(i, total, label) {
+            progress = function(i, total, label) {
               shiny::setProgress(0.3 + 0.6 * i / max(total, 1L),
-                                 detail = label %||% "")
+                detail = label %||% ""
+              )
             }
           )
           shiny::setProgress(1, detail = "Done")
-          n_tbl  <- sum(mf$kind == "table")
-          n_fig  <- sum(mf$kind == "figure")
+          n_tbl <- sum(mf$kind == "table")
+          n_fig <- sum(mf$kind == "figure")
           skipped <- attr(mf, "skipped") %||% list()
           n_skip <- length(skipped)
           skip_detail <- if (n_skip > 0L) {
             paste0(
               " (",
-              paste(vapply(skipped, function(x) paste0(
-                x$label %||% "Unnamed artefact", ": ", x$note %||% "unknown error"
-              ), character(1L)), collapse = "; "), ")"
+              paste(vapply(skipped, function(x) {
+                paste0(
+                  x$label %||% "Unnamed artefact", ": ", x$note %||% "unknown error"
+                )
+              }, character(1L)), collapse = "; "), ")"
             )
-          } else ""
+          } else {
+            ""
+          }
           shiny::showNotification(
             shiny::span(
               sprintf("Exported %d table(s) and %d figure(s)", n_tbl, n_fig),
-              if (n_skip > 0L)
-                paste0("; ", n_skip, " artefact(s) could not be written - ",
-                       "see the bundle README for why", skip_detail)
-              else NULL,
+              if (n_skip > 0L) {
+                paste0(
+                  "; ", n_skip, " artefact(s) could not be written - ",
+                  "see the bundle README for why", skip_detail
+                )
+              } else {
+                NULL
+              },
               "."
             ),
             type = if (n_skip > 0L) "warning" else "message",
@@ -1277,20 +1570,23 @@ export_menu_server <- function(input, output, session,
   }
 
   output$export_all <- bundle_handler(
-    c("config", "tables", "figures"), "export")
+    c("config", "tables", "figures"), "export"
+  )
   output$export_tables <- bundle_handler(c("tables"), "tables")
   output$export_figures <- bundle_handler(c("figures"), "figures")
 
   output$export_config <- shiny::downloadHandler(
     filename = function() paste0("wiseapp-configuration-", stamp(), ".json"),
     content = function(file) {
-      jsonlite::write_json(snapshot(), file, auto_unbox = TRUE, pretty = TRUE,
-                           null = "null", digits = NA)
+      jsonlite::write_json(snapshot(), file,
+        auto_unbox = TRUE, pretty = TRUE,
+        null = "null", digits = NA
+      )
     },
     contentType = "application/json"
   )
 
-  # ---- Import ---------------------------------------------------------------
+  # Import ----
   # A file input inside a dropdown is awkward to operate (any click inside the
   # menu closes it), so the import flow opens a modal instead.
 
@@ -1306,18 +1602,21 @@ export_menu_server <- function(input, output, session,
         shiny::tags$div(class = "import-prereq-title", "Before you start"),
         shiny::tags$p(
           class = "import-prereq-step",
-          "Ensure you have connected to a data source from" , shiny::tags$b("Overview")
+          "Ensure you have connected to a data source from", shiny::tags$b("Overview")
         )
       ),
       shiny::fileInput("import_config_file",
-                       "Configuration file (.json)", accept = c(".json"),
-                       width = "100%"),
+        "Configuration file (.json)",
+        accept = c(".json"),
+        width = "100%"
+      ),
       shiny::uiOutput("import_config_status"),
       shiny::uiOutput("import_pipeline_ui"),
       footer = shiny::tagList(
         shiny::uiOutput("import_action_ui", inline = TRUE),
         shiny::actionButton("import_close", "Close",
-                            class = "btn-outline-secondary btn-sm")
+          class = "btn-outline-secondary btn-sm"
+        )
       ),
       easyClose = TRUE
     ))
@@ -1348,62 +1647,85 @@ export_menu_server <- function(input, output, session,
 
   output$import_config_status <- shiny::renderUI({
     st <- import_status()
-    if (is.null(st)) return(NULL)
-    shiny::div(class = paste("alert", st$class), role = "alert",
-               style = "margin-top: 8px; font-size: 13px;", st$text)
+    if (is.null(st)) {
+      return(NULL)
+    }
+    shiny::div(
+      class = paste("alert", st$class), role = "alert",
+      style = "margin-top: 8px; font-size: 13px;", st$text
+    )
   })
 
   # File selection only stages a validated configuration. Applying it and
   # starting the expensive pipeline require an explicit Start action.
-  staged_cfg    <- shiny::reactiveVal(NULL)
-  previous_cfg  <- shiny::reactiveVal(NULL)
+  staged_cfg <- shiny::reactiveVal(NULL)
+  previous_cfg <- shiny::reactiveVal(NULL)
   pipeline_view <- shiny::reactiveVal(NULL)
 
   shiny::observeEvent(input$import_config_file, {
     staged_cfg(NULL)
     f <- input$import_config_file
-    if (is.null(f) || !nzchar(f$datapath %||% "")) return(invisible(NULL))
+    if (is.null(f) || !nzchar(f$datapath %||% "")) {
+      return(invisible(NULL))
+    }
 
     cfg <- tryCatch(
       jsonlite::read_json(f$datapath, simplifyVector = TRUE),
       error = function(e) e
     )
     if (inherits(cfg, "error")) {
-      set_import_status(list(class = "alert-danger",
-                             text = paste("Could not read that file:",
-                                          conditionMessage(cfg))))
+      set_import_status(list(
+        class = "alert-danger",
+        text = paste(
+          "Could not read that file:",
+          conditionMessage(cfg)
+        )
+      ))
       return(invisible(NULL))
     }
     verdict <- .import_validate(cfg, app_version = as.character(
-      tryCatch(golem::get_golem_version(), error = function(e) NA_character_)))
+      tryCatch(golem::get_golem_version(), error = function(e) NA_character_)
+    ))
     if (!verdict$ok) {
       set_import_status(list(class = "alert-danger", text = verdict$text))
       return(invisible(NULL))
     }
+    # exports of earlier versions name the access controls by old stems
+    cfg <- .config_lever_ids(cfg)
     staged_cfg(cfg)
+    import_state$cancelled <- FALSE
     if (!pipeline_enabled) {
+      imported_seed <- suppressWarnings(as.integer(cfg$random_seed)[1L])
+      session$userData$wise_analysis_seed <- if (is.na(imported_seed)) as.integer(seed) else imported_seed
       live <- names(shiny::reactiveValuesToList(input))
       res <- wise_config_apply(cfg, session, existing = live)
-      import_state$pending <- if (length(res$pending)) list(
-        config = cfg, ids = res$pending,
-        deadline = Sys.time() + .EXPORT_RETRY_SECONDS
-      ) else NULL
+      import_state$pending <- if (length(res$pending)) {
+        list(
+          config = cfg, ids = res$pending,
+          deadline = Sys.time() + .EXPORT_RETRY_SECONDS
+        )
+      } else {
+        NULL
+      }
       import_wake(import_wake() + 1L)
       set_import_status(list(
         class = "alert-success",
-        text = if (length(res$pending)) {
-          paste0("Applied ", length(res$applied), " setting(s); ",
-                 length(res$pending), " more will be applied as controls appear.")
-        } else {
-          "Configuration settings restored. Re-run each step to refresh results."
-        }
+        text = .import_status_text(res, .import_dropped_connection(cfg))
       ))
       return(invisible(NULL))
     }
-    parts <- c(verdict$notes,
-               if (!is.null(cfg$exported_at))
-                 paste0("Saved ", cfg$exported_at, "."),
-               "Press Start to apply the settings and re-run Steps 1 to 3.")
+    n_dropped <- .import_dropped_connection(cfg)
+    parts <- c(
+      verdict$notes,
+      if (!is.null(cfg$exported_at)) {
+        paste0("Saved ", cfg$exported_at, ".")
+      },
+      if (n_dropped > 0L) {
+        paste0(n_dropped, " data-source setting(s) in the file will not be ",
+          "imported; the current data source is kept.")
+      },
+      "Press Start to apply the settings and re-run Steps 1 to 3."
+    )
     set_import_status(list(
       class = if (length(verdict$notes)) "alert-warning" else "alert-info",
       text = paste(parts, collapse = " ")
@@ -1414,25 +1736,84 @@ export_menu_server <- function(input, output, session,
   apply_config <- function(cfg) {
     live <- names(shiny::reactiveValuesToList(input))
     res <- wise_config_apply(cfg, session, existing = live)
-    import_state$pending <- if (length(res$pending)) list(
-      config = cfg, ids = res$pending,
-      deadline = Sys.time() + .EXPORT_RETRY_SECONDS
-    ) else NULL
+    import_state$pending <- if (length(res$pending)) {
+      list(
+        config = cfg, ids = res$pending,
+        deadline = Sys.time() + .EXPORT_RETRY_SECONDS
+      )
+    } else {
+      NULL
+    }
     import_wake(import_wake() + 1L)
+    if (length(res$failed)) {
+      set_import_status(list(
+        class = "alert-warning",
+        text = paste0(
+          "Some settings could not be restored yet: ",
+          paste(res$failed, collapse = ", ")
+        )
+      ))
+    }
     res
   }
 
+  # Steps 2 and 3 only: Step 1 controls are not re-rendered by a later stage.
+  reapply_step_inputs <- function(key) {
+    prefix <- switch(key, step2 = "^step2-", step3 = "^step3-", NULL)
+    cfg <- staged_cfg()
+    if (is.null(prefix) || is.null(cfg) || isTRUE(import_state$cancelled)) {
+      return(invisible(NULL))
+    }
+    ids <- grep(prefix, names(cfg$inputs), value = TRUE)
+    if (!length(ids)) {
+      return(invisible(NULL))
+    }
+    cfg$inputs <- cfg$inputs[ids]
+    live <- names(shiny::reactiveValuesToList(input))
+    wise_config_apply(cfg, session, existing = live)
+    invisible(NULL)
+  }
+
+  # A message sent to an input reaches the server after the run that follows it would have read the old value.
+  # Wait until the server's values match the configuration, for at most `max_tries` checks (inputs that cannot
+  # take the saved value, such as a choice that is no longer offered, must not hold the run).
+  step_inputs_settled <- function(key, max_tries = 40L) {
+    prefix <- switch(key, step2 = "^step2-", step3 = "^step3-", NULL)
+    cfg <- staged_cfg()
+    if (is.null(prefix) || is.null(cfg)) {
+      return(TRUE)
+    }
+    ids <- grep(prefix, names(cfg$inputs), value = TRUE)
+    ids <- ids[.export_keep_input(ids)]
+    same <- vapply(ids, function(id) {
+      want <- cfg$inputs[[id]]
+      have <- tryCatch(shiny::isolate(input[[id]]), error = function(e) NULL)
+      is.null(want) || is.null(have) || identical(as.character(unlist(want)), as.character(unlist(have)))
+    }, logical(1))
+    tries <- (import_state$settle_tries[[key]] %||% 0L) + 1L
+    import_state$settle_tries[[key]] <- tries
+    all(same) || tries >= max_tries
+  }
+
   apply_pending <- function() {
+    if (isTRUE(import_state$cancelled)) {
+      return(invisible(NULL))
+    }
     pending <- import_state$pending
-    if (is.null(pending) || !length(pending$ids)) return(invisible(NULL))
+    if (is.null(pending) || !length(pending$ids)) {
+      return(invisible(NULL))
+    }
     live <- names(shiny::reactiveValuesToList(input))
     ready <- intersect(pending$ids, live)
     if (length(ready)) {
       sub <- pending$config
       sub$inputs <- sub$inputs[ready]
-      wise_config_apply(sub, session, existing = ready)
+      retry <- wise_config_apply(sub, session, existing = ready)
+      failed <- retry$failed %||% character(0)
+    } else {
+      failed <- character(0)
     }
-    still <- setdiff(pending$ids, ready)
+    still <- unique(c(setdiff(pending$ids, ready), failed))
     if (length(still)) {
       import_state$pending <- list(
         config = pending$config, ids = still, deadline = pending$deadline
@@ -1448,8 +1829,13 @@ export_menu_server <- function(input, output, session,
   # what causes some downstream controls to appear.
   shiny::observe({
     import_wake()
+    if (isTRUE(import_state$cancelled)) {
+      return(invisible(NULL))
+    }
     pending <- import_state$pending
-    if (is.null(pending) || !length(pending$ids)) return(invisible(NULL))
+    if (is.null(pending) || !length(pending$ids)) {
+      return(invisible(NULL))
+    }
     apply_pending()
     pending <- import_state$pending
     if (is.null(pending) || !length(pending$ids)) {
@@ -1465,9 +1851,11 @@ export_menu_server <- function(input, output, session,
     }
     set_import_status(list(
       class = "alert-warning",
-       text = paste0("Gave up on ", length(pending$ids),
-                     " setting(s) whose controls did not appear: ",
-                     paste(pending$ids, collapse = ", "))
+      text = paste0(
+        "Gave up on ", length(pending$ids),
+        " setting(s) whose controls did not appear: ",
+        paste(pending$ids, collapse = ", ")
+      )
     ))
     import_state$pending <- NULL
   })
@@ -1475,9 +1863,16 @@ export_menu_server <- function(input, output, session,
   runner <- pipeline_runner(
     triggers = run_triggers,
     results = step_results,
-    on_settle = function() {
+    on_settle = function(key) {
       apply_pending()
+      # Earlier stages re-render the controls of a later step (the forecast window, the Step 3 panels), which
+      # drops values applied at the start. Apply a step's settings again just before it runs.
+      reapply_step_inputs(key)
       import_wake(shiny::isolate(import_wake()) + 1L)
+    },
+    ready_to_run = function(key) {
+      pending <- import_state$pending
+      (is.null(pending) || !length(pending$ids)) && step_inputs_settled(key)
     },
     on_state = function(state, phase, text) {
       pipeline_view(list(state = state, phase = phase, message = text))
@@ -1498,29 +1893,46 @@ export_menu_server <- function(input, output, session,
 
   shiny::observeEvent(input$import_close, {
     runner$cancel()
+    import_state$cancelled <- TRUE
+    import_state$pending <- NULL
+    staged_cfg(NULL)
     shiny::removeModal()
   })
 
   shiny::observeEvent(input$import_dismissed, {
     runner$cancel()
+    import_state$cancelled <- TRUE
+    import_state$pending <- NULL
   })
 
   shiny::observeEvent(input$import_run_config, {
     cfg <- staged_cfg()
-    if (is.null(cfg)) return(invisible(NULL))
-    previous_cfg(wise_config_snapshot(input, seed = seed))
+    if (is.null(cfg)) {
+      return(invisible(NULL))
+    }
+    import_state$cancelled <- FALSE
+    import_state$settle_tries <- NULL
+    previous_cfg(wise_config_snapshot(input, seed = wise_current_seed(seed, session)))
+    imported_seed <- suppressWarnings(as.integer(cfg$random_seed)[1L])
+    session$userData$wise_analysis_seed <- if (is.na(imported_seed)) {
+      as.integer(seed)
+    } else {
+      imported_seed
+    }
     apply_config(cfg)
-    if (is.function(on_import)) on_import()
+    if (is.function(on_import)) on_import(if (is.na(imported_seed)) NULL else imported_seed)
     set_import_status(NULL)
     runner$start()
   })
 
   shiny::observeEvent(input$import_restore_previous, {
     previous <- previous_cfg()
-    if (is.null(previous)) return(invisible(NULL))
+    if (is.null(previous)) {
+      return(invisible(NULL))
+    }
     runner$cancel()
     apply_config(previous)
-    if (is.function(on_import)) on_import()
+    if (is.function(on_import)) on_import(wise_current_seed(seed, session))
     set_import_status(list(
       class = "alert-secondary",
       text = "Previous settings restored. Re-run any stale steps as needed."
@@ -1529,17 +1941,22 @@ export_menu_server <- function(input, output, session,
 
   output$import_pipeline_ui <- shiny::renderUI({
     view <- pipeline_view()
-    if (is.null(view) || identical(view$phase, "idle")) return(NULL)
+    if (is.null(view) || identical(view$phase, "idle")) {
+      return(NULL)
+    }
     shiny::tagList(
       .pipeline_progress_ui(view$state),
-      if (!is.null(view$message)) shiny::div(
-        class = paste("alert", switch(view$phase,
-                                      done = "alert-success",
-                                      failed = "alert-danger",
-                                      cancelled = "alert-warning",
-                                      "alert-info")),
-        role = "alert", view$message
-      )
+      if (!is.null(view$message)) {
+        shiny::div(
+          class = paste("alert", switch(view$phase,
+            done = "alert-success",
+            failed = "alert-danger",
+            cancelled = "alert-warning",
+            "alert-info"
+          )),
+          role = "alert", view$message
+        )
+      }
     )
   })
 
@@ -1549,19 +1966,23 @@ export_menu_server <- function(input, output, session,
     if (identical(phase, "running")) {
       return(shiny::tags$span(
         class = "text-muted small me-2",
-        "Close stops later stages; a synchronous stage already running will finish."
+        "The current operation will finish, but later steps will not run."
       ))
     }
     shiny::tagList(
-      if (!is.null(previous_cfg())) shiny::actionButton(
-        "import_restore_previous", "Restore previous settings",
-        class = "btn-outline-secondary btn-sm me-2"
-      ),
-      if (!is.null(staged_cfg())) shiny::actionButton(
-        "import_run_config",
-        if (identical(phase, "idle")) "Start" else "Run again",
-        class = "btn-primary btn-sm", icon = shiny::icon("play")
-      )
+      if (!is.null(previous_cfg())) {
+        shiny::actionButton(
+          "import_restore_previous", "Restore previous settings",
+          class = "btn-outline-secondary btn-sm me-2"
+        )
+      },
+      if (!is.null(staged_cfg())) {
+        shiny::actionButton(
+          "import_run_config",
+          if (identical(phase, "idle")) "Start" else "Run again",
+          class = "btn-primary btn-sm", icon = shiny::icon("play")
+        )
+      }
     )
   })
 

@@ -35,6 +35,61 @@ w3a_methods <- c(
   "gini", "prosperity_gap", "avg_poverty"
 )
 
+test_that("equal-model summaries reconcile on matched support, not pooled years", {
+  x <- tibble::tibble(
+    model_id = c("m1", "m2", "m2", "m3", "m3", "m3", "m3"),
+    sim_year = c(2030, 2030:2031, 2030:2033),
+    baseline = c(1, 10, 10, 100, 100, 100, 100),
+    effect = c(0, 1, 1, 9, 9, 9, 9), effect_sd = 2,
+    effect_gradient = rep(list(c(2, 0)), 7)
+  )
+  x$policy <- x$baseline + x$effect
+  old <- paired_effect_summary(x)
+  out <- paired_effect_summary(x, center = "equal_model_mean")
+  expect_equal(old$value, 1)
+  expect_equal(out$value, 10 / 3)
+  expect_equal(out$baseline, 111 / 3)
+  expect_equal(out$policy - out$baseline, out$value)
+  expect_false(isTRUE(all.equal(out$value, mean(x$effect))))
+  expect_equal(out$coef_lo, out$value + qnorm(.1) * 2)
+  expect_equal(out$coef_hi, out$value + qnorm(.9) * 2)
+  expect_equal(out$intermod_lo, old$intermod_lo)
+  expect_equal(out$intermod_hi, old$intermod_hi)
+  expect_identical(out$center_method, "equal_model_mean")
+  expect_equal(out$n_model_years, 7)
+  expect_equal(out$n_dropped_model_years, 0)
+
+  x$policy[2] <- Inf
+  x$effect[2] <- Inf
+  dropped <- paired_effect_summary(x, center = "equal_model_mean")
+  expect_equal(dropped$n_model_years, 6)
+  expect_equal(dropped$n_dropped_model_years, 1)
+  expect_equal(dropped$policy - dropped$baseline, dropped$value)
+})
+
+test_that("component medians are nonadditive but equal-model means telescope", {
+  main <- c(0, 10, 10)
+  interaction <- c(10, 0, 10)
+  expect_false(median(main) + median(interaction) == median(main + interaction))
+  expect_equal(mean(main) + mean(interaction), mean(main + interaction))
+})
+
+test_that("Step 3 level context comes from paired summary, not marginal means", {
+  summary <- paired_effect_summary(tibble::tibble(
+    model_id = c("m1", "m2", "m3"), sim_year = 2030,
+    baseline = c(1, 10, 100), policy = c(1, 11, 109),
+    effect = c(0, 1, 9), effect_sd = 0
+  ), scenario = "SSP2-4.5", center = "equal_model_mean")
+  cards <- step3_headline_cards(summary,
+    baseline_agg = list("SSP2-4.5" = list(out = data.frame(value = 999))),
+    policy_agg = list("SSP2-4.5" = list(out = data.frame(value = 999))))
+  expect_identical(cards[[1]]$value, "+3.33 outcome units")
+  expect_match(cards[[1]]$note, "Policy vs baseline", fixed = TRUE)
+  expect_match(cards[[1]]$info,
+    "Policy: 40.33 outcome units vs baseline: 37.00 outcome units.", fixed = TRUE)
+  expect_match(cards[[1]]$info, "Equal-model mean", fixed = TRUE)
+})
+
 w3a_pov_line <- function(method) {
   if (method %in% c("headcount_ratio", "gap", "fgt2")) 3.25 else NULL
 }
@@ -64,6 +119,9 @@ w3a_direct_per_year <- function(pipe, method, weighted, residuals, is_log, seed)
       seed = wiseapp:::wise_seed(seed, "residual", yr)
     )
     out$sim_year <- yr
+    # R2-BUG-28: per-year count of excluded NA predictions.
+    out$n_na_dropped <- sum(idx & is.na(pipe$y_point))
+    out$n_na_weight_dropped <- 0L
     out
   })
 }
@@ -148,9 +206,9 @@ test_that("original residuals preserve ID matching and deterministic fallback", 
   expect_true(is.finite(residuals[first_year_ids == "missing"]))
 })
 
-test_that("normal and resample residual streams remain per-year and arm-independent", {
+test_that("resample residual streams remain per-year and arm-independent", {
   pipe <- make_w3a_pipeline()
-  for (residuals in c("normal", "resample")) {
+  for (residuals in "resample") {
     for (weighted in c(FALSE, TRUE)) {
       observed <- wiseapp::aggregate_pipeline_per_year(
         pipe, method = "mean", weighted = weighted, residuals = residuals,
@@ -187,7 +245,6 @@ test_that("normal and resample residual streams remain per-year and arm-independ
 })
 
 test_that("Results weighting arms remain lazy until a consumer requests them", {
-  skip_if_not_installed("shiny")
   n <- 400L
   set.seed(7)
   hist_sim <- shiny::reactiveVal(list(
@@ -246,4 +303,31 @@ test_that("bounded aggregation preparation and method caches evict oldest entrie
     ),
     NA
   )
+})
+
+test_that("aggregation preparation reuses residual variance across years", {
+  pipe <- make_w3a_pipeline()
+  prepared <- wiseapp:::.aggregation_prepare_pipeline(
+    pipe = pipe, train_aug = pipe$train_aug, id_col = pipe$id_col,
+    residuals = "resample", seed = 1L, is_log = TRUE
+  )
+
+  expect_identical(prepared$resid_sigma2,
+                   stats::var(pipe$train_aug$.resid, na.rm = TRUE))
+
+  observed <- aggregate_pipeline_per_year(
+    pipe, method = "mean", residuals = "resample", seed = 1L
+  )
+  expected <- lapply(observed, function(x) x$var_resid)
+  expect_true(all(is.finite(unlist(expected))))
+})
+
+# One survey weight column, the one named `weight`; other names are not weights
+# (methodology review MR-02, user decision 2026-10-26).
+test_that("survey weight column is the one named weight", {
+  expect_identical(wiseapp:::survey_weight_column(c("hhweight", "x", "weight")), "weight")
+  expect_null(wiseapp:::survey_weight_column(c("pw", "WGT", "hhweight")))
+  expect_null(wiseapp:::survey_weight_column(c("a", "b")))
+  svy <- data.frame(hhweight = 1, weight = 2)
+  expect_identical(wiseapp:::baseline_weight_column(svy), "weight")
 })

@@ -1,6 +1,6 @@
 Package: wiseapp
 Title: Weather Impact Simulation and Evaluation for Adaptation Policy and Planning
-Version: 0.1.0
+Version: 0.6.0
 Authors@R: c(
     person("Ben", "Brunckhorst", , "bbrunckhorst@worldbank.org", role = c("aut", "cre")),
     person("Mads", "Hoefer", role = "aut"),
@@ -11,15 +11,13 @@ Maintainer: Ben Brunckhorst <bbrunckhorst@worldbank.org>
 Description: A tool to estimate the relationship between weather and household welfare, simulate welfare in different weather conditions and climates, and simulate adaptation policy scenarios.
 License: MIT + file LICENSE
 Encoding: UTF-8
-Depends: R (>= 4.1.0)
+Depends: R (>= 4.4.0)
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
     DBI,
-    DT,
-    Hmisc,
-    brand.yml,
     broom,
+    brand.yml,
     bslib,
     collapse,
     colorspace,
@@ -27,28 +25,25 @@ Imports:
     dbplyr,
     digest,
     dplyr,
-    duckdb,
-    fixest,
-    future,
-    future.apply,
-    ggplot2,
+    duckdb (>= 2.0.0),
+    echarts4r,
+    fixest (>= 0.14.0),
+    filelock,
     glmnet,
     golem,
     htmltools,
+    htmlwidgets,
     httr2,
-    igraph,
     jsonlite,
-    katex,
-    lubridate,
-    matrixStats,
-    mice,
-    patchwork,
-    parsnip,
+    later,
+    mirai,
+    parallelly,
+    promises,
     purrr,
-    ragg,
-    ranger,
-    readr,
+    Rcpp,
+    reactable,
     rlang,
+    qs2,
     scales,
     shiny,
     stats,
@@ -57,13 +52,29 @@ Imports:
     tidyr,
     tools,
     withr,
-    xgboost,
+    webshot2,
+    zip,
     pkgload
+LinkingTo:
+    Rcpp
 Suggests:
+    arrow,
+    bit64,
+    chromote,
     covr,
+    crew,
+    data.table,
+    katex,
+    lubridate,
+    parsnip,
+    processx,
+    ranger,
     spelling,
+    targets,
     testthat (>= 3.0.0),
-    zip
+    xgboost,
+    yaml
 Config/testthat/edition: 3
+Config/testthat/parallel: true
 URL: https://github.com/worldbank/wise-app
 BugReports: https://github.com/worldbank/wise-app/issues

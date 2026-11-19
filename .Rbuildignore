@@ -17,7 +17,15 @@
 ^CLAUDE\.md$
 ^batch$
 ^review$
+^roadmap$
+^\.agents$
 ^\.claude$
 ^\.kilo$
 ^\.posit$
 ^AGENTS\.md$
+^ARCHITECTURE\.md$
+^DEPLOYMENT\.md$
+^docs$
+^\.github$
+^\.lintr$
+^tests/e2e$

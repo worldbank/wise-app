@@ -15,7 +15,8 @@ mod_3_04_labor_ui <- function(id) {
     uiOutput(ns("placeholder_ui")),
     uiOutput(ns("labor_lfp_ui")),
     uiOutput(ns("labor_emp_ui")),
-    uiOutput(ns("labor_sector_ui"))
+    uiOutput(ns("labor_sector_ui")),
+    uiOutput(ns("labor_note_ui"))
   )
 }
 
@@ -38,39 +39,42 @@ mod_3_04_labor_ui <- function(id) {
 #'
 #' @noRd
 mod_3_04_labor_server <- function(id,
-                                   selected_model = reactive(NULL),
-                                   survey_data = reactive(NULL),
-                                   variable_list  = reactive(NULL)) {
+                                  selected_model = reactive(NULL),
+                                  survey_data = reactive(NULL),
+                                  variable_list = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # ---- Get model coefficients ------------------------------------------
-    # REACT-08: shared coefficient decomposition (utils_mod_1_helpers.R).
-    coeffs_rx        <- model_coefficient_reactives(selected_model)
-    ind_coeff        <- coeffs_rx$individual
-    hh_coeff         <- coeffs_rx$hh
-    firm_coeff       <- coeffs_rx$firm
-    area_coeff       <- coeffs_rx$area
-    interaction_names <- coeffs_rx$interactions
-    coeffs           <- coeffs_rx$all
+    # Get model coefficients ----
+    # REACT-08: shared coefficient decomposition (utils_step1.R).
+    coeffs_rx <- model_coefficient_reactives(selected_model)
+    coeffs <- coeffs_rx$all
 
-    # ---- Candidate variables for this category --------------------------
-    labor_patterns <- c("employed", "selfemployed", "agriculture", "industry", "services")
+    # Candidate variables for this category ----
+    # The labour levers of the registry (`policy_registry()`).
+    labor_patterns <- reactive({
+      r <- policy_registry(variable_list())
+      unique(r$var[r$slot == "labor"])
+    })
 
     any_selected <- reactive({
-      any(tolower(labor_patterns) %in% tolower(coeffs()))
+      any(tolower(labor_patterns()) %in% tolower(coeffs()))
     })
 
     # Labor variables available in the selected survey
     labor_vars_available <- reactive({
       svy <- survey_data()
-      if (is.null(svy)) return(character(0))
+      if (is.null(svy)) {
+        return(character(0))
+      }
       # Check which labour variables are actually in the selected survey
-      intersect(labor_patterns, names(svy))
+      intersect(labor_patterns(), names(svy))
     })
 
     output$placeholder_ui <- renderUI({
-      if (isTRUE(any_selected())) return(NULL)
+      if (isTRUE(any_selected())) {
+        return(NULL)
+      }
       # Only show placeholder if there are labour variables in the survey
       if (length(labor_vars_available()) == 0) {
         return(no_data_warning(
@@ -78,11 +82,33 @@ mod_3_04_labor_server <- function(id,
         ))
       }
       # Show candidate variables with their levels from variable_list
-      cand <- policy_candidate_info(variable_list(), labor_patterns)
+      cand <- policy_candidate_info(variable_list(), paste0("^", labor_patterns(), "$"))
       policy_placeholder_tag("labor market", cand)
     })
 
-    # ---- Helper: pp slider ---------------------------------------------
+    # Controls that are hidden because their variables are not all in the model
+    # (not silently left out).
+    output$labor_note_ui <- renderUI({
+      req(any_selected())
+      in_model <- tolower(labor_patterns()) %in% tolower(coeffs())
+      miss <- function(v) setdiff(v, labor_patterns()[in_model])
+      notes <- c(
+        if (!isTRUE(show_emp())) {
+          paste0("Employment rate (needs one of employed, selfemployed, unemployed in the Step 1 model)")
+        },
+        if (!isTRUE(show_sector())) {
+          paste0(
+            "Sectoral composition (needs agriculture, industry and services in the Step 1 model; missing: ",
+            paste(miss(c("agriculture", "industry", "services")), collapse = ", "), ")"
+          )
+        }
+      )
+      if (length(notes) > 0L) {
+        tags$small(class = "text-muted d-block", "Not available: ", paste(notes, collapse = "; "))
+      }
+    })
+
+    # Helper: pp slider ----
     # Renders a simple percentage-point slider with icon label.
 
     labor_pp_ui <- function(input_id, label, icon_class,
@@ -108,7 +134,7 @@ mod_3_04_labor_server <- function(id,
       )
     }
 
-    # ---- Employment rate change -----------------------------------------
+    # Employment rate change ----
 
     show_emp <- reactive({
       cv <- coeffs()
@@ -117,12 +143,14 @@ mod_3_04_labor_server <- function(id,
 
     output$labor_emp_ui <- renderUI({
       req(show_emp())
-      labor_pp_ui("labor_emp",
-                  "Change in employment rate (pp)",
-                  "fa-briefcase")
+      labor_pp_ui(
+        "labor_emp",
+        "Change in employment rate (pp)",
+        "fa-briefcase"
+      )
     })
 
-    # ---- Sectoral composition ------------------------------------------
+    # Sectoral composition ----
     # Three sliders sum to 100pp - agriculture anchors, manufacturing and
     # services are user-controlled, agriculture = 100 - mfg - services.
 
@@ -130,6 +158,10 @@ mod_3_04_labor_server <- function(id,
       cv <- tolower(coeffs())
       all(c("agriculture", "industry", "services") %in% cv)
     })
+
+    # R2-BUG-05: sliders start at the observed shares, so an untouched slider
+    # is "no change" rather than a 0% target.
+    sector_defaults <- reactive(step3_sector_defaults(survey_data()))
 
     output$labor_sector_ui <- renderUI({
       req(show_sector())
@@ -154,7 +186,7 @@ mod_3_04_labor_server <- function(id,
           label   = NULL,
           min     = 0,
           max     = 100,
-          value   = 0,
+          value   = sector_defaults()[["industry"]],
           step    = 1,
           post    = "%"
         ),
@@ -169,7 +201,7 @@ mod_3_04_labor_server <- function(id,
           label   = NULL,
           min     = 0,
           max     = 100,
-          value   = 0,
+          value   = sector_defaults()[["services"]],
           step    = 1,
           post    = "%"
         ),
@@ -181,11 +213,11 @@ mod_3_04_labor_server <- function(id,
       shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
     })
 
-    # ---- Agriculture share derived from mfg + services -----------------
+    # Agriculture share derived from mfg + services ----
 
     sector_agri <- reactive({
-      mfg      <- input$sector_manufacturing %||% 0
-      services <- input$sector_services      %||% 0
+      mfg <- input$sector_manufacturing %||% 0
+      services <- input$sector_services %||% 0
       max(0L, 100L - mfg - services)
     })
 
@@ -221,14 +253,12 @@ mod_3_04_labor_server <- function(id,
       )
     })
 
-    # ---- Return API -----------------------------------------------------
+    # Return API ----
     list(
       labor_scenario = reactive({
-        list(
-          employment_change_pp  = input$labor_emp           %||% 0,
-          sector_manufacturing  = input$sector_manufacturing %||% 0,
-          sector_services       = input$sector_services      %||% 0,
-          sector_agriculture    = sector_agri()
+        wise_labor_config(
+          step3_read_inputs(STEP3_LABOR_IDS, function(id) input[[id]]),
+          sector_defaults()
         )
       })
     )

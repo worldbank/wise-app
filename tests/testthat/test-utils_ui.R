@@ -241,3 +241,36 @@ test_that("wave_toggle_slider builds radio group with toggle-slider classes", {
   expect_true(grepl("value=\"all\"", tag_html, fixed = TRUE))
   expect_true(grepl("value=\"MWI|2010\"", tag_html, fixed = TRUE))
 })
+
+# wise_reactable_csv_button (UI-45) ---------------------------------------------
+
+test_that("wise_reactable_csv_button wires the client-side export call", {
+  btn <- wise_reactable_csv_button("ss-hh_stats", "survey_summary_hh")
+  html <- as.character(shiny::HTML(as.character(btn)))
+  # custom.js turns the data attributes into
+  # Reactable.downloadDataCSV("ss-hh_stats", "...csv"); there is no inline
+  # handler (CR-SEC-09).
+  expect_match(html, 'data-csv-table="ss-hh_stats"', fixed = TRUE)
+  expect_match(html, 'data-csv-file="survey_summary_hh.csv"', fixed = TRUE)
+  expect_false(grepl("onclick", html, fixed = TRUE))
+  expect_match(html, "wise-csv-btn", fixed = TRUE)
+})
+
+test_that("the Step 2 summary card names an applied residual rule that differs from the request", {
+  hs <- list(so = list(name = "welfare"), sim_summary = list(
+    historical_years = c(1991, 2020), residuals_requested = "original", residuals_effective = "none"))
+  html <- as.character(simulation_summary_card(hs))
+  expect_match(html, "Residuals applied")
+  expect_match(html, "none (requested original)", fixed = TRUE)
+  hs$sim_summary$residuals_effective <- "original"
+  expect_no_match(as.character(simulation_summary_card(hs)), "Residuals applied")
+})
+
+test_that("with_grid_num sets the explicit grid count on an ionRangeSlider", {
+  slider <- shiny::sliderInput("s", "S", min = 0, max = 60, value = c(5, 60), step = 1)
+  html <- as.character(with_grid_num(slider, 11))
+  expect_match(html, 'data-grid-num="11"', fixed = TRUE)
+  # A tag without a grid attribute is returned unchanged.
+  plain <- shiny::tags$div(shiny::tags$span("x"))
+  expect_identical(with_grid_num(plain, 5), plain)
+})

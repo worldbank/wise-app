@@ -5,18 +5,25 @@
 #' @import shiny
 #' @noRd
 app_ui <- function(request) {
-  bslib::page_navbar(
+  page <- bslib::page_navbar(
     title = tagList(
       "WISE-APP",
       tags$span(class = "app-version", golem::get_golem_version())
     ),
     window_title = "WISE-APP",
+    lang = "en",
     theme = bslib::bs_theme(
       version = 5,
-      brand   = app_sys("app/_brand.yml")
+      brand   = app_sys("app/_brand.yml"),
+      # R2-A11Y-02 (WCAG 1.4.11): Bootstrap's default focus glow is the
+      # primary colour at 25% alpha (about 1.4:1 on white). Use a solid 2px
+      # ring in the brand blue instead (5.1:1 on white, 3.1:1 on the navbar).
+      "input-btn-focus-width"         = "2px",
+      "input-btn-focus-color-opacity" = 1,
+      "focus-ring-width"              = "2px",
+      "focus-ring-opacity"            = 1
     ),
     navbar_options = bslib::navbar_options(theme = "dark", bg = "#002244"),
-
     header = tagList(
       golem_add_external_resources(),
       shiny::useBusyIndicators(),
@@ -63,7 +70,6 @@ app_ui <- function(request) {
     # top-right utilities rather than inside a step, because it spans all of
     # them.
     export_menu_ui(),
-
     bslib::nav_item(
       tags$a(
         icon("book-open"), "Docs",
@@ -95,6 +101,29 @@ app_ui <- function(request) {
       )
     )
   )
+  add_main_landmark(page)
+}
+
+#' Skip link and main landmark for the navbar page (R2-A11Y-05)
+#'
+#' page_navbar() has no slot before the navbar and renders its panels in a
+#' plain div, so mark the top-level tab content as the `main` landmark and
+#' put a "Skip to main content" link first in the tab order.
+#' @noRd
+add_main_landmark <- function(page) {
+  tq <- htmltools::tagQuery(page)
+  tq$find(".tab-content")$
+    filter(function(x, i) i == 1L)$
+    addAttrs(id = "main-content", role = "main", tabindex = "-1")
+  tq$resetSelected()$find("nav.navbar")$before(
+    tags$a(class = "skip-link", href = "#main-content", "Skip to main content")
+  )
+  out <- tq$allTags()
+  # allTags() drops the page's attributes (`lang`, `bs_theme`); Shiny reads
+  # `lang` for <html lang> (WCAG 3.1.1).
+  attributes(out) <- c(attributes(out)[setdiff(names(attributes(out)), names(attributes(page)))],
+    attributes(page))
+  out
 }
 
 #' Add external Resources to the Application
@@ -103,23 +132,24 @@ app_ui <- function(request) {
 #' resources inside the Shiny application.
 #'
 #' @import shiny
-#' @importFrom golem add_resource_path activate_js favicon bundle_resources
+#' @importFrom golem add_resource_path favicon bundle_resources
 #' @noRd
 golem_add_external_resources <- function() {
-	add_resource_path(
-		"www",
-		app_sys("app/www")
-	)
+  add_resource_path(
+    "www",
+    app_sys("app/www")
+  )
 
-	tags$head(
-		favicon(ext = 'png'),
-		bundle_resources(
-			path = app_sys("app/www"),
-			app_title = "wiseapp"
-
-		),
-		# Vendored MapLibre/H3 map engine, after bundle_resources so the
-		# explicit script order (maplibre -> h3-js -> hexmap.js) always wins.
-		hexmap_dependency()
-	)
+  tags$head(
+    favicon(ext = "png"),
+    bundle_resources(
+      path = app_sys("app/www"),
+      app_title = "wiseapp"
+    ),
+    # Vendored MapLibre/H3 map engine. The engine lives in inst/app/vendor/,
+    # outside the bundle_resources scan tree, so this explicit dependency is
+    # its only serving path and keeps the strict script order
+    # (maplibre -> h3-js -> hexmap.js) with a single execution per page load.
+    hexmap_dependency()
+  )
 }

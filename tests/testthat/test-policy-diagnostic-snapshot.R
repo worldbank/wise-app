@@ -113,6 +113,19 @@ test_that("diagnostic snapshot caches transfer-adjusted summaries and vectors", 
   expect_false("baseline_svy" %in% names(snapshot))
   expect_false("policy_svy" %in% names(snapshot))
   expect_identical(snapshot$analysis_unit, "hh")
+  treated <- snapshot$treatment_matrix[snapshot$treatment_matrix$treated_policy, ]
+  received <- policy[[SP_TRANSFER_COL]] > 0
+  expect_equal(sum(treated$weighted_households),
+    sum(baseline$weight[received] / baseline$hhsize[received]))
+  sp_component <- snapshot$component_matrix[
+    snapshot$component_matrix$component == "Social protection", ]
+  expect_equal(sp_component$weighted_households,
+    sum(baseline$weight[received] / baseline$hhsize[received]))
+  expect_true("Households represented" %in%
+    names(.policy_treatment_table_raw(snapshot$treatment_matrix, "hh")))
+  component_table <- .policy_component_table_raw(snapshot$component_matrix, "hh")
+  expect_true("Households represented" %in% names(component_table))
+  expect_true("Sample households affected / covered" %in% names(component_table))
 
   policy$electricity[] <- 0L
   expect_identical(snapshot$policy_values$electricity, c(1L, 1L, 1L))
@@ -160,7 +173,7 @@ test_that("diagnostics module reads one published snapshot without rescanning", 
 })
 
 
-test_that("failed policy runs retain the prior published diagnostic snapshot", {
+test_that("failed annual policy runs retain all previously published results", {
   trigger <- reactiveVal(NULL)
   fail_decomp <- FALSE
   svy <- data.frame(
@@ -169,20 +182,29 @@ test_that("failed policy runs retain the prior published diagnostic snapshot", {
   policy <- transform(svy, electricity = 1L)
   hs <- list(
     svy = svy, so = list(name = "welfare", transform = "none"),
-    pipeline = list(y_point = c(1, 2), svy_row_id = 1:2),
-    weather_raw = data.frame(temp = 20:21), residuals = "original"
+    pipeline = list(y_point = c(1, 2), svy_row_id = 1:2,
+                    policy_correction = list(version = "row_aligned_annual_v1")),
+    weather_raw = data.frame(temp = 20:21), residuals = "original",
+    shared_context = list(), .sig = "step2"
   )
+  policy_hs <- hs
+  policy_hs$pipeline$y_point <- c(2, 4)
+  old_scenarios <- list()
+  context_for_run <- function(...) list(run_identity = "test-run")
 
   local_mocked_bindings(
     apply_policy_to_svy = function(...) policy,
+    .build_decomposition_context = context_for_run,
     apply_policy_delta_to_baseline = function(...)
-      list(hist_sim = hs, saved_scenarios = list()),
-    decompose_policy_effect = function(...) {
-      if (fail_decomp) stop("forced decomposition failure")
-      data.frame(delta_total = c(0, 1))
-    },
-    .policy_diagnostics_snapshot = function(...)
+      list(hist_sim = policy_hs, saved_scenarios = old_scenarios,
+           annual_channels = new.env(parent = emptyenv()),
+           decomp_scenarios = data.frame(run = "first"),
+           correction_version = "row_aligned_annual_v1"),
+    .finalize_decomposition_context = function(context, ...) context,
+    .policy_diagnostics_snapshot = function(...) {
+      if (fail_decomp) stop("forced late-stage failure")
       list(run = "first", status = NULL)
+    }
   )
 
   testServer(
@@ -202,13 +224,19 @@ test_that("failed policy runs retain the prior published diagnostic snapshot", {
       expect_identical(sim_run_id(), 1L)
       prior <- diagnostic_summary_rv()
       expect_identical(prior$run, "first")
+      prior_policy <- policy_hist_sim_rv()
+      prior_baseline <- baseline_hist_sim_rv()
+      prior_decomp <- decomp_scenarios_rv()
 
       fail_decomp <<- TRUE
       trigger(2L)
       session$flushReact()
-      expect_match(conditionMessage(sim_error()), "forced decomposition failure")
+      expect_identical(run_status(), "failure")
       expect_identical(sim_run_id(), 1L)
       expect_identical(diagnostic_summary_rv(), prior)
+      expect_identical(policy_hist_sim_rv(), prior_policy)
+      expect_identical(baseline_hist_sim_rv(), prior_baseline)
+      expect_identical(decomp_scenarios_rv(), prior_decomp)
     }
   )
 })

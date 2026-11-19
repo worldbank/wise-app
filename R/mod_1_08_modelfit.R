@@ -1,21 +1,9 @@
-#' 1_08_modelfit UI Function
-#'
-#' @description A shiny Module.
-#'
-#' @param id,input,output,session Internal parameters for {shiny}.
-#'
-#' @noRd
-#'
-#' @importFrom shiny NS tagList
-mod_1_08_modelfit_ui <- function(id) {
-  tagList()
-}
-
 #' 1_08_modelfit Server Functions
 #'
+#' All display data comes from the fit snapshot (`model_fit()$.snap`), so no
+#' selection reactives are passed in.
+#'
 #' @param id              Module id.
-#' @param variable_list   Reactive data frame of variable metadata.
-#' @param selected_outcome Reactive one-row data frame from mod_1_03_outcome.
 #' @param model_fit       Reactive list returned by fit_model() via
 #'   mod_1_07_results.
 #' @param tabset_id       Character id of the parent tabset panel.
@@ -23,13 +11,10 @@ mod_1_08_modelfit_ui <- function(id) {
 #'
 #' @noRd
 mod_1_08_modelfit_server <- function(id,
-                                      variable_list,
-                                      selected_outcome,
-                                      model_fit,
-                                      tabset_id,
-                                      survey_weather,
-                                      fit_stale = reactive(FALSE),
-                                      tabset_session = NULL) {
+                                     model_fit,
+                                     tabset_id,
+                                     fit_stale = reactive(FALSE),
+                                     tabset_session = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -51,13 +36,13 @@ mod_1_08_modelfit_server <- function(id,
       selection_summary_card(
         title = "Selected model",
         badge = model_covariate_badge(snap$model),
-        rows  = model_card_rows(
+        rows = model_card_rows(
           snap$model,
           label_fun      = label_fun,
           outcome_label  = as.character(snap$outcome$label[1]),
           weather_labels = as.character(snap$weather$label)
         ),
-        info  = paste(
+        info = paste(
           "The fitted specification is shown as selected outcome, weather,",
           "interaction, and fixed-effect variables. Results",
           "reflect this run until you press Run model again."
@@ -65,11 +50,11 @@ mod_1_08_modelfit_server <- function(id,
       )
     })
 
-    # ---- Internal state -----------------------------------------------------
+    # Internal state ----
 
     modelfit_tab_added <- reactiveVal(FALSE)
 
-    # ---- Helpers ------------------------------------------------------------
+    # Helpers ----
 
     # INT-05: bind diagnostic renderers to the fit-time snapshot so new
     # selections cannot relabel or re-frame an already-fitted model.
@@ -102,24 +87,37 @@ mod_1_08_modelfit_server <- function(id,
       is_logistic_fit(model_fit())
     })
 
-    # ---- Outputs ------------------------------------------------------------
+    # Outputs ----
 
-    output$resid_weather1 <- renderPlot({
+    # One builder behind each residual panel and its export (UI-48).
+    resid_weather_fig <- function(i) {
+      mf <- model_fit()
+      if (is.null(mf) || length(mf$weather_terms) < i) {
+        return(NULL)
+      }
+      h <- mf$weather_terms[i]
+      if (is.na(h) || is.null(h)) {
+        return(NULL)
+      }
+      echart_resid_weather(rif_single_model(), h,
+        weather_df = fit_snap()$survey_weather,
+        x_label = resid_axis_lab(h),
+        height = "300px"
+      )
+    }
+
+    output$resid_weather1 <- echarts4r::renderEcharts4r({
       req(full_model(), model_fit(), fit_snap())
-      h <- model_fit()$weather_terms[1]
-      req(!is.na(h))
-      m <- rif_single_model()
-      plot_resid_weather(m, h, weather_df = fit_snap()$survey_weather,
-                         x_label = resid_axis_lab(h))
+      ch <- resid_weather_fig(1)
+      req(!is.null(ch))
+      ch
     })
 
-    output$resid_weather2 <- renderPlot({
+    output$resid_weather2 <- echarts4r::renderEcharts4r({
       req(full_model(), model_fit(), length(model_fit()$weather_terms) >= 2, fit_snap())
-      h <- model_fit()$weather_terms[2]
-      req(!is.na(h))
-      m <- rif_single_model()
-      plot_resid_weather(m, h, weather_df = fit_snap()$survey_weather,
-                         x_label = resid_axis_lab(h))
+      ch <- resid_weather_fig(2)
+      req(!is.null(ch))
+      ch
     })
 
     # Unit-complete x-axis label for the residual plots, mirroring the effect
@@ -128,8 +126,11 @@ mod_1_08_modelfit_server <- function(id,
       slf <- snap_label_fun()
       lab <- wise_label_short(slf(h))
       w <- fit_snap()$weather
-      un <- if (!is.null(w) && !is.null(w$name) && h %in% as.character(w$name))
-        as.character(w$units[w$name == h][1]) else NA_character_
+      un <- if (!is.null(w) && !is.null(w$name) && h %in% as.character(w$name)) {
+        as.character(w$units[w$name == h][1])
+      } else {
+        NA_character_
+      }
       binned <- !is.null(w) && !is.null(w$cont_binned) &&
         h %in% as.character(w$name) &&
         identical(as.character(w$cont_binned[w$name == h][1]), "Binned")
@@ -145,61 +146,53 @@ mod_1_08_modelfit_server <- function(id,
     # UI-48: one builder behind the plot and its export, so a downloaded PNG
     # is the figure on screen.
     pred_welf_fig <- function() {
-      mf   <- model_fit()
+      mf <- model_fit()
       snap <- fit_snap()
-      slf  <- snap_label_fun()
-      if (is.null(mf) || is.null(snap)) return(NULL)
+      slf <- snap_label_fun()
+      if (is.null(mf) || is.null(snap)) {
+        return(NULL)
+      }
       if (identical(mf$engine, "rif")) {
         # RIF models predict the RIF-transformed outcome (effectively binary
         # per quantile), so the standard predicted-vs-actual histogram is not
         # meaningful. Instead show the original welfare distribution with
         # predicted quantile markers.
-        y <- mf$train_data[[mf$y_var]]
-        taus <- mf$taus
-        q_vals <- stats::quantile(y, probs = taus, names = FALSE)
-        q_df <- data.frame(tau = paste0("\u03c4=", taus), value = q_vals)
-        ggplot2::ggplot(data.frame(y = y), ggplot2::aes(x = y)) +
-          ggplot2::geom_histogram(
-            ggplot2::aes(y = 100 * ggplot2::after_stat(count) / sum(ggplot2::after_stat(count))),
-            fill = .wise_blue, alpha = 0.7, bins = 30
-          ) +
-          ggplot2::geom_vline(data = q_df, ggplot2::aes(xintercept = value),
-                              linetype = "dashed", colour = .wise_marker_alt,
-                              linewidth = 0.5) +
-          ggplot2::geom_text(data = q_df,
-                             ggplot2::aes(x = value, y = Inf, label = tau),
-                             vjust = 1.5, hjust = -0.1, size = 3.2,
-                             colour = .wise_marker_alt) +
-          ggplot2::labs(
-            subtitle = "Welfare distribution with estimated quantiles",
-            x = stringr::str_wrap(slf(snap$outcome$name), 40),
-            y = "Share of households (%)"
-          ) +
-          theme_wise()
+        echart_welfare_quantile_hist(
+          mf$train_data[[mf$y_var]],
+          taus = mf$taus,
+          x_label = slf(snap$outcome$name),
+          height = "400px"
+        )
       } else {
-        m <- rif_single_model()
-        plot_pred_vs_actual(
-          model         = m,
+        echart_pred_vs_actual(
+          model         = rif_single_model(),
           is_logistic   = is_logistic(),
-          outcome_label = slf(snap$outcome$name)
+          outcome_label = slf(snap$outcome$name),
+          height        = "400px"
         )
       }
     }
 
-    output$pred_welf_dist <- renderPlot({
+    output$pred_welf_dist <- echarts4r::renderEcharts4r({
       req(full_model(), fit_snap())
-      pred_welf_fig()
+      ch <- pred_welf_fig()
+      req(!is.null(ch))
+      ch
     })
 
     # Approximate contribution of each term to the model's explained
     # variation (squared standardized coefficients, share of their sum).
     importance_fig <- function() {
       req(full_model(), model_fit(), fit_snap())
-      plot_importance(rif_single_model(), label_fun = snap_label_fun())
+      echart_importance(rif_single_model(), label_fun = snap_label_fun(),
+        height = "400px"
+      )
     }
 
-    output$importance_plot <- renderPlot({
-      importance_fig()
+    output$importance_plot <- echarts4r::renderEcharts4r({
+      ch <- importance_fig()
+      req(!is.null(ch))
+      ch
     })
 
     # Residual diagnostics: residuals vs fitted + normal QQ (linear, LPM and
@@ -207,11 +200,15 @@ mod_1_08_modelfit_server <- function(id,
     # plot and its export (UI-48).
     residual_panels_fig <- function() {
       req(full_model(), model_fit())
-      plot_residual_panels(rif_single_model(), is_logistic = is_logistic())
+      echart_residual_panels(rif_single_model(), is_logistic = is_logistic(),
+        height = "400px"
+      )
     }
 
-    output$residual_panels <- renderPlot({
-      residual_panels_fig()
+    output$residual_panels <- echarts4r::renderEcharts4r({
+      ch <- residual_panels_fig()
+      req(!is.null(ch))
+      ch
     })
 
     # UI-45: one data frame behind both the table and its CSV export.
@@ -225,21 +222,34 @@ mod_1_08_modelfit_server <- function(id,
       )
     })
 
-    output$additional_stats <- renderTable(
-      additional_stats_df(),
-      striped = TRUE, hover = TRUE, bordered = TRUE
-    )
-
-    output$additional_stats_csv <- csv_download_handler(
-      "model_fit_statistics",
-      function() additional_stats_df()
-    )
+    # UI-45: client-side searchable table with a client-side CSV download;
+    # raw (already-formatted) values pass through unrounded.
+    output$additional_stats <- reactable::renderReactable({
+      tab <- additional_stats_df()
+      if (is.null(tab) || !is.data.frame(tab) || !nrow(tab)) {
+        tab <- data.frame(Note = "No data available")
+      }
+      cols <- lapply(names(tab), function(nm) {
+        reactable::colDef(class = "wise-dt-wrap", minWidth = 120)
+      })
+      names(cols) <- names(tab)
+      reactable::reactable(
+        tab,
+        columns = cols,
+        compact = TRUE,
+        striped = TRUE,
+        highlight = TRUE,
+        bordered = TRUE,
+        searchable = FALSE,
+        defaultPageSize = 10
+      )
+    })
 
     wise_export_table(
-      key   = "model_fit_statistics",
+      key = "model_fit_statistics",
       label = "Model fit statistics",
-      step  = 1L,
-      fun   = function() additional_stats_df(),
+      step = 1L,
+      fun = function() additional_stats_df(),
       description = paste(
         "Goodness-of-fit measures for the full specification: observations,",
         "R-squared (and adjusted/within variants), or McFadden R-squared and",
@@ -251,33 +261,31 @@ mod_1_08_modelfit_server <- function(id,
     # the same inputs its on-screen renderer does, so a not-run step throws
     # shiny.silent.error and is skipped quietly, while a genuine failure is
     # named in the README's "Not exported" section.
-    for (i in 1:2) local({
-      idx <- i
-      wise_export_figure(
-        key   = paste0("residuals_vs_weather_", idx),
-        label = paste0("Residuals vs weather ", idx),
-        step  = 1L,
-        fun   = function() {
-          req(full_model(), model_fit(), fit_snap())
-          h <- model_fit()$weather_terms[idx]
-          if (is.na(h) || is.null(h)) return(NULL)
-          plot_resid_weather(rif_single_model(), h,
-                             weather_df = fit_snap()$survey_weather,
-                             x_label = snap_label_fun()(h))
-        },
-        description = paste(
-          "Model residuals against the realised weather variable, for",
-          "checking that no systematic structure is left unexplained."
-        ),
-        width = 9, height = 6
-      )
-    })
+    for (i in 1:2) {
+      local({
+        idx <- i
+        wise_export_figure(
+          key = paste0("residuals_vs_weather_", idx),
+          label = paste0("Residuals vs weather ", idx),
+          step = 1L,
+          fun = function() {
+            req(full_model(), model_fit(), fit_snap())
+            resid_weather_fig(idx)
+          },
+          description = paste(
+            "Model residuals against the realised weather variable, for",
+            "checking that no systematic structure is left unexplained."
+          ),
+          width = 9, height = 6
+        )
+      })
+    }
 
     wise_export_figure(
-      key   = "predicted_vs_actual_welfare",
+      key = "predicted_vs_actual_welfare",
       label = "Predicted vs actual welfare",
-      step  = 1L,
-      fun   = function() {
+      step = 1L,
+      fun = function() {
         req(full_model(), fit_snap())
         pred_welf_fig()
       },
@@ -291,10 +299,10 @@ mod_1_08_modelfit_server <- function(id,
     )
 
     wise_export_figure(
-      key   = "r2_contribution",
+      key = "r2_contribution",
       label = "Contribution to fit by term",
-      step  = 1L,
-      fun   = function() {
+      step = 1L,
+      fun = function() {
         importance_fig()
       },
       description = paste(
@@ -306,10 +314,10 @@ mod_1_08_modelfit_server <- function(id,
     )
 
     wise_export_figure(
-      key   = "model_diagnostics",
+      key = "model_diagnostics",
       label = "Model residual diagnostics",
-      step  = 1L,
-      fun   = function() {
+      step = 1L,
+      fun = function() {
         residual_panels_fig()
       },
       description = paste(
@@ -323,9 +331,11 @@ mod_1_08_modelfit_server <- function(id,
     model_summary_text <- function() {
       req(full_model())
       m <- rif_single_model()
-      prefix <- if (identical(model_fit()$engine, "rif"))
+      prefix <- if (identical(model_fit()$engine, "rif")) {
         "Unconditional quantile regression (RIF) - Median quantile (tau = 0.5):\n"
-      else ""
+      } else {
+        ""
+      }
       vcov_spec <- tryCatch(.fixest_vcov_spec(m), error = function(e) NULL)
       summary_text <- capture.output(
         if (is.null(vcov_spec)) summary(m) else summary(m, vcov = vcov_spec)
@@ -340,14 +350,16 @@ mod_1_08_modelfit_server <- function(id,
       key = "model_summary",
       label = "Raw model summary",
       step = 1L,
-      fun = function() data.frame(
-        line = model_summary_text(),
-        stringsAsFactors = FALSE
-      ),
+      fun = function() {
+        data.frame(
+          line = model_summary_text(),
+          stringsAsFactors = FALSE
+        )
+      },
       description = "Text-formatted native model summary shown in the expandable Model fit panel."
     )
 
-    # ---- Add tab (once) -----------------------------------------------------
+    # Add tab (once) ----
 
     # Reactive layout: 1 panel for 1 weather var, 2 side-by-side for >= 2.
     # Wrapping in renderUI keeps the layout in sync if the model is re-fit
@@ -357,129 +369,147 @@ mod_1_08_modelfit_server <- function(id,
       wt <- model_fit()$weather_terms %||% character(0)
       weather_plot_layout(
         ns, length(wt),
-        ids    = c("resid_weather1", "resid_weather2"),
+        ids = c("resid_weather1", "resid_weather2"),
         height = "300px",
-        alts   = vapply(seq_len(max(length(wt), 1L)), function(i) {
-          paste("Scatter plot of model residuals versus", wt[i],
-                "with the fitted relationship")
+        echarts = TRUE,
+        alts = vapply(seq_len(max(length(wt), 1L)), function(i) {
+          paste(
+            "Scatter plot of model residuals versus", wt[i],
+            "with the fitted relationship"
+          )
         }, character(1))
       )
     })
 
-    observeEvent(model_fit(), {
-      req(model_fit())
-      if (modelfit_tab_added()) return()
+    observeEvent(model_fit(),
+      {
+        req(model_fit())
+        if (modelfit_tab_added()) {
+          return()
+        }
 
-      shiny::appendTab(
-        inputId = tabset_id,
-        shiny::tabPanel(
-           title = "Model fit",
-           value = "model_fit",
-           shiny::uiOutput(ns("fit_stale_banner")),
-           shiny::uiOutput(ns("selected_model_card")),
-           bslib::layout_columns(
-            col_widths = c(5, 7),
-            shiny::div(
-              shiny::h4(
-                "Fit statistics",
-                info_popover(
-                  p(paste(
-                    "Goodness-of-fit measures for the full specification",
-                    "(fixed effects and controls); the fitted model is",
-                    "described on the Results tab. Statistic names and",
-                    "formatting match the fit snippet on the Results tab.",
-                    "RIF models report one row per quantile."
-                  ))
-                )
-              ),
-              shiny::tableOutput(ns("additional_stats")),
-              csv_download_link(ns("additional_stats_csv"))
+        shiny::appendTab(
+          inputId = tabset_id,
+          shiny::tabPanel(
+            title = "Model fit",
+            value = "model_fit",
+            shiny::uiOutput(ns("fit_stale_banner")),
+            shiny::uiOutput(ns("selected_model_card")),
+            bslib::layout_columns(
+              col_widths = c(5, 7),
+              shiny::div(
+                shiny::h4(
+                  "Fit statistics",
+                  info_popover(
+                    p(paste(
+                      "Goodness-of-fit measures for the full specification",
+                      "(fixed effects and controls); the fitted model is",
+                      "described on the Results tab. Statistic names and",
+                      "formatting match the fit snippet on the Results tab.",
+                      "RIF models report one row per quantile."
+                    ))
+                  )
+                ),
+                shiny::div(
+                  class = "wise-reactable-controls",
+                  wise_reactable_csv_button(ns("additional_stats"), "model_fit_statistics")
+                ),
+                reactable::reactableOutput(ns("additional_stats")),
+              ),              shiny::div(
+                shiny::h4(
+                  "Predicted vs actual",
+                  info_popover(
+                    p(paste(
+                      "How well the fitted model reproduces the outcome in the",
+                      "training data \u2014 the distribution the simulations",
+                      "build on. Linear models overlay the observed",
+                      "distribution with the model's fitted values: the",
+                      "systematic component only, with residuals not added",
+                      "back, so the predicted distribution is narrower than",
+                      "the observed one. Binary outcomes are checked by",
+                      "calibration (observed vs predicted rates by decile of",
+                      "predicted risk); RIF models show the welfare",
+                      "distribution with the estimated quantiles."
+                    ))
+                  )
+                ),
+                bslib::card(wise_chart_output(
+                  ns("pred_welf_dist"),
+                  paste0(
+                    "Predicted versus actual welfare in the training data; calibration curve for binary outcomes, ",
+                    "welfare distribution with quantile markers for RIF models"
+                  ),
+                  height = "400px"
+                ))
+              )
             ),
-            shiny::div(
-              shiny::h4(
-                "Predicted vs actual",
-                info_popover(
-                  p(paste(
-                    "How well the fitted model reproduces the outcome in the",
-                    "training data \u2014 the distribution the simulations",
-                    "build on. Linear models overlay the observed",
-                    "distribution with the model's fitted values: the",
-                    "systematic component only, with residuals not added",
-                    "back, so the predicted distribution is narrower than",
-                    "the observed one. Binary outcomes are checked by",
-                    "calibration (observed vs predicted rates by decile of",
-                    "predicted risk); RIF models show the welfare",
-                    "distribution with the estimated quantiles."
-                  ))
-                )
+            shiny::hr(),
+            shiny::h4(
+              "Contribution to fit",
+              info_popover(
+                p(paste(
+                  "Approximate contribution of each term to the model's",
+                  "explained variation: squared standardized coefficients",
+                  "(|beta| \u00d7 sd(x))\u00b2 as a share of their sum. Fixed",
+                  "effects are excluded and collinearity is ignored, so treat",
+                  "the ranking as indicative."
+                ))
+              )
+            ),
+            bslib::card(wise_chart_output(
+              ns("importance_plot"),
+              "Bar plot of each term's approximate share of the model's explained variation",
+              height = "400px"
+            )),
+            shiny::hr(),
+            shiny::h4(
+              "Residuals vs weather",
+              info_popover(
+                p(paste(
+                  "Model residuals against each realised weather variable.",
+                  "Grey points are individual residuals, orange marks are",
+                  "bin means, and the dashed line marks zero. Systematic",
+                  "structure here means the fitted weather response \u2014 the",
+                  "relationship the simulations build on \u2014 leaves patterns",
+                  "unexplained."
+                ))
+              )
+            ),
+            shiny::uiOutput(ns("resid_weather_layout")),
+            shiny::hr(),
+            shiny::h4(
+              "Residual diagnostics",
+              info_popover(
+                p(paste(
+                  "Residuals vs fitted values with a smooth trend (left) and a",
+                  "normal quantile-quantile plot of the residuals (right). For",
+                  "binary outcomes, binned residual means by decile of predicted",
+                  "risk are shown instead; bins should scatter around zero",
+                  "without a trend."
+                ))
+              )
+            ),
+            bslib::card(wise_chart_output(
+              ns("residual_panels"),
+              paste0(
+                "Diagnostic panels: residuals versus fitted values with a smooth trend, ",
+                "a normal quantile-quantile plot, and binned residual means for binary outcomes"
               ),
-              bslib::card(wise_plot_output(
-                ns("pred_welf_dist"),
-                "Predicted versus actual welfare in the training data; calibration curve for binary outcomes, welfare distribution with quantile markers for RIF models"
-              ))
+              height = "400px"
+            )),
+            shiny::hr(),
+            shiny::tags$details(
+              shiny::tags$summary("Raw model summary"),
+              shiny::verbatimTextOutput(ns("model_summary"))
             )
           ),
-          shiny::hr(),
-          shiny::h4(
-            "Contribution to fit",
-            info_popover(
-              p(paste(
-                "Approximate contribution of each term to the model's",
-                "explained variation: squared standardized coefficients",
-                "(|beta| \u00d7 sd(x))\u00b2 as a share of their sum. Fixed",
-                "effects are excluded and collinearity is ignored, so treat",
-                "the ranking as indicative."
-              ))
-            )
-          ),
-          bslib::card(wise_plot_output(
-            ns("importance_plot"),
-            "Bar plot of each term's approximate share of the model's explained variation"
-          )),
-          shiny::hr(),
-          shiny::h4(
-            "Residuals vs weather",
-            info_popover(
-              p(paste(
-                "Model residuals against each realised weather variable.",
-                "Grey points are individual residuals, orange marks are",
-                "bin means, and the dashed line marks zero. Systematic",
-                "structure here means the fitted weather response \u2014 the",
-                "relationship the simulations build on \u2014 leaves patterns",
-                "unexplained."
-              ))
-            )
-          ),
-          shiny::uiOutput(ns("resid_weather_layout")),
-          shiny::hr(),
-          shiny::h4(
-            "Residual diagnostics",
-            info_popover(
-              p(paste(
-                "Residuals vs fitted values with a smooth trend (left) and a",
-                "normal quantile-quantile plot of the residuals (right). For",
-                "binary outcomes, binned residual means by decile of predicted",
-                "risk are shown instead; bins should scatter around zero",
-                "without a trend."
-              ))
-            )
-          ),
-          bslib::card(wise_plot_output(
-            ns("residual_panels"),
-            "Diagnostic panels: residuals versus fitted values with a smooth trend, a normal quantile-quantile plot, and binned residual means for binary outcomes"
-          )),
-          shiny::hr(),
-          shiny::tags$details(
-            shiny::tags$summary("Raw model summary"),
-            shiny::verbatimTextOutput(ns("model_summary"))
-          )
-        ),
-        select  = FALSE,
-        session = tabset_session
-      )
+          select = FALSE,
+          session = tabset_session
+        )
 
-      modelfit_tab_added(TRUE)
-    }, ignoreInit = TRUE)
-
+        modelfit_tab_added(TRUE)
+      },
+      ignoreInit = TRUE
+    )
   })
 }

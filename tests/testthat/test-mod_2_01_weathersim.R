@@ -32,7 +32,7 @@ test_that("every Step 2 simulation dependency marks published results stale", {
   ), {
     session$setInputs(hist_years = c(1991, 2020), climate = "ssp3_7_0",
       baseline_survey = "AAA|2020", residuals = "original",
-      include_coef_uncertainty = TRUE, propagate_all_covariate_uncertainty = FALSE,
+      include_coef_uncertainty = TRUE,
       fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
     session$flushReact()
     publish <- function() {
@@ -54,6 +54,303 @@ test_that("every Step 2 simulation dependency marks published results stale", {
     expect_stale_after(function() session$setInputs(baseline_survey = character(0)), "baseline")
     expect_stale_after(function() session$setInputs(residuals = "resample"), "residuals")
     expect_stale_after(function() session$setInputs(include_coef_uncertainty = FALSE), "coefficient uncertainty")
-    expect_stale_after(function() session$setInputs(propagate_all_covariate_uncertainty = TRUE), "covariate uncertainty")
   })
+})
+
+test_that("scenario labels follow run order and match worker keys", {
+  labels <- .step2_scenario_labels(c("ssp2_4_5", "ssp5_8_5"),
+    list(c(2030, 2040), c(2050, 2060)))
+  expect_identical(labels, c("SSP2-4.5 / 2030-2040", "SSP2-4.5 / 2050-2060",
+    "SSP5-8.5 / 2030-2040", "SSP5-8.5 / 2050-2060"))
+  expect_identical(.step2_scenario_labels(character(0), list(c(2030, 2040))),
+    character(0))
+  expect_identical(
+    .step2_scenario_labels("ssp2_4_5", list(c(2030, 2040)), forecast_key = "Seasonal forecast / X"),
+    c("Seasonal forecast / X", "SSP2-4.5 / 2030-2040")
+  )
+})
+
+test_that("ETA is NULL until a group completes, then mean per group x remaining", {
+  now <- as.POSIXct("2026-01-01 00:10:00", tz = "UTC")
+  base <- now - 300
+  expect_null(.step2_live_eta(0L, 4L, base, now))
+  expect_null(.step2_live_eta(4L, 4L, base, now))
+  expect_null(.step2_live_eta(NULL, 4L, base, now))
+  expect_equal(.step2_live_eta(2L, 4L, base, now), 300)
+  expect_identical(.step2_eta_text(300), "about 5 min remaining")
+  expect_identical(.step2_eta_text(20), "under a minute remaining")
+  expect_null(.step2_eta_text(NULL))
+})
+
+test_that("progress fraction counts historical, finished groups and models", {
+  expect_null(.step2_live_pct(list()))
+  expect_equal(.step2_live_pct(list(has_hist = TRUE, groups_total = 3L,
+    groups_done = 0L)), 1 / 4)
+  v <- list(has_hist = TRUE, groups_total = 3L, groups_done = 1L,
+    current_label = "B", member_index = 2L, period_members = 4L,
+    done_labels = "A")
+  expect_equal(.step2_live_pct(v), (1 + 1 + 0.5) / 4)
+  v$current_label <- "A"  # a just-finished group does not count twice
+  expect_equal(.step2_live_pct(v), 2 / 4)
+  html <- as.character(.step2_progress_ui(modifyList(v, list(
+    scenario_labels = c("A", "B"), current_label = "B"))))
+  expect_match(html, "2 / 4 climate models", fixed = TRUE)
+  expect_match(html, "Historical", fixed = TRUE)
+})
+
+test_that("live_run lifecycle: submit, partials, adoption, cancel", {
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+    survname = "SRV", loc_id = "L1", int_month = 1:2,
+    welfare = 1:2, temp = 3:4)
+  captured <- new.env()
+  local_mocked_bindings(
+    .wise_step2_async_enabled = function(...) TRUE,
+    .wise_step2_async_submit = function(snapshot, ...) {
+      captured$snapshot <- snapshot
+      captured$args <- list(...)
+      list2env(list(id = "mock-job", generation = list(...)$generation,
+        dependency_signature = list(...)$dependency_signature, settled = FALSE),
+        parent = emptyenv())
+    },
+    .wise_step2_async_commit = function(job, commit_fn) isTRUE(commit_fn()),
+    .wise_step2_async_read_manifest = function(manifest, job) list(
+      hist_sim_result = list(), new_scenarios = list(a = 1), total_runs = 1L,
+      weather_store = NULL, failures = list()),
+    .wise_step2_async_cancel = function(...) invisible(TRUE)
+  )
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = "temp", units = "C")),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A")),
+    survey_weather = reactiveVal(survey),
+    model_fit = reactiveVal(list(engine = "fixest", .sig = list(fit = 1L))),
+    display_settings = reactive(list(method = "mean", pov_line = 3, bandwidth_p0 = 0.05))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = c("ssp2_4_5", "ssp5_8_5"),
+      baseline_survey = "AAA|2020", residuals = "original",
+      include_coef_uncertainty = TRUE,
+      fut_period_1 = c(2030, 2040), fut_period_2 = c(2050, 2060),
+      fut_period_3 = c(2015, 2015))
+    session$flushReact()
+    adopted_partials(list(stale = TRUE))
+    submit_step2_async()
+    lr <- live_run()
+    expect_null(adopted_partials())
+    expect_identical(lr$groups_total, 4L)
+    expect_identical(lr$scenario_labels[c(1, 2, 3)],
+      c("SSP2-4.5 / 2030-2040", "SSP2-4.5 / 2050-2060", "SSP5-8.5 / 2030-2040"))
+    expect_identical(lr$display$method, "mean")
+    expect_identical(captured$snapshot$input$display$method, "mean")
+    expect_length(lr$partials$scenarios, 0L)
+
+    job <- list2env(list(id = "mock-job", artifact_dir = tempfile("mock-job-"),
+      generation = lr$generation,
+      dependency_signature = lr$dependency_signature), parent = emptyenv())
+    partial <- function(kind, label) list(schema = 1L, kind = kind, label = label,
+      ordinal = 0L, groups_total = 4L)
+    captured$args$on_partial(partial("historical", "Historical"), job)
+    expect_false(is.null(live_run()$partials$historical))
+    captured$args$on_progress(list(phase = "group_completed", elapsed = 10,
+      groups_done = 1L, groups_total = 4L, current_label = lr$scenario_labels[2],
+      member_index = 1L, period_members = 3L), job)
+    expect_false(is.null(live_run()$eta_seconds))
+    captured$args$on_partial(partial("scenario", lr$scenario_labels[1]), job)
+    expect_identical(names(live_run()$partials$scenarios), lr$scenario_labels[1])
+    # stale-generation partials are dropped
+    stale_job <- list2env(list(generation = -1L,
+      dependency_signature = lr$dependency_signature), parent = emptyenv())
+    captured$args$on_partial(partial("scenario", "zzz"), stale_job)
+    expect_length(live_run()$partials$scenarios, 1L)
+
+    captured$args$on_result(list(status = "succeeded"), job)
+    expect_null(live_run())
+    expect_identical(adopted_partials()$dependency_signature, lr$dependency_signature)
+    expect_false(is.null(adopted_partials()$partials$historical))
+    expect_identical(names(adopted_partials()$partials$scenarios), lr$scenario_labels[1])
+    expect_identical(saved_scenarios(), list(a = 1))
+
+    # cancel clears the live run
+    run_status("idle")
+    sim_guard$end()
+    submit_step2_async()
+    expect_false(is.null(live_run()))
+    async_job_id("mock-job")
+    session$setInputs(stop_sim = 1L)
+    expect_null(live_run())
+    expect_identical(run_status(), "cancelled")
+  })
+})
+
+test_that("future periods cannot start before the SSP projections (R2-BUG-23)", {
+  expect_identical(.step2_valid_future_period(c(2025, 2035)), c(2025L, 2035L))
+  expect_null(.step2_valid_future_period(c(2010, 2030)))
+  expect_null(.step2_valid_future_period(c(2015, 2015)))
+  expect_identical(.step2_valid_future_period(c(2015, 2020)), c(2015L, 2020L))
+
+  ui <- as.character(mod_2_01_weathersim_ui("sim"))
+  mins <- regmatches(ui, gregexpr('id="sim-fut_period_[0-9]"[^>]*data-min="[0-9]+"', ui))[[1]]
+  expect_length(mins, 3L)
+  expect_true(all(grepl('data-min="2015"', mins, fixed = TRUE)))
+
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+                       survname = "SRV", loc_id = "L1", int_month = 1:2,
+                       welfare = 1:2, temp = 3:4)
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = "temp")),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A")),
+    survey_weather = reactiveVal(survey),
+    model_fit = reactiveVal(list(engine = "fixest", .sig = list(fit = 1L)))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = "ssp2_4_5",
+      fut_period_1 = c(2010, 2030), fut_period_2 = c(2040, 2050),
+      fut_period_3 = c(2015, 2015))
+    expect_identical(future_periods(), list(c(2040, 2050)))
+    expect_match(as.character(output$fut_years_warning$html), "starts before 2015")
+  })
+})
+
+test_that("the sidebar has Historical weather, Seasonal forecast and Climate projections flyouts", {
+  ui <- as.character(mod_2_01_weathersim_ui("sim"))
+  for (id in c("historical_toggle", "projections_toggle", "forecast_toggle")) {
+    expect_match(ui, paste0('id="sim-', id, '"'), fixed = TRUE)
+  }
+  # The projection controls moved flyouts without changing their ids.
+  expect_match(ui, 'id="sim-climate"', fixed = TRUE)
+  expect_match(ui, 'id="sim-fc_include"', fixed = TRUE)
+})
+
+test_that("the seasonal forecast is unavailable and out of the summary without a data source", {
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+                       survname = "SRV", loc_id = "L1", int_month = 1:2,
+                       welfare = 1:2, temp = 3:4)
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = "t")),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
+    survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = c("ssp2_4_5", "ssp5_8_5"),
+      baseline_survey = "AAA|2020", fc_include = TRUE,
+      fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
+    expect_match(forecast_block(), "No seasonal forecast")
+    # No catalogue for the country: the flyout is not offered.
+    expect_false(forecast_available())
+    expect_false(forecast_on())
+    expect_identical(output$forecast_summary, "Not available")
+    expect_identical(output$projections_summary, "2 SSPs \u00b7 1 period")
+    expect_false(grepl("Forecast", as.character(output$settings_summary$html), fixed = TRUE))
+  })
+})
+
+# A catalogue run as `.forecast_catalogue_runs()` returns it (no data files needed for the controls).
+mock_forecast_run <- function() {
+  list(
+    id = "2026-10", product = "seasonal", lead_unit = "month", label = "October 2026", model = "ECMWF SEAS5",
+    init = as.Date("2026-10-01"), released = as.Date("2026-10-06"), next_release = as.Date("2026-11-06"),
+    observed_through = as.Date("2025-12-01"), n_members = 51L, n_leads = 6L,
+    variables = c("t", "r")
+  )
+}
+
+test_that("with a catalogue run the window clamps and joins the summary", {
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+                       survname = "SRV", loc_id = "L1", int_month = 1:2,
+                       welfare = 1:2, temp = 3:4)
+  testthat::local_mocked_bindings(.forecast_catalogue_runs = function(connection_params, code) {
+    if (identical(code, "AAA")) list("2026-10" = mock_forecast_run()) else NULL
+  })
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = "t", ref_start = 1L, ref_end = 3L)),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
+    survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = "ssp3_7_0",
+      baseline_survey = "AAA|2020", fc_include = TRUE, fc_len = "3", fc_start = "2027-03",
+      fut_period_1 = c(2025, 2035), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
+    expect_null(forecast_block())
+    expect_true(forecast_available())
+    expect_true(forecast_on())
+    expect_identical(forecast_window()$start, "2027-01")
+    expect_identical(output$forecast_summary, "Jan\u2013Mar")
+    expect_match(as.character(output$settings_summary$html), "Jan 2027 \u2013 Mar 2027", fixed = TRUE)
+    expect_identical(forecast_lag(), 3L)
+    expect_identical(
+      live_sim_sig()$forecast,
+      list(product = "seasonal", run = "2026-10", start = "2027-01", len = 3L)
+    )
+    session$setInputs(fc_len = "6")
+    expect_null(forecast_window())
+    expect_false(forecast_on())
+    expect_identical(output$forecast_summary, "Window unavailable")
+    expect_null(live_sim_sig()$forecast)
+    expect_match(as.character(output$forecast_status_ui$html), "missing months are not filled", fixed = TRUE)
+    session$setInputs(fc_len = "1", fc_start = "2026-10")
+    expect_identical(forecast_window()$start, "2027-01")
+    expect_true(forecast_on())
+    session$setInputs(fc_include = FALSE)
+    expect_identical(output$forecast_summary, "None selected")
+    expect_null(live_sim_sig()$forecast)
+  })
+})
+
+test_that("a catalogue drives real forecast selection and versioned signatures", {
+  run <- mock_forecast_run()
+  run$experimental <- TRUE
+  run$status <- "draft"
+  run$data_version <- "test-1"
+  run$data_sha256 <- paste(rep("a", 64), collapse = "")
+  run$manifest_sha256 <- paste(rep("b", 64), collapse = "")
+  run$members <- 0:50
+  testthat::local_mocked_bindings(.forecast_catalogue_runs = function(connection_params, code) {
+    if (identical(code, "AAA")) list("2026-10" = run) else NULL
+  })
+  survey <- data.frame(hhid = 1:2, code = "AAA", year = 2020L,
+    survname = "SRV", loc_id = "L1", int_month = 1:2, welfare = 1:2, temp = 3:4)
+  testServer(mod_2_01_weathersim_server, args = list(
+    id = "sim", connection_params = reactiveVal(list(type = "local", path = tempdir())),
+    selected_outcome = reactiveVal(data.frame(name = "welfare")),
+    selected_weather = reactiveVal(data.frame(name = "t", ref_start = 1L, ref_end = 1L)),
+    selected_surveys = reactiveVal(data.frame(code = "AAA", year = 2020L,
+      survname = "SRV", source = "src", economy = "A", stringsAsFactors = FALSE)),
+    survey_weather = reactiveVal(survey), model_fit = reactiveVal(list(engine = "fixest"))
+  ), {
+    session$setInputs(hist_years = c(1991, 2020), climate = character(0), baseline_survey = "AAA|2020",
+      fc_include = TRUE, fc_run = "2026-10", fc_len = "3", fc_start = "2026-10",
+      fut_period_1 = c(2015, 2015), fut_period_2 = c(2015, 2015), fut_period_3 = c(2015, 2015))
+    expect_true(forecast_on())
+    expect_identical(forecast_window()$start, "2026-11")
+    expect_identical(live_sim_sig()$forecast$data_version, "test-1")
+    expect_identical(live_sim_sig()$forecast$members, 0:50)
+    expect_match(as.character(output$forecast_info_ui$html), "scientific usefulness", fixed = TRUE)
+    expect_match(as.character(output$forecast_run_ui$html), "October 2026 \u00b7 ECMWF SEAS5, 51 members", fixed = TRUE)
+    expect_false(any(forecast_months()$kind == "obs"))
+    session$setInputs(fc_include = FALSE)
+    expect_null(live_sim_sig()$forecast)
+  })
+})
+
+test_that("projection period pills and sliders map both ways", {
+  expect_identical(
+    .step2_period_slots(c("2030-2050", "custom"), c(2060, 2080)),
+    list(c(2030L, 2050L), c(2060L, 2080L), c(2015L, 2015L))
+  )
+  expect_identical(.step2_period_slots(character(0), c(2060, 2080))[[1L]], c(2015L, 2015L))
+  expect_identical(
+    .step2_period_selection(list(c(2025, 2035), c(2015, 2015), c(2015, 2015))),
+    list(selected = "2025-2035", custom = NULL)
+  )
+  expect_identical(
+    .step2_period_selection(list(c(2040, 2060), c(2061, 2090), c(2015, 2015))),
+    list(selected = c("2040-2060", "custom"), custom = c(2061L, 2090L))
+  )
 })

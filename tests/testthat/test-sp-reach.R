@@ -41,9 +41,11 @@ test_that("the preview reproduces the run's eligibility and cost exactly", {
 
   # Same eligible population...
   expect_equal(preview$n_pop, sum(svy$weight[ok & v > 0]))
-  # ...and the same annual cost the diagnostics tab reports.
+  expect_equal(preview$n_recipient_units,
+    sum(svy$weight[ok & v > 0] / svy$hhsize[ok & v > 0]))
+  # Cost uses represented recipient households, not people in those households.
   expect_equal(preview$transfer_total,
-               sum(v[ok] * svy$weight[ok] * svy$hhsize[ok]) * 365)
+               sum(v[ok] * svy$weight[ok]) * 365)
 })
 
 test_that("the preview is stable across calls despite the error draws", {
@@ -55,12 +57,53 @@ test_that("the preview is stable across calls despite the error draws", {
                    .sp_scenario_reach(svy, sp, "hh"))
 })
 
+test_that("the seeded preview matches policy transfers without copying the survey", {
+  svy <- make_svy(300)
+  svy$hhsize[c(1, 2, 3)] <- c(0, NA, -2)
+  svy$weight[c(4, 5)] <- c(NA, -1)
+  seed <- 48123L
+
+  for (mode in c("transfer_first", "budget_first")) {
+    sp <- base_sp(
+      budget_mode = mode,
+      budget_fixed = 750000,
+      targeting = "exante_poor",
+      inclusion_error_pct = 20,
+      exclusion_error_pct = 15
+    )
+    for (unit in c("hh", "ind", "firm")) {
+      policy <- apply_policy_to_svy(
+        svy, sp = sp, analysis_unit = unit, seed = seed
+      )
+      before <- svy
+      reach <- .sp_scenario_reach(svy, sp, unit, seed = seed)
+      totals <- .sp_transfer_totals(policy, unit)
+      received <- policy[[SP_TRANSFER_COL]]
+      weights <- suppressWarnings(as.numeric(svy$weight))
+      weights[!is.finite(weights) | weights < 0] <- 0
+
+      expect_identical(svy, before)
+      expect_equal(reach$transfer_total, totals$total)
+      expect_equal(reach$transfer_per_unit, totals$per_unit)
+      expect_equal(reach$n_rows, sum(is.finite(received) & received > 0))
+      expect_equal(reach$n_pop, sum(weights[is.finite(received) & received > 0]))
+      if (identical(unit, "hh")) {
+        recipient <- is.finite(received) & received > 0
+        hhsize <- svy$hhsize[recipient]
+        hhsize[!is.finite(hhsize) | hhsize <= 0] <- 1
+        expect_equal(reach$n_recipient_units, sum(weights[recipient] / hhsize))
+      }
+    }
+  }
+})
+
 test_that("universal targeting reaches the whole population", {
   svy <- make_svy()
   r <- .sp_scenario_reach(svy, base_sp(targeting = "universal"), "hh")
   expect_equal(r$n_rows, nrow(svy))
   expect_equal(r$share_pct, 100)
   expect_equal(r$n_pop, sum(svy$weight))
+  expect_equal(r$n_recipient_units, sum(svy$weight / svy$hhsize))
 })
 
 test_that("a tighter cutoff reaches fewer units", {
@@ -88,8 +131,18 @@ test_that("budget-first mode derives the per-unit transfer from the budget", {
     svy, base_sp(budget_mode = "budget_first", budget_fixed = 1e6), "hh")
   expect_true(r$budget_first)
   expect_equal(r$transfer_total, 1e6)
-  # Per-unit is the budget spread over the weighted eligible population.
-  expect_equal(r$transfer_per_unit, 1e6 / r$n_pop)
+  # Per-household is the budget spread over represented eligible households.
+  policy <- apply_policy_to_svy(svy, sp = base_sp(
+    budget_mode = "budget_first", budget_fixed = 1e6
+  ), analysis_unit = "hh")
+  eligible <- policy[[SP_TRANSFER_COL]] > 0
+  expect_equal(r$transfer_per_unit,
+    1e6 / sum(svy$weight[eligible] / svy$hhsize[eligible]))
+  expect_equal(fmt_num(r$transfer_per_unit, digits = 2, prefix = "$"),
+    fmt_num(1e6 / sum(svy$weight[eligible] / svy$hhsize[eligible]),
+      digits = 2, prefix = "$"))
+  expect_equal(r$n_recipient_units,
+    sum(svy$weight[eligible] / svy$hhsize[eligible]))
 })
 
 test_that("an unweighted survey reports sample counts and says so", {
@@ -97,6 +150,7 @@ test_that("an unweighted survey reports sample counts and says so", {
   r <- .sp_scenario_reach(svy, base_sp(targeting = "universal"), "hh")
   expect_false(r$weighted)
   expect_equal(r$n_pop, nrow(svy))
+  expect_equal(r$n_recipient_units, nrow(svy))
 })
 
 test_that("a zero transfer costs nothing", {
@@ -207,10 +261,11 @@ test_that("transfer totals undo the per-capita scaling applied to welfare", {
   pol <- apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh")
   t   <- .sp_transfer_totals(pol, "hh")
 
-  # Everyone is eligible, so the annual cost is the annual per-household
-  # amount times the weighted population.
+  # Everyone is eligible; person expansion weights convert to household counts
+  # by dividing by household size.
   expect_equal(t$per_unit, 120)
-  expect_equal(t$total, 120 * sum(svy$weight))
+  expect_equal(t$total, 120 * sum(svy$weight / svy$hhsize))
+  expect_equal(t$n_households_weighted, sum(svy$weight / svy$hhsize))
   expect_equal(t$n_recipients, nrow(svy))
 })
 
@@ -245,4 +300,130 @@ test_that("totals work without survey weights and say so", {
   expect_false(t$weighted)
   expect_equal(t$n_recipients_weighted, nrow(svy))
   expect_gt(t$total, 0)
+})
+
+
+# ---- R2-BUG-04: the amount is entered in the outcome's currency -------------
+#
+# The stored `welfare` column is 2021 PPP, but an LCU outcome shows "Amount
+# (LCU)" in the SP panel. The LCU amount used to be added to PPP welfare
+# unchanged, overstating the transfer by ppp2021. It is now converted per row
+# (amount / ppp2021) and costs are reported back in the entry currency.
+
+lcu_svy <- function(n = 400) {
+  svy <- make_svy(n)
+  set.seed(5)
+  svy$ppp2021 <- runif(n, 150, 300)
+  svy
+}
+
+lcu_sp <- function(...) {
+  base_sp(
+    targeting = "universal", transfer_amount_usd = 1200,
+    transfer_n_payments = 6L, currency = "LCU", ...
+  )
+}
+
+test_that("an LCU amount is divided by ppp2021 before it reaches welfare", {
+  svy <- lcu_svy()
+  pol <- apply_policy_to_svy(svy, sp = lcu_sp(), analysis_unit = "hh")
+  v <- pol[[SP_TRANSFER_COL]]
+
+  # Daily LCU per household = 1200 * 6 / 365, split over the household and
+  # expressed on the PPP welfare scale.
+  expect_equal(v, (1200 * 6 / 365) / svy$hhsize / svy$ppp2021)
+  # Converting back recovers one LCU amount for every household.
+  expect_equal(v * svy$hhsize * svy$ppp2021, rep(1200 * 6 / 365, nrow(svy)))
+})
+
+test_that("PPP, missing and unknown currencies leave the transfer unchanged", {
+  svy <- lcu_svy()
+  expected <- (1200 * 6 / 365) / svy$hhsize
+  for (cur in list("PPP", NULL, "ppp", NA_character_, "EUR")) {
+    sp <- lcu_sp()
+    sp["currency"] <- list(cur)
+    pol <- apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh")
+    expect_equal(pol[[SP_TRANSFER_COL]], expected)
+  }
+  # A scenario list that predates the field is PPP.
+  sp <- lcu_sp()
+  sp$currency <- NULL
+  expect_equal(
+    apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh")[[SP_TRANSFER_COL]],
+    expected
+  )
+})
+
+test_that("LCU without a ppp2021 column is not converted", {
+  svy <- make_svy(200)
+  pol <- apply_policy_to_svy(svy, sp = lcu_sp(), analysis_unit = "hh")
+  expect_equal(pol[[SP_TRANSFER_COL]], (1200 * 6 / 365) / svy$hhsize)
+  expect_equal(.sp_transfer_totals(pol, "hh", "LCU")$per_unit, 7200)
+})
+
+test_that("LCU totals are reported in LCU and the preview matches the run", {
+  svy <- lcu_svy()
+  sp <- lcu_sp()
+  pol <- apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh")
+  totals <- .sp_transfer_totals(pol, "hh", "LCU")
+  reach <- .sp_scenario_reach(svy, sp, "hh")
+
+  expect_equal(totals$per_unit, 1200 * 6)
+  expect_equal(totals$total, 1200 * 6 * sum(svy$weight / svy$hhsize))
+  expect_equal(reach$transfer_total, totals$total)
+  expect_equal(reach$transfer_per_unit, totals$per_unit)
+  # The same column read as PPP gives the smaller, PPP-scale figure.
+  expect_lt(.sp_transfer_totals(pol, "hh", "PPP")$per_unit, totals$per_unit)
+})
+
+test_that("an LCU budget is fully spent in LCU", {
+  svy <- lcu_svy()
+  sp <- lcu_sp(budget_mode = "budget_first", budget_fixed = 5e6)
+  reach <- .sp_scenario_reach(svy, sp, "hh")
+  expect_equal(reach$transfer_total, 5e6)
+
+  # Every recipient household receives the same LCU amount, whatever ppp2021.
+  pol <- apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh")
+  v <- pol[[SP_TRANSFER_COL]]
+  expect_equal(
+    v * svy$hhsize * svy$ppp2021,
+    rep((5e6 / sum(svy$weight / svy$hhsize)) / 365, nrow(svy))
+  )
+})
+
+test_that("the diagnostics snapshot carries the entry currency", {
+  svy <- lcu_svy(120)
+  sp <- lcu_sp()
+  pol <- apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh")
+  snap <- .policy_diagnostics_snapshot(
+    svy, pol, outcome = "welfare", analysis_unit = "hh", sp = sp
+  )
+  expect_identical(snap$transfer_currency, "LCU")
+  expect_equal(snap$transfer_pp, 1200 * 6)
+  sp_row <- snap$component_matrix[snap$component_matrix$component ==
+    "Social protection", ]
+  expect_equal(sp_row$realized_cost, 1200 * 6 * sum(svy$weight / svy$hhsize))
+
+  snap_ppp <- .policy_diagnostics_snapshot(
+    svy, pol, outcome = "welfare", analysis_unit = "hh", sp = base_sp()
+  )
+  expect_identical(snap_ppp$transfer_currency, "PPP")
+})
+
+test_that("currency helpers normalise input and choose the display prefix", {
+  expect_identical(.sp_currency("LCU"), "LCU")
+  expect_identical(.sp_currency("lcu"), "LCU")
+  expect_identical(.sp_currency("PPP"), "PPP")
+  expect_identical(.sp_currency(NULL), "PPP")
+  expect_identical(.sp_currency(NA), "PPP")
+  expect_identical(.sp_currency_prefix("LCU"), "LCU ")
+  expect_identical(.sp_currency_prefix(NULL), "$")
+})
+
+test_that("the LCU transfer is deterministic for the same inputs", {
+  svy <- lcu_svy()
+  sp <- lcu_sp(targeting = "exante_poor")
+  a <- apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh", seed = 99L)
+  b <- apply_policy_to_svy(svy, sp = sp, analysis_unit = "hh", seed = 99L)
+  expect_identical(a[[SP_TRANSFER_COL]], b[[SP_TRANSFER_COL]])
 })

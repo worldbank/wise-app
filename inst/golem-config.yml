@@ -1,7 +1,8 @@
 default:
   golem_name: wiseapp
-  golem_version: 0.1.0
+  golem_version: 0.6.0
   app_prod: no
+  data_path: data/
 production:
   app_prod: yes
 dev:

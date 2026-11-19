@@ -1,7 +1,12 @@
 library(testthat)
 
-source(testthat::test_path("../../dev/bench_step3_helpers.R"), local = TRUE)
-source(testthat::test_path("../../dev/bench_step2_helpers.R"), local = TRUE)
+# dev/ is not part of the built package, so these helpers only exist in a
+# source checkout (not under R CMD check).
+skip_if_not(file.exists(testthat::test_path("../../dev/bench/lib/bench_step3_helpers.R")),
+  "dev/ benchmark helpers not available")
+
+source(testthat::test_path("../../dev/bench/lib/bench_step3_helpers.R"), local = TRUE)
+source(testthat::test_path("../../dev/bench/lib/bench_step2_helpers.R"), local = TRUE)
 
 .test_bench_size <- function(value) {
   list(
@@ -74,14 +79,20 @@ test_that("smoke fixture runs active Step 3 path and emits stable metrics", {
                    second$output_fingerprint_sha256)
   expect_match(first$output_fingerprint_sha256, "^[0-9a-f]{64}$")
   expect_gt(first$policy_seconds, 0)
-  expect_gt(first$decomposition_seconds, 0)
+  # elapsed time has 1 ms resolution; a fast fixture run can read exactly 0
+  expect_gte(first$decomposition_seconds, 0)
   expect_gt(first$retained_object_bytes, 0)
   expect_gt(first$retained_serialized_bytes, 0)
   expect_gt(first$n_changed_columns, 1L)
   expect_equal(first$n_future_members, 1L)
   expect_equal(first$n_historical_decomposition_rows, 60L)
-  expect_equal(first$n_future_decomposition_rows, 120L)
-  expect_gt(first$context_adverse_cache_hits, 0L)
+  # Production annual summaries are compact member/year rows, not household rows.
+  expect_equal(first$n_future_decomposition_rows, 4L)
+  expect_identical(first$metric_mean_status, "ok")
+  expect_identical(first$metric_headcount_ratio_status, "ok")
+  expect_gt(first$metric_mean_annual_rows, 0L)
+  expect_gt(first$metric_mean_serialized_bytes, 0)
+  expect_equal(first$metric_prediction_reruns, 0L)
   expect_gt(first$context_fixed_decile_reuses, 0L)
 })
 
@@ -106,6 +117,32 @@ test_that("runtime option metadata records every requested current option", {
     .bench_assert_runtime_options(result, args),
     "does not match requested runtime options"
   )
+})
+
+test_that("failed metric switches fail the overall Step 3 benchmark", {
+  metric_switches <- .bench_step3_metric_switches
+  run <- .bench_run_step3
+  environment(run) <- new.env(parent = environment(run))
+  environment(run)$.bench_step3_metric_switches <- function(...) {
+    result <- metric_switches(...)
+    result$status[result$method == "headcount_ratio"] <- "unavailable"
+    result$error[result$method == "headcount_ratio"] <- "Endpoint parity mismatch"
+    result
+  }
+  input <- .bench_small_step3_input(n = 40L)
+  result <- run(
+    baseline_result = .bench_small_step2_result(input, "ols", "historical"),
+    input = input, model_label = "ols", policy_label = "combined",
+    policy_fixture = .bench_step3_policy_fixtures("combined")[[1L]],
+    identity = .test_bench_identity("historical"), config = .test_bench_config(),
+    size_fn = .test_bench_size, rss_state_fn = .test_bench_rss_state,
+    rss_sample_fn = .test_bench_rss_sample
+  )
+  expect_identical(result$status, "error")
+  expect_match(result$error, "Metric-switch verification failed", fixed = TRUE)
+  expect_match(result$error, "Endpoint parity mismatch", fixed = TRUE)
+  expect_identical(result$metric_headcount_ratio_status, "unavailable")
+  expect_true(is.na(result$output_fingerprint_sha256))
 })
 
 test_that("Step 2 execution passes current runtime options without filtering", {
@@ -222,6 +259,24 @@ test_that("smoke fixture supports RIF and historical-only Step 3", {
 
   expect_identical(result$status, "ok")
   expect_equal(result$n_future_scenarios, 0L)
-  expect_equal(result$n_future_decomposition_rows, 0L)
+  expect_equal(result$n_future_decomposition_rows, 2L)
   expect_gt(result$historical_decomposition_serialized_bytes, 0)
+})
+
+test_that("the shock fixture runs the Step 3 path and is deterministic (P1-15)", {
+  input <- .bench_small_step3_input(n = 60L)
+  baseline <- .bench_small_step2_result(input, "ols", "one_ssp_one_period")
+  fixture <- .bench_step3_policy_fixtures("shock_sp")[[1L]]
+  run <- function() .bench_run_step3(
+    baseline_result = baseline, input = input, model_label = "ols",
+    policy_label = "shock_sp", policy_fixture = fixture,
+    identity = .test_bench_identity("one_ssp_one_period"),
+    config = .test_bench_config(), size_fn = .test_bench_size,
+    rss_state_fn = .test_bench_rss_state, rss_sample_fn = .test_bench_rss_sample
+  )
+  first <- run()
+  second <- run()
+  expect_identical(first$status, "ok", info = first$error)
+  expect_identical(first$output_fingerprint_sha256, second$output_fingerprint_sha256)
+  expect_equal(first$annual_reference_sample_rows, 0L)
 })

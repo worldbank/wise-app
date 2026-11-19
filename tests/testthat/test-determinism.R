@@ -57,7 +57,6 @@ test_that("seed derivation and keyed fallbacks have stable golden values", {
 
 test_that("deterministic collection is invariant to source row order", {
   skip_if_not_installed("arrow")
-  skip_if_not_installed("duckdb")
 
   dir <- withr::local_tempdir()
   x <- data.frame(
@@ -94,7 +93,6 @@ test_that("household rows remain contiguous when person IDs are present", {
 })
 
 test_that("loc_panel labels are stable across row order", {
-  skip_if_not_installed("duckdb")
 
   con <- DBI::dbConnect(duckdb::duckdb())
   withr::defer(DBI::dbDisconnect(con, shutdown = TRUE))
@@ -127,7 +125,6 @@ test_that("loc_panel labels are stable across row order", {
 })
 
 test_that("weather thread pin is restored after validation errors", {
-  skip_if_not_installed("duckdb")
 
   con <- .duck_con()
   before <- DBI::dbGetQuery(
@@ -163,8 +160,7 @@ test_that("Lasso is deterministic and restores caller RNG", {
     weather_vars = "temp",
     valid_vl = lasso_variable_list(),
     mi_m = 2L,
-    nfolds = 5L,
-    use_mice = FALSE
+    nfolds = 5L
   )
 
   set.seed(901)
@@ -177,68 +173,7 @@ test_that("Lasso is deterministic and restores caller RNG", {
   expect_identical(a, b)
 })
 
-test_that("MICE Lasso path is deterministic and restores caller RNG", {
-  skip_if_not_installed("mice")
-
-  df <- make_lasso_fixture(120L)
-  df$noise[seq(5L, 25L, by = 5L)] <- NA_real_
-  args <- list(
-    df = df,
-    selected_outcome = list(name = "welfare", type = "numeric"),
-    weather_vars = "temp",
-    valid_vl = lasso_variable_list(),
-    mi_m = 1L,
-    mi_maxit = 1L,
-    mi_method = "norm.predict",
-    nfolds = 3L,
-    use_mice = TRUE,
-    use_parallel = FALSE
-  )
-
-  set.seed(906)
-  before <- .Random.seed
-  a <- do.call(run_lasso_selection, args)
-  expect_identical(.Random.seed, before)
-  stats::runif(10)
-  b <- do.call(run_lasso_selection, args)
-
-  expect_identical(a, b)
-})
-
-test_that("parallel MICE Lasso is deterministic and restores caller RNG", {
-  skip_if_not_installed("mice")
-  skip_if_not_installed("future")
-  skip_if_not_installed("future.apply")
-
-  df <- make_lasso_fixture(150L)
-  df$noise[seq(5L, 25L, by = 5L)] <- NA_real_
-  args <- list(
-    df = df,
-    selected_outcome = list(name = "welfare", type = "numeric"),
-    weather_vars = "temp",
-    valid_vl = lasso_variable_list(),
-    mi_m = 2L,
-    mi_maxit = 1L,
-    mi_method = "pmm",
-    nfolds = 3L,
-    use_mice = TRUE,
-    use_parallel = TRUE,
-    n_workers = 1L,
-    parallel_min_n = 1L
-  )
-
-  set.seed(907)
-  before <- .Random.seed
-  a <- do.call(run_lasso_selection, args)
-  expect_identical(.Random.seed, before)
-  stats::runif(10)
-  b <- do.call(run_lasso_selection, args)
-
-  expect_identical(a, b)
-})
-
 test_that("Step 1 fixest fits are identical across repeated runs", {
-  skip_if_not_installed("fixest")
 
   df <- make_lasso_fixture(160L)
   df$loc_id_panel <- rep(letters[1:8], length.out = nrow(df))
@@ -261,7 +196,6 @@ test_that("Step 1 fixest fits are identical across repeated runs", {
 })
 
 test_that("Step 2 simulation pipeline is identical across repeated runs", {
-  skip_if_not_installed("fixest")
 
   df <- make_lasso_fixture(120L)
   df$code <- "TST"
@@ -346,6 +280,11 @@ test_that("policy assignment is deterministic and restores caller RNG", {
 test_that("Step 3 policy delta pipeline is identical across repeated runs", {
   fx <- make_policy_fixture(90L)
   fx$temp <- seq(20, 30, length.out = nrow(fx))
+  fx$code <- "BFA"
+  fx$year <- "2018"
+  fx$survname <- "wave-a"
+  fx$loc_id <- seq_len(nrow(fx))
+  fx$int_month <- 6L
   fit <- stats::lm(log(welfare) ~ temp + electricity + temp:electricity,
                    data = fx)
   mf <- list(
@@ -370,8 +309,21 @@ test_that("Step 3 policy delta pipeline is identical across repeated runs", {
     svy_row_id = seq_len(nrow(fx)),
     train_aug = transform(fx, .resid = stats::residuals(fit))
   )
+  exposure <- fx[pipe$svy_row_id,
+                 c("code", "year", "survname", "loc_id", "int_month", "temp")]
+  exposure$timestamp <- as.Date(sprintf("2030-06-%02d", rep(1L, nrow(exposure))))
+  pipe$weather_exposure <- c(
+    list(status = "ok", table = exposure, row_index = seq_len(nrow(exposure)),
+         prediction_row_id = seq_len(nrow(exposure))),
+    pipe[c("svy_row_id", "sim_year", "weight", "id_vec")]
+  )
   hist <- list(pipeline = pipe, weather_raw = data.frame(temp = mean(fx$temp)),
                so = so, svy = fx)
+  run_identity <- "deterministic-policy-run"
+  context <- .build_decomposition_context(
+    fx, svy_policy, mf, so, skip_coef = TRUE, run_identity = run_identity
+  )
+  annual_channels <- .prepare_policy_annual_channels(context, run_identity)
 
   run <- function() {
     apply_policy_delta_to_baseline(
@@ -380,7 +332,11 @@ test_that("Step 3 policy delta pipeline is identical across repeated runs", {
       model_fit = mf,
       so = so,
       hist_sim_baseline = hist,
-      skip_coef = TRUE
+      skip_coef = TRUE,
+      decomp_context = context,
+      run_identity = run_identity,
+      annual_channels = annual_channels,
+      chunk_size = 100000L
     )
   }
   a <- run()
@@ -398,18 +354,15 @@ test_that("residual draws are deterministic and restore caller RNG", {
   set.seed(903)
   before <- .Random.seed
   original_a <- draw_residuals_vec("original", train, length(ids), ids, "hhid")
-  normal_a <- draw_residuals_vec("normal", train, length(ids), seed = 123L)
   resample_a <- draw_residuals_vec("resample", train, length(ids), seed = 123L)
   expect_identical(.Random.seed, before)
 
   stats::runif(10)
   original_b <- draw_residuals_vec("original", train, length(ids), ids, "hhid")
-  normal_b <- draw_residuals_vec("normal", train, length(ids), seed = 123L)
   resample_b <- draw_residuals_vec("resample", train, length(ids), seed = 123L)
 
   expect_identical(original_a, original_b)
   expect_identical(original_a[2], original_a[3])
-  expect_identical(normal_a, normal_b)
   expect_identical(resample_a, resample_b)
 })
 

@@ -133,6 +133,19 @@ test_that("compute_factor_loading aligns reordered and absent design columns", {
   )
 })
 
+test_that("aligned factor-loading designs take the identity fast path", {
+  beta_names <- c("(Intercept)", "tx", "urban")
+  X <- matrix(seq_len(12), nrow = 4L,
+              dimnames = list(NULL, beta_names))
+
+  aligned <- wiseapp:::align_factor_loading_matrix(X, beta_names)
+
+  expect_identical(aligned, X)
+  expect_identical(compute_factor_loading(
+    X, list(L = diag(3), beta = setNames(rep(1, 3), beta_names))
+  ), unname(X %*% diag(3)))
+})
+
 test_that("active mask gives correct (block-Cholesky) additive-decomposition variance", {
   # Regression test for the column-subset bug: when Sigma has off-diagonal
   # terms between active and inactive coefficients, naively subsetting
@@ -177,6 +190,34 @@ test_that("active mask gives correct (block-Cholesky) additive-decomposition var
   expect_gt(var_masked, 0)
 })
 
+test_that("active block selection preserves parity and falls back for upper factors", {
+  set.seed(20260916)
+  K <- 8L
+  A <- matrix(rnorm(K * K), K)
+  Sigma <- crossprod(A) + diag(K) * 0.1
+  L_lower <- t(chol(Sigma))
+  mask <- c(TRUE, FALSE, TRUE, FALSE, TRUE, FALSE, FALSE, TRUE)
+  beta <- setNames(seq_len(K), paste0("b", seq_len(K)))
+  svy <- data.frame(hhid = seq_len(20L), b1 = rnorm(20L))
+  train <- svy
+
+  lower <- suppressMessages(attach_active_mask(
+    chol_obj = list(L = L_lower, beta = beta),
+    svy_modified = svy, svy_reference = train, train_data = train,
+    weather_terms = names(beta)[mask], residuals = "original"
+  ))
+  expected <- t(chol(Sigma[mask, mask, drop = FALSE]))
+  expect_equal(lower$L_active, expected, tolerance = 1e-12)
+
+  upper <- suppressMessages(attach_active_mask(
+    chol_obj = list(L = t(L_lower), beta = beta),
+    svy_modified = svy, svy_reference = train, train_data = train,
+    weather_terms = names(beta)[mask], residuals = "original"
+  ))
+  expected_upper <- t(chol((t(L_lower) %*% L_lower)[mask, mask, drop = FALSE]))
+  expect_equal(upper$L_active, expected_upper, tolerance = 1e-12)
+})
+
 
 # ---- attach_active_mask ---------------------------------------------------- #
 
@@ -190,7 +231,7 @@ test_that("attach_active_mask is a no-op when residuals != 'original' (linear en
     svy_modified                        = svy,
     train_data                          = train,
     weather_terms                       = "tx",
-    residuals                           = "normal",
+    residuals                           = "resample",
     propagate_all_covariate_uncertainty = FALSE
   )
   expect_null(out$active_mask)
@@ -315,14 +356,14 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
   # to a RIF model does NOT inflate var_coef when the additive-decomp
   # gate is on. Regression test for a reported bug where the mask
   # appeared not to reach interpolate_F_loading().
-  skip_if_not_installed("fixest")
   set.seed(42)
   n <- 300
   df <- data.frame(
     y = rnorm(n, 10, 2), temp = rnorm(n),
     urban = sample(0:1, n, TRUE), age = rnorm(n, 40, 10),
     hh_size = sample(1:8, n, TRUE),
-    loc = factor(sample(letters[1:4], n, TRUE))
+    loc = factor(sample(letters[1:4], n, TRUE)),
+    cl = sample(1:100, n, TRUE)
   )
   taus <- seq(0.1, 0.9, by = 0.2)
   for (i in seq_along(taus))
@@ -331,9 +372,12 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
                                  collapse = ", "), ")")
   fit_multi <- fixest::feols(
     stats::as.formula(paste(rif_lhs, "~ temp + urban + age + hh_size | loc")),
-    data = df, warn = FALSE
+    data = df, cluster = ~cl, warn = FALSE
   )
+  # Step 1 stores the joint covariance of the equations before slimming the fits
+  attr(fit_multi, "wise_joint_vcov") <- compute_rif_joint_vcov(fit_multi, cluster = df$cl)
   chol_obj <- compute_chol_vcov(fit_multi)
+  expect_false(is.null(attr(chol_obj, "joint_vcov")))
   svy <- df[1:50, ]
   svy$.svy_row_id <- seq_len(50)
   newdata <- svy
@@ -351,6 +395,7 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
     tmp <- lapply(chol_obj, function(x)
       if (use_active) x$L_active else x$L)
     if (use_active) attr(tmp, "active_mask") <- am
+    attr(tmp, "joint_L") <- rif_joint_factor(chol_obj, if (use_active) am)$L
     tmp
   }
 
@@ -383,8 +428,8 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
   )
   F_legacy <- attr(res_legacy, "F_loading")
   F_adit   <- attr(res_adit,   "F_loading")
-  expect_equal(ncol(F_legacy), 4L)  # all coefs
-  expect_equal(ncol(F_adit),   1L)  # temp only
+  expect_equal(ncol(F_legacy), 4L * length(taus))  # all coefs, in every equation
+  expect_equal(ncol(F_adit),   1L * length(taus))  # temp only, in every equation
 
   agg_legacy <- wiseapp:::aggregate_with_uncertainty_delta(
     y_point = res_legacy$.fitted, F_loading = F_legacy,
@@ -396,10 +441,12 @@ test_that("RIF end-to-end: full production chain shrinks var_coef", {
     method = "mean", weights = rep(1, 50), residuals = "none",
     train_aug = NULL, is_log = FALSE
   )
-  # Additive var_coef must be strictly smaller (non-weather coefs were
-  # contributing under legacy). With this fixture we see ~30x reduction.
-  expect_lt(agg_adit$var_coef, agg_legacy$var_coef)
-  expect_lt(agg_adit$var_coef / agg_legacy$var_coef, 0.5)
+  # UNC-01: the loading is the change from the household's own design, so a
+  # covariate that does not move adds nothing and the unmasked and masked
+  # loadings give the same variance (before, the absolute design made the
+  # unmasked variance about 30x larger).
+  expect_equal(agg_adit$var_coef, agg_legacy$var_coef, tolerance = 1e-8)
+  expect_lte(agg_adit$var_coef, agg_legacy$var_coef * (1 + 1e-8))
 })
 
 test_that("end-to-end: masked F_loading shrinks var_coef vs unmasked", {

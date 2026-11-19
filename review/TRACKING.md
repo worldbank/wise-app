@@ -1,0 +1,19 @@
+# Maintenance Tracker
+
+Open app/repo maintenance only. Use git for routine history; look up closure evidence, deferrals and numerical decisions by ID in `review/archive/REVIEW-2026-10-06-tracking-full.md`. Original findings: `review/archive/REVIEW-2026-10-06.md` (immutable).
+
+## Working rules
+
+- **Add:** check tracker/archive for duplicates. Use a stable existing ID or unused `<AREA>-NN`; one closable issue per row, with next action/acceptance condition and source. Never reuse IDs.
+- **Group:** Data and Methods; UX and Accessibility; Engineering and Tests; Security and Deployment; Performance. Add a category and copy the table header when needed; no empty tables, placeholder rows, counts or separate waiting list. Sort by severity, then actionable before blocked.
+- **Update:** retain only the open remainder; mark started work `◐`. For `blocked`, name the dependency and unblock action. Link long evidence rather than embedding it.
+- **Close:** demonstrate the fix with regression tests or reproducible docs/config checks; run relevant tests (`wise-verify`). Archive the full row, dated outcome, commit/reference, evidence and unchecked paths, then remove it here. Code reading alone is not verification.
+- **Defer/reopen:** user-approved deferrals need an archived reason, date and reopen trigger, not a claim of completion. Restore the same ID and link that decision when reopening. Procedure: `wise-close-finding`.
+- **Gates:** numerical changes need archived BFA before/after and a Decision log (`wise-numeric-change`); speed claims need timing and peak memory (`wise-benchmark`). Follow `AGENTS.md` for Git/permissions and `wise-verify` for remaining checks. No rolling Log.
+
+Status: `☐` todo, `◐` in progress, `blocked` awaiting a named dependency. Closed and deferred items belong only in the archive. Sev: C critical, H high, M medium, L low, I informational. Eff: S < 1 day, M 1-3 days, L > 3 days; `?` means untriaged.
+
+## Data and Methods
+
+| ID | Sev | Eff | Status | Issue / Next Action | Evidence / Source |
+|---|---|---|---|---|---|

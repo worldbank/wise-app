@@ -184,8 +184,8 @@ test_that("hexmap_ui: container id, aria, input hooks, legend slot", {
   expect_match(html, "id=\"mod-density_map\"", fixed = TRUE)
   expect_match(html, "role=\"region\"", fixed = TRUE)
   expect_match(html, "aria-label=\"Density map\"", fixed = TRUE)
-  expect_match(html, "data-hexmap-click=\"mod-density_map_hex_click\"",
-               fixed = TRUE)
+  # R2-A11Y-06: no dead click input.
+  expect_false(grepl("data-hexmap-click", html, fixed = TRUE))
   expect_match(html, "hexmap-legend", fixed = TRUE)
   expect_false(grepl("data-hexmap-webgl", html, fixed = TRUE))
 })
@@ -194,10 +194,35 @@ test_that("hexmap_dependency: scripts in engine order", {
   dep <- hexmap_dependency()
   expect_identical(
     dep$script,
-    c("vendor/maplibre-gl.js", "vendor/h3-js.umd.js", "hexmap.js")
+    c("maplibre-gl.js", "h3-js.umd.js", "hexmap.js")
   )
-  expect_identical(dep$stylesheet, "vendor/maplibre-gl.css")
+  expect_identical(dep$stylesheet, "maplibre-gl.css")
   for (s in dep$script) {
     expect_true(file.exists(file.path(dep$src[[1]], s)), info = s)
   }
+  # Engine files must stay OUTSIDE the bundle_resources scan tree
+  # (inst/app/www): anything in there is also attached alphabetically by
+  # bundle_resources, so the scripts would execute twice per page load.
+  expect_false(grepl("/www$", dep$src[[1]] %||% ""))
+  expect_false(file.exists(
+    file.path(app_sys("app", "www"), "vendor", "maplibre-gl.js")
+  ))
+  expect_false(file.exists(file.path(app_sys("app", "www"), "hexmap.js")))
+})
+
+test_that("hexmap attribution starts collapsed but remains toggleable", {
+  js <- paste(readLines(app_sys("app", "vendor", "hexmap.js"), warn = FALSE),
+              collapse = "\n")
+  expect_true(grepl('querySelector(".maplibregl-ctrl-attrib")', js, fixed = TRUE))
+  expect_true(grepl('removeAttribute("open")', js, fixed = TRUE))
+  expect_true(grepl('classList.remove("maplibregl-compact-show")', js, fixed = TRUE))
+  expect_true(grepl("attributionControl: { compact: true }", js, fixed = TRUE))
+})
+
+test_that("hexmap.js sends no click input and does not advertise clickability", {
+  js <- paste(readLines(app_sys("app", "vendor", "hexmap.js"), warn = FALSE),
+              collapse = "\n")
+  expect_false(grepl("reportInput", js, fixed = TRUE))
+  expect_false(grepl('"click", "hex-fill"', js, fixed = TRUE))
+  expect_false(grepl('cursor = "pointer"', js, fixed = TRUE))
 })

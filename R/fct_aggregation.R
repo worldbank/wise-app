@@ -1,24 +1,22 @@
-# fct_aggregation.R
-# -----------------
+# Aggregation helpers ----
 # Welfare aggregation functions - all called at simulation time.
 # Stateless and testable without Shiny.
 #
 # Called by:
 #   - mod_2_01_weathersim.R (via fct_run_simulation)
 #   - mod_2_02_results.R    (hist_aggregate_choices, combine_ensemble_results)
-#   - mod_3_07_results.R    (apply_deviation)
 #
 # Exports:
 #   resolve_agg_fn
 #   combine_ensemble_results
 #   hist_aggregate_choices
 #   aggregate_outcome, deviation_from_centre
-#   aggregate_sim_preds, apply_deviation
+#   aggregate_sim_preds
 #
 # Internal:
 #   draw_residuals_vec
 #
-# resolve_band_q() is defined once, in fct_sim_compare.R (a duplicate here
+# resolve_band_q() is defined once, in fct_step2_compare.R (a duplicate here
 # with divergent "minmax" semantics was removed - DUP-01).
 #
 # The closed-form delta-method aggregator (aggregate_with_uncertainty_delta)
@@ -42,112 +40,111 @@
 #' @export
 resolve_agg_fn <- function(method) {
   switch(method,
-
     mean = function(welfare, weights, pov_line) {
-      if (!is.null(weights))
+      if (!is.null(weights)) {
         stats::weighted.mean(welfare, weights, na.rm = TRUE)
-      else
+      } else {
         mean(welfare, na.rm = TRUE)
+      }
     },
-
     median = function(welfare, weights, pov_line) {
       if (!is.null(weights)) {
-        # Weighted median via cumulative weight
-        ord  <- order(welfare)
-        w    <- weights[ord] / sum(weights, na.rm = TRUE)
+        # Weighted median via cumulative weight. Missing welfare rows are
+        # dropped first so their weight does not shift the 0.5 crossing.
+        valid <- !is.na(welfare)
+        welfare <- welfare[valid]
+        weights <- weights[valid]
+        ord <- order(welfare)
+        w <- weights[ord] / sum(weights, na.rm = TRUE)
         cumw <- cumsum(w)
         welfare[ord][which(cumw >= 0.5)[1L]]
       } else {
         stats::median(welfare, na.rm = TRUE)
       }
     },
-
     total = function(welfare, weights, pov_line) {
-      if (!is.null(weights))
+      if (!is.null(weights)) {
         sum(welfare * weights, na.rm = TRUE)
-      else
+      } else {
         sum(welfare, na.rm = TRUE)
+      }
     },
-
     headcount_ratio = function(welfare, weights, pov_line) {
       stopifnot("pov_line required for headcount_ratio" = !is.null(pov_line))
       poor <- as.numeric(welfare < pov_line)
-      if (!is.null(weights))
+      if (!is.null(weights)) {
         stats::weighted.mean(poor, weights, na.rm = TRUE)
-      else
+      } else {
         mean(poor, na.rm = TRUE)
+      }
     },
-
     gap = function(welfare, weights, pov_line) {
       stopifnot("pov_line required for gap" = !is.null(pov_line))
       gaps <- pmax(pov_line - welfare, 0) / pov_line
-      if (!is.null(weights))
+      if (!is.null(weights)) {
         stats::weighted.mean(gaps, weights, na.rm = TRUE)
-      else
+      } else {
         mean(gaps, na.rm = TRUE)
+      }
     },
-
     fgt2 = function(welfare, weights, pov_line) {
       stopifnot("pov_line required for fgt2" = !is.null(pov_line))
       sq <- (pmax(pov_line - welfare, 0) / pov_line)^2
-      if (!is.null(weights))
+      if (!is.null(weights)) {
         stats::weighted.mean(sq, weights, na.rm = TRUE)
-      else
+      } else {
         mean(sq, na.rm = TRUE)
+      }
     },
-
     gini = function(welfare, weights, pov_line) {
-      # Weighted Gini via the covariance formula - NA guard first
-      valid   <- !is.na(welfare)
+      # The app's single Gini definition (CR-BUG-10): weighted covariance
+      # form, equal to the weighted Lorenz-curve area. No weights means
+      # equal weights, which gives the standard sample Gini.
+      valid <- !is.na(welfare)
       welfare <- welfare[valid]
       if (!is.null(weights)) weights <- weights[valid]
       n <- length(welfare)
-      if (n < 2L) return(NA_real_)
-      if (!is.null(weights)) {
-        ord  <- order(welfare)
-        w    <- weights[ord] / sum(weights, na.rm = TRUE)
-        y    <- welfare[ord]
-        F_i  <- cumsum(w) - w / 2
-        2 * sum(w * y * F_i) / sum(w * y) - 1
-      } else {
-        ord <- order(welfare)
-        y   <- welfare[ord]
-        n   <- length(y)
-        2 * sum((seq_len(n) / n - 0.5) * y) / (n * mean(y))
+      if (n < 2L) {
+        return(NA_real_)
       }
+      if (is.null(weights)) weights <- rep(1, n)
+      ord <- order(welfare)
+      w <- weights[ord] / sum(weights, na.rm = TRUE)
+      y <- welfare[ord]
+      F_i <- cumsum(w) - w / 2
+      2 * sum(w * y * F_i) / sum(w * y) - 1
     },
-
     prosperity_gap = function(welfare, weights, pov_line) {
       # Average factor by which incomes must be multiplied to reach $28/day.
       # pov_line ignored - threshold is always hardcoded to $28/day.
       pg <- pmax(28 / welfare, 1)
-      if (!is.null(weights))
+      if (!is.null(weights)) {
         stats::weighted.mean(pg, weights, na.rm = TRUE)
-      else
+      } else {
         mean(pg, na.rm = TRUE)
+      }
     },
-
     avg_poverty = function(welfare, weights, pov_line) {
       # Average poverty = mean(1 / welfare): days needed to earn $1.
       # pov_line ignored.
-      ok  <- is.finite(welfare) & welfare > 0
-      wp  <- welfare[ok]
+      ok <- is.finite(welfare) & welfare > 0
+      wp <- welfare[ok]
       wts <- if (!is.null(weights)) weights[ok] else NULL
-      if (length(wp) == 0L) return(NA_real_)
-      if (!is.null(wts))
+      if (length(wp) == 0L) {
+        return(NA_real_)
+      }
+      if (!is.null(wts)) {
         stats::weighted.mean(1 / wp, wts, na.rm = TRUE)
-      else
+      } else {
         mean(1 / wp, na.rm = TRUE)
+      }
     },
-
     stop(sprintf("[resolve_agg_fn] Unknown method: '%s'", method))
   )
 }
 
 
-# ---------------------------------------------------------------------------- #
-# Residual drawing helper                                                       #
-# ---------------------------------------------------------------------------- #
+# Residual drawing helper ----
 
 #' Build the ID-to-residual named lookup for the "original" residual mode
 #'
@@ -163,7 +160,7 @@ resolve_agg_fn <- function(method) {
 #' @noRd
 .residual_lookup <- function(train_aug, id_col) {
   if (is.null(train_aug) || !".resid" %in% names(train_aug) ||
-      is.null(id_col) || !id_col %in% names(train_aug)) {
+    is.null(id_col) || !id_col %in% names(train_aug)) {
     NULL
   } else {
     stats::setNames(train_aug$.resid, train_aug[[id_col]])
@@ -194,7 +191,7 @@ resolve_agg_fn <- function(method) {
 #' invocation. Residuals are independent of coefficient uncertainty (Option A).
 #'
 #' @param residuals Character. One of \code{"none"}, \code{"original"},
-#'   \code{"normal"}, \code{"resample"}.
+#'   \code{"resample"}.
 #' @param train_aug Data frame. Augmented training data with \code{.resid}
 #'   column and optionally an id column for household matching. Returned by
 #'   \code{run_sim_pipeline()} as \code{$train_aug}. Required for all
@@ -206,8 +203,10 @@ resolve_agg_fn <- function(method) {
 #' @param seed Integer seed for stochastic residual modes.
 #' @param resid_lookup Optional pre-built named residual vector from
 #'   \code{.residual_lookup()} (PERF-34). When NULL it is built here.
-#' @param resid_sigma2 Optional pre-built residual variance from
-#'   \code{.residual_sigma2()} (PERF-34). When NULL it is computed here.
+#' @param resid_pos Optional integer vector, length N: position of each
+#'   \code{id_vec} element in \code{names(resid_lookup)} (NA when absent), as
+#'   \code{match(as.character(id_vec), names(resid_lookup))} gives. Lets a caller
+#'   that draws year by year convert each distinct id to character once.
 #'
 #' @return Numeric vector of length N. Zero vector when
 #'   \code{residuals = "none"}.
@@ -216,32 +215,37 @@ resolve_agg_fn <- function(method) {
 draw_residuals_vec <- function(residuals,
                                train_aug = NULL,
                                N,
-                               id_vec  = NULL,
-                               id_col  = NULL,
-                               seed    = WISEAPP_DEFAULT_SEED,
+                               id_vec = NULL,
+                               id_col = NULL,
+                               seed = WISEAPP_DEFAULT_SEED,
                                resid_lookup = NULL,
-                               resid_sigma2 = NULL) {
+                               resid_pos = NULL) {
   switch(residuals,
-
     none = rep(0, N),
-
     original = {
-      if (is.null(train_aug) || !".resid" %in% names(train_aug))
+      if (is.null(train_aug) || !".resid" %in% names(train_aug)) {
         stop("[draw_residuals_vec] train_aug with .resid required for residuals = 'original'.")
-      if (is.null(id_vec) || is.null(id_col))
+      }
+      if (is.null(id_vec) || is.null(id_col)) {
         stop("[draw_residuals_vec] id_vec and id_col required for residuals = 'original'.")
-      if (!id_col %in% names(train_aug))
+      }
+      if (!id_col %in% names(train_aug)) {
         stop(sprintf("[draw_residuals_vec] id_col '%s' not found in train_aug.", id_col))
+      }
 
       # Match simulation households to their training residuals by ID.
       # Unmatched households use a stable hash-indexed lookup so the fallback
       # neither depends on caller RNG state nor consumes the global stream.
       # PERF-34: the lookup may be supplied pre-built by the pipeline owner.
       resid_lookup <- resid_lookup %||% .residual_lookup(train_aug, id_col)
-      matched      <- as.character(id_vec) %in% names(resid_lookup)
+      pos <- resid_pos %||% match(as.character(id_vec), names(resid_lookup))
+      matched <- !is.na(pos)
 
       out <- numeric(N)
-      out[matched]  <- resid_lookup[as.character(id_vec[matched])]
+      # A missing id matches a missing lookup name in match() but not in
+      # character subsetting; keep the subsetting result (NA) for it.
+      out[matched] <- unname(resid_lookup)[pos[matched]]
+      out[matched & is.na(id_vec)] <- NA_real_
       out[!matched] <- deterministic_values_by_key(
         train_aug$.resid,
         id_vec[!matched],
@@ -249,23 +253,12 @@ draw_residuals_vec <- function(residuals,
       )
       out
     },
-
-    normal = {
-      if (is.null(train_aug) || !".resid" %in% names(train_aug))
-        stop("[draw_residuals_vec] train_aug with .resid required for residuals = 'normal'.")
-      # sd(x) is sqrt(var(x)) in R, so sqrt of a cached var() is bit-identical
-      # to the per-call stats::sd() this replaces (PERF-34).
-      sigma_hat <- if (!is.null(resid_sigma2)) sqrt(resid_sigma2)
-                   else stats::sd(train_aug$.resid, na.rm = TRUE)
-      withr::with_seed(seed, stats::rnorm(N, mean = 0, sd = sigma_hat))
-    },
-
     resample = {
-      if (is.null(train_aug) || !".resid" %in% names(train_aug))
+      if (is.null(train_aug) || !".resid" %in% names(train_aug)) {
         stop("[draw_residuals_vec] train_aug with .resid required for residuals = 'resample'.")
+      }
       withr::with_seed(seed, sample(train_aug$.resid, N, replace = TRUE))
     },
-
     stop(sprintf("[draw_residuals_vec] Unknown residuals option: '%s'", residuals))
   )
 }
@@ -287,24 +280,30 @@ draw_residuals_vec <- function(residuals,
 combine_ensemble_results <- function(member_results,
                                      band_q = c(lo = 0.10, hi = 0.90)) {
   member_results <- Filter(Negate(is.null), member_results)
-  if (length(member_results) == 0L) return(NULL)
+  if (length(member_results) == 0L) {
+    return(NULL)
+  }
 
   values <- vapply(member_results, `[[`, numeric(1L), "value")
-  value  <- mean(values, na.rm = TRUE)
+  value <- mean(values, na.rm = TRUE)
 
   # Analytic pooling via law of total variance:
   #   Var(T) = E[Var(T|m)] + Var(E[T|m])
   #          = mean(var_coef + var_resid) + var(values across members)
-  var_coef_vec <- vapply(member_results,
-                         function(x) x$var_coef  %||% NA_real_, numeric(1L))
-  var_res_vec  <- vapply(member_results,
-                         function(x) x$var_resid %||% NA_real_, numeric(1L))
+  var_coef_vec <- vapply(
+    member_results,
+    function(x) x$var_coef %||% NA_real_, numeric(1L)
+  )
+  var_res_vec <- vapply(
+    member_results,
+    function(x) x$var_resid %||% NA_real_, numeric(1L)
+  )
   var_within <- mean(var_coef_vec + var_res_vec, na.rm = TRUE)
   if (!is.finite(var_within)) var_within <- 0
   var_across <- if (length(values) > 1L) stats::var(values, na.rm = TRUE) else 0
   if (!is.finite(var_across)) var_across <- 0
-  var_pool   <- var_within + var_across
-  se_pool    <- sqrt(max(var_pool, 0))
+  var_pool <- var_within + var_across
+  se_pool <- sqrt(max(var_pool, 0))
 
   # Per-member SDs propagated separately so callers can build per-outcome
   # bands without recovering var_coef/var_resid from the member list.
@@ -314,36 +313,33 @@ combine_ensemble_results <- function(member_results,
   z_hi <- stats::qnorm(band_q[["hi"]])
 
   list(
-    value     = value,
+    value = value,
     value_all = values,
 
     # Thick band - point estimates only (weather + model spread)
-    value_lo  = unname(stats::quantile(values, band_q[["lo"]], na.rm = TRUE)),
-    value_hi  = unname(stats::quantile(values, band_q[["hi"]], na.rm = TRUE)),
+    value_lo = unname(stats::quantile(values, band_q[["lo"]], na.rm = TRUE)),
+    value_hi = unname(stats::quantile(values, band_q[["hi"]], na.rm = TRUE)),
 
     # Thin line - analytic pooled SE (coefficient + residual + model spread)
-    coef_lo   = value + z_lo * se_pool,
-    coef_hi   = value + z_hi * se_pool,
-
-    model_lo  = min(values,  na.rm = TRUE),
+    coef_lo = value + z_lo * se_pool,
+    coef_hi = value + z_hi * se_pool,
+    model_lo = min(values, na.rm = TRUE),
     model_q10 = unname(stats::quantile(values, 0.10, na.rm = TRUE)),
     model_q25 = unname(stats::quantile(values, 0.25, na.rm = TRUE)),
     model_med = unname(stats::quantile(values, 0.50, na.rm = TRUE)),
     model_q75 = unname(stats::quantile(values, 0.75, na.rm = TRUE)),
     model_q90 = unname(stats::quantile(values, 0.90, na.rm = TRUE)),
-    model_hi  = max(values,  na.rm = TRUE),
+    model_hi = max(values, na.rm = TRUE),
     draw_values = NULL,
-    var_pool    = var_pool,
-    var_within  = var_within,
-    var_across  = var_across,
+    var_pool = var_pool,
+    var_within = var_within,
+    var_across = var_across,
     per_member_sd = per_member_sd,
-    n_members   = length(member_results)
+    n_members = length(member_results)
   )
 }
 
-# ---------------------------------------------------------------------------- #
-# Aggregation choices                                                          #
-# ---------------------------------------------------------------------------- #
+# Aggregation choices ----
 
 #' Aggregation Method Choices for Historical Simulation
 #'
@@ -365,7 +361,7 @@ hist_aggregate_choices <- function(outcome_type, outcome_name = NULL) {
     # Binary outcomes: Mean
     c("Mean" = "mean")
   } else if (identical(outcome_type, "numeric") &&
-             identical(outcome_name, "welfare")) {
+    identical(outcome_name, "welfare")) {
     # Welfare outcomes: full suite including FGT, Gini, prosperity gap, and average poverty
     c(
       "Mean"                     = "mean",
@@ -376,7 +372,7 @@ hist_aggregate_choices <- function(outcome_type, outcome_name = NULL) {
       "Poverty severity"         = "fgt2",
       "Gini"                     = "gini",
       "Prosperity gap"           = "prosperity_gap",
-      "Average poverty (days/$)" = "avg_poverty"
+      "Average poverty"          = "avg_poverty"
     )
   } else {
     # All other numeric outcomes (wage, hours, employment, etc.)
@@ -393,10 +389,7 @@ hist_aggregate_choices <- function(outcome_type, outcome_name = NULL) {
 }
 
 
-
-# ---------------------------------------------------------------------------- #
-# Aggregate predictions for plotting
-# ---------------------------------------------------------------------------- #
+# Aggregate predictions for plotting ----
 
 #' Aggregate a Predicted Outcome Across Observations Within Groups
 #'
@@ -435,8 +428,6 @@ hist_aggregate_choices <- function(outcome_type, outcome_name = NULL) {
 #'   and a column named `value` holding the computed aggregate.
 #'
 #' @examples
-#' library(dplyr)
-#'
 #' # Simulate 50 simulation years, 1000 individuals each
 #' set.seed(42)
 #' sim_data <- data.frame(
@@ -460,15 +451,16 @@ hist_aggregate_choices <- function(outcome_type, outcome_name = NULL) {
 #' @export
 aggregate_outcome <- function(df,
                               outcome,
-                              group     = "sim_year",
-                              type      = c("continuous", "binary"),
-                              aggregate = c("mean", "sum", "total", "median",
-                                            "headcount_ratio", "gap", "fgt2", "gini",
-                                            "prosperity_gap", "avg_poverty"),
-                              pov_line  = NULL,
-                              weights   = NULL) {
-
-  type      <- match.arg(type)
+                              group = "sim_year",
+                              type = c("continuous", "binary"),
+                              aggregate = c(
+                                "mean", "sum", "total", "median",
+                                "headcount_ratio", "gap", "fgt2", "gini",
+                                "prosperity_gap", "avg_poverty"
+                              ),
+                              pov_line = NULL,
+                              weights = NULL) {
+  type <- match.arg(type)
   # For binary outcomes the aggregate argument is ignored (always population
   # share). Skip match.arg so UI values like "binary" don't cause an error.
   if (type != "binary") {
@@ -478,79 +470,100 @@ aggregate_outcome <- function(df,
   }
 
   gini_coef <- function(x, w) {
-    # Remove NA / non-finite values (present in future sim predictions)
+    # Remove NA / non-finite values (present in future sim predictions),
+    # then use the app's single Gini definition in resolve_agg_fn().
     ok <- is.finite(x)
     if (!is.null(w)) ok <- ok & is.finite(w)
-    x  <- x[ok]
-    w  <- if (!is.null(w)) w[ok] else NULL
-
-    if (length(x) < 2) return(NA_real_)
-
-    ord    <- order(x)
-    x      <- x[ord]
-    w      <- if (is.null(w)) rep(1, length(x)) else w[ord]
-    w      <- w / sum(w)
-    lorenz <- cumsum(w * x) / sum(w * x)
-    lorenz <- c(0, lorenz)
-    cx     <- c(0, cumsum(w))
-    B      <- sum(diff(cx) * (lorenz[-length(lorenz)] + lorenz[-1]) / 2)
-    1 - 2 * B
+    resolve_agg_fn("gini")(x[ok], if (!is.null(w)) w[ok], NULL)
   }
 
   compute <- function(x, w) {
     if (type == "binary") {
       # multiply by 100 to express as percentage points
-      if (is.null(w)) 100*mean(as.numeric(x), na.rm = TRUE)
-      else 100*sum(as.numeric(x) * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+      if (is.null(w)) {
+        100 * mean(as.numeric(x), na.rm = TRUE)
+      } else {
+        100 * sum(as.numeric(x) * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+      }
     } else {
       switch(aggregate,
-        mean            = if (is.null(w)) mean(x, na.rm = TRUE)
-                          else sum(x * w, na.rm = TRUE) / sum(w, na.rm = TRUE),
-        sum             = if (is.null(w)) sum(x, na.rm = TRUE)
-                          else sum(x * w, na.rm = TRUE),
-        median          = if (is.null(w)) median(x, na.rm = TRUE) else {
-                            valid <- is.finite(x) & is.finite(w) & w > 0
-                            if (sum(valid) == 0L) return(NA_real_)
-                            x <- x[valid]; w <- w[valid]
-                            ord  <- order(x); x <- x[ord]; w <- w[ord]
-                            cumw <- cumsum(w) / sum(w)
-                            x[which(cumw >= 0.5)[1]]
-                          },
+        mean = if (is.null(w)) {
+          mean(x, na.rm = TRUE)
+        } else {
+          sum(x * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+        },
+        sum = if (is.null(w)) {
+          sum(x, na.rm = TRUE)
+        } else {
+          sum(x * w, na.rm = TRUE)
+        },
+        median = if (is.null(w)) {
+          stats::median(x, na.rm = TRUE)
+        } else {
+          valid <- is.finite(x) & is.finite(w) & w > 0
+          if (sum(valid) == 0L) {
+            return(NA_real_)
+          }
+          x <- x[valid]
+          w <- w[valid]
+          ord <- order(x)
+          x <- x[ord]
+          w <- w[ord]
+          cumw <- cumsum(w) / sum(w)
+          x[which(cumw >= 0.5)[1]]
+        },
         headcount_ratio = {
           if (is.null(pov_line)) stop("`pov_line` must be supplied for headcount_ratio")
           poor <- as.numeric(x < pov_line)
-          if (is.null(w)) mean(poor, na.rm = TRUE)
-          else sum(poor * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          if (is.null(w)) {
+            mean(poor, na.rm = TRUE)
+          } else {
+            sum(poor * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          }
         },
-        gap             = {
+        gap = {
           if (is.null(pov_line)) stop("`pov_line` must be supplied for gap")
           shortfall <- pmax(pov_line - x, 0) / pov_line
-          if (is.null(w)) mean(shortfall, na.rm = TRUE)
-          else sum(shortfall * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          if (is.null(w)) {
+            mean(shortfall, na.rm = TRUE)
+          } else {
+            sum(shortfall * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          }
         },
         fgt2 = {
           if (is.null(pov_line)) stop("`pov_line` must be supplied for fgt2")
           shortfall <- pmax(pov_line - x, 0) / pov_line
-          if (is.null(w)) mean(shortfall^2, na.rm = TRUE)
-          else sum((shortfall^2) * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          if (is.null(w)) {
+            mean(shortfall^2, na.rm = TRUE)
+          } else {
+            sum((shortfall^2) * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          }
         },
-        gini            = gini_coef(x, w),
-        prosperity_gap  = {
+        gini = gini_coef(x, w),
+        prosperity_gap = {
           # Average factor by which incomes must be multiplied to reach $28/day.
           # For incomes already >= 28 the gap factor is 1 (no gap).
           pg <- pmax(28 / x, 1)
-          if (is.null(w)) mean(pg, na.rm = TRUE)
-          else sum(pg * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          if (is.null(w)) {
+            mean(pg, na.rm = TRUE)
+          } else {
+            sum(pg * w, na.rm = TRUE) / sum(w, na.rm = TRUE)
+          }
         },
-        avg_poverty     = {
+        avg_poverty = {
           # Average poverty = mean(1 / x): days needed to earn $1.
           # Non-positive incomes are excluded to avoid Inf / NaN.
           ok <- is.finite(x) & x > 0
           xp <- x[ok]
           wp <- if (!is.null(w)) w[ok] else NULL
-          if (length(xp) == 0) return(NA_real_)
-          if (is.null(wp)) mean(1 / xp, na.rm = TRUE)
-          else sum((1 / xp) * wp, na.rm = TRUE) / sum(wp, na.rm = TRUE)
+          if (length(xp) == 0) {
+            return(NA_real_)
+          }
+          if (is.null(wp)) {
+            mean(1 / xp, na.rm = TRUE)
+          } else {
+            sum((1 / xp) * wp, na.rm = TRUE) / sum(wp, na.rm = TRUE)
+          }
         }
       )
     }
@@ -567,9 +580,7 @@ aggregate_outcome <- function(df,
     )
 }
 
-# ---------------------------------------------------------------------------- #
-# Convert to deviation from centre for plotting
-# ---------------------------------------------------------------------------- #
+# Convert to deviation from centre for plotting ----
 
 #' Express Aggregate Values as Deviation from a Central Tendency
 #'
@@ -592,8 +603,6 @@ aggregate_outcome <- function(df,
 #'   replaced by the deviation from the chosen centre, optionally sign-flipped.
 #'
 #' @examples
-#' library(dplyr)
-#'
 #' set.seed(42)
 #' sim_data <- data.frame(
 #'   sim_year = rep(1:50, each = 1000),
@@ -617,15 +626,14 @@ aggregate_outcome <- function(df,
 #' @importFrom dplyr mutate
 #' @export
 deviation_from_centre <- function(df,
-                                  group  = "sim_year",
+                                  group = "sim_year",
                                   centre = c("mean", "median"),
-                                  loss   = FALSE) {
-
+                                  loss = FALSE) {
   centre <- match.arg(centre)
 
   ref <- switch(centre,
-    mean   = mean(df$value,   na.rm = TRUE),
-    median = median(df$value, na.rm = TRUE)
+    mean   = mean(df$value, na.rm = TRUE),
+    median = stats::median(df$value, na.rm = TRUE)
   )
 
   sign <- if (loss) -1 else 1
@@ -634,14 +642,7 @@ deviation_from_centre <- function(df,
     mutate(value = sign * (value - ref))
 }
 
-# NOTE: plot_exceedance() and plot_hist_sim() had no active call sites and
-# were removed (formerly archived under
-# dev/archived_fct/plot_exceedance_archived.R). They are superseded by
-# enhance_exceedance() in fct_sim_compare.R.
-
-# ---------------------------------------------------------------------------- #
-# Shared aggregation helper                                                    #
-# ---------------------------------------------------------------------------- #
+# Shared aggregation helper ----
 
 #' Aggregate Simulation Predictions for Exceedance Plotting
 #'
@@ -668,7 +669,6 @@ deviation_from_centre <- function(df,
 #' @export
 aggregate_sim_preds <- function(preds, so, agg_method, deviation, loss_frame,
                                 pov_line = NULL, weights = NULL) {
-
   if (agg_method %in% c("headcount_ratio", "gap", "fgt2") && is.null(pov_line)) {
     rlang::abort(
       "`pov_line` must be supplied when `agg_method` is 'headcount_ratio','gap', or 'fgt2'."
@@ -677,22 +677,21 @@ aggregate_sim_preds <- function(preds, so, agg_method, deviation, loss_frame,
 
   # Group by (model, sim_year) when a model column is present (future scenarios
   # with all ensemble members pooled), so the CI reflects model * year variation.
-  # --- Two-stage aggregation ----------------------------------------------- #
+  # Two-stage aggregation ----
   # IMPORTANT: order of operations matters for coefficient uncertainty bands.  #
   # Stage 1: aggregate within each (draw_id, model, sim_year) to a scalar.    #
   #          This gives one aggregate statistic per coefficient draw.           #
   # Stage 2: take percentiles of that scalar across draw_id.                   #
   # Taking percentiles BEFORE aggregating gives quantiles of the individual    #
   # welfare distribution - a completely different quantity. Don't mix these up. #
-  # --------------------------------------------------------------------------- #
 
   has_draws <- "draw_id" %in% names(preds) && !all(is.na(preds$draw_id))
 
   # Stage 1 grouping: always include draw_id when present so each draw
   # produces its own aggregate scalar before we summarise across draws.
   grp_cols <- c(
-    if (has_draws)                          "draw_id",
-    if ("model" %in% names(preds))          "model",
+    if (has_draws) "draw_id",
+    if ("model" %in% names(preds)) "model",
     "sim_year"
   )
 
@@ -733,9 +732,7 @@ aggregate_sim_preds <- function(preds, so, agg_method, deviation, loss_frame,
   )
 }
 
-# ---------------------------------------------------------------------------- #
-# Shared pipeline aggregation table                                             #
-# ---------------------------------------------------------------------------- #
+# Shared pipeline aggregation table ----
 
 #' Build the canonical per-year aggregation table for one or more pipelines
 #'
@@ -762,63 +759,70 @@ aggregate_sim_preds <- function(preds, so, agg_method, deviation, loss_frame,
 #' @noRd
 aggregate_pipeline_table <- function(pipelines,
                                      method,
-                                     weighted     = TRUE,
-                                     pov_line     = NULL,
-                                     residuals    = "original",
-                                     is_log       = TRUE,
-                                     band_q       = c(lo = 0.10, hi = 0.90),
-                                     skip_coef    = FALSE,
+                                     weighted = TRUE,
+                                     pov_line = NULL,
+                                     residuals = "original",
+                                     is_log = TRUE,
+                                     band_q = c(lo = 0.10, hi = 0.90),
+                                     skip_coef = FALSE,
                                      bandwidth_p0 = 0.05,
-                                     seed         = WISEAPP_DEFAULT_SEED,
-                                     model_ids    = NULL,
+                                     seed = WISEAPP_DEFAULT_SEED,
+                                     model_ids = NULL,
                                      method_label = method,
-                                     scenario     = NULL,
+                                     scenario = NULL,
                                      shared_context = NULL,
                                      preparation_cache = NULL) {
-  if (is.null(pipelines)) return(tibble::tibble())
-  if (!is.null(pipelines$y_point)) pipelines <- list(pipelines)
-  if (!is.list(pipelines) || length(pipelines) == 0L)
+  if (is.null(pipelines)) {
     return(tibble::tibble())
+  }
+  if (!is.null(pipelines$y_point)) pipelines <- list(pipelines)
+  if (!is.list(pipelines) || length(pipelines) == 0L) {
+    return(tibble::tibble())
+  }
 
   if (is.null(model_ids)) model_ids <- names(pipelines)
   if (is.null(model_ids)) model_ids <- character(0)
-  if (length(model_ids) != length(pipelines) || any(!nzchar(model_ids)))
+  if (length(model_ids) != length(pipelines) || any(!nzchar(model_ids))) {
     model_ids <- paste0("model_", seq_along(pipelines))
+  }
 
-  if (is.null(preparation_cache))
+  if (is.null(preparation_cache)) {
     preparation_cache <- .new_aggregation_preparation_cache()
+  }
 
   per_model <- lapply(pipelines, function(pipe) {
     aggregate_pipeline_per_year(
-      pipe         = pipe,
-      method       = method,
-      weighted     = weighted,
-      pov_line     = pov_line,
-      residuals    = residuals,
-      is_log       = is_log,
-      band_q       = band_q,
-      skip_coef    = skip_coef,
-       bandwidth_p0 = bandwidth_p0,
-       seed         = seed,
-       shared_context = shared_context,
-       preparation_cache = preparation_cache
-     )
+      pipe = pipe,
+      method = method,
+      weighted = weighted,
+      pov_line = pov_line,
+      residuals = residuals,
+      is_log = is_log,
+      band_q = band_q,
+      skip_coef = skip_coef,
+      bandwidth_p0 = bandwidth_p0,
+      seed = seed,
+      shared_context = shared_context,
+      preparation_cache = preparation_cache
+    )
   })
+  per_model_by_year <- lapply(per_model, .index_aggregation_results_by_year)
 
   # The first pipeline defines the simulation-year grid, matching the
   # simulation contract used by both result panes.
   years <- sort(unique(pipelines[[1L]]$sim_year))
-  if (length(years) == 0L) return(tibble::tibble())
+  if (length(years) == 0L) {
+    return(tibble::tibble())
+  }
 
   rows <- lapply(years, function(year) {
-    per_year <- lapply(per_model, function(results) {
-      hit <- vapply(results, function(x) identical(x$sim_year, year), logical(1L))
-      if (any(hit)) results[[which(hit)[1L]]] else NULL
-    })
+    per_year <- lapply(per_model_by_year, function(results) results[[as.character(year)]] %||% NULL)
     keep <- !vapply(per_year, is.null, logical(1L))
     per_year <- per_year[keep]
     ids <- model_ids[keep]
-    if (length(per_year) == 0L) return(NULL)
+    if (length(per_year) == 0L) {
+      return(NULL)
+    }
 
     values <- vapply(per_year, `[[`, numeric(1L), "value")
     sds <- sqrt(pmax(vapply(
@@ -826,6 +830,8 @@ aggregate_pipeline_table <- function(pipelines,
       function(x) (x$var_coef %||% 0) + (x$var_resid %||% 0),
       numeric(1L)
     ), 0))
+
+    var_resid_all <- vapply(per_year, function(x) x$var_resid %||% 0, numeric(1L))
 
     gradients <- lapply(per_year, `[[`, "F_agg")
     F_mat <- if (all(vapply(gradients, is.null, logical(1L)))) {
@@ -847,134 +853,405 @@ aggregate_pipeline_table <- function(pipelines,
       var_across <- combined$var_across %||% stats::var(values, na.rm = TRUE)
     }
 
-    row <- tibble::tibble(
-      sim_year     = year,
-      value        = mean(values, na.rm = TRUE),
-      model_id     = list(ids),
-      value_all    = list(values),
-      value_all_sd = list(sds),
-      F_agg_all    = list(F_mat),
-      var_within   = var_within,
-      var_across   = var_across,
-      agg_method   = method_label,
-      weighted     = weighted
+    list(
+      sim_year   = year,
+      value      = mean(values, na.rm = TRUE),
+      model_id   = ids,
+      value_all  = values,
+      value_all_sd = sds,
+      var_resid_all = var_resid_all,
+      F_agg_all  = F_mat,
+      var_within = var_within,
+      var_across = var_across
     )
-    if (!is.null(scenario)) row$scenario <- scenario
-    row
   })
 
-  dplyr::bind_rows(Filter(Negate(is.null), rows))
+  .aggregation_assemble_rows(rows, method_label, weighted, scenario)
 }
 
-#' Apply Deviation from Historical Reference Value
-#'
-#' Subtracts a historical reference value from a data frame's \code{value}
-#' column to express results as deviations from a baseline. Used in Module 2
-#' results and Module 3 comparison to centre scenario values against the
-#' historical mean or median.
-#'
-#' @param d          Data frame with a \code{value} column. Returns \code{d}
-#'   unchanged if \code{deviation = "none"} or \code{d} is \code{NULL}.
-#' @param deviation  Character. One of \code{"none"}, \code{"mean"},
-#'   \code{"median"}. Determines how the reference value is computed when
-#'   \code{hist_ref} is not supplied.
-#' @param hist_ref   Numeric. Pre-computed reference value (e.g. historical
-#'   mean). When \code{NA} (default), computed from \code{d$value} using
-#'   \code{deviation}.
-#'
-#' @return Data frame with \code{value} column replaced by
-#'   \code{value - hist_ref}.
-#'
-#' @export
-apply_deviation <- function(d, deviation, hist_ref = NA_real_) {
-  if (identical(deviation, "none") || is.null(d)) return(d)
-  if (is.na(hist_ref)) {
-    hist_ref <- if (identical(deviation, "mean"))
-      mean(d$value, na.rm = TRUE)
-    else
-      stats::median(d$value, na.rm = TRUE)
+# Build the canonical per-year table from plain per-year lists in one tibble()
+# call. A tibble() call per year costs about a millisecond of name-spec work
+# each (R2-PERF-04); the columns and types are those of the row-wise
+# tibble()/bind_rows() construction this replaces.
+.aggregation_assemble_rows <- function(rows, method, weighted, scenario = NULL) {
+  rows <- Filter(Negate(is.null), rows)
+  if (!length(rows)) {
+    return(dplyr::bind_rows(rows))
   }
-  dplyr::mutate(d, value = value - hist_ref)
-}
-
-#' Compute exceedance curve ribbon from Cholesky draw values
-#'
-#' For each of S coefficient draws, computes the exceedance probability
-#' (1 - ECDF) at a grid of welfare values across all N simulation years.
-#' Returns p10/p90 envelope across S draws - the coefficient uncertainty
-#' ribbon for the exceedance plot.
-#'
-#' @param agg_tbl  Tibble. Output of compute_hist_agg() or
-#'   compute_scenario_agg() for one method. Must have columns:
-#'   value (point estimate per year) and draw_values (list column,
-#'   S draws per year).
-#' @param band_q   Named numeric(2). Quantile bounds for ribbon.
-#'   Default c(lo = 0.10, hi = 0.90).
-#'
-#' @return Tibble with columns: exceed_prob (y-axis exceedance probability),
-#'   welfare_mid (point estimate welfare), welfare_lo, welfare_hi
-#'   (p10/p90 coefficient uncertainty bounds). NULL if draw_values unavailable.
-#' @noRd
-compute_exceedance_ribbon <- function(agg_tbl,
-                                      band_q = c(lo = 0.10, hi = 0.90),
-                                      model_lo = NULL, model_hi = NULL) {
-  N_years <- nrow(agg_tbl)
-  if (N_years == 0L) return(NULL)
-
-  rank_order     <- order(agg_tbl$value, decreasing = TRUE)
-  probs          <- (seq_len(N_years) - 0.5) / N_years
-  welfare_sorted <- sort(agg_tbl$value, decreasing = TRUE)
-
-  draw_list <- agg_tbl$draw_values
-  has_draws <- !is.null(draw_list) && length(draw_list) > 0L &&
-               !is.null(draw_list[[1L]]) && length(draw_list[[1L]]) >= 2L
-
-  if (has_draws) {
-    S <- length(draw_list[[1L]])
-    # Build N_years * S matrix - each column = one draw across all years
-    draw_mat <- matrix(
-      unlist(draw_list, use.names = FALSE),
-      nrow  = N_years,
-      ncol  = S,
-      byrow = TRUE
-    )
-    ordered_mat <- draw_mat[rank_order, ]
-    coef_lo <- matrixStats::rowQuantiles(
-               ordered_mat, probs = band_q[["lo"]], na.rm = TRUE)
-    coef_hi <- matrixStats::rowQuantiles(
-                ordered_mat, probs = band_q[["hi"]], na.rm = TRUE)
-  } else if (all(c("coef_lo", "coef_hi") %in% names(agg_tbl))) {
-    # Delta-method path - use analytic band columns directly.
-    # Re-order to match the descending welfare ranking.
-    coef_lo <- agg_tbl$coef_lo[rank_order]
-    coef_hi <- agg_tbl$coef_hi[rank_order]
-  } else {
-    return(NULL)
-  }
-
-  # Option A approximation - apply coef width to ensemble bounds
-  # Ensemble uncertainty bands use coefficient uncertainty width from
-  # the mean ensemble member applied to lo/hi members.
-  # This approximates the joint distribution. Error is small for linear
-  # aggregates (<5% of band width) and conservative for poverty measures
-  # (understates true joint uncertainty by ~10-20%).
-  # Option B (per-member Cholesky draws) available if tighter bounds needed.
-  # See known_issues.md #18 and methodology workplan for full discussion.
-  coef_width_lo <- welfare_sorted - coef_lo   # half-width below central
-  coef_width_hi <- coef_hi - welfare_sorted   # half-width above central
-
-  final_lo <- if (!is.null(model_lo))
-    pmin(coef_lo, model_lo - coef_width_lo)
-  else coef_lo
-
-  final_hi <- if (!is.null(model_hi))
-    pmax(coef_hi, model_hi + coef_width_hi)
-  else coef_hi
-
-  tibble::tibble(
-    exceed_prob  = probs,
-    welfare_mid  = welfare_sorted,
-    welfare_lo   = final_lo,
-    welfare_hi   = final_hi
+  col <- function(name) lapply(rows, `[[`, name)
+  out <- tibble::tibble(
+    sim_year     = unlist(col("sim_year")),
+    value        = unlist(col("value")),
+    model_id     = col("model_id"),
+    value_all    = col("value_all"),
+    value_all_sd = col("value_all_sd"),
+    var_resid_all = col("var_resid_all"),
+    F_agg_all    = col("F_agg_all"),
+    var_within   = unlist(col("var_within")),
+    var_across   = unlist(col("var_across")),
+    agg_method   = method,
+    weighted     = weighted
   )
+  if (!is.null(scenario)) out$scenario <- scenario
+  out
+}
+
+.index_aggregation_results_by_year <- function(results) {
+  if (is.null(results) || !length(results)) return(list())
+  out <- list()
+  for (result in results) {
+    year <- result$sim_year %||% NA_integer_
+    key <- as.character(year)
+    if (!identical(key, "NA") && is.null(out[[key]])) out[[key]] <- result
+  }
+  out
+}
+
+#' Build canonical aggregation tables for several methods in one pass
+#'
+#' The weighted path shares per-pipeline preparation across all methods. The
+#' returned object is keyed by method and each value has the same schema as
+#' \\code{aggregate_pipeline_table()}.
+#'
+#' @param pipelines A pipeline-like list, or a named list of such pipelines.
+#' @param methods Character vector of aggregation methods.
+#' @param weighted Logical. Use each pipeline's survey weights when available.
+#' @param pov_lines Optional named list of method-specific poverty lines.
+#' @param pov_line Fallback poverty line.
+#' @param residuals Residual draw mode.
+#' @param is_log Logical. Whether pipeline predictions are on the log scale.
+#' @param band_q Named numeric vector of coefficient-band quantiles.
+#' @param skip_coef Logical. Drop coefficient loadings when TRUE.
+#' @param bandwidth_p0 Numeric bandwidth for the headcount-ratio kernel.
+#' @param seed Integer base seed for deterministic residual streams.
+#' @param model_ids Optional character vector naming the pipelines.
+#' @param scenario Optional scenario label stored in output metadata.
+#' @param shared_context Optional shared pipeline context.
+#' @param preparation_cache Optional bounded preparation cache.
+#' @return Named list of canonical aggregation tibbles.
+#' @noRd
+aggregate_pipeline_tables_multi <- function(pipelines,
+                                             methods,
+                                             weighted = TRUE,
+                                             pov_lines = NULL,
+                                             pov_line = NULL,
+                                             residuals = "original",
+                                             is_log = TRUE,
+                                             band_q = c(lo = 0.10, hi = 0.90),
+                                             skip_coef = FALSE,
+                                             bandwidth_p0 = 0.05,
+                                             seed = WISEAPP_DEFAULT_SEED,
+                                             model_ids = NULL,
+                                             scenario = NULL,
+                                             shared_context = NULL,
+                                             preparation_cache = NULL) {
+  if (is.null(pipelines)) return(setNames(vector("list", length(methods)), methods))
+  if (!is.null(pipelines$y_point)) pipelines <- list(pipelines)
+  if (!is.list(pipelines) || length(pipelines) == 0L || !length(methods)) {
+    return(setNames(vector("list", length(methods)), methods))
+  }
+  if (is.null(model_ids)) model_ids <- names(pipelines)
+  if (is.null(model_ids)) model_ids <- character(0)
+  if (length(model_ids) != length(pipelines) || any(!nzchar(model_ids))) {
+    model_ids <- paste0("model_", seq_along(pipelines))
+  }
+  if (is.null(preparation_cache)) {
+    preparation_cache <- .new_aggregation_preparation_cache()
+  }
+
+  per_model <- lapply(pipelines, function(pipe) {
+    aggregate_pipeline_per_year_multi(
+      pipe = pipe,
+      methods = methods,
+      weighted = weighted,
+      pov_lines = pov_lines,
+      pov_line = pov_line,
+      residuals = residuals,
+      is_log = is_log,
+      band_q = band_q,
+      skip_coef = skip_coef,
+      bandwidth_p0 = bandwidth_p0,
+      seed = seed,
+      shared_context = shared_context,
+      preparation_cache = preparation_cache
+    )
+  })
+  per_model_by_year <- lapply(per_model, function(results_by_method) {
+    lapply(results_by_method, .index_aggregation_results_by_year)
+  })
+  years <- sort(unique(pipelines[[1L]]$sim_year))
+  if (!length(years)) return(setNames(vector("list", length(methods)), methods))
+
+  build_table <- function(method) {
+    per_method <- lapply(per_model_by_year, `[[`, method)
+    rows <- lapply(years, function(year) {
+      per_year <- lapply(per_method, function(results) results[[as.character(year)]] %||% NULL)
+      keep <- !vapply(per_year, is.null, logical(1L))
+      per_year <- per_year[keep]
+      ids <- model_ids[keep]
+      if (!length(per_year)) return(NULL)
+      values <- vapply(per_year, `[[`, numeric(1L), "value")
+      sds <- sqrt(pmax(vapply(
+        per_year,
+        function(x) (x$var_coef %||% 0) + (x$var_resid %||% 0),
+        numeric(1L)
+      ), 0))
+      var_resid_all <- vapply(per_year, function(x) x$var_resid %||% 0, numeric(1L))
+      gradients <- lapply(per_year, `[[`, "F_agg")
+      F_mat <- if (all(vapply(gradients, is.null, logical(1L)))) {
+        NULL
+      } else {
+        first_gradient <- which(!vapply(gradients, is.null, logical(1L)))[1L]
+        n_factors <- length(gradients[[first_gradient]])
+        do.call(rbind, lapply(gradients, function(value) {
+          if (is.null(value)) rep(NA_real_, n_factors) else as.numeric(value)
+        }))
+      }
+      if (length(per_year) == 1L) {
+        var_within <- sds[[1L]]^2
+        var_across <- 0
+      } else {
+        combined <- combine_ensemble_results(per_year, band_q = band_q)
+        var_within <- combined$var_within %||% mean(sds^2, na.rm = TRUE)
+        var_across <- combined$var_across %||% stats::var(values, na.rm = TRUE)
+      }
+      list(
+        sim_year = year,
+        value = mean(values, na.rm = TRUE),
+        model_id = ids,
+        value_all = values,
+        value_all_sd = sds,
+        var_resid_all = var_resid_all,
+        F_agg_all = F_mat,
+        var_within = var_within,
+        var_across = var_across
+      )
+    })
+    .aggregation_assemble_rows(rows, method, weighted, scenario)
+  }
+  setNames(lapply(methods, build_table), methods)
+}
+
+# The single table the Results tab displays for one method.
+#
+# Faithful extraction of the argument sets in mod_2_02_results.R
+# (.build_hist_for_method() / .build_scn_for_method(), inner build_for()). The
+# worker calls this to compute streamed partial tables; the module must call
+# this helper too (Phase 5 switches it) so the two sides cannot drift.
+#
+# Branches: weighted when the pipelines carry weights, otherwise unweighted;
+# prosperity_gap goes through aggregate_pipeline_table(); every other method
+# is read from the full-suite aggregate_pipeline_tables_multi() call. With
+# `suite = FALSE` only the requested method is computed (same values, checked
+# by tests; not the default until parity is established on real runs).
+#
+# @param pipelines One historical pipeline (`historical = TRUE`) or a named
+#   list of scenario member pipelines.
+# @param so Outcome metadata (type, name, transform).
+# @return list(table, weight_key, weighted): `weight_key` is "weighted" or
+#   "unweighted", the slot the module displays.
+# @noRd
+step2_display_aggregation <- function(pipelines,
+                                      method,
+                                      so,
+                                      residuals,
+                                      skip_coef,
+                                      pov_line,
+                                      bandwidth_p0 = 0.05,
+                                      shared_context = NULL,
+                                      historical = FALSE,
+                                      preparation_cache = NULL,
+                                      suite = TRUE,
+                                      seed = WISEAPP_DEFAULT_SEED) {
+  first <- if (isTRUE(historical) || !is.null(pipelines$y_point)) {
+    pipelines
+  } else {
+    pipelines[[1L]]
+  }
+  has_w <- !is.null(first$weight)
+  weighted <- has_w
+  is_log <- isTRUE(so$transform == "log")
+  band_q <- c(lo = 0.10, hi = 0.90)
+  model_ids <- if (isTRUE(historical)) {
+    "Historical"
+  } else {
+    names(pipelines) %||% paste0("m", seq_along(pipelines))
+  }
+  scenario <- if (isTRUE(historical)) "Historical" else NULL
+
+  if (!identical(method, "prosperity_gap")) {
+    suite_pov <- pov_line %||% 3
+    methods <- if (isTRUE(suite)) {
+      unname(hist_aggregate_choices(so$type, so$name))
+    } else {
+      method
+    }
+    out <- aggregate_pipeline_tables_multi(
+      pipelines = pipelines,
+      methods = methods,
+      weighted = weighted,
+      pov_lines = setNames(lapply(methods, function(x) suite_pov), methods),
+      residuals = residuals,
+      is_log = is_log,
+      band_q = band_q,
+      skip_coef = skip_coef,
+      bandwidth_p0 = bandwidth_p0,
+      model_ids = model_ids,
+      scenario = scenario,
+      shared_context = shared_context,
+      preparation_cache = preparation_cache,
+      seed = seed
+    )[[method]]
+  } else {
+    out <- aggregate_pipeline_table(
+      pipelines = pipelines,
+      method = method,
+      weighted = weighted,
+      pov_line = pov_line,
+      residuals = residuals,
+      is_log = is_log,
+      band_q = band_q,
+      skip_coef = skip_coef,
+      bandwidth_p0 = bandwidth_p0,
+      model_ids = model_ids,
+      scenario = scenario,
+      shared_context = shared_context,
+      preparation_cache = preparation_cache,
+      seed = seed
+    )
+  }
+  list(
+    table = out,
+    weight_key = if (has_w) "weighted" else "unweighted",
+    weighted = weighted
+  )
+}
+
+# The full method suite the Results tab can display, for one group.
+#
+# Computes aggregate_pipeline_tables_multi() ONCE over every method the
+# outcome supports except prosperity_gap, with the same arguments as the
+# module's suite branch (the captured pov_line for every method), so each
+# table is identical() to what the module displays for that method.
+# prosperity_gap is not part of the module's suite path (it uses
+# aggregate_pipeline_table()); it is added only when it is the captured
+# display `method`, via step2_display_aggregation().
+#
+# @inheritParams step2_display_aggregation
+# @return list(tables, weight_key, weighted): `tables` is a named list
+#   method -> table, in hist_aggregate_choices() order.
+# @noRd
+step2_display_aggregation_suite <- function(pipelines,
+                                            method,
+                                            so,
+                                            residuals,
+                                            skip_coef,
+                                            pov_line,
+                                            bandwidth_p0 = 0.05,
+                                            shared_context = NULL,
+                                            historical = FALSE,
+                                            preparation_cache = NULL,
+                                            seed = WISEAPP_DEFAULT_SEED) {
+  first <- if (isTRUE(historical) || !is.null(pipelines$y_point)) {
+    pipelines
+  } else {
+    pipelines[[1L]]
+  }
+  weighted <- !is.null(first$weight)
+  methods <- setdiff(
+    unname(hist_aggregate_choices(so$type, so$name)), "prosperity_gap"
+  )
+  if (is.null(preparation_cache)) {
+    preparation_cache <- .new_aggregation_preparation_cache()
+  }
+  suite_pov <- pov_line %||% 3
+  tables <- aggregate_pipeline_tables_multi(
+    pipelines = pipelines,
+    methods = methods,
+    weighted = weighted,
+    pov_lines = setNames(lapply(methods, function(x) suite_pov), methods),
+    residuals = residuals,
+    is_log = isTRUE(so$transform == "log"),
+    band_q = c(lo = 0.10, hi = 0.90),
+    skip_coef = skip_coef,
+    bandwidth_p0 = bandwidth_p0,
+    model_ids = if (isTRUE(historical)) {
+      "Historical"
+    } else {
+      names(pipelines) %||% paste0("m", seq_along(pipelines))
+    },
+    scenario = if (isTRUE(historical)) "Historical" else NULL,
+    shared_context = shared_context,
+    preparation_cache = preparation_cache,
+    seed = seed
+  )
+  if (identical(method, "prosperity_gap")) {
+    tables[["prosperity_gap"]] <- step2_display_aggregation(
+      pipelines = pipelines, method = method, so = so, residuals = residuals,
+      skip_coef = skip_coef, pov_line = pov_line,
+      bandwidth_p0 = bandwidth_p0, shared_context = shared_context,
+      historical = historical, preparation_cache = preparation_cache,
+      seed = seed
+    )$table
+  }
+  list(
+    tables = tables,
+    weight_key = if (weighted) "weighted" else "unweighted",
+    weighted = weighted
+  )
+}
+
+# Session-scoped cache for compact aggregation suites shared by Results tabs.
+new_shared_aggregation_cache <- function(max_entries = 16L) {
+  cache <- new.env(parent = emptyenv())
+  cache$keys <- character(0)
+  cache$max_entries <- as.integer(max_entries)
+  cache
+}
+
+shared_aggregation_cache_get <- function(cache, key) {
+  if (is.null(cache) || !is.environment(cache) || !nzchar(key)) return(NULL)
+  value <- get0(key, envir = cache)
+  if (!is.null(value)) cache$keys <- c(setdiff(cache$keys, key), key)
+  value
+}
+
+shared_aggregation_cache_put <- function(cache, key, value) {
+  if (is.null(cache) || !is.environment(cache) || !nzchar(key)) {
+    return(invisible(value))
+  }
+  assign(key, value, envir = cache)
+  cache$keys <- c(setdiff(cache$keys, key), key)
+  while (length(cache$keys) > cache$max_entries) {
+    evict <- cache$keys[[1L]]
+    cache$keys <- cache$keys[-1L]
+    if (exists(evict, envir = cache, inherits = FALSE)) rm(list = evict, envir = cache)
+  }
+  invisible(value)
+}
+
+# R2-PERF-04: a poverty-line change must recompute only the metrics that use
+# the line. Split a method set into the two groups so each is suite-cached on
+# its own (the line-free group is keyed without the line).
+.aggregation_suite_group <- function(method, methods) {
+  # prosperity_gap uses a fixed threshold, not the selected line.
+  line_dependent <- function(m) {
+    isTRUE(.WISE_METRIC_REGISTRY[[m]]$poverty_line) && !identical(m, "prosperity_gap")
+  }
+  uses_line <- vapply(methods, line_dependent, logical(1), USE.NAMES = FALSE)
+  dependent <- line_dependent(method)
+  list(methods = methods[uses_line == dependent], poverty_dependent = dependent)
+}
+
+shared_aggregation_cache_key <- function(run_signature, poverty_line,
+                                         bandwidth_p0, weighted, residuals,
+                                         skip_coef, is_log, methods,
+                                         seed = WISEAPP_DEFAULT_SEED) {
+  digest::digest(list(
+    schema = 1L, run_signature = run_signature,
+    poverty_line = poverty_line, bandwidth_p0 = bandwidth_p0,
+    weighted = isTRUE(weighted), residuals = residuals,
+    skip_coef = isTRUE(skip_coef), is_log = isTRUE(is_log), methods = methods,
+    seed = as.integer(seed)
+  ), algo = "xxhash64")
 }

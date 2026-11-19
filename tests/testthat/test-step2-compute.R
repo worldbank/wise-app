@@ -65,7 +65,6 @@ step2_compute_pipeline <- function(weather_raw, ...) {
 
 step2_compute_reference <- function(input, weather) {
   do.call(fct_run_simulation, c(input, list(
-      notify_fn = function(...) invisible(NULL),
       progress_fn = function(...) invisible(NULL),
       weather_fn = function(...) weather,
       pipeline_fn = step2_compute_pipeline
@@ -73,6 +72,10 @@ step2_compute_reference <- function(input, weather) {
 }
 
 test_that("step2_compute validates and does not mutate the input snapshot", {
+  # A developer ~/.Renviron often sets WISEAPP_DATA_PATH; the NULL-path fixture
+  # below must not silently resolve to it or the "valid connection" check never
+  # triggers.
+  withr::local_envvar(WISEAPP_DATA_PATH = "")
   input <- step2_compute_fixture()
   before <- input
   expect_error(step2_compute(list()), "named ordinary-object")
@@ -105,6 +108,35 @@ test_that("step2_compute preserves serial result values and attaches metadata", 
   expect_true(is.character(out$result$.run$generated_at_utc))
 })
 
+test_that("forecast identity participates in signatures while NULL preserves legacy shape", {
+  input <- step2_compute_fixture()
+  legacy_signature <- .step2_compute_signature(input, 123L, "same-run")
+  forecast <- list(
+    product = "seasonal",
+    run = list(
+      id = "pilot-a", product = "seasonal", model_id = "model-a",
+      init = as.Date("2030-10-01"), observed_through = as.Date("2030-09-01"),
+      n_leads = 6L, members = 0:1, variables = "temp", file = "pilot.parquet",
+      adjustment = "additive_mean_bias_only", data_sha256 = "data-a",
+      manifest_sha256 = "manifest-a", historical_sha256 = "history-a"
+    ),
+    start = "2030-11", len = 3L
+  )
+  a <- utils::modifyList(input, list(forecast = forecast))
+  b <- utils::modifyList(input, list(forecast = utils::modifyList(forecast,
+    list(run = utils::modifyList(forecast$run, list(data_sha256 = "data-b")))
+  )))
+  sig_a <- .step2_compute_signature(a, 123L, "same-run")
+  sig_b <- .step2_compute_signature(b, 123L, "same-run")
+  expect_false("forecast" %in% names(legacy_signature))
+  expect_identical(sig_a$forecast$run$data_sha256, "data-a")
+  expect_false(identical(sig_a, sig_b))
+  testthat::local_mocked_bindings(.forecast_catalogue_runs = function(...) {
+    list("pilot-a" = utils::modifyList(forecast$run, list(manifest_sha256 = "replaced")))
+  })
+  expect_error(step2_compute(a, seed = 123L, run_id = "same-run"), "forecast data changed")
+})
+
 test_that("step2_compute emits ordered stage events and restores RNG state", {
   input <- step2_compute_fixture()
   weather <- step2_compute_weather()
@@ -131,6 +163,97 @@ test_that("step2_compute emits ordered stage events and restores RNG state", {
   expect_identical(out$events, events)
 })
 
+test_that("step2_compute forwards historical previews and cooperative checkpoints", {
+  input <- step2_compute_fixture()
+  weather <- step2_compute_weather()
+  previews <- list()
+  checkpoints <- list()
+  out <- suppressWarnings(step2_compute(
+    input,
+    weather_fn = function(...) weather,
+    pipeline_fn = step2_compute_pipeline,
+    preview_fn = function(value) previews[[length(previews) + 1L]] <<- value,
+    checkpoint_fn = function(event) {
+      checkpoints[[length(checkpoints) + 1L]] <<- event
+    }
+  ))
+
+  expect_length(previews, 1L)
+  expect_identical(names(previews[[1L]]$data),
+                   c("sim_year", "value", "uncertainty"))
+  expect_identical(previews[[1L]]$metadata$method, "mean")
+  expect_identical(previews[[1L]]$metadata$weighted, TRUE)
+  expect_true(any(vapply(checkpoints, function(event) {
+    identical(event$stage, "historical_ready") && event$completed == 1L
+  }, logical(1))))
+  expect_true(any(vapply(out$events, function(event) {
+    identical(event$stage, "historical_ready") &&
+      identical(event$status, "checkpoint")
+  }, logical(1))))
+})
+
+test_that("step2_compute cancellation checkpoint errors propagate", {
+  input <- step2_compute_fixture()
+  weather <- step2_compute_weather()
+  cancellation <- structure(
+    list(message = "cancelled", call = NULL),
+    class = c("wiseapp_step2_cancelled", "error", "condition")
+  )
+  expect_error(
+    step2_compute(
+      input,
+      weather_fn = function(...) weather,
+      pipeline_fn = step2_compute_pipeline,
+      checkpoint_fn = function(event) {
+        if (identical(event$stage, "historical_ready")) stop(cancellation)
+      }
+    ),
+    class = "wiseapp_step2_cancelled"
+  )
+})
+
+test_that("step2_compute restores configured cache environment values", {
+  input <- step2_compute_fixture()
+  weather <- step2_compute_weather()
+  withr::local_envvar(c(
+    WISEAPP_WEATHER_CACHE_DIR = "cache-before-step2",
+    WISEAPP_WEATHER_CACHE_DISABLE = "1"
+  ))
+  before <- Sys.getenv(c("WISEAPP_WEATHER_CACHE_DIR", "WISEAPP_WEATHER_CACHE_DISABLE"))
+  for (fails in c(FALSE, TRUE)) {
+    if (fails) {
+      expect_error(step2_compute(
+        input, cache_dir = tempfile("step2-cache-error-"),
+        weather_fn = function(...) stop("injected weather error"),
+        pipeline_fn = step2_compute_pipeline
+      ), "injected weather error")
+    } else {
+      suppressWarnings(step2_compute(
+        input, cache_dir = tempfile("step2-cache-"),
+        weather_fn = function(...) weather,
+        pipeline_fn = step2_compute_pipeline
+      ))
+    }
+    expect_identical(Sys.getenv(names(before)), before)
+  }
+
+  withr::local_envvar(c(
+    WISEAPP_WEATHER_CACHE_DIR = NA_character_,
+    WISEAPP_WEATHER_CACHE_DISABLE = NA_character_
+  ))
+  expect_equal(unname(Sys.getenv(c(
+    "WISEAPP_WEATHER_CACHE_DIR", "WISEAPP_WEATHER_CACHE_DISABLE"
+  ), unset = NA_character_)), c(NA_character_, NA_character_))
+  expect_error(step2_compute(
+    input, cache_dir = tempfile("step2-cache-unset-"),
+    weather_fn = function(...) stop("injected weather error"),
+    pipeline_fn = step2_compute_pipeline
+  ), "injected weather error")
+  expect_equal(unname(Sys.getenv(c(
+    "WISEAPP_WEATHER_CACHE_DIR", "WISEAPP_WEATHER_CACHE_DISABLE"
+  ), unset = NA_character_)), c(NA_character_, NA_character_))
+})
+
 test_that("step2_compute is deterministic for equal inputs and seed", {
   input <- step2_compute_fixture()
   weather <- step2_compute_weather()
@@ -150,4 +273,77 @@ test_that("step2_compute is deterministic for equal inputs and seed", {
   expect_identical(a$result$hist_sim_result$pipeline,
                    b$result$hist_sim_result$pipeline)
   expect_identical(a$result$new_scenarios, b$result$new_scenarios)
+})
+
+test_that("step2_compute rejects pipelines whose rows are not aligned (CR-BUG-07)", {
+  expect_error(
+    wiseapp:::.step2_compute_assert_alignment(list(
+      y_point = c(1, 2, 3), F_loading = matrix(0, 2, 1), sim_year = 1:3
+    )),
+    "not aligned with 3 predictions: F_loading has 2"
+  )
+  aligned <- step2_compute_pipeline(NULL)
+  expect_identical(wiseapp:::.step2_compute_assert_alignment(aligned), aligned)
+
+  input <- step2_compute_fixture()
+  weather <- step2_compute_weather()
+  misaligned <- function(weather_raw, ...) {
+    out <- step2_compute_pipeline(weather_raw, ...)
+    out$svy_row_id <- 1L
+    out
+  }
+  events <- list()
+  try(suppressWarnings(step2_compute(
+    input, seed = 123L,
+    event_fn = function(event) events[[length(events) + 1L]] <<- event,
+    weather_fn = function(...) weather,
+    pipeline_fn = misaligned
+  )), silent = TRUE)
+  failed <- Filter(function(e) identical(e$stage, "pipeline") &&
+                     identical(e$status, "failed"), events)
+  expect_true(length(failed) > 0L)
+  expect_match(paste(unlist(failed), collapse = " "), "svy_row_id has 1")
+})
+
+test_that("step2_compute does not warn about tibble row names (CR-CQ-08)", {
+  input <- step2_compute_fixture()
+  input$svy <- tibble::as_tibble(input$svy)
+  input$sw <- tibble::as_tibble(input$sw)
+  weather <- step2_compute_weather()
+  warnings <- character(0)
+  withCallingHandlers(
+    step2_compute(
+      input, seed = 123L,
+      weather_fn = function(...) weather,
+      pipeline_fn = step2_compute_pipeline
+    ),
+    warning = function(w) {
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_false(any(grepl("row names", warnings, ignore.case = TRUE)))
+  expect_false(exists(".step2_compute_copy", envir = asNamespace("wiseapp"), inherits = FALSE))
+  expect_false(exists(".wise_step2_async_find_stores", envir = asNamespace("wiseapp"), inherits = FALSE))
+})
+
+test_that("the Step 2 cache directory is created private (CR-SEC-04)", {
+  skip_on_os("windows")
+  old_umask <- Sys.umask("022")
+  on.exit(Sys.umask(old_umask), add = TRUE)
+  withr::local_envvar(c(
+    WISEAPP_WEATHER_CACHE_DIR = NA_character_,
+    WISEAPP_WEATHER_CACHE_DISABLE = NA_character_
+  ))
+  cache_dir <- tempfile("step2-cache-private-")
+  on.exit(unlink(cache_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  .step2_compute_init_process(list(), cache_dir)
+  expect_identical(as.character(file.info(cache_dir)$mode), "700")
+})
+
+test_that(".step2_run_seed reads the run seed and falls back to the default", {
+  expect_identical(.step2_run_seed(list(seed = 7L)), 7L)
+  expect_identical(.step2_run_seed(list(seed = "9")), 9L)
+  expect_identical(.step2_run_seed(list()), WISEAPP_DEFAULT_SEED)
+  expect_identical(.step2_run_seed(NULL), WISEAPP_DEFAULT_SEED)
 })

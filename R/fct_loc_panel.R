@@ -36,16 +36,10 @@
 #' \deqn{\text{overlap}_X = \frac{\sum_{c \in X \cap Y} w_{X,c}}{\sum_{c \in X} w_{X,c}}}
 #' and symmetrically for Y. The pair is linked when
 #' \eqn{\min(\text{overlap}_X, \text{overlap}_Y) \geq \text{threshold}}.
-#' Groups are then derived via
-#' \code{\link[igraph:components]{igraph::components}} on the resulting
-#' undirected graph; all locations appear in the output even if isolated.
-#'
-#' @seealso \code{\link[igraph:components]{igraph::components}},
-#'   \code{\link[igraph:graph_from_data_frame]{igraph::graph_from_data_frame}}
+#' Groups are then the connected components of the resulting undirected graph;
+#' all locations appear in the output even if isolated.
 #'
 #' @examples
-#' library(dplyr)
-#'
 #' survey <- tibble::tribble(
 #'   ~loc_id, ~h3_7,  ~population,
 #'   1L,      "a",    100,
@@ -63,29 +57,29 @@
 #'   dplyr::mutate(survey, code = "GNB", year = 2021L, survname = "EHCVM"),
 #'   dplyr::mutate(survey, code = "SEN", year = 2021L, survname = "EHCVM")
 #' )
-#' loc_panel(survey_multi, id_col = loc_id, h3_col = h3_7,
-#'           group_cols = c("code", "year", "survname"))
+#' loc_panel(survey_multi,
+#'   id_col = loc_id, h3_col = h3_7,
+#'   group_cols = c("code", "year", "survname")
+#' )
 #'
 #' @importFrom dplyr select distinct mutate summarise inner_join left_join
 #'   filter rename
 #' @importFrom tibble tibble
-#' @importFrom igraph graph_from_data_frame add_vertices components
 #'
 #' @export
 loc_panel <- function(data,
                       id_col,
                       h3_col,
-                      threshold  = 0.5,
+                      threshold = 0.5,
                       weight_col = NULL,
                       group_cols = NULL) {
-
-  wt_quo     <- rlang::enquo(weight_col)
+  wt_quo <- rlang::enquo(weight_col)
   has_groups <- !is.null(group_cols) && length(group_cols) > 0
 
   # --- 0. If group_cols supplied, stamp a composite loc_id ------------------
   # paste(!!!syms(...), ...) is translatable to SQL by DuckDB/dbplyr.
   if (has_groups) {
-    actual_cols  <- colnames(data)
+    actual_cols <- colnames(data)
     missing_cols <- setdiff(group_cols, actual_cols)
     if (length(missing_cols) > 0) {
       stop("group_cols not found in data: ", paste(missing_cols, collapse = ", "))
@@ -99,7 +93,7 @@ loc_panel <- function(data,
       dplyr::mutate(loc_id_composite = paste(!!!grp_syms, loc_id_orig, sep = "__")) |>
       collect_deterministic(c(group_cols, "loc_id_orig", "loc_id_composite"))
 
-    data   <- data |>
+    data <- data |>
       dplyr::mutate(.loc_id_composite = paste(!!!grp_syms, {{ id_col }}, sep = "__"))
     id_sym <- rlang::sym(".loc_id_composite")
   } else {
@@ -109,15 +103,21 @@ loc_panel <- function(data,
   # --- 1. Build a distinct (id, h3, weight) base table -----------------------
   if (!rlang::quo_is_null(wt_quo)) {
     base <- data |>
-      dplyr::select(loc_id = !!id_sym,
-                    h3     = {{ h3_col }},
-                    weight = {{ weight_col }}) |>
-      dplyr::summarise(weight = sum(weight, na.rm = TRUE),
-                       .by = c(loc_id, h3))
+      dplyr::select(
+        loc_id = !!id_sym,
+        h3 = {{ h3_col }},
+        weight = {{ weight_col }}
+      ) |>
+      dplyr::summarise(
+        weight = sum(weight, na.rm = TRUE),
+        .by = c(loc_id, h3)
+      )
   } else {
     base <- data |>
-      dplyr::select(loc_id = !!id_sym,
-                    h3     = {{ h3_col }}) |>
+      dplyr::select(
+        loc_id = !!id_sym,
+        h3 = {{ h3_col }}
+      ) |>
       dplyr::distinct() |>
       dplyr::mutate(weight = 1L)
   }
@@ -128,9 +128,10 @@ loc_panel <- function(data,
 
   # --- 3. Candidate pairs: loc_ids sharing > =1 h3 cell -----------------------
   pairs <- dplyr::inner_join(base, base,
-                             by           = "h3",
-                             suffix       = c("_x", "_y"),
-                             relationship = "many-to-many") |>
+    by           = "h3",
+    suffix       = c("_x", "_y"),
+    relationship = "many-to-many"
+  ) |>
     dplyr::filter(loc_id_x != loc_id_y)
 
   # --- 4. Overlap in both directions (all still lazy / in DuckDB) ------------
@@ -148,43 +149,28 @@ loc_panel <- function(data,
       overlap_x = shared_x / total_x,
       overlap_y = shared_y / total_y
     ) |>
-    dplyr::filter(pmin(overlap_x, overlap_y) >= threshold) |>
+    dplyr::filter(overlap_x >= threshold, overlap_y >= threshold) |>
     dplyr::select(from = loc_id_x, to = loc_id_y)
 
   # --- 5. Collect - single trip to DuckDB for both edges and all IDs ---------
   edges_df <- collect_deterministic(edges, c("from", "to"))
-  ids_df   <- totals |>
+  ids_df <- totals |>
     dplyr::select(loc_id) |>
     collect_deterministic("loc_id")
 
   all_ids_chr <- as.character(ids_df$loc_id)
 
-  # --- 6. Build graph, find connected components -----------------------------
-  g <- igraph::graph_from_data_frame(
-    d        = edges_df,
-    directed = FALSE,
-    vertices = data.frame(name = all_ids_chr)
+  # --- 6. Connected components, numbered by first sorted member -------------
+  loc_id_panel <- loc_components(
+    n    = length(all_ids_chr),
+    from = match(as.character(edges_df$from), all_ids_chr),
+    to   = match(as.character(edges_df$to), all_ids_chr)
   )
-
-  comp <- igraph::components(g)
-
-  # igraph labels components in vertex traversal order. Normalize those labels
-  # by each component's first sorted member so equivalent graphs always expose
-  # the same loc_id_panel values regardless of edge scan order.
-  component_first <- tapply(
-    seq_along(comp$membership),
-    comp$membership,
-    min
-  )
-  component_order <- order(component_first)
-  component_map <- stats::setNames(seq_along(component_order),
-                                   names(component_first)[component_order])
-  stable_membership <- unname(component_map[as.character(comp$membership)])
 
   # --- 7. Map components back to (composite) loc_id -------------------------
   panel_map <- tibble::tibble(
-    loc_id_composite = names(comp$membership),
-    loc_id_panel     = stable_membership
+    loc_id_composite = all_ids_chr,
+    loc_id_panel     = loc_id_panel
   )
 
   # --- 8. Restore original loc_id (and group cols if supplied) ---------------
@@ -192,8 +178,9 @@ loc_panel <- function(data,
     panel_map |>
       dplyr::left_join(restore_key, by = "loc_id_composite") |>
       dplyr::select(dplyr::all_of(group_cols),
-                    loc_id = loc_id_orig,
-                    loc_id_panel)
+        loc_id = loc_id_orig,
+        loc_id_panel
+      )
   } else {
     panel_map |>
       dplyr::left_join(
@@ -202,4 +189,38 @@ loc_panel <- function(data,
       ) |>
       dplyr::select(loc_id, loc_id_panel)
   }
+}
+
+# Connected components ----
+
+#' Connected components by min-label propagation
+#'
+#' Every vertex starts with its own index as label. Each round sets a vertex to
+#' the smallest label among its neighbours, then follows the label chain once
+#' (pointer jumping). Labels only shrink and always name a vertex of the same
+#' component, so the loop ends with one label per component.
+#'
+#' @param n Number of vertices, numbered \code{1..n}.
+#' @param from,to Integer vectors of edge endpoints in \code{1..n}. Duplicate
+#'   edges and self-loops are allowed; \code{NA} is an error.
+#' @return Integer vector of length \code{n}: the component of each vertex,
+#'   numbered in order of each component's first vertex.
+#' @noRd
+loc_components <- function(n, from, to) {
+  if (anyNA(from) || anyNA(to)) {
+    stop("Edge endpoints must be known location ids.", call. = FALSE)
+  }
+  # Group of every edge endpoint, the same in every round
+  grp <- collapse::GRP(c(from, to))
+  verts <- grp$groups[[1]]
+  label <- seq_len(n)
+  repeat {
+    smallest <- collapse::fmin(c(label[to], label[from]), grp)
+    hooked <- label
+    hooked[verts] <- pmin(label[verts], smallest)
+    hooked <- hooked[hooked]
+    if (identical(hooked, label)) break
+    label <- hooked
+  }
+  match(label, unique(label))
 }

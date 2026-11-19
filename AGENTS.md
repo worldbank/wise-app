@@ -1,0 +1,93 @@
+# AGENTS.md
+
+Guidance for coding agents working in this repository. This file holds the rules and a map; the detail lives in the files it points to. Read those only when the task needs them.
+
+## What this is
+
+**WISE-APP** (Weather Impact Simulation and Evaluation for Adaptation Policy and Planning) is an R Shiny app built by the World Bank. It estimates how weather affects household welfare (Step 1), simulates welfare under historical and future climate (Step 2) and evaluates policies (Step 3). R package `wiseapp`, built with [Golem](https://thinkr-open.github.io/golem/), deployed on Posit Connect, MIT licence. `DESCRIPTION` requires R >= 4.4.0; development uses R 4.5.3.
+
+## Rules
+
+- **Git:** work on `dev` or a branch off it (`origin` is `worldbank/wise-app`). Do not push, deploy or upload without an explicit go-ahead.
+- **Secrets and data:** never open or print `.Renviron` or credentials. Real data is at `WISEAPP_DATA_PATH`; read it from R (`Sys.getenv("WISEAPP_DATA_PATH")`), because the shell does not load `.Renviron`. The sibling repo `wise-app-data` is data-prep code only, with no produced datasets.
+- **Pinned tools:** `devtools::document()` only with roxygen2 7.3.3 (`RoxygenNote`; 8.x rewrites `NAMESPACE`). the DuckDB engine version must equal `.DUCKDB_BUNDLE_VERSION` (`R/fct_data_load.R`); the bundled extensions are built for it.
+- **Version:** `DESCRIPTION` and `inst/golem-config.yml` must match; regenerate `manifest.json` after.
+- **Protected areas** (numerics, async code, contract surface; list in `review/code_hygiene.md`): change only deliberately, with tests that cover the change.
+- **`year` type contract:** do not unify the type of `year` across stages without parity runs on every engine (CR-CQ-07, see `ARCHITECTURE.md`).
+- **Errors in the UI** go through `wise_user_error()`; never show `conditionMessage()` in modules.
+- **UI stack:** tables `reactable`, charts `echarts4r` (`echart_*` builders), maps only the MapLibre bridge (`fct_hexmap.R`).
+- **Style:** native pipe `|>`, `<-`, no `library()` in `R/`, ASCII quotes and hyphens in code and comments, 120-character lines. Full conventions: `review/code_hygiene.md`.
+- **Numbers that move:** a change to model or simulation outputs needs a Decision log entry with before/after BFA headline numbers (`review/TRACKING.md`, Working rules).
+- **Speed claims** need before/after timing and peak memory per `review/optimization_guidelines.md` section 9 (skill `wise-benchmark`).
+
+## Commands
+
+```r
+devtools::load_all()     # load the package from source
+wiseapp::run_app()       # run the app (dev/run_dev.R also documents and reloads)
+devtools::document()     # regenerate man/ and NAMESPACE (roxygen2 7.3.3)
+devtools::test()         # full suite from the source tree, 4 to 6 minutes
+devtools::test(filter = "fct_hexmap")   # one file: tests/testthat/test-fct_hexmap.R
+devtools::check()        # R CMD check (runs with --no-tests in CI)
+```
+
+Install dependencies with `pak::local_install_deps()` or from `DESCRIPTION` `Imports`; `duckdb` must be 2.0.0 or a build of that engine.
+
+## Where things live
+
+| Path | What |
+|---|---|
+| `ARCHITECTURE.md` | Map of `R/` by pipeline step, contracts that span files (engines, `year`, levers, transfers, UI), testing details |
+| `DEPLOYMENT.md` | Posit Connect deployment, bundled DuckDB extensions, resource limits and all environment variables |
+| `R/` | `mod_*` Shiny modules, `fct_*` Shiny-free logic, `utils_*` shared helpers, `app_*` wiring |
+| `src/welfare_stats.cpp` | Rcpp kernel for aggregation statistics |
+| `docs/` | Methods pages (equations, assumptions); index `docs/README.md`. Each ends with an Implementation map and records `verified_against` |
+| `batch/` | Batch runs (`targets`): `batch/README.md`, table reference `batch/docs/tables.md` |
+| `review/` | Standards, open items and plans; index in `review/README.md`. Actionable maintenance by category and item lifecycle: `review/TRACKING.md`; finished work in `review/archive/` |
+| `dev/` | `run_dev.R`, `00_make_manifest.R` (Connect manifest), `ui_drive.R` (headless-Chrome driver), `docs_check.R` / `docs_index.R`, `agents_check.R` (paths, functions and sizes named in these instructions; run in CI), `parity_enso.R`, forecast fixture tools in `dev/forecast/`, benchmarks in `dev/bench/`; index in `dev/README.md` |
+| `batch/parity/` | Real-data parity scripts `batch_parity_bfa*.R` (batch tables against the app), run per release |
+| `roadmap/` | Working plans for features in flight (state, decisions, what remains); index in `roadmap/README.md`. Backlog is in GitHub issues |
+| `tests/testthat/` | Unit tests; `tests/e2e/smoke.R` browser smoke with axe-core |
+| `.agents/skills/` | Skills, the one shared copy (see Skills) |
+
+## After you change X, also do Y
+
+| Change | Also |
+|---|---|
+| Any `R/` file | Run the matching tests (skill `wise-verify` has the map; file names mix `_` and `-`, so use `filter = "fct.name"`) |
+| Roxygen block or exports | `devtools::document()`; check the `NAMESPACE` and `man/` diff |
+| A method (estimator, simulation, metric, policy mechanics) | Update the methods page in `docs/`, its `verified_against`; run `Rscript dev/docs_check.R` |
+| Model or simulation outputs | Skill `wise-numeric-change` (determinism tests, Decision log with BFA before/after) |
+| A batch table builder | `batch/docs/tables.md`; batch tests (`ARCHITECTURE.md`, Testing details) |
+| UI (modules, CSS, charts, maps) | Check in the running app (skill `wise-ui-check`); `tests/e2e/smoke.R` for larger changes |
+| Performance | Skill `wise-benchmark` |
+| `R/`, `inst/` or dependencies, before a deploy | `Rscript dev/00_make_manifest.R`; settings in `DEPLOYMENT.md` |
+| DuckDB version | Rebuild `inst/duckdb_extensions/`, update the `DESCRIPTION` minimum, the version constant and the SHA-256 values in `R/fct_data_load.R` together (`DEPLOYMENT.md`) |
+| A review finding | Close it per the Working rules in `review/TRACKING.md` |
+
+## Skills
+
+Task guides in `.agents/skills/<name>/SKILL.md`, the only copy in the repo. If your tool does not load skills from there, read the `SKILL.md` before doing that kind of task. Setup guidance is in `README.md`, "Agent skills". Edit skills only in `.agents/skills/`.
+
+| Skill | Use when |
+|---|---|
+| `wise-verify` | A change is finished: which tests to run and which follow-ups it owes |
+| `wise-numeric-change` | Model, simulation or policy numbers move on purpose: tests, BFA before/after, Decision log |
+| `wise-ui-check` | A change touches the UI, or the user asks to run, screenshot or inspect the app |
+| `wise-benchmark` | Benchmarking or claiming a speed or memory improvement |
+| `wise-hygiene-pass` | Cleanup, style, lint or dead-code pass over `R/` with no behaviour change |
+| `add-model-engine` | Adding or extending a model engine |
+| `add-policy-lever` | A new Step 3 lever, control type or lever group (most levers need no code) |
+| `add-metric` | A new welfare metric in Steps 2 and 3 |
+| `wise-close-finding` | Closing, deferring or dropping an item of the review tracker |
+| `wise-release` | Version bump, manifest, DuckDB pin, deploy readiness (never pushes) |
+
+## Testing essentials
+
+- Run from the source tree, as CI does. The environment is pinned by `tests/testthat/setup-env.R` (caches in a temp dir; `WISEAPP_DATA_*` and cloud credentials unset) and `setup-locale.R`; do not rely on the developer's `.Renviron`.
+- New tests go in `test-<R file>.R`. A fixture builder moves into a `helper-*.R` file only when two or more test files use it.
+- Not covered by R tests: MapLibre rendering, `conditionalPanel` visibility, `update*Input()` on config import and the real Step 0 to 3 flow. Check them with `dev/ui_drive.R` (skill `wise-ui-check`).
+
+## Keeping these instructions current
+
+If an instruction here, in `ARCHITECTURE.md`, a skill or a `review/` standard misleads you, fix it only within the authorized editing scope; otherwise report it and wait for approval. Prefer correcting existing text over adding rules; record only reusable traps in a skill. Do not add counts or line numbers; they go stale. Keep this file short: detail belongs in the linked guides or skills. After editing instructions, run `Rscript dev/agents_check.R`.

@@ -2,6 +2,51 @@
 
 library(testthat)
 
+write_csv_base <- function(x, file) {
+  utils::write.csv(x, file, row.names = FALSE, na = "NA")
+}
+
+test_that("metadata parent cache hits do not start a daemon", {
+  withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "0")
+  params <- list(type = "local", path = tempdir())
+  value <- list(survey_list = data.frame(code = "TST"))
+  overview_metadata_cache_store(params, value)
+  on.exit(rm(list = .overview_metadata_cache_key(params),
+    envir = .overview_metadata_cache), add = TRUE)
+  local_mocked_bindings(.wise_step2_async_init = function() {
+    stop("cache hit must not initialize worker")
+  }, .package = "wiseapp")
+  received <- NULL
+  .overview_metadata_load(params, function(x) received <<- x,
+    function(e) stop(e), function() TRUE)
+  expect_identical(received, value)
+  .overview_metadata_load(params, function(x) stop("retired request adopted"),
+    function(e) stop(e), function() FALSE)
+})
+
+test_that("metadata backpressure retries stop when the request is retired", {
+  withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "1", WISEAPP_ASYNC_SYNC = "0")
+  current <- TRUE
+  submissions <- 0L
+  retry <- NULL
+  local_mocked_bindings(.wise_step2_async_init = function() TRUE,
+    .package = "wiseapp")
+  local_mocked_bindings(try_mirai = function(...) {
+    submissions <<- submissions + 1L
+    NULL
+  }, .package = "mirai")
+  local_mocked_bindings(later = function(func, ...) {
+    retry <<- func
+  }, .package = "later")
+  .overview_metadata_load(list(type = "local", path = tempdir()),
+    function(x) stop("unexpected adoption"), function(e) stop(e), function() current)
+  expect_equal(submissions, 1L)
+  expect_true(is.function(retry))
+  current <- FALSE
+  retry()
+  expect_equal(submissions, 1L)
+})
+
 
 .overview_duck_state_restore <- function() {
   backup <- as.list(.duck)
@@ -29,7 +74,7 @@ library(testthat)
   metadata_path <- file.path(path, "metadata")
   dir.create(metadata_path, recursive = TRUE, showWarnings = FALSE)
 
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       economy = "Testland",
       code = "TST",
@@ -42,7 +87,7 @@ library(testthat)
     ),
     file.path(metadata_path, "survey_list.csv")
   )
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       name = "loc_id",
       label = "Location",
@@ -61,7 +106,7 @@ library(testthat)
     ),
     file.path(metadata_path, "variable_list.csv")
   )
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       code = "TST",
       year = 2020,
@@ -101,7 +146,7 @@ library(testthat)
 
 
 .overview_databricks_params <- function(
-  workspace = "https://workspace.example",
+  workspace = "https://workspace.cloud.databricks.com",
   client_secret = "secret"
 ) {
   list(
@@ -132,7 +177,8 @@ library(testthat)
       logical(1)
     )]
     if (length(name) != 1L) {
-      return(NULL)
+      # Files the mock does not hold (the optional ENSO tables) are not found.
+      return(httr2::response(status_code = 404L, url = req$url))
     }
     httr2::response(body = charToRaw(csv[[name]]), url = req$url)
   }
@@ -178,12 +224,12 @@ test_that("shared data path resolution preserves connection contracts", {
     .resolve_data_path(
       "file.csv",
       list(
-        type = "databricks", workspace = "https://workspace.example",
+        type = "databricks", workspace = "https://workspace.cloud.databricks.com",
         volume_path = "/Volumes/catalog/schema/data"
       )
     ),
     paste0(
-      "https://workspace.example/api/2.0/fs/files",
+      "https://workspace.cloud.databricks.com/api/2.0/fs/files",
       "/Volumes/catalog/schema/data/file.csv"
     )
   )
@@ -205,8 +251,9 @@ test_that("local Overview metadata loads as one validated bundle", {
 
   expect_named(
     metadata,
-    c("survey_list", "variable_list", "cpi_ppp", "pov_lines")
+    c("survey_list", "variable_list", "cpi_ppp", "pov_lines", "enso")
   )
+  expect_null(metadata$enso)
   expect_equal(metadata$survey_list$code, "TST")
   expect_true("loc_id_panel" %in% metadata$variable_list$name)
   expect_false("loc_id" %in% metadata$variable_list$name)
@@ -215,13 +262,46 @@ test_that("local Overview metadata loads as one validated bundle", {
 })
 
 
+test_that("the ENSO tables ride along in the bundle and never fail it", {
+  path <- tempfile("wiseapp-overview-")
+  dir.create(path, recursive = TRUE)
+  withr::defer(unlink(path, recursive = TRUE, force = TRUE))
+  withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "1")
+  .overview_fixture(path)
+  params <- list(type = "local", path = path)
+
+  file.copy(
+    file.path(testthat::test_path("fixtures", "enso", "metadata"), c("enso.csv", "enso_forecast.csv")),
+    file.path(path, "metadata")
+  )
+  with_enso <- load_overview_metadata(params)
+  expect_equal(nrow(with_enso$enso$observed), 51L)
+  expect_s3_class(with_enso$enso$forecast, "data.frame")
+
+  # A malformed file leaves the bundle valid, with no ENSO element value (D6).
+  writeLines("timestamp,roni\n1950-01-01,0.1", file.path(path, "metadata", "enso.csv"))
+  expect_no_condition(broken <- load_overview_metadata(params))
+  expect_null(broken$enso)
+  expect_equal(broken$survey_list, with_enso$survey_list)
+})
+
+
+test_that("the local cache signature covers the ENSO files", {
+  path <- tempfile("wiseapp-overview-")
+  dir.create(file.path(path, "metadata"), recursive = TRUE)
+  withr::defer(unlink(path, recursive = TRUE, force = TRUE))
+  sig <- .overview_metadata_local_signatures(list(type = "local", path = path))
+  expect_true(all(c("observed", "forecast") %in% names(sig)))
+  expect_false(sig$observed$exists)
+})
+
+
 test_that("metadata variable order can be preserved on collection", {
-  skip_if_not_installed("duckdb")
   path <- tempfile("wiseapp-order-")
   dir.create(path, recursive = TRUE)
   withr::defer(unlink(path, recursive = TRUE, force = TRUE))
 
-  readr::write_csv(
+  write_csv_base(
     data.frame(
       name = c("t", "tn", "tx", "spei6"),
       label = c("Monthly temperature", "Monthly minimum temperature",
@@ -306,7 +386,7 @@ test_that("Databricks metadata does not initialize DuckDB", {
   )
 
   load_overview_metadata(.overview_databricks_params(
-    workspace = "https://no-duck-workspace.example"
+    workspace = "https://no-duck-workspace.cloud.databricks.com"
   ))
 
   expect_false(exists("con", envir = .duck, inherits = FALSE))
@@ -335,7 +415,7 @@ test_that("Databricks token cache survives later DuckDB initialization", {
   }
   withr::local_options(httr2_mock = mock)
 
-  host <- "https://persistent-token-workspace.example"
+  host <- "https://persistent-token-workspace.cloud.databricks.com"
   .get_db_token(host, "client", "secret")
   .duck_con()
   .get_db_token(host, "client", "secret")
@@ -356,7 +436,7 @@ test_that("successful metadata loads are cached and local changes invalidate the
   first <- load_overview_metadata(list(type = "local", path = path))
   expect_equal(first$survey_list$code, "TST")
 
-  readr::write_csv(
+  write_csv_base(
     rbind(
       data.frame(
         economy = "Testland",
@@ -408,20 +488,21 @@ test_that("remote metadata cache avoids repeat requests and can be disabled", {
   )
 
   params <- .overview_databricks_params(
-    workspace = "https://cache-workspace.example"
+    workspace = "https://cache-workspace.cloud.databricks.com"
   )
+  # One token request, then the three required files and the two optional ENSO files.
   load_overview_metadata(params)
-  expect_equal(requests, 4L)
+  expect_equal(requests, 6L)
 
   load_overview_metadata(params)
-  expect_equal(requests, 4L)
+  expect_equal(requests, 6L)
 
   load_overview_metadata(params, force_refresh = TRUE)
-  expect_equal(requests, 7L)
+  expect_equal(requests, 11L)
 
   withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "1")
   load_overview_metadata(params)
-  expect_equal(requests, 10L)
+  expect_equal(requests, 16L)
 
   withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "0")
   .reset_overview_metadata_cache()
@@ -429,16 +510,16 @@ test_that("remote metadata cache avoids repeat requests and can be disabled", {
   key <- .overview_metadata_cache_key(params)
   .overview_metadata_cache[[key]]$created_at <- as.numeric(Sys.time()) - 901
   load_overview_metadata(params)
-  expect_equal(requests, 16L)
+  expect_equal(requests, 26L)
 
   .reset_overview_metadata_cache()
   load_overview_metadata(params)
   different_credentials <- .overview_databricks_params(
-    workspace = "https://cache-workspace.example",
+    workspace = "https://cache-workspace.cloud.databricks.com",
     client_secret = "different-secret"
   )
   load_overview_metadata(different_credentials)
-  expect_equal(requests, 23L)
+  expect_equal(requests, 37L)
 })
 
 
@@ -466,4 +547,66 @@ test_that("metadata cache settings validate environment overrides", {
     expect_equal(.overview_metadata_cache_max_age(), 900),
     "invalid value"
   )
+})
+
+
+test_that("overview_metadata_cache_store serves warm sessions without a reload", {
+  .reset_overview_metadata_cache()
+  on.exit(.reset_overview_metadata_cache(), add = TRUE)
+  path <- tempfile("wiseapp-overview-store-")
+  dir.create(path, recursive = TRUE)
+  withr::defer(unlink(path, recursive = TRUE, force = TRUE))
+  withr::local_envvar(WISEAPP_METADATA_CACHE_DISABLE = "0")
+  .overview_fixture(path)
+  params <- list(type = "local", path = path)
+
+  sentinel <- list(
+    survey_list = data.frame(code = "SENT", stringsAsFactors = FALSE),
+    variable_list = data.frame(name = "x", stringsAsFactors = FALSE),
+    cpi_ppp = data.frame(code = "SENT", stringsAsFactors = FALSE),
+    pov_lines = data.frame(ppp_year = 2021, ln = 3)
+  )
+  overview_metadata_cache_store(params, sentinel)
+
+  # A cache hit returns the stored bundle without re-reading the source: the
+  # on-disk fixture holds TST rows, so only a real cache hit can return SENT.
+  # (The cache key includes file signatures, so the files must stay put.)
+  cached <- load_overview_metadata(params)
+  expect_identical(cached, sentinel)
+})
+
+
+test_that("metadata bundle loads in a real mirai worker from verbatim params", {
+  path <- tempfile("wiseapp-overview-worker-")
+  dir.create(path, recursive = TRUE)
+  withr::defer(unlink(path, recursive = TRUE, force = TRUE))
+  .overview_fixture(path)
+  params <- list(type = "local", path = path)
+
+  withr::local_envvar(WISEAPP_ASYNC_STEP2 = "1", WISEAPP_ASYNC_SYNC = "0",
+    WISEAPP_METADATA_CACHE_DISABLE = "1")
+  state <- .wise_step2_async_state
+  state$started <- FALSE
+  on.exit({
+    mirai::daemons(0L)
+    state$started <- FALSE
+  }, add = TRUE)
+  metadata <- NULL
+  failure <- NULL
+  .overview_metadata_load(params, function(value) metadata <<- value,
+    function(e) failure <<- e, function() TRUE)
+  deadline <- Sys.time() + 30
+  while (is.null(metadata) && is.null(failure) && Sys.time() < deadline) {
+    later::run_now(0.05)
+  }
+  if (!is.null(failure)) stop(failure)
+
+  expect_named(
+    metadata,
+    c("survey_list", "variable_list", "cpi_ppp", "pov_lines", "enso")
+  )
+  expect_null(metadata$enso)
+  expect_equal(metadata$survey_list$code, "TST")
+  expect_true("loc_id_panel" %in% metadata$variable_list$name)
+  expect_equal(metadata$pov_lines$ln, c(3, 4.2, 8.3))
 })
